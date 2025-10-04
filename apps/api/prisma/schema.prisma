@@ -1,0 +1,249 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// SQLite não suporta ENUMs - usando String com defaults
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  cpf       String   @unique
+  phone     String?
+  password  String
+  name      String?
+
+  // KYC - NONE, LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4
+  kycLevel  String   @default("NONE")
+  kycData   String?    // JSON string
+
+  // Reputation
+  reputationScore Int @default(0)
+  totalTransactions Int @default(0)
+  successfulTransactions Int @default(0)
+
+  // Role - USER, ADMIN, SUPPORT
+  role      String   @default("USER")
+
+  // SECURITY: 2FA
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  wallets       Wallet[]
+  orders        Order[]
+  transactions  Transaction[] @relation("payer")
+  reviews       Review[]      @relation("reviewer")
+  reviewsReceived Review[]    @relation("reviewed")
+  refreshTokens RefreshToken[]
+}
+
+model Wallet {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Crypto - BTC, ETH, XMR, ZEC, USDC, USDT
+  crypto      String
+  // Network - BITCOIN, ETHEREUM, POLYGON, BSC, SOLANA, TRC20, MONERO, ZCASH
+  network     String
+  address     String
+  balance     String      @default("0")
+
+  isActive    Boolean     @default(true)
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  deposits    Deposit[]
+  withdrawals Withdrawal[]
+
+  @@unique([userId, crypto, network])
+}
+
+model Deposit {
+  id        String   @id @default(cuid())
+  walletId  String
+  wallet    Wallet   @relation(fields: [walletId], references: [id])
+
+  txHash    String   @unique
+  amount    String
+
+  confirmed Boolean  @default(false)
+  confirmations Int  @default(0)
+
+  createdAt DateTime @default(now())
+  confirmedAt DateTime?
+}
+
+model Withdrawal {
+  id        String   @id @default(cuid())
+  walletId  String
+  wallet    Wallet   @relation(fields: [walletId], references: [id])
+
+  toAddress String
+  amount    String
+
+  txHash    String?  @unique
+  status    String   @default("pending")
+
+  createdAt DateTime @default(now())
+  processedAt DateTime?
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+
+  // Type - BOLETO, PIX
+  type        String
+  // Status - PENDING, MATCHED, PAYMENT_SENT, VALIDATING, COMPLETED, DISPUTED, CANCELLED, TIMEOUT
+  status      String      @default("PENDING")
+
+  // Crypto side
+  cryptoType  String
+  cryptoNetwork String
+  cryptoAmount String
+
+  // BRL side
+  brlAmount   String
+
+  // Fee calculation
+  platformFee String
+  payerReward String
+  totalFee    String
+
+  // Order specific data (JSON string)
+  orderData   String
+
+  // Timeout handling
+  timeoutAt   DateTime?
+  paidByPlatform Boolean  @default(false)
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  completedAt DateTime?
+
+  transactions Transaction[]
+}
+
+model Transaction {
+  id          String            @id @default(cuid())
+  orderId     String
+  order       Order             @relation(fields: [orderId], references: [id])
+
+  payerId     String
+  payer       User              @relation("payer", fields: [payerId], references: [id])
+
+  // Status - PENDING, VALIDATING, APPROVED, REJECTED, DISPUTED
+  status      String            @default("PENDING")
+
+  // Comprovante
+  comprovanteUrl String?
+  comprovanteData String?
+
+  // Validation
+  validationScore Int?
+  validatedBy     String?
+  validatedAt     DateTime?
+
+  // Dispute
+  disputeReason   String?
+  disputeData     String?
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  fees        Fee[]
+}
+
+model Fee {
+  id            String      @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
+
+  type          String
+  cryptoType    String
+  cryptoAmount  String
+  brlEquivalent String
+
+  createdAt     DateTime    @default(now())
+}
+
+model Review {
+  id          String   @id @default(cuid())
+
+  reviewerId  String
+  reviewer    User     @relation("reviewer", fields: [reviewerId], references: [id])
+
+  reviewedId  String
+  reviewed    User     @relation("reviewed", fields: [reviewedId], references: [id])
+
+  rating      Int
+  comment     String?
+
+  createdAt   DateTime @default(now())
+
+  @@unique([reviewerId, reviewedId])
+}
+
+model PriceQuote {
+  id          String      @id @default(cuid())
+
+  cryptoType  String
+  brlPrice    String
+  source      String      @default("coingecko")
+
+  createdAt   DateTime    @default(now())
+}
+
+// SECURITY: Refresh tokens para sessões persistentes
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token     String   @unique
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([token])
+}
+
+// SECURITY: Audit log para operações críticas
+model AuditLog {
+  id        String   @id @default(cuid())
+
+  userId    String?
+  action    String
+  resource  String
+  resourceId String?
+
+  ipAddress String?
+  userAgent String?
+
+  metadata  String?  // JSON string
+  success   Boolean  @default(true)
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([resource])
+  @@index([createdAt])
+}
