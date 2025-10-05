@@ -66,17 +66,12 @@ export default function KYCLevel1Form() {
     setError('');
 
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('Token não encontrado');
-      }
-
       const response = await fetch('http://localhost:3001/api/v1/kyc/level1', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include', // SECURITY: Envia cookies HttpOnly
         body: JSON.stringify({
           fullName: formData.fullName,
           dateOfBirth: formData.dateOfBirth,

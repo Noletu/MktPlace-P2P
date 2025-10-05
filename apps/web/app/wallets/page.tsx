@@ -55,16 +55,8 @@ export default function WalletsPage() {
 
   const fetchWallets = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       const response = await fetch('http://localhost:3001/api/v1/wallets', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include', // SECURITY: Envia cookies HttpOnly
       });
 
       if (!response.ok) {
@@ -86,17 +78,12 @@ export default function WalletsPage() {
     setError('');
 
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('Token não encontrado');
-      }
-
       const response = await fetch('http://localhost:3001/api/v1/wallets', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include', // SECURITY: Envia cookies HttpOnly
         body: JSON.stringify({
           crypto,
           network,
@@ -126,12 +113,9 @@ export default function WalletsPage() {
     }
 
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(`http://localhost:3001/api/v1/wallets/${walletId}`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include', // SECURITY: Envia cookies HttpOnly
       });
 
       if (!response.ok) {

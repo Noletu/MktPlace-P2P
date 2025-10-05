@@ -29,16 +29,8 @@ export default function MyOrdersPage() {
 
   const fetchOrders = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       const response = await fetch('http://localhost:3001/api/v1/orders/my-orders', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include', // SECURITY: Envia cookies HttpOnly
       });
 
       if (!response.ok) {

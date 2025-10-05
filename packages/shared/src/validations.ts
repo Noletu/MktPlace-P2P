@@ -1,15 +1,52 @@
 import { z } from 'zod';
 import { KYCLevel, CryptoType, NetworkType, OrderType } from './types';
 
-// CPF validation
+// SECURITY: Validação completa de CPF com dígitos verificadores
+const validateCPF = (cpf: string): boolean => {
+  // Remove caracteres não numéricos
+  cpf = cpf.replace(/[^\d]/g, '');
+
+  // Verifica se tem 11 dígitos
+  if (cpf.length !== 11) return false;
+
+  // Verifica se todos os dígitos são iguais (ex: 111.111.111-11)
+  if (cpf.split('').every((c) => c === cpf[0])) return false;
+
+  // Validar primeiro dígito verificador
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    sum += parseInt(cpf.charAt(i)) * (10 - i);
+  }
+  let remainder = (sum * 10) % 11;
+  if (remainder === 10 || remainder === 11) remainder = 0;
+  if (remainder !== parseInt(cpf.charAt(9))) return false;
+
+  // Validar segundo dígito verificador
+  sum = 0;
+  for (let i = 0; i < 10; i++) {
+    sum += parseInt(cpf.charAt(i)) * (11 - i);
+  }
+  remainder = (sum * 10) % 11;
+  if (remainder === 10 || remainder === 11) remainder = 0;
+  if (remainder !== parseInt(cpf.charAt(10))) return false;
+
+  return true;
+};
+
+// CPF validation com algoritmo completo
 export const cpfSchema = z
   .string()
   .regex(/^\d{11}$/, 'CPF deve conter 11 dígitos')
-  .refine((cpf) => {
-    // Validação básica de CPF (pode ser melhorada)
-    if (cpf.split('').every((c) => c === cpf[0])) return false;
-    return true;
-  }, 'CPF inválido');
+  .refine(validateCPF, 'CPF inválido (dígitos verificadores incorretos)');
+
+// SECURITY: Política de senha forte
+const strongPasswordSchema = z
+  .string()
+  .min(8, 'Senha deve ter no mínimo 8 caracteres')
+  .regex(/[A-Z]/, 'Senha deve conter pelo menos uma letra maiúscula')
+  .regex(/[a-z]/, 'Senha deve conter pelo menos uma letra minúscula')
+  .regex(/[0-9]/, 'Senha deve conter pelo menos um número')
+  .regex(/[^A-Za-z0-9]/, 'Senha deve conter pelo menos um caractere especial (!@#$%^&*...)');
 
 // Auth schemas
 export const loginSchema = z.object({
@@ -21,7 +58,7 @@ export const registerSchema = z.object({
   email: z.string().email('Email inválido'),
   cpf: cpfSchema,
   phone: z.string().optional(),
-  password: z.string().min(8, 'Senha deve ter no mínimo 8 caracteres'),
+  password: strongPasswordSchema, // SECURITY: Usar política de senha forte
   name: z.string().min(2, 'Nome deve ter no mínimo 2 caracteres').optional(),
 });
 

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken, JWTPayload } from '../utils/jwt';
+import { extractToken } from '../utils/cookies';
 
 // Estender o tipo Request do Express para incluir user
 declare global {
@@ -16,23 +17,13 @@ export const authMiddleware = (
   next: NextFunction
 ): void => {
   try {
-    // Pegar token do header
-    const authHeader = req.headers.authorization;
+    // SECURITY: Extrair token de HttpOnly cookie ou Authorization header (fallback)
+    const token = extractToken(req);
 
-    if (!authHeader) {
+    if (!token) {
       res.status(401).json({ error: 'Token não fornecido' });
       return;
     }
-
-    // Token vem no formato: "Bearer <token>"
-    const parts = authHeader.split(' ');
-
-    if (parts.length !== 2 || parts[0] !== 'Bearer') {
-      res.status(401).json({ error: 'Formato de token inválido' });
-      return;
-    }
-
-    const token = parts[1];
 
     // Verificar token
     const decoded = verifyToken(token);

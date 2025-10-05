@@ -40,16 +40,8 @@ export default function MarketplacePage() {
 
   const fetchOrders = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       const response = await fetch('http://localhost:3001/api/v1/orders/marketplace', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include', // SECURITY: Envia cookies HttpOnly
       });
 
       if (!response.ok) {
@@ -71,12 +63,9 @@ export default function MarketplacePage() {
     }
 
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}/match`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include', // SECURITY: Envia cookies HttpOnly
       });
 
       const data = await response.json();

@@ -2,6 +2,24 @@
 
 > Marketplace P2P para pagamento de boletos e PIX com criptomoedas. Mais barato, mais livre.
 
+**Versão:** 0.2.2 | **Status:** ✅ 100% Testado e Funcional
+
+## 🚀 Início Rápido
+
+### Windows (CMD/PowerShell)
+```cmd
+INICIAR-SIMPLES.bat
+```
+
+### Linux / Mac / Git Bash
+```bash
+bash start.sh
+```
+
+**📖 Documentação completa:** Veja [COMO_INICIAR.md](COMO_INICIAR.md)
+
+---
+
 ## 🎯 Visão Geral
 
 O **Mktplace da Liberdade** é um marketplace descentralizado onde pessoas com criptomoedas podem pagar suas contas em BRL (boletos/PIX) através de outros usuários que desejam adquirir cripto. Um ecossistema win-win onde todos ganham:
@@ -181,21 +199,25 @@ Ver schema completo em: `apps/api/prisma/schema.prisma`
 
 ## 🎨 Funcionalidades (Roadmap)
 
-### ✅ Fase 1: MVP (Meses 1-2) - **EM DESENVOLVIMENTO**
+### ✅ Fase 1: MVP (Meses 1-2) - **CONCLUÍDO v0.2.2**
 
 - [x] Setup monorepo
 - [x] Next.js frontend
 - [x] Node.js backend
-- [x] PostgreSQL + Redis
+- [x] PostgreSQL + Redis (usando SQLite em dev)
 - [x] Prisma ORM + schema
-- [ ] Auth (NextAuth.js + JWT)
-- [ ] KYC Nível 1 (CPF + Email)
-- [ ] Depósito de cripto (USDC/USDT Solana + Polygon)
-- [ ] Publicação de boletos
-- [ ] Publicação de pedidos PIX
-- [ ] Order book FIFO
-- [ ] Matching P2P
-- [ ] Validação manual de comprovantes
+- [x] Auth (JWT + Refresh Tokens)
+- [x] 2FA (Google Authenticator)
+- [x] KYC multi-nível (Level 1, 2, 3)
+- [x] Sistema de carteiras crypto
+- [x] Publicação de pedidos PIX
+- [x] Publicação de pedidos Boleto
+- [x] Marketplace P2P
+- [x] Matching P2P
+- [x] Upload de comprovantes
+- [x] Sistema de transações
+- [x] Scripts de inicialização automatizada
+- [x] 100% testado (26/26 testes passando)
 
 ### 🔄 Fase 2: Automação (Meses 3-4)
 

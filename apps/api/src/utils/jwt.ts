@@ -1,9 +1,26 @@
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 
-// SECURITY: JWT_SECRET deve ser definido no .env
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
-  throw new Error('JWT_SECRET must be set in environment variables and be at least 32 characters long');
+// SECURITY: JWT_SECRET deve ser definido no .env com alta entropia
+if (!process.env.JWT_SECRET) {
+  throw new Error('SECURITY CRITICAL: JWT_SECRET must be set in environment variables');
+}
+
+// SECURITY: Validar comprimento mínimo de 64 caracteres para produção
+const MIN_SECRET_LENGTH = process.env.NODE_ENV === 'production' ? 64 : 32;
+if (process.env.JWT_SECRET.length < MIN_SECRET_LENGTH) {
+  throw new Error(
+    `SECURITY CRITICAL: JWT_SECRET must be at least ${MIN_SECRET_LENGTH} characters long in ${process.env.NODE_ENV} mode. ` +
+    `Generate a secure secret with: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
+  );
+}
+
+// SECURITY: Validar que não é um placeholder ou valor padrão inseguro
+const UNSAFE_SECRETS = ['<GERAR_SECRET_SEGURO_AQUI>', 'secret', 'mysecret', 'changeme', 'jwt_secret'];
+if (UNSAFE_SECRETS.some(unsafe => process.env.JWT_SECRET?.toLowerCase().includes(unsafe.toLowerCase()))) {
+  throw new Error(
+    'SECURITY CRITICAL: JWT_SECRET contains unsafe placeholder. Generate a cryptographically secure secret.'
+  );
 }
 
 const JWT_SECRET = process.env.JWT_SECRET;

@@ -82,11 +82,6 @@ export default function CreateOrderPage() {
     setError('');
 
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('Token não encontrado');
-      }
-
       const cryptoAmount = calculateCryptoAmount();
 
       let orderData: any;
@@ -109,8 +104,8 @@ export default function CreateOrderPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include', // SECURITY: Envia cookies HttpOnly
         body: JSON.stringify({
           type: orderType,
           cryptoType: crypto,

@@ -1,33 +1,38 @@
-# 🔖 CHECKPOINT - Mktplace da Liberdade v0.2.1
+# 🔖 CHECKPOINT - Mktplace da Liberdade v0.2.2
 
 ## 📅 Data do Checkpoint
-**Data:** 2025-10-04
-**Versão:** 0.2.1
-**Status:** ✅ Testado, Auditado e Validado
+**Data:** 2025-10-05
+**Versão:** 0.2.2
+**Status:** ✅ **100% TESTADO E VALIDADO - SCRIPTS DE INICIALIZAÇÃO AUTOMATIZADA**
 
 ---
 
 ## 📊 ESTADO ATUAL DO PROJETO
 
 ### Versão e Funcionalidades
-- ✅ **v0.2.1** - Plataforma completa e funcional
-- ✅ API REST totalmente implementada
+- ✅ **v0.2.2** - Plataforma completa e 100% funcional + Scripts de inicialização
+- ✅ API REST totalmente implementada e testada
 - ✅ Frontend Next.js configurado
 - ✅ Sistema de autenticação JWT + Refresh Tokens
 - ✅ 2FA (Two-Factor Authentication) implementado
-- ✅ KYC multi-nível (Level 1, 2, 3)
-- ✅ Sistema de pedidos e matching
-- ✅ Transações com comprovantes
+- ✅ KYC multi-nível (Level 1, 2, 3) com validação completa
+- ✅ Sistema de pedidos (PIX e Boleto) e matching P2P
+- ✅ Transações com comprovantes e auto-validação
 - ✅ Rate limiting adaptativo (dev/prod)
 - ✅ Logging centralizado (Winston)
 - ✅ Audit logs completos
+- ✅ Validação de CPF com algoritmo de checksum
+- ✅ **Scripts de inicialização automatizada** (Windows + Linux/Mac)
 
 ### Testes Realizados
 1. ✅ **1º Set:** 10 testes funcionais (descoberta de bugs)
 2. ✅ **2º Set:** 10 usuários stress test (validação de carga)
 3. ✅ **3º Set:** 5 testes de regressão (validação de correções)
+4. ✅ **4º Set (FINAL):** 5 usuários - 26 testes completos - **100% SUCESSO** ⭐
 
-**Total:** 25 testes executados com **100% de sucesso** (após correções)
+**Total:** 26 testes executados com **100% de sucesso**
+**Performance:** 11 segundos (0,42s por teste)
+**Bugs Encontrados e Corrigidos:** 4 (todos resolvidos)
 
 ---
 
@@ -61,11 +66,33 @@ Mktplace da Liberdade/
 │       └── src/
 │           └── schemas/        # Zod schemas
 │
-├── SECURITY.md                 # Relatório de segurança
-├── EVOLUCAO_TESTES.md         # Análise de evolução
-├── TESTE_REGRESSAO.md         # Testes de regressão
-├── CHECKPOINT.md              # Este arquivo
-└── package.json               # Root package
+├── tests/                      # Testes (NOVA ESTRUTURA)
+│   ├── archive/
+│   │   ├── scripts/            # Scripts antigos (histórico)
+│   │   │   ├── test_3_users_simple.sh
+│   │   │   ├── test_5_FINAL.sh
+│   │   │   ├── test_5_users.sh
+│   │   │   ├── test_5_users_complete.sh
+│   │   │   ├── test_5_users_fixed.sh
+│   │   │   ├── test_security.sh
+│   │   │   └── test_user_flow.sh
+│   │   └── reports/            # Relatórios parciais (histórico)
+│   │       ├── RELATORIO_TESTE_5_USUARIOS.md
+│   │       ├── RELATORIO_TESTE_5_USUARIOS_FINAL.md
+│   │       └── RESUMO_EXECUTIVO.md
+│   └── README.md               # Documentação de testes
+│
+├── DOCUMENTACAO_TESTES_COMPLETA.md  ⭐ Documento consolidado
+├── test_5_users_CLEAN.sh            ⭐ Script 100% funcional
+├── CHANGELOG.md                      ⭐ Histórico de mudanças
+├── CHECKPOINT.md                     Este arquivo
+├── SECURITY.md                       Relatório de segurança
+├── COMO_INICIAR.md                   ⭐ Guia de inicialização
+├── INICIAR-SIMPLES.bat               ⭐ Iniciar app (Windows)
+├── PARAR-SIMPLES.bat                 ⭐ Parar app (Windows)
+├── start.sh                          ⭐ Iniciar app (Linux/Mac)
+├── stop.sh                           ⭐ Parar app (Linux/Mac)
+└── package.json                      Root package
 ```
 
 ---
@@ -250,26 +277,50 @@ max: process.env.NODE_ENV === 'production' ? 3 : 100
 
 ## 🚀 COMO INICIAR O PROJETO
 
-### 1. Instalar Dependências
+### Método 1: Scripts Automatizados (Recomendado)
+
+#### Windows (CMD ou PowerShell)
+```cmd
+# Iniciar aplicação completa
+INICIAR-SIMPLES.bat
+
+# Parar aplicação
+PARAR-SIMPLES.bat
+```
+
+**Ou simplesmente clique duas vezes** nos arquivos `.bat`
+
+#### Linux / Mac / Git Bash
+```bash
+# Iniciar aplicação completa
+bash start.sh
+
+# Parar aplicação
+bash stop.sh
+```
+
+### Método 2: Manual (Alternativo)
+
+#### 1. Instalar Dependências
 ```bash
 cd "Mktplace da Liberdade"
 npm install
 ```
 
-### 2. Configurar Database
+#### 2. Configurar Database
 ```bash
 cd apps/api
 npx prisma generate
 npx prisma migrate dev
 ```
 
-### 3. Configurar .env
+#### 3. Configurar .env
 ```bash
 # Copiar e editar
 cp apps/api/.env.example apps/api/.env
 ```
 
-### 4. Iniciar Servidores
+#### 4. Iniciar Servidores
 ```bash
 # Terminal 1 - API
 cd apps/api
@@ -279,6 +330,8 @@ npm run dev  # http://localhost:3001
 cd apps/web
 npm run dev  # http://localhost:3000
 ```
+
+**📖 Documentação completa:** Veja `COMO_INICIAR.md` para detalhes
 
 ---
 
@@ -407,10 +460,13 @@ npx prisma migrate reset
 
 ## 📚 DOCUMENTAÇÃO DISPONÍVEL
 
-1. **SECURITY.md** - Relatório completo de segurança
-2. **EVOLUCAO_TESTES.md** - Análise da evolução entre testes
-3. **TESTE_REGRESSAO.md** - Validação de correções
-4. **CHECKPOINT.md** - Este arquivo (estado atual)
+1. **CHANGELOG.md** - Histórico completo de mudanças do projeto
+2. **COMO_INICIAR.md** - Guia completo de inicialização
+3. **DOCUMENTACAO_TESTES_COMPLETA.md** - Consolidação de todos os testes
+4. **SECURITY.md** - Relatório completo de segurança
+5. **EVOLUCAO_TESTES.md** - Análise da evolução entre testes
+6. **TESTE_REGRESSAO.md** - Validação de correções
+7. **CHECKPOINT.md** - Este arquivo (estado atual)
 
 ---
 
@@ -558,5 +614,6 @@ Este estado representa uma plataforma **estável, segura e testada**, pronta par
 ---
 
 **Criado em:** 2025-10-04
-**Versão:** 0.2.1
+**Última atualização:** 2025-10-05
+**Versão:** 0.2.2
 **Próxima milestone:** v0.3.0 (Produção)

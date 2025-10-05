@@ -41,7 +41,7 @@ export const recaptchaMiddleware = async (
       return;
     }
 
-    // SECURITY: Verificar token com Google reCAPTCHA API
+    // SECURITY: Verificar token com Google reCAPTCHA API (com timeout)
     const verificationUrl = 'https://www.google.com/recaptcha/api/siteverify';
     const response = await axios.post(verificationUrl, null, {
       params: {
@@ -49,6 +49,7 @@ export const recaptchaMiddleware = async (
         response: recaptchaToken,
         remoteip: req.ip,
       },
+      timeout: 5000, // SECURITY: Timeout de 5 segundos (prevenir DoS)
     });
 
     const { success, score, action } = response.data;
@@ -114,6 +115,7 @@ export const optionalRecaptchaMiddleware = async (
         response: req.body.recaptchaToken,
         remoteip: req.ip,
       },
+      timeout: 5000, // SECURITY: Timeout de 5 segundos
     });
 
     req.recaptchaVerified = response.data.success;

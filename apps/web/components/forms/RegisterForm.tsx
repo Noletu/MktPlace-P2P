@@ -40,6 +40,7 @@ export default function RegisterForm() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // IMPORTANTE: Envia e recebe cookies
         body: JSON.stringify({
           ...formData,
           cpf,
@@ -52,8 +53,8 @@ export default function RegisterForm() {
         throw new Error(data.error || 'Erro ao registrar');
       }
 
-      // Salvar token no localStorage
-      localStorage.setItem('token', data.data.token);
+      // SECURITY: Token agora vem em HttpOnly cookie (não em localStorage)
+      // Apenas salvar dados do usuário (não sensíveis)
       localStorage.setItem('user', JSON.stringify(data.data.user));
 
       // Redirecionar para dashboard
@@ -136,7 +137,7 @@ export default function RegisterForm() {
 
       <div>
         <label htmlFor="password" className="block text-sm font-medium mb-2">
-          Senha * (mínimo 8 caracteres)
+          Senha *
         </label>
         <input
           id="password"
@@ -149,6 +150,12 @@ export default function RegisterForm() {
           className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
           placeholder="********"
         />
+        <p className="text-xs text-muted-foreground mt-1">
+          Requisitos: Mínimo 8 caracteres, 1 maiúscula, 1 minúscula, 1 número, 1 caractere especial (!@#$%...)
+        </p>
+        <p className="text-xs text-green-600 mt-1">
+          ✅ Exemplo válido: <strong>MinhaSenha@123!</strong>
+        </p>
       </div>
 
       {error && (

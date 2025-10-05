@@ -32,17 +32,9 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          router.push('/login');
-          return;
-        }
-
         // Buscar perfil do usuário
         const profileRes = await fetch('http://localhost:3001/api/v1/auth/me', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          credentials: 'include', // SECURITY: Envia cookies HttpOnly
         });
 
         if (!profileRes.ok) {
@@ -50,13 +42,11 @@ export default function ProfilePage() {
         }
 
         const profileData = await profileRes.json();
-        setProfile(profileData);
+        setProfile(profileData.data);
 
         // Buscar status KYC
         const kycRes = await fetch('http://localhost:3001/api/v1/kyc/status', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          credentials: 'include', // SECURITY: Envia cookies HttpOnly
         });
 
         if (!kycRes.ok) {

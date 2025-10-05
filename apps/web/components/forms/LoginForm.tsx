@@ -21,6 +21,7 @@ export default function LoginForm() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // IMPORTANTE: Envia e recebe cookies
         body: JSON.stringify({ email, password }),
       });
 
@@ -30,8 +31,8 @@ export default function LoginForm() {
         throw new Error(data.error || 'Erro ao fazer login');
       }
 
-      // Salvar token no localStorage
-      localStorage.setItem('token', data.data.token);
+      // SECURITY: Token agora vem em HttpOnly cookie (não em localStorage)
+      // Apenas salvar dados do usuário (não sensíveis)
       localStorage.setItem('user', JSON.stringify(data.data.user));
 
       // Redirecionar para dashboard

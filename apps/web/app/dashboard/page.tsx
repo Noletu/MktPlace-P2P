@@ -21,17 +21,8 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const token = localStorage.getItem('token');
-
-        if (!token) {
-          router.push('/login');
-          return;
-        }
-
         const response = await fetch('http://localhost:3001/api/v1/auth/me', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
+          credentials: 'include', // SECURITY: Envia cookies HttpOnly
         });
 
         if (!response.ok) {
@@ -53,8 +44,16 @@ export default function DashboardPage() {
     fetchUser();
   }, [router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
+  const handleLogout = async () => {
+    try {
+      await fetch('http://localhost:3001/api/v1/auth/logout', {
+        method: 'POST',
+        credentials: 'include', // SECURITY: Envia cookies para revogação
+      });
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error);
+    }
+
     localStorage.removeItem('user');
     router.push('/');
   };

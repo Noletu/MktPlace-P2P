@@ -59,16 +59,8 @@ export default function OrderDetailsPage() {
 
   const fetchOrder = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include', // SECURITY: Envia cookies HttpOnly
       });
 
       if (!response.ok) {
@@ -105,7 +97,6 @@ export default function OrderDetailsPage() {
     setError('');
 
     try {
-      const token = localStorage.getItem('token');
       const transaction = order?.transactions[0];
 
       if (!transaction) {
@@ -116,8 +107,8 @@ export default function OrderDetailsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include', // SECURITY: Envia cookies HttpOnly
         body: JSON.stringify({
           transactionId: transaction.id,
           comprovanteData: proofImage,

@@ -3,6 +3,7 @@ import { authService } from '../services/auth.service';
 import { loginSchema, registerSchema } from '@mktplace/shared';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from '../services/auditLog.service';
 import { securityLogger } from '../utils/logger';
+import { setAccessTokenCookie, setRefreshTokenCookie, clearAuthCookies } from '../utils/cookies';
 
 export class AuthController {
   async register(req: Request, res: Response): Promise<void> {
@@ -24,9 +25,16 @@ export class AuthController {
 
       securityLogger.register(result.user.id, true, req.ip);
 
+      // SECURITY: Enviar tokens via HttpOnly cookies (XSS protection)
+      setAccessTokenCookie(res, result.token);
+      setRefreshTokenCookie(res, result.refreshToken);
+
       res.status(201).json({
         success: true,
-        data: result,
+        data: {
+          user: result.user,
+          // Tokens agora enviados via cookies seguros
+        },
         message: 'Usuário registrado com sucesso',
       });
     } catch (error: any) {
@@ -79,9 +87,16 @@ export class AuthController {
 
       securityLogger.login(result.user.id, true, req.ip);
 
+      // SECURITY: Enviar tokens via HttpOnly cookies (XSS protection)
+      setAccessTokenCookie(res, result.token);
+      setRefreshTokenCookie(res, result.refreshToken);
+
       res.status(200).json({
         success: true,
-        data: result,
+        data: {
+          user: result.user,
+          // Tokens agora enviados via cookies seguros
+        },
         message: 'Login realizado com sucesso',
       });
     } catch (error: any) {
@@ -155,7 +170,8 @@ export class AuthController {
 
   async logout(req: Request, res: Response): Promise<void> {
     try {
-      const { refreshToken } = req.body;
+      // SECURITY: Extrair refresh token do cookie (prioritário) ou body (fallback)
+      const refreshToken = req.cookies?.refreshToken || req.body.refreshToken;
 
       if (!refreshToken) {
         res.status(400).json({
@@ -165,8 +181,11 @@ export class AuthController {
         return;
       }
 
-      // SECURITY: Revogar refresh token
+      // SECURITY: Revogar refresh token no banco
       await authService.logout(refreshToken);
+
+      // SECURITY: Limpar cookies de autenticação
+      clearAuthCookies(res);
 
       res.status(200).json({
         success: true,
@@ -174,6 +193,9 @@ export class AuthController {
       });
     } catch (error: any) {
       console.error('[SECURITY] Logout error:', error);
+
+      // Mesmo em caso de erro, limpar cookies locais
+      clearAuthCookies(res);
 
       res.status(500).json({
         success: false,
@@ -185,7 +207,8 @@ export class AuthController {
   // SECURITY: Endpoint para renovar access token
   async refresh(req: Request, res: Response): Promise<void> {
     try {
-      const { refreshToken } = req.body;
+      // SECURITY: Extrair refresh token do cookie (prioritário) ou body (fallback)
+      const refreshToken = req.cookies?.refreshToken || req.body.refreshToken;
 
       if (!refreshToken) {
         res.status(400).json({
@@ -198,6 +221,9 @@ export class AuthController {
       const result = await authService.refreshAccessToken(refreshToken);
 
       if (!result) {
+        // SECURITY: Limpar cookies inválidos
+        clearAuthCookies(res);
+
         res.status(401).json({
           success: false,
           error: 'Refresh token inválido ou expirado',
@@ -205,13 +231,19 @@ export class AuthController {
         return;
       }
 
+      // SECURITY: Atualizar access token no cookie
+      setAccessTokenCookie(res, result.token);
+
       res.status(200).json({
         success: true,
-        data: result,
+        data: {},
         message: 'Token renovado com sucesso',
       });
     } catch (error: any) {
       console.error('[SECURITY] Refresh token error:', error);
+
+      // SECURITY: Limpar cookies em caso de erro
+      clearAuthCookies(res);
 
       res.status(401).json({
         success: false,

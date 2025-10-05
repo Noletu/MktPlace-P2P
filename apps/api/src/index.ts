@@ -1,6 +1,7 @@
-import express, { Express, Request, Response } from 'express';
+import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';
 import kycRoutes from './routes/kyc.routes';
@@ -17,7 +18,21 @@ dotenv.config();
 const app: Express = express();
 const port = process.env.PORT || 3001;
 
-// SECURITY: Middleware de segurança
+// SECURITY: Forçar HTTPS em produção
+if (process.env.NODE_ENV === 'production') {
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.header('x-forwarded-proto') !== 'https') {
+      logger.warn('[SECURITY] HTTP request blocked, redirecting to HTTPS', {
+        ip: req.ip,
+        path: req.path,
+      });
+      return res.redirect(301, `https://${req.hostname}${req.url}`);
+    }
+    next();
+  });
+}
+
+// SECURITY: Middleware de segurança com HSTS
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -33,14 +48,53 @@ app.use(helmet({
     },
   },
   crossOriginEmbedderPolicy: false,
+  // SECURITY: HSTS - Force HTTPS por 1 ano
+  hsts: {
+    maxAge: 31536000, // 1 ano em segundos
+    includeSubDomains: true,
+    preload: true,
+  },
+  // SECURITY: Prevenir clickjacking
+  frameguard: { action: 'deny' },
+  // SECURITY: Prevenir MIME sniffing
+  noSniff: true,
+  // SECURITY: Desabilitar X-Powered-By header
+  hidePoweredBy: true,
 }));
+
+// SECURITY: CORS whitelist estrita
+const ALLOWED_ORIGINS = process.env.NODE_ENV === 'production'
+  ? (process.env.ALLOWED_ORIGINS?.split(',') || [])
+  : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
+  origin: (origin, callback) => {
+    // Permitir requisições sem origin (ex: Postman, curl)
+    if (!origin && process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+
+    if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
+      logger.warn('[SECURITY] CORS blocked unauthorized origin', {
+        origin,
+        allowed: ALLOWED_ORIGINS,
+      });
+      return callback(new Error('Not allowed by CORS'), false);
+    }
+
+    callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400, // 24 horas de cache para preflight
 }));
 
 // SECURITY: Rate limiting global
 app.use('/api/', apiLimiter);
+
+// SECURITY: Cookie parser para HttpOnly cookies
+app.use(cookieParser(process.env.COOKIE_SECRET || process.env.JWT_SECRET));
 
 // SECURITY: Limitar tamanho de payload (prevenir DoS)
 app.use(express.json({ limit: '10mb' })); // Max 10MB para uploads de imagens
@@ -100,16 +154,34 @@ app.use((req: Request, res: Response) => {
 
 // Error handler
 app.use((err: Error, req: Request, res: Response, next: any) => {
-  // SECURITY: Log erro no servidor
-  logger.error('Unhandled error', {
-    error: err.message,
-    stack: err.stack,
-    path: req.path,
-    method: req.method,
-    ip: req.ip,
-  });
+  // SECURITY: Log erro no servidor (stack trace apenas em desenvolvimento)
+  if (process.env.NODE_ENV === 'production') {
+    logger.error('Unhandled error', {
+      error: err.message,
+      path: req.path,
+      method: req.method,
+      ip: req.ip,
+      userId: (req as any).user?.userId,
+      // SECURITY: Stack trace NÃO incluído em produção
+    });
+  } else {
+    // Em desenvolvimento, incluir stack trace para debug
+    logger.error('Unhandled error', {
+      error: err.message,
+      stack: err.stack,
+      path: req.path,
+      method: req.method,
+      ip: req.ip,
+    });
+  }
 
-  res.status(500).json({ error: 'Internal server error' });
+  // SECURITY: Resposta genérica para cliente (nunca expor detalhes internos)
+  res.status(500).json({
+    success: false,
+    error: 'Internal server error',
+    // SECURITY: Em produção, não expor mensagem de erro
+    ...(process.env.NODE_ENV !== 'production' && { message: err.message }),
+  });
 });
 
 app.listen(port, () => {

@@ -254,7 +254,7 @@ export class OrderService {
       });
 
       // Criar transação dentro da mesma transação atômica
-      await tx.transaction.create({
+      const createdTransaction = await tx.transaction.create({
         data: {
           orderId,
           payerId,
@@ -262,7 +262,7 @@ export class OrderService {
         },
       });
 
-      return updatedOrder;
+      return { ...updatedOrder, transaction: createdTransaction };
     });
   }
 
