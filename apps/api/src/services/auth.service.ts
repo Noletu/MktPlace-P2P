@@ -8,10 +8,8 @@ const prisma = new PrismaClient();
 
 export interface RegisterInput {
   email: string;
-  cpf: string;
   password: string;
   name?: string;
-  phone?: string;
 }
 
 export interface LoginInput {
@@ -29,13 +27,8 @@ export interface AuthResponse {
 export class AuthService {
   async register(input: RegisterInput): Promise<AuthResponse> {
     // SECURITY: Verificar se usuário já existe
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: input.email },
-          { cpf: input.cpf },
-        ],
-      },
+    const existingUser = await prisma.user.findUnique({
+      where: { email: input.email },
     });
 
     if (existingUser) {
@@ -50,10 +43,8 @@ export class AuthService {
     const user = await prisma.user.create({
       data: {
         email: input.email,
-        cpf: input.cpf,
         password: hashedPassword,
         name: input.name,
-        phone: input.phone,
         kycLevel: "NONE",
         role: 'USER',
       },
@@ -174,24 +165,6 @@ export class AuthService {
     return await prisma.user.findUnique({
       where: { email },
     });
-  }
-
-  async getUserByCpf(cpf: string): Promise<User | null> {
-    return await prisma.user.findUnique({
-      where: { cpf },
-    });
-  }
-
-  async updateKYCLevel(userId: string, kycLevel: string, kycData?: any): Promise<User> {
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        kycLevel,
-        kycData: kycData ? JSON.stringify(kycData) : undefined,
-      },
-    });
-
-    return user;
   }
 }
 

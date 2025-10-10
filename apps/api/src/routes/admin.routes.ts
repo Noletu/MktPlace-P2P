@@ -50,4 +50,14 @@ router.get('/audit-logs', adminController.getAllAuditLogs.bind(adminController))
 router.get('/audit-logs/stats', adminController.getAuditStats.bind(adminController));
 router.get('/audit-logs/export', adminController.exportAuditLogs.bind(adminController));
 
+/**
+ * Gestão de KYC
+ */
+router.get('/kyc', adminController.listPendingKYC.bind(adminController));
+router.get('/kyc/stats', adminController.getKYCStats.bind(adminController));
+router.get('/kyc/:userId', adminController.getKYCVerification.bind(adminController));
+// SECURITY: Aprovação/Rejeição de KYC com rate limiting
+router.post('/kyc/:userId/approve', adminActionLimiter, adminController.approveKYC.bind(adminController));
+router.post('/kyc/:userId/reject', adminActionLimiter, adminController.rejectKYC.bind(adminController));
+
 export default router;

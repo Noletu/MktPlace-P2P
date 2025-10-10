@@ -17,4 +17,10 @@ router.get('/status', kycController.getKYCStatus.bind(kycController));
 // Verificar se pode realizar transação
 router.post('/check-limit', kycController.checkTransactionLimit.bind(kycController));
 
+// Enviar código de verificação de telefone
+router.post('/send-phone-verification', kycController.sendPhoneVerification.bind(kycController));
+
+// Verificar código de telefone
+router.post('/verify-phone', kycController.verifyPhone.bind(kycController));
+
 export default router;
