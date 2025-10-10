@@ -77,7 +77,7 @@ export const proofUploadLimiter = rateLimit({
 // SECURITY: Rate limiter para submissão de KYC
 export const kycSubmissionLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hora
-  max: 3, // 3 tentativas de KYC por hora
+  max: process.env.NODE_ENV === 'production' ? 3 : 1000, // Dev: 1000, Prod: 3 tentativas
   message: 'Muitas tentativas de KYC. Aguarde 1 hora.',
   standardHeaders: true,
   legacyHeaders: false,

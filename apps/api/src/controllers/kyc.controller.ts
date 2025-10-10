@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
-import { z } from 'zod';
 import { kycService } from '../services/kyc.service';
-import { KYCLevel1Data } from '../types/kyc.types';
+import { KYCLevel1SubmitData } from '../types/kyc.types';
 import { kycLevel1Schema } from '@mktplace/shared';
+import { z } from 'zod';
 
 export class KYCController {
   async submitLevel1(req: Request, res: Response) {
@@ -16,13 +16,23 @@ export class KYCController {
       const validatedData = kycLevel1Schema.parse(req.body);
 
       // Submeter KYC Level 1
-      await kycService.submitLevel1(userId, validatedData as KYCLevel1Data);
+      const verification = await kycService.submitLevel1(
+        userId,
+        validatedData as KYCLevel1SubmitData
+      );
+
+      const transactionLimit = await kycService.getTransactionLimit(userId);
 
       res.json({
         success: true,
-        message: 'KYC Level 1 enviado com sucesso',
+        message: 'KYC Level 1 aprovado com sucesso!',
         kycLevel: 'LEVEL_1',
-        transactionLimit: 500,
+        transactionLimit,
+        verification: {
+          id: verification.id,
+          status: verification.status,
+          level: verification.level,
+        },
       });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -45,15 +55,9 @@ export class KYCController {
         return res.status(401).json({ error: 'Não autorizado' });
       }
 
-      const kycLevel = await kycService.getKYCLevel(userId);
-      const kycData = await kycService.getKYCData(userId);
-      const transactionLimit = await kycService.getTransactionLimit(userId);
+      const status = await kycService.getKYCStatus(userId);
 
-      res.json({
-        kycLevel,
-        kycData,
-        transactionLimit,
-      });
+      res.json(status);
     } catch (error: any) {
       res.status(500).json({
         error: error.message || 'Erro ao buscar status KYC',
@@ -84,6 +88,50 @@ export class KYCController {
     } catch (error: any) {
       res.status(500).json({
         error: error.message || 'Erro ao verificar limite',
+      });
+    }
+  }
+
+  async sendPhoneVerification(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const result = await kycService.sendPhoneVerification(userId);
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao enviar código',
+      });
+    }
+  }
+
+  async verifyPhone(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { code } = req.body;
+      if (!code) {
+        return res.status(400).json({
+          success: false,
+          error: 'Código é obrigatório'
+        });
+      }
+
+      const result = await kycService.verifyPhone(userId, code);
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao verificar código',
       });
     }
   }

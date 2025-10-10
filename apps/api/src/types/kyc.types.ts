@@ -6,12 +6,21 @@ export enum KYCLevel {
   LEVEL_4 = 'LEVEL_4',
 }
 
-export interface KYCLevel1Data {
-  phone?: string; // Opcional - usa o do registro se não fornecido
+export enum KYCStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
 }
 
-export interface KYCLevel2Data extends KYCLevel1Data {
+// --- LEVEL 1: CPF + Telefone + Nome Completo ---
+export interface KYCLevel1SubmitData {
   fullName: string;
+  cpf: string;
+  phone: string;
+}
+
+// --- LEVEL 2: Level 1 + Endereço + Data de Nascimento ---
+export interface KYCLevel2SubmitData extends KYCLevel1SubmitData {
   dateOfBirth: string; // ISO date format
   address: {
     street: string;
@@ -19,26 +28,79 @@ export interface KYCLevel2Data extends KYCLevel1Data {
     complement?: string;
     neighborhood: string;
     city: string;
-    state: string;
-    zipCode: string;
+    state: string; // UF (2 chars)
+    zipCode: string; // CEP (8 digits)
   };
+}
+
+// --- LEVEL 3: Level 2 + Documento + Selfie ---
+export interface KYCLevel3SubmitData extends KYCLevel2SubmitData {
   documentType: 'RG' | 'CNH';
   documentNumber: string;
   documentFrontUrl: string;
   documentBackUrl?: string;
-}
-
-export interface KYCLevel3Data extends KYCLevel2Data {
   selfieUrl: string;
-  livenessScore: number;
 }
 
-export interface KYCLevel4Data extends KYCLevel3Data {
+// --- LEVEL 4: Level 3 + Comprovante de Residência ---
+export interface KYCLevel4SubmitData extends KYCLevel3SubmitData {
   proofOfResidenceUrl: string;
   proofOfResidenceType: 'CONTA_LUZ' | 'CONTA_AGUA' | 'CONTA_TELEFONE' | 'EXTRATO_BANCARIO';
 }
 
-export type KYCData = KYCLevel1Data | KYCLevel2Data | KYCLevel3Data | KYCLevel4Data;
+export type KYCSubmitData =
+  | KYCLevel1SubmitData
+  | KYCLevel2SubmitData
+  | KYCLevel3SubmitData
+  | KYCLevel4SubmitData;
+
+// KYC Response (what comes back from DB)
+export interface KYCVerificationData {
+  id: string;
+  userId: string;
+  status: KYCStatus;
+  level: KYCLevel;
+
+  // Level 1
+  fullName?: string;
+  cpf?: string;
+  phone?: string;
+  phoneVerified?: boolean;
+  phoneVerifiedAt?: Date;
+
+  // Level 2
+  dateOfBirth?: Date;
+  addressStreet?: string;
+  addressNumber?: string;
+  addressComplement?: string;
+  addressNeighborhood?: string;
+  addressCity?: string;
+  addressState?: string;
+  addressZipCode?: string;
+
+  // Level 3
+  documentType?: string;
+  documentNumber?: string;
+  documentFrontUrl?: string;
+  documentBackUrl?: string;
+  selfieUrl?: string;
+  livenessScore?: number;
+  livenessVerified?: boolean;
+
+  // Level 4
+  proofOfResidenceUrl?: string;
+  proofOfResidenceType?: string;
+
+  // Metadata
+  reviewedBy?: string;
+  reviewedAt?: Date;
+  rejectionReason?: string;
+  submittedAt: Date;
+  approvedAt?: Date;
+
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export const KYC_TRANSACTION_LIMITS = {
   [KYCLevel.NONE]: 1000,      // R$ 1.000 (1k)

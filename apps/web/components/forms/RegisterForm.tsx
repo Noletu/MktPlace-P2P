@@ -7,17 +7,13 @@ export default function RegisterForm() {
   const router = useRouter();
   const [formData, setFormData] = useState({
     email: '',
-    cpf: '',
     password: '',
     name: '',
-    phone: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Validações em tempo real
-  const [cpfValid, setCpfValid] = useState<boolean | null>(null);
-  const [cpfChecking, setCpfChecking] = useState(false);
   const [emailValid, setEmailValid] = useState<boolean | null>(null);
   const [emailChecking, setEmailChecking] = useState(false);
   const [passwordValid, setPasswordValid] = useState(false);
@@ -27,35 +23,6 @@ export default function RegisterForm() {
       ...formData,
       [e.target.name]: e.target.value,
     });
-  };
-
-  const formatCPF = (value: string) => {
-    return value.replace(/\D/g, '').slice(0, 11);
-  };
-
-  // Validar CPF (dígitos verificadores)
-  const validateCPF = (cpf: string): boolean => {
-    cpf = cpf.replace(/\D/g, '');
-    if (cpf.length !== 11) return false;
-    if (cpf.split('').every((c) => c === cpf[0])) return false;
-
-    let sum = 0;
-    for (let i = 0; i < 9; i++) {
-      sum += parseInt(cpf.charAt(i)) * (10 - i);
-    }
-    let remainder = (sum * 10) % 11;
-    if (remainder === 10 || remainder === 11) remainder = 0;
-    if (remainder !== parseInt(cpf.charAt(9))) return false;
-
-    sum = 0;
-    for (let i = 0; i < 10; i++) {
-      sum += parseInt(cpf.charAt(i)) * (11 - i);
-    }
-    remainder = (sum * 10) % 11;
-    if (remainder === 10 || remainder === 11) remainder = 0;
-    if (remainder !== parseInt(cpf.charAt(10))) return false;
-
-    return true;
   };
 
   // Validar senha
@@ -68,39 +35,6 @@ export default function RegisterForm() {
       /[^A-Za-z0-9]/.test(password)
     );
   };
-
-  // Verificar CPF em tempo real
-  useEffect(() => {
-    const checkCPF = async () => {
-      const cpf = formatCPF(formData.cpf);
-      if (cpf.length !== 11) {
-        setCpfValid(null);
-        return;
-      }
-
-      // Validar dígitos verificadores
-      const isValid = validateCPF(cpf);
-      if (!isValid) {
-        setCpfValid(false);
-        return;
-      }
-
-      // Verificar se já existe no banco
-      setCpfChecking(true);
-      try {
-        const response = await fetch(`http://localhost:3001/api/v1/auth/check-cpf?cpf=${cpf}`);
-        const data = await response.json();
-        setCpfValid(data.available);
-      } catch (err) {
-        console.error('Erro ao verificar CPF:', err);
-      } finally {
-        setCpfChecking(false);
-      }
-    };
-
-    const timer = setTimeout(checkCPF, 500);
-    return () => clearTimeout(timer);
-  }, [formData.cpf]);
 
   // Verificar email em tempo real
   useEffect(() => {
@@ -138,50 +72,46 @@ export default function RegisterForm() {
     setLoading(true);
 
     try {
-      // Formatar CPF (apenas números)
-      const cpf = formatCPF(formData.cpf);
-
       const response = await fetch('http://localhost:3001/api/v1/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include', // IMPORTANTE: Envia e recebe cookies
-        body: JSON.stringify({
-          ...formData,
-          cpf,
-        }),
+        credentials: 'include',
+        body: JSON.stringify(formData),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        // Exibir detalhes do erro Zod se disponíveis
         if (data.details && Array.isArray(data.details)) {
           const errorMessages = data.details.map((err: any) => err.message).join(', ');
           throw new Error(errorMessages);
         }
 
-        // Melhorar mensagem de erro genérico
         if (data.error?.includes('Não foi possível completar o cadastro')) {
-          throw new Error('Este email ou CPF já está cadastrado. Por favor, faça login ou use outros dados.');
+          throw new Error('Este email já está cadastrado. Por favor, faça login ou use outro email.');
         }
 
         throw new Error(data.error || 'Erro ao registrar');
       }
 
-      // SECURITY: Token agora vem em HttpOnly cookie (não em localStorage)
-      // Apenas salvar dados do usuário (não sensíveis)
+      // Salvar token e usuário
+      if (data.data.accessToken) {
+        localStorage.setItem('token', data.data.accessToken);
+      }
+      if (data.data.refreshToken) {
+        localStorage.setItem('refreshToken', data.data.refreshToken);
+      }
       localStorage.setItem('user', JSON.stringify(data.data.user));
 
-      // Redirecionar para dashboard
+      // Redirecionar para dashboard (KYC é opcional)
       router.push('/dashboard');
     } catch (err: any) {
-      // Melhorar mensagem de erro
       if (err.message === 'Failed to fetch') {
         setError('❌ Não foi possível conectar à API. Verifique se o servidor está rodando em http://localhost:3001');
       } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
-        setError('❌ Erro de conexão. A API pode não estar rodando. Execute: ./iniciar-simples.sh');
+        setError('❌ Erro de conexão. A API pode não estar rodando.');
       } else {
         setError(err.message || 'Erro desconhecido ao registrar');
       }
@@ -192,9 +122,16 @@ export default function RegisterForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 w-full max-w-md">
+      {/* Informação sobre o fluxo simplificado */}
+      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+        <p>
+          ℹ️ <strong>Cadastro simplificado:</strong> Apenas email e senha para começar! Você pode usar a plataforma imediatamente com limite de R$ 1.000/dia.
+        </p>
+      </div>
+
       <div>
         <label htmlFor="name" className="block text-sm font-medium mb-2">
-          Nome Completo
+          Nome (opcional)
         </label>
         <input
           id="name"
@@ -205,6 +142,7 @@ export default function RegisterForm() {
           className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
           placeholder="João da Silva"
         />
+        <p className="text-xs text-gray-500 mt-1">Opcional - pode ser preenchido depois</p>
       </div>
 
       <div>
@@ -239,62 +177,6 @@ export default function RegisterForm() {
         {emailValid === false && (
           <p className="text-xs text-red-600 mt-1">Este email já está cadastrado</p>
         )}
-      </div>
-
-      <div>
-        <label htmlFor="cpf" className="block text-sm font-medium mb-2">
-          CPF * (apenas números)
-        </label>
-        <div className="relative">
-          <input
-            id="cpf"
-            name="cpf"
-            type="text"
-            value={formData.cpf}
-            onChange={handleChange}
-            required
-            pattern="\d{11}"
-            maxLength={11}
-            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
-              cpfValid === false ? 'border-red-500' : cpfValid === true ? 'border-green-500' : ''
-            }`}
-            placeholder="11144477735"
-          />
-          {cpfChecking && (
-            <div className="absolute right-3 top-3">
-              <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-            </div>
-          )}
-          {!cpfChecking && cpfValid === true && (
-            <div className="absolute right-3 top-3 text-green-600">✓</div>
-          )}
-          {!cpfChecking && cpfValid === false && (
-            <div className="absolute right-3 top-3 text-red-600">✗</div>
-          )}
-        </div>
-        {cpfValid === false && formData.cpf.length === 11 && (
-          <p className="text-xs text-red-600 mt-1">
-            {validateCPF(formData.cpf) ? 'Este CPF já está cadastrado' : 'CPF inválido'}
-          </p>
-        )}
-        {cpfValid === true && (
-          <p className="text-xs text-green-600 mt-1">✓ CPF válido e disponível</p>
-        )}
-      </div>
-
-      <div>
-        <label htmlFor="phone" className="block text-sm font-medium mb-2">
-          Telefone
-        </label>
-        <input
-          id="phone"
-          name="phone"
-          type="tel"
-          value={formData.phone}
-          onChange={handleChange}
-          className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-          placeholder="11987654321"
-        />
       </div>
 
       <div>
@@ -349,11 +231,21 @@ export default function RegisterForm() {
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || emailValid === false}
         className="w-full bg-primary text-white py-2 px-4 rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {loading ? 'Registrando...' : 'Registrar'}
+        {loading ? 'Criando conta...' : 'Criar Conta'}
       </button>
+
+      <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600">
+        <p className="mb-2"><strong>Após o cadastro:</strong></p>
+        <ul className="list-disc list-inside space-y-1">
+          <li>✅ Use a plataforma imediatamente (limite: R$ 1.000/dia)</li>
+          <li>📈 Complete o KYC quando quiser para aumentar limites</li>
+          <li>🔒 KYC Level 1 (CPF + Telefone) → R$ 10.000/dia</li>
+          <li>🚀 Níveis superiores disponíveis para limites maiores</li>
+        </ul>
+      </div>
 
       <p className="text-center text-sm text-muted-foreground">
         Já tem uma conta?{' '}

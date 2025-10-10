@@ -144,6 +144,15 @@ export class AdminService {
    * Buscar endereço ativo da plataforma para uma cripto/rede específica
    */
   async getActivePlatformWallet(cryptoType: string, network: string) {
+    console.log(`🔍 Buscando endereço da plataforma para: cryptoType="${cryptoType}", network="${network}", isActive=true`);
+
+    // Buscar TODOS os endereços para debug
+    const allWallets = await prisma.platformWallet.findMany();
+    console.log(`📊 Total de endereços cadastrados: ${allWallets.length}`);
+    allWallets.forEach(w => {
+      console.log(`   - ${w.cryptoType} / ${w.network} / isActive=${w.isActive} / address=${w.address}`);
+    });
+
     const wallet = await prisma.platformWallet.findFirst({
       where: {
         cryptoType,
@@ -154,6 +163,12 @@ export class AdminService {
         createdAt: 'desc', // Pegar o mais recente
       },
     });
+
+    if (wallet) {
+      console.log(`✅ Endereço encontrado: ${wallet.address}`);
+    } else {
+      console.log(`❌ Nenhum endereço encontrado com os critérios especificados`);
+    }
 
     return wallet;
   }

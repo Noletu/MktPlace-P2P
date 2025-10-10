@@ -1,7 +1,12 @@
 import { Request, Response } from 'express';
 import { adminService } from '../services/admin.service';
 import { auditLogService } from '../services/auditLog.service';
+import { kycService } from '../services/kyc.service';
+import { KYCLevel } from '../types/kyc.types';
+import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+
+const prisma = new PrismaClient();
 
 const CreatePlatformWalletSchema = z.object({
   cryptoType: z.string().min(1, 'Tipo de cripto é obrigatório'),
@@ -489,6 +494,211 @@ export class AdminController {
     ].join('\n');
 
     return csvContent;
+  }
+
+  /**
+   * ============================================
+   * GESTÃO DE KYC
+   * ============================================
+   */
+
+  async listPendingKYC(req: Request, res: Response) {
+    try {
+      const { level, status } = req.query;
+
+      const filters: any = {};
+      if (level) filters.level = level as string;
+      if (status) filters.status = status as string;
+      else filters.status = 'PENDING'; // Default: apenas pendentes
+
+      const verifications = await prisma.kYCVerification.findMany({
+        where: filters,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              createdAt: true,
+            },
+          },
+        },
+        orderBy: {
+          submittedAt: 'desc',
+        },
+      });
+
+      res.json({
+        success: true,
+        data: verifications,
+        count: verifications.length,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao listar verificações KYC',
+      });
+    }
+  }
+
+  async getKYCVerification(req: Request, res: Response) {
+    try {
+      const { userId } = req.params;
+
+      const verification = await prisma.kYCVerification.findUnique({
+        where: { userId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              kycLevel: true,
+              createdAt: true,
+              reputationScore: true,
+              totalTransactions: true,
+            },
+          },
+        },
+      });
+
+      if (!verification) {
+        return res.status(404).json({
+          success: false,
+          error: 'Verificação KYC não encontrada',
+        });
+      }
+
+      res.json({
+        success: true,
+        data: verification,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar verificação KYC',
+      });
+    }
+  }
+
+  async approveKYC(req: Request, res: Response) {
+    try {
+      const adminId = req.user?.userId;
+      if (!adminId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Não autorizado',
+        });
+      }
+
+      const { userId } = req.params;
+      const { level } = req.body;
+
+      if (!level || !Object.values(KYCLevel).includes(level)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Nível de KYC inválido',
+        });
+      }
+
+      await kycService.approveKYC(userId, level as KYCLevel, adminId);
+
+      // Registrar ação no audit log
+      await prisma.adminAction.create({
+        data: {
+          adminId,
+          action: 'APPROVE',
+          resource: 'KYC',
+          resourceId: userId,
+          metadata: JSON.stringify({ level }),
+        },
+      });
+
+      res.json({
+        success: true,
+        message: `KYC ${level} aprovado com sucesso`,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao aprovar KYC',
+      });
+    }
+  }
+
+  async rejectKYC(req: Request, res: Response) {
+    try {
+      const adminId = req.user?.userId;
+      if (!adminId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Não autorizado',
+        });
+      }
+
+      const { userId } = req.params;
+      const { reason } = req.body;
+
+      if (!reason || reason.trim().length < 10) {
+        return res.status(400).json({
+          success: false,
+          error: 'Motivo da rejeição deve ter no mínimo 10 caracteres',
+        });
+      }
+
+      await kycService.rejectKYC(userId, reason, adminId);
+
+      // Registrar ação no audit log
+      await prisma.adminAction.create({
+        data: {
+          adminId,
+          action: 'REJECT',
+          resource: 'KYC',
+          resourceId: userId,
+          metadata: JSON.stringify({ reason }),
+        },
+      });
+
+      res.json({
+        success: true,
+        message: 'KYC rejeitado com sucesso',
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao rejeitar KYC',
+      });
+    }
+  }
+
+  async getKYCStats(req: Request, res: Response) {
+    try {
+      const [pending, approved, rejected, byLevel] = await Promise.all([
+        prisma.kYCVerification.count({ where: { status: 'PENDING' } }),
+        prisma.kYCVerification.count({ where: { status: 'APPROVED' } }),
+        prisma.kYCVerification.count({ where: { status: 'REJECTED' } }),
+        prisma.kYCVerification.groupBy({
+          by: ['level', 'status'],
+          _count: true,
+        }),
+      ]);
+
+      res.json({
+        success: true,
+        data: {
+          total: pending + approved + rejected,
+          pending,
+          approved,
+          rejected,
+          byLevel,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar estatísticas',
+      });
+    }
   }
 }
 

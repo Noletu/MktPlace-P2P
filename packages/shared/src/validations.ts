@@ -56,8 +56,6 @@ export const loginSchema = z.object({
 
 export const registerSchema = z.object({
   email: z.string().email('Email inválido'),
-  cpf: cpfSchema,
-  phone: z.string().optional(),
   password: strongPasswordSchema, // SECURITY: Usar política de senha forte
   name: z.string().min(2, 'Nome deve ter no mínimo 2 caracteres').optional(),
 });
@@ -93,10 +91,11 @@ export const submitComprovanteSchema = z.object({
 });
 
 // KYC schemas
-// Level 1: Apenas ativa usando dados já coletados no registro
-// Se telefone não foi fornecido, pode ser enviado aqui (opcional)
+// Level 1: Nome completo + CPF + Telefone
 export const kycLevel1Schema = z.object({
-  phone: z.string().regex(/^\d{10,11}$/, 'Telefone inválido').optional(),
+  fullName: z.string().min(3, 'Nome completo deve ter no mínimo 3 caracteres'),
+  cpf: cpfSchema,
+  phone: z.string().regex(/^\d{10,11}$/, 'Telefone deve ter 10 ou 11 dígitos (DDD + número)'),
 });
 
 export const kycLevel2Schema = kycLevel1Schema.extend({
