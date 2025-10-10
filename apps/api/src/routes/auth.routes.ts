@@ -41,4 +41,18 @@ router.get('/me', authMiddleware, (req, res) => authController.me(req, res));
  */
 router.post('/logout', authMiddleware, (req, res) => authController.logout(req, res));
 
+/**
+ * @route   GET /api/v1/auth/check-email
+ * @desc    Verificar se email está disponível
+ * @access  Public
+ */
+router.get('/check-email', (req, res) => authController.checkEmail(req, res));
+
+/**
+ * @route   GET /api/v1/auth/check-cpf
+ * @desc    Verificar se CPF está disponível
+ * @access  Public
+ */
+router.get('/check-cpf', (req, res) => authController.checkCpf(req, res));
+
 export default router;

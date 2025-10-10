@@ -50,6 +50,8 @@ export default function OrderDetailsPage() {
   const [error, setError] = useState('');
   const [uploadingProof, setUploadingProof] = useState(false);
   const [proofImage, setProofImage] = useState<string>('');
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     fetchOrder();
@@ -59,8 +61,16 @@ export default function OrderDetailsPage() {
 
   const fetchOrder = async () => {
     try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        router.push('/login');
+        return;
+      }
+
       const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}`, {
-        credentials: 'include', // SECURITY: Envia cookies HttpOnly
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
 
       if (!response.ok) {
@@ -103,12 +113,17 @@ export default function OrderDetailsPage() {
         throw new Error('Transação não encontrada');
       }
 
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('Você precisa estar logado');
+      }
+
       const response = await fetch('http://localhost:3001/api/v1/transactions/submit-proof', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
-        credentials: 'include', // SECURITY: Envia cookies HttpOnly
         body: JSON.stringify({
           transactionId: transaction.id,
           comprovanteData: proofImage,
@@ -136,7 +151,12 @@ export default function OrderDetailsPage() {
     if (!reason) return;
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        alert('Você precisa estar logado');
+        return;
+      }
+
       const transaction = order?.transactions[0];
 
       const response = await fetch(
@@ -145,7 +165,7 @@ export default function OrderDetailsPage() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
+            'Authorization': `Bearer ${token}`,
           },
           body: JSON.stringify({ reason }),
         }
@@ -161,6 +181,42 @@ export default function OrderDetailsPage() {
       await fetchOrder();
     } catch (err: any) {
       alert(err.message);
+    }
+  };
+
+  const handleCancelOrder = async () => {
+    setCancelling(true);
+    setError('');
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('Você precisa estar logado');
+      }
+
+      const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao cancelar pedido');
+      }
+
+      alert('Pedido cancelado com sucesso!');
+      setShowCancelModal(false);
+      await fetchOrder();
+      router.push('/orders/my-orders');
+    } catch (err: any) {
+      setError(err.message);
+      alert(err.message);
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -182,10 +238,26 @@ export default function OrderDetailsPage() {
 
   const orderData = JSON.parse(order.orderData);
   const transaction = order.transactions[0];
-  const currentUserId = localStorage.getItem('userId'); // Simplificado
+
+  // Detectar método de pagamento a partir do orderData
+  const paymentMethod = orderData.pixKey ? 'PIX' : 'BOLETO';
+
+  // Obter userId do objeto user armazenado no localStorage
+  const userStr = localStorage.getItem('user');
+  const currentUserId = userStr ? JSON.parse(userStr).id : null;
 
   const isCreator = order.user.id === currentUserId;
   const isPayer = transaction?.payer?.id === currentUserId;
+
+  // Debug: mostrar informações no console
+  console.log('🔍 Debug Order Details:', {
+    orderId: order.id,
+    orderStatus: order.status,
+    orderUserId: order.user.id,
+    currentUserId,
+    isCreator,
+    canCancel: isCreator && (order.status === 'PENDING' || order.status === 'MATCHED'),
+  });
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
@@ -202,6 +274,82 @@ export default function OrderDetailsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
+      {/* Modal de Cancelamento */}
+      {showCancelModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+            <h3 className="text-xl font-bold mb-4 text-red-600">⚠️ Cancelar Pedido</h3>
+
+            <div className="space-y-4 mb-6">
+              <p className="text-gray-700 font-semibold">
+                Você tem certeza que deseja cancelar este pedido?
+              </p>
+
+              <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4">
+                <h4 className="font-bold text-red-800 mb-3 flex items-center gap-2">
+                  <span className="text-2xl">💰</span>
+                  IMPORTANTE - Devolução do Colateral
+                </h4>
+                <ul className="text-sm text-red-900 space-y-3">
+                  <li className="flex gap-2">
+                    <span className="font-bold">•</span>
+                    <span>
+                      <strong>O colateral JÁ FOI DEPOSITADO</strong> na blockchain para garantir este pedido.
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-bold">•</span>
+                    <span>
+                      Para receber o colateral de volta, você <strong>DEVERÁ PAGAR as taxas de rede (gas fees)</strong> da blockchain.
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-bold">•</span>
+                    <span>
+                      A devolução será enviada para o endereço cadastrado em <strong>"Meus Endereços"</strong> (carteiras).
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-bold">•</span>
+                    <span>
+                      O valor do colateral MENOS as taxas de rede chegará em alguns minutos, dependendo da confirmação da blockchain.
+                    </span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3">
+                <p className="text-sm text-yellow-900">
+                  <strong>⚠️ Atenção:</strong> As taxas de rede podem variar de acordo com a blockchain escolhida.
+                  Redes como Base e Arbitrum têm taxas menores (~$0.01-0.10). Bitcoin e Ethereum podem ter taxas maiores ($2-50).
+                </p>
+              </div>
+
+              <p className="text-sm text-gray-600 font-semibold">
+                ❌ Esta ação não pode ser desfeita.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowCancelModal(false)}
+                disabled={cancelling}
+                className="flex-1 px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg disabled:opacity-50"
+              >
+                ← Voltar
+              </button>
+              <button
+                onClick={handleCancelOrder}
+                disabled={cancelling}
+                className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg disabled:opacity-50"
+              >
+                {cancelling ? 'Cancelando...' : 'Confirmar e Pagar Taxas'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">Detalhes do Pedido</h1>
@@ -226,7 +374,7 @@ export default function OrderDetailsPage() {
               <div className="flex justify-between items-start mb-6">
                 <div>
                   <h2 className="text-2xl font-bold mb-2">
-                    {order.type === 'PIX' ? 'Pagamento PIX' : 'Pagamento de Boleto'}
+                    {paymentMethod === 'PIX' ? 'Pagamento PIX' : 'Pagamento de Boleto'}
                   </h2>
                   <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(order.status)}`}>
                     {order.status}
@@ -243,7 +391,7 @@ export default function OrderDetailsPage() {
               <div className="space-y-4">
                 <div>
                   <h3 className="font-bold mb-2">Dados do Pagamento</h3>
-                  {order.type === 'PIX' ? (
+                  {paymentMethod === 'PIX' ? (
                     <>
                       <p><strong>Tipo de Chave:</strong> {orderData.pixKeyType}</p>
                       <p><strong>Chave PIX:</strong> {orderData.pixKey}</p>
@@ -336,35 +484,67 @@ export default function OrderDetailsPage() {
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="font-bold mb-4">Resumo Financeiro</h3>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {isCreator ? (
                   <>
-                    <div>
-                      <p className="text-sm text-gray-600">Valor Bruto</p>
-                      <p className="font-semibold">{parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Taxa Total (2.5%)</p>
-                      <p className="text-red-600">-{parseFloat(order.totalFee).toFixed(8)} {order.cryptoType}</p>
-                    </div>
-                    <hr />
-                    <div>
-                      <p className="text-sm text-gray-600">Você Receberá</p>
-                      <p className="text-xl font-bold text-green-600">
-                        {(parseFloat(order.cryptoAmount) - parseFloat(order.totalFee)).toFixed(8)} {order.cryptoType}
+                    {/* CRIADOR: Pediu BRL, depositou cripto como colateral */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <p className="text-xs text-blue-700 font-semibold mb-1">💰 VOCÊ RECEBERÁ EM BRL:</p>
+                      <p className="text-2xl font-bold text-green-600">
+                        R$ {parseFloat(order.brlAmount).toFixed(2)}
                       </p>
+                      <p className="text-xs text-blue-600 mt-1">
+                        Quando alguém pagar seu {paymentMethod}
+                      </p>
+                    </div>
+
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mt-3">
+                      <p className="text-xs font-semibold text-gray-700 uppercase mb-2">Sobre o Colateral:</p>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <p className="text-sm text-gray-600">Valor depositado</p>
+                          <p className="font-semibold">{parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}</p>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <p className="text-sm text-gray-600">Taxa total (2.5%)</p>
+                          <p className="text-red-600 text-sm">-{parseFloat(order.totalFee).toFixed(8)} {order.cryptoType}</p>
+                        </div>
+                        <div className="text-xs text-gray-600 bg-white p-2 rounded mt-2 space-y-1">
+                          <p>• 1.5% vai para a plataforma</p>
+                          <p>• 1% vai como cashback para quem pagar</p>
+                        </div>
+                      </div>
+
+                      <div className="bg-yellow-50 border border-yellow-300 rounded p-2 mt-3">
+                        <p className="text-xs text-yellow-900 font-semibold">
+                          ⚠️ O colateral NÃO será devolvido
+                        </p>
+                        <p className="text-xs text-yellow-800 mt-1">
+                          Ele será transferido para quem pagar seu {paymentMethod}. Você receberá os R$ {parseFloat(order.brlAmount).toFixed(2)} em BRL.
+                        </p>
+                      </div>
                     </div>
                   </>
                 ) : (
                   <>
-                    <div>
-                      <p className="text-sm text-gray-600">Você Pagará</p>
-                      <p className="font-semibold">R$ {parseFloat(order.brlAmount).toFixed(2)}</p>
+                    {/* PAGADOR: Pagará BRL, receberá cripto */}
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                      <p className="text-xs text-orange-700 font-semibold mb-1">💸 VOCÊ PAGARÁ EM BRL:</p>
+                      <p className="text-2xl font-bold text-orange-600">
+                        R$ {parseFloat(order.brlAmount).toFixed(2)}
+                      </p>
+                      <p className="text-xs text-orange-600 mt-1">
+                        Via {paymentMethod}
+                      </p>
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Você Receberá (1% cashback)</p>
-                      <p className="text-xl font-bold text-green-600">
-                        {parseFloat(order.payerReward).toFixed(8)} {order.cryptoType}
+
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-3">
+                      <p className="text-xs text-green-700 font-semibold mb-1">💰 VOCÊ RECEBERÁ EM CRIPTO:</p>
+                      <p className="text-2xl font-bold text-green-600">
+                        {(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward)).toFixed(8)} {order.cryptoType}
+                      </p>
+                      <p className="text-xs text-green-600 mt-1">
+                        ✨ Inclui +{parseFloat(order.payerReward).toFixed(8)} de cashback (1%)
                       </p>
                     </div>
                   </>
@@ -376,6 +556,22 @@ export default function OrderDetailsPage() {
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="font-bold mb-4">Ações</h3>
               <div className="space-y-2">
+                {/* Cancelar Pedido - Disponível para criador em status PENDING ou MATCHED (antes do pagamento) */}
+                {isCreator && (order.status === 'PENDING' || order.status === 'MATCHED') && (
+                  <div>
+                    <button
+                      onClick={() => setShowCancelModal(true)}
+                      className="w-full px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg"
+                    >
+                      ⚠️ Cancelar Pedido
+                    </button>
+                    <p className="text-xs text-gray-500 mt-1 text-center">
+                      Taxa de rede será cobrada para devolver colateral
+                    </p>
+                  </div>
+                )}
+
+                {/* Abrir Disputa */}
                 {order.status !== 'COMPLETED' && order.status !== 'CANCELLED' && (
                   <button
                     onClick={handleDispute}

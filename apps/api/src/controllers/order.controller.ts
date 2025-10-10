@@ -25,6 +25,7 @@ const CreateOrderSchema = z.object({
   cryptoAmount: z.string(),
   brlAmount: z.string(),
   orderData: z.union([BoletoDataSchema, PixDataSchema]),
+  collateralAddressId: z.string().optional(), // ID do colateral confirmado
 });
 
 export class OrderController {
@@ -85,6 +86,8 @@ export class OrderController {
 
       // Excluir pedidos do próprio usuário
       const orders = await orderService.getAvailableOrders(userId);
+
+      console.log(`📊 Marketplace: userId=${userId}, found ${orders.length} orders`);
 
       res.json({
         success: true,

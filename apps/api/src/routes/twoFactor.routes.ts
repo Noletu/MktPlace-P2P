@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { twoFactorController } from '../controllers/twoFactor.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
+import { twoFactorLimiter } from '../middleware/rateLimiter.middleware';
 
 const router = Router();
 
@@ -26,13 +27,15 @@ router.post('/generate', twoFactorController.generateSecret.bind(twoFactorContro
  * @desc    Habilitar 2FA
  * @access  Private
  */
-router.post('/enable', twoFactorController.enable.bind(twoFactorController));
+// SECURITY: Rate limiting para prevenir brute force de códigos 2FA
+router.post('/enable', twoFactorLimiter, twoFactorController.enable.bind(twoFactorController));
 
 /**
  * @route   POST /api/v1/2fa/disable
  * @desc    Desabilitar 2FA
  * @access  Private
  */
-router.post('/disable', twoFactorController.disable.bind(twoFactorController));
+// SECURITY: Rate limiting para prevenir brute force de códigos 2FA
+router.post('/disable', twoFactorLimiter, twoFactorController.disable.bind(twoFactorController));
 
 export default router;

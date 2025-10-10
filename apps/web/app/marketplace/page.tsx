@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import CryptoIcon from '@/components/ui/CryptoIcon';
+import { CryptoType } from '@mktplace/shared';
 
 interface Order {
   id: string;
@@ -31,17 +33,48 @@ export default function MarketplacePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<'ALL' | 'PIX' | 'BOLETO'>('ALL');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    fetchCurrentUser();
     fetchOrders();
     const interval = setInterval(fetchOrders, 10000); // Atualizar a cada 10s
     return () => clearInterval(interval);
   }, []);
 
+  const fetchCurrentUser = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) return;
+
+      const response = await fetch('http://localhost:3001/api/v1/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCurrentUserId(data.data.id);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar usuário atual:', err);
+    }
+  };
+
   const fetchOrders = async () => {
     try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        setError('Você precisa fazer login para ver o marketplace');
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch('http://localhost:3001/api/v1/orders/marketplace', {
-        credentials: 'include', // SECURITY: Envia cookies HttpOnly
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
 
       if (!response.ok) {
@@ -63,9 +96,18 @@ export default function MarketplacePage() {
     }
 
     try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        alert('Você precisa fazer login para aceitar pedidos');
+        router.push('/login');
+        return;
+      }
+
       const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}/match`, {
         method: 'POST',
-        credentials: 'include', // SECURITY: Envia cookies HttpOnly
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
 
       const data = await response.json();
@@ -180,25 +222,33 @@ export default function MarketplacePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredOrders.map((order) => (
-              <div key={order.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <span
-                      className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
-                        order.type === 'PIX'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-blue-100 text-blue-800'
-                      }`}
-                    >
-                      {order.type}
-                    </span>
+            {filteredOrders.map((order) => {
+              const isOwnOrder = currentUserId && order.user.id === currentUserId;
+
+              return (
+                <div key={order.id} className={`bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow ${isOwnOrder ? 'border-2 border-red-200' : ''}`}>
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex flex-col gap-2">
+                      <span
+                        className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
+                          order.type === 'PIX'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-blue-100 text-blue-800'
+                        }`}
+                      >
+                        {order.type}
+                      </span>
+                      {isOwnOrder && (
+                        <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800">
+                          SEU PEDIDO
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500">Expira em</p>
+                      <p className="text-sm font-semibold">{getTimeRemaining(order.timeoutAt)}</p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs text-gray-500">Expira em</p>
-                    <p className="text-sm font-semibold">{getTimeRemaining(order.timeoutAt)}</p>
-                  </div>
-                </div>
 
                 <div className="mb-4">
                   <p className="text-sm text-gray-600">Valor do Pagamento</p>
@@ -207,11 +257,17 @@ export default function MarketplacePage() {
 
                 <div className="mb-4">
                   <p className="text-sm text-gray-600">Você receberá</p>
-                  <p className="text-xl font-bold text-green-600">
-                    {parseFloat(order.payerReward).toFixed(8)} {order.cryptoType}
+                  <div className="flex items-center gap-2">
+                    <CryptoIcon crypto={order.cryptoType as CryptoType} size={28} />
+                    <p className="text-xl font-bold text-green-600">
+                      {(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward)).toFixed(8)} {order.cryptoType}
+                    </p>
+                  </div>
+                  <p className="text-xs text-green-700 font-semibold">
+                    ✨ Inclui +{parseFloat(order.payerReward).toFixed(8)} de cashback (1%)
                   </p>
                   <p className="text-xs text-gray-500">
-                    Recompensa de 1% em {order.cryptoType} ({order.cryptoNetwork})
+                    Rede: {order.cryptoNetwork}
                   </p>
                 </div>
 
@@ -230,14 +286,24 @@ export default function MarketplacePage() {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => handleMatch(order.id)}
-                  className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
-                >
-                  Aceitar e Pagar
-                </button>
+                {isOwnOrder ? (
+                  <button
+                    disabled
+                    className="w-full py-3 px-4 bg-gray-400 text-white font-semibold rounded-lg cursor-not-allowed"
+                  >
+                    Seu Pedido - Não pode aceitar
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleMatch(order.id)}
+                    className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+                  >
+                    Aceitar e Pagar
+                  </button>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

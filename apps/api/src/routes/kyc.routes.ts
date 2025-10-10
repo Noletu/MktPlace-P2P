@@ -1,14 +1,15 @@
 import { Router } from 'express';
 import { kycController } from '../controllers/kyc.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
+import { kycSubmissionLimiter } from '../middleware/rateLimiter.middleware';
 
 const router = Router();
 
 // Todas as rotas requerem autenticação
 router.use(authMiddleware);
 
-// Submeter KYC Level 1
-router.post('/level1', kycController.submitLevel1.bind(kycController));
+// SECURITY: Submeter KYC Level 1 com rate limiting
+router.post('/level1', kycSubmissionLimiter, kycController.submitLevel1.bind(kycController));
 
 // Obter status KYC do usuário
 router.get('/status', kycController.getKYCStatus.bind(kycController));

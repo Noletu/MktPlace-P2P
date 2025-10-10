@@ -1,4 +1,9 @@
 export enum OrderType {
+  BUY = 'BUY',   // User wants to buy crypto (pay BRL)
+  SELL = 'SELL', // User wants to sell crypto (receive BRL)
+}
+
+export enum PaymentMethod {
   BOLETO = 'BOLETO',
   PIX = 'PIX',
 }
@@ -30,6 +35,7 @@ export interface PixData {
 export interface CreateOrderInput {
   userId: string;
   type: OrderType;
+  paymentMethod?: PaymentMethod; // Optional: payment method
   cryptoType: string;
   cryptoNetwork: string;
   cryptoAmount: string;

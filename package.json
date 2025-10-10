@@ -20,5 +20,11 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@types/socket.io": "^3.0.2",
+    "sharp": "^0.34.4",
+    "socket.io": "^4.8.1",
+    "tesseract.js": "^6.0.1"
   }
 }

@@ -93,9 +93,10 @@ export const submitComprovanteSchema = z.object({
 });
 
 // KYC schemas
+// Level 1: Apenas ativa usando dados já coletados no registro
+// Se telefone não foi fornecido, pode ser enviado aqui (opcional)
 export const kycLevel1Schema = z.object({
-  cpf: cpfSchema,
-  phone: z.string().regex(/^\d{10,11}$/, 'Telefone inválido'),
+  phone: z.string().regex(/^\d{10,11}$/, 'Telefone inválido').optional(),
 });
 
 export const kycLevel2Schema = kycLevel1Schema.extend({
@@ -120,11 +121,11 @@ export const FEE_RATES = {
 } as const;
 
 export const DAILY_LIMITS = {
-  [KYCLevel.NONE]: 0,
-  [KYCLevel.LEVEL_1]: 1000, // R$ 1k/dia
-  [KYCLevel.LEVEL_2]: 5000, // R$ 5k/dia
-  [KYCLevel.LEVEL_3]: 15000, // R$ 15k/dia
-  [KYCLevel.LEVEL_4]: 50000, // R$ 50k/dia
+  [KYCLevel.NONE]: 1000, // R$ 1k/dia - Email verificado apenas
+  [KYCLevel.LEVEL_1]: 10000, // R$ 10k/dia - CPF + Telefone
+  [KYCLevel.LEVEL_2]: 50000, // R$ 50k/dia - Selfie + Documento + Endereço
+  [KYCLevel.LEVEL_3]: 100000, // R$ 100k/dia - Comprovante renda + Dados bancários
+  [KYCLevel.LEVEL_4]: 999999999, // Ilimitado - Enhanced Due Diligence (empresa)
 } as const;
 
 // Utility functions
@@ -148,6 +149,6 @@ export function formatBRL(value: number): string {
 }
 
 export function formatCrypto(value: number, crypto: CryptoType): string {
-  const decimals = crypto === CryptoType.BTC ? 8 : crypto === CryptoType.ETH ? 6 : 2;
+  const decimals = crypto === CryptoType.BTC ? 8 : 2; // BTC: 8 decimais, USDC/USDT: 2 decimais
   return `${value.toFixed(decimals)} ${crypto}`;
 }

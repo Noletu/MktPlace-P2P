@@ -1,4 +1,5 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
+import { createServer } from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -10,8 +11,19 @@ import walletRoutes from './routes/wallet.routes';
 import orderRoutes from './routes/order.routes';
 import transactionRoutes from './routes/transaction.routes';
 import twoFactorRoutes from './routes/twoFactor.routes';
+import boletoRoutes from './routes/boleto.routes';
+import collateralRoutes from './routes/collateral.routes';
+import adminRoutes from './routes/admin.routes';
+import refundRoutes from './routes/refund.routes';
+import disputeRoutes from './routes/dispute.routes';
+import reviewRoutes from './routes/review.routes';
+import notificationRoutes from './routes/notification.routes';
+import chatRoutes from './routes/chat.routes';
 import { apiLimiter } from './middleware/rateLimiter.middleware';
 import { logger } from './utils/logger';
+import { depositMonitorWorker } from './workers/deposit-monitor.worker';
+import { orderExpirationWorker } from './workers/order-expiration.worker';
+import { initializeChatSocket } from './socket/chat.socket';
 
 dotenv.config();
 
@@ -121,7 +133,11 @@ app.get('/api/v1', (req: Request, res: Response) => {
       prices: '/api/v1/prices',
       wallets: '/api/v1/wallets',
       orders: '/api/v1/orders',
-      transactions: '/api/v1/transactions'
+      transactions: '/api/v1/transactions',
+      notifications: '/api/v1/notifications',
+      disputes: '/api/v1/disputes',
+      reviews: '/api/v1/reviews',
+      chat: '/api/v1/chat'
     }
   });
 });
@@ -146,6 +162,30 @@ app.use('/api/v1/orders', orderRoutes);
 
 // Transaction routes
 app.use('/api/v1/transactions', transactionRoutes);
+
+// Boleto routes
+app.use('/api/v1/boleto', boletoRoutes);
+
+// Collateral routes
+app.use('/api/v1/collateral', collateralRoutes);
+
+// Admin routes
+app.use('/api/v1/admin', adminRoutes);
+
+// Refund routes
+app.use('/api/v1/refund', refundRoutes);
+
+// Dispute routes
+app.use('/api/v1/disputes', disputeRoutes);
+
+// Review routes
+app.use('/api/v1/reviews', reviewRoutes);
+
+// Notification routes
+app.use('/api/v1/notifications', notificationRoutes);
+
+// Chat routes
+app.use('/api/v1/chat', chatRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
@@ -184,8 +224,22 @@ app.use((err: Error, req: Request, res: Response, next: any) => {
   });
 });
 
-app.listen(port, () => {
+// Criar servidor HTTP (necessário para Socket.io)
+const httpServer = createServer(app);
+
+// Inicializar Socket.io para chat em tempo real
+const chatSocket = initializeChatSocket(httpServer);
+
+httpServer.listen(port, () => {
   logger.info(`Server started on port ${port}`);
   console.log(`⚡️ [server]: Server is running at http://localhost:${port}`);
   console.log(`🚀 [server]: Mktplace da Liberdade API v0.1.0`);
+  console.log(`💬 [socket]: Chat WebSocket enabled at ws://localhost:${port}`);
+
+  // Iniciar workers
+  depositMonitorWorker.start();
+  orderExpirationWorker.start();
 });
+
+// Exportar para uso em outros módulos
+export { chatSocket };

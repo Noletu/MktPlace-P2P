@@ -45,6 +45,21 @@ model User {
   reviews       Review[]      @relation("reviewer")
   reviewsReceived Review[]    @relation("reviewed")
   refreshTokens RefreshToken[]
+  adminActions  AdminAction[]
+  internalBalances InternalBalance[]
+
+  // Disputas
+  disputesCreated Dispute[] @relation("DisputeCreator")
+  disputesResolved Dispute[] @relation("DisputeResolver")
+  disputeMessages DisputeMessage[] @relation("DisputeMessageAuthor")
+
+  // Notificações
+  notifications Notification[] @relation("notifications")
+
+  // Chat
+  chatsAsParticipant1 Chat[] @relation("ChatParticipant1")
+  chatsAsParticipant2 Chat[] @relation("ChatParticipant2")
+  chatMessages        ChatMessage[] @relation("ChatMessageSender")
 }
 
 model Wallet {
@@ -67,7 +82,7 @@ model Wallet {
   deposits    Deposit[]
   withdrawals Withdrawal[]
 
-  @@unique([userId, crypto, network])
+  @@unique([userId, address])
 }
 
 model Deposit {
@@ -83,6 +98,9 @@ model Deposit {
 
   createdAt DateTime @default(now())
   confirmedAt DateTime?
+
+  // Relation for collateral
+  collateralOrders Order[]
 }
 
 model Withdrawal {
@@ -126,15 +144,38 @@ model Order {
   // Order specific data (JSON string)
   orderData   String
 
+  // Collateral system
+  collateralTxHash String?
+  collateralConfirmed Boolean @default(false)
+  collateralDepositId String?
+  collateralDeposit   Deposit? @relation(fields: [collateralDepositId], references: [id])
+
   // Timeout handling
   timeoutAt   DateTime?
   paidByPlatform Boolean  @default(false)
+
+  // Expiration customization (PIX)
+  customExpirationHours Int? // Usuário define prazo para PIX
+  manualCancelOnly Boolean @default(false) // PIX sem prazo automático
+
+  // Refund system
+  refundStatus String @default("NOT_REQUIRED") // NOT_REQUIRED, PENDING_USER_CHOICE, PROCESSING, COMPLETED, FAILED
+  refundMethod String? // BLOCKCHAIN, INTERNAL_CREDIT
+  refundTxHash String? // Hash da transação de devolução
+  refundAmount String? // Valor devolvido (após taxas)
+  refundNetworkFee String? // Taxa de rede cobrada
+  refundProcessingFee String? // Taxa de processamento (margem)
+  refundedAt DateTime?
+  cancelReason String? // AUTO_EXPIRED_BOLETO, AUTO_EXPIRED_PIX, USER_CANCELLED
 
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   completedAt DateTime?
 
   transactions Transaction[]
+  disputes     Dispute[]
+  reviews      Review[]
+  chat         Chat?
 }
 
 model Transaction {
@@ -165,6 +206,8 @@ model Transaction {
   updatedAt   DateTime    @updatedAt
 
   fees        Fee[]
+  disputes    Dispute[]
+  reviews     Review[]
 }
 
 model Fee {
@@ -180,21 +223,51 @@ model Fee {
   createdAt     DateTime    @default(now())
 }
 
+// Sistema completo de Avaliações/Reviews
 model Review {
   id          String   @id @default(cuid())
 
+  // Quem avalia e quem é avaliado
   reviewerId  String
   reviewer    User     @relation("reviewer", fields: [reviewerId], references: [id])
 
   reviewedId  String
   reviewed    User     @relation("reviewed", fields: [reviewedId], references: [id])
 
-  rating      Int
+  // Relacionamento com pedido/transação
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id])
+
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+
+  // Avaliação geral (1-5 estrelas)
+  rating      Int // 1-5
+
+  // Avaliações por categoria (opcional, 1-5)
+  reliabilityRating Int? // Confiabilidade
+  communicationRating Int? // Comunicação
+  speedRating Int? // Rapidez
+
+  // Comentário
   comment     String?
 
-  createdAt   DateTime @default(now())
+  // Resposta do avaliado
+  response    String?
+  respondedAt DateTime?
 
-  @@unique([reviewerId, reviewedId])
+  // Flags
+  isSuspicious Boolean @default(false) // Review suspeita (possível fraude)
+  isHidden    Boolean @default(false) // Oculta por admin
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([reviewerId, orderId]) // Um usuário só pode avaliar uma vez por pedido
+  @@index([reviewedId])
+  @@index([orderId])
+  @@index([rating])
+  @@index([createdAt])
 }
 
 model PriceQuote {
@@ -225,25 +298,311 @@ model RefreshToken {
 }
 
 // SECURITY: Audit log para operações críticas
+// SECURITY: Audit Log completo para rastreabilidade de todas as ações críticas
 model AuditLog {
   id        String   @id @default(cuid())
 
-  userId    String?
-  action    String
-  resource  String
-  resourceId String?
+  // Quem fez a ação
+  userId    String?  // Pode ser null para ações do sistema
+  email     String?  // Email do usuário (denormalizado para histórico)
+  role      String?  // Role do usuário no momento da ação
 
-  ipAddress String?
-  userAgent String?
+  // Ação executada
+  action    String   // LOGIN, LOGOUT, LOGIN_FAILED, CREATE_ORDER, CANCEL_ORDER, etc
+  resource  String   // AUTH, ORDER, WALLET, KYC, TRANSACTION, USER, etc
+  resourceId String? // ID do recurso afetado (ex: orderId, walletId)
 
-  metadata  String?  // JSON string
-  success   Boolean  @default(true)
-  errorMessage String?
+  // Detalhes da ação
+  description String? // Descrição legível da ação
+  metadata  String?  // JSON com dados adicionais (antes/depois, etc)
 
+  // Informações de contexto
+  ipAddress String?  // IP do cliente
+  userAgent String?  // User-Agent do navegador
+  success   Boolean  @default(true) // Se a ação foi bem-sucedida
+  errorMessage String? // Mensagem de erro se success=false
+
+  // Timestamp
   createdAt DateTime @default(now())
 
+  // Índices para busca rápida
   @@index([userId])
   @@index([action])
   @@index([resource])
   @@index([createdAt])
+  @@index([success])
+  @@index([ipAddress])
+}
+
+// Endereços de depósito temporários para colateral
+model CollateralAddress {
+  id        String   @id @default(cuid())
+
+  userId    String
+  orderId   String?  // Null até pedido ser criado
+
+  cryptoType String
+  cryptoNetwork String
+  address   String   // REMOVIDO @unique - mesmo endereço da plataforma pode ter múltiplos depósitos
+
+  expectedAmount String
+  status    String   @default("AWAITING_PAYMENT") // AWAITING_PAYMENT, PAYMENT_RECEIVED, CONFIRMED, EXPIRED, USED
+
+  // Dados da transação blockchain
+  txHash    String?  // Hash da transação que fez o pagamento
+  actualAmount String? // Valor real recebido
+  confirmedAt DateTime? // Timestamp da confirmação na blockchain
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([address])  // Índice para buscar por endereço rapidamente
+  @@index([status])
+}
+
+// Carteiras da plataforma para receber colaterais
+model PlatformWallet {
+  id        String   @id @default(cuid())
+
+  cryptoType String  // BTC, USDT, USDC, etc
+  network   String   // ETHEREUM, BASE, ARBITRUM, TRC20, etc
+  address   String   @unique
+
+  label     String?  // Nome/descrição do endereço (ex: "Carteira Principal USDT Base")
+  isActive  Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?  // ID do admin que criou
+
+  @@index([cryptoType])
+  @@index([network])
+  @@index([isActive])
+}
+
+// Audit log de ações administrativas
+model AdminAction {
+  id        String   @id @default(cuid())
+
+  adminId   String   // ID do admin que executou a ação
+  admin     User     @relation(fields: [adminId], references: [id])
+
+  action    String   // CREATE, UPDATE, DELETE, APPROVE, REJECT, etc
+  resource  String   // USER, ORDER, WALLET, KYC, etc
+  resourceId String? // ID do recurso afetado
+
+  metadata  String?  // JSON com dados adicionais
+  ip        String?  // IP do admin
+
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([resource])
+  @@index([createdAt])
+}
+
+// Saldo interno de usuários (crédito de devoluções)
+model InternalBalance {
+  id        String   @id @default(cuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  cryptoType String  // BTC, USDT, USDC, etc
+  network   String   // ETHEREUM, BASE, ARBITRUM, TRC20, BITCOIN, etc
+  balance   String   @default("0")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, cryptoType, network])
+  @@index([userId])
+}
+
+// Sistema completo de Disputas
+model Dispute {
+  id        String   @id @default(cuid())
+
+  // Relacionamento
+  orderId      String
+  order        Order @relation(fields: [orderId], references: [id])
+
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+
+  // Quem criou a disputa
+  createdBy    String
+  creator      User @relation("DisputeCreator", fields: [createdBy], references: [id])
+
+  // Status: OPEN, UNDER_REVIEW, RESOLVED_BUYER, RESOLVED_SELLER, CANCELLED
+  status       String @default("OPEN")
+
+  // Categoria: PAYMENT_NOT_RECEIVED, PAYMENT_ISSUE, FRAUD, OTHER
+  category     String
+
+  // Descrição inicial
+  title        String
+  description  String
+
+  // Resolução (quando resolvida)
+  resolvedBy   String?
+  resolver     User? @relation("DisputeResolver", fields: [resolvedBy], references: [id])
+
+  resolution   String? // Descrição da resolução
+  resolutionType String? // REFUND_BUYER, RELEASE_SELLER, PARTIAL_REFUND, CANCELLED
+
+  resolvedAt   DateTime?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  messages     DisputeMessage[]
+
+  @@index([orderId])
+  @@index([transactionId])
+  @@index([createdBy])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Mensagens/Evidências de Disputa
+model DisputeMessage {
+  id        String   @id @default(cuid())
+
+  disputeId String
+  dispute   Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  // Autor (pode ser usuário ou admin)
+  authorId  String
+  author    User @relation("DisputeMessageAuthor", fields: [authorId], references: [id])
+
+  // Conteúdo
+  message   String
+
+  // Evidências (URLs de imagens/documentos)
+  attachments String? // JSON array de URLs
+
+  // Se é mensagem do sistema/admin
+  isAdminMessage Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([disputeId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+// Sistema completo de Notificações
+model Notification {
+  id        String   @id @default(cuid())
+
+  // Destinatário
+  userId    String
+  user      User     @relation("notifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  // Tipo de notificação
+  type      String   // ORDER_MATCHED, PAYMENT_RECEIVED, DEPOSIT_CONFIRMED, REVIEW_RECEIVED, etc
+  category  String   // ORDER, TRANSACTION, DISPUTE, REVIEW, WALLET, KYC, SYSTEM
+
+  // Conteúdo
+  title     String
+  message   String
+
+  // Link/Ação
+  actionUrl String?  // URL para onde o usuário deve ir
+  actionLabel String? // Texto do botão (ex: "Ver pedido", "Responder disputa")
+
+  // Recurso relacionado
+  relatedId String?  // ID do pedido, transação, disputa, etc
+  relatedType String? // ORDER, TRANSACTION, DISPUTE, REVIEW
+
+  // Prioridade: LOW, NORMAL, HIGH, URGENT
+  priority  String   @default("NORMAL")
+
+  // Metadata adicional (JSON)
+  metadata  String?
+
+  // Estado
+  isRead    Boolean  @default(false)
+  readAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([type])
+  @@index([category])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([priority])
+}
+
+// Sistema completo de Chat em Tempo Real
+model Chat {
+  id        String   @id @default(cuid())
+
+  // Relacionamento com pedido
+  orderId   String   @unique
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Participantes (vendedor e comprador)
+  participant1Id String
+  participant1   User @relation("ChatParticipant1", fields: [participant1Id], references: [id])
+
+  participant2Id String
+  participant2   User @relation("ChatParticipant2", fields: [participant2Id], references: [id])
+
+  // Status do chat
+  isActive  Boolean  @default(true)
+
+  // Última atividade
+  lastMessageAt DateTime?
+
+  // Mensagens não lidas por participante
+  unreadCount1 Int @default(0) // Não lidas pelo participant1
+  unreadCount2 Int @default(0) // Não lidas pelo participant2
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages  ChatMessage[]
+
+  @@index([orderId])
+  @@index([participant1Id])
+  @@index([participant2Id])
+  @@index([lastMessageAt])
+  @@index([isActive])
+}
+
+// Mensagens do Chat
+model ChatMessage {
+  id        String   @id @default(cuid())
+
+  chatId    String
+  chat      Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  // Autor da mensagem
+  senderId  String
+  sender    User @relation("ChatMessageSender", fields: [senderId], references: [id])
+
+  // Conteúdo
+  message   String
+
+  // Anexos (URLs de imagens)
+  attachments String? // JSON array de URLs
+
+  // Status de leitura
+  isRead    Boolean  @default(false)
+  readAt    DateTime?
+
+  // Tipo de mensagem
+  type      String   @default("TEXT") // TEXT, IMAGE, SYSTEM
+
+  createdAt DateTime @default(now())
+
+  @@index([chatId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@index([isRead])
 }

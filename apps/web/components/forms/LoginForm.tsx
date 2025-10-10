@@ -31,8 +31,12 @@ export default function LoginForm() {
         throw new Error(data.error || 'Erro ao fazer login');
       }
 
-      // SECURITY: Token agora vem em HttpOnly cookie (não em localStorage)
-      // Apenas salvar dados do usuário (não sensíveis)
+      console.log('✅ Login bem-sucedido:', data);
+
+      // Salvar token e dados do usuário
+      if (data.data.accessToken) {
+        localStorage.setItem('accessToken', data.data.accessToken);
+      }
       localStorage.setItem('user', JSON.stringify(data.data.user));
 
       // Redirecionar para dashboard

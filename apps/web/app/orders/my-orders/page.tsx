@@ -14,6 +14,11 @@ interface Order {
   createdAt: string;
   timeoutAt: string;
   transactions: any[];
+  orderData?: string | {
+    barcode?: string;
+    pixKey?: string;
+    [key: string]: any;
+  };
 }
 
 export default function MyOrdersPage() {
@@ -21,7 +26,7 @@ export default function MyOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED'>('ACTIVE');
+  const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED'>('ACTIVE');
 
   useEffect(() => {
     fetchOrders();
@@ -29,8 +34,16 @@ export default function MyOrdersPage() {
 
   const fetchOrders = async () => {
     try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        router.push('/login');
+        return;
+      }
+
       const response = await fetch('http://localhost:3001/api/v1/orders/my-orders', {
-        credentials: 'include', // SECURITY: Envia cookies HttpOnly
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
 
       if (!response.ok) {
@@ -51,6 +64,7 @@ export default function MyOrdersPage() {
     if (filter === 'ACTIVE')
       return !['COMPLETED', 'CANCELLED', 'TIMEOUT'].includes(order.status);
     if (filter === 'COMPLETED') return order.status === 'COMPLETED';
+    if (filter === 'CANCELLED') return order.status === 'CANCELLED';
     return true;
   });
 
@@ -80,6 +94,23 @@ export default function MyOrdersPage() {
       TIMEOUT: 'Timeout',
     };
     return texts[status] || status;
+  };
+
+  const getPaymentMethod = (order: Order): 'PIX' | 'BOLETO' => {
+    try {
+      // Se orderData for string, fazer parse
+      const data = typeof order.orderData === 'string'
+        ? JSON.parse(order.orderData)
+        : order.orderData;
+
+      if (data?.pixKey) return 'PIX';
+      if (data?.barcode) return 'BOLETO';
+    } catch (e) {
+      console.error('Error parsing orderData:', e);
+    }
+
+    // Fallback para tipo de pedido antigo
+    return order.type === 'PIX' ? 'PIX' : 'BOLETO';
   };
 
   if (loading) {
@@ -140,6 +171,14 @@ export default function MyOrdersPage() {
             >
               Concluídos ({orders.filter((o) => o.status === 'COMPLETED').length})
             </button>
+            <button
+              onClick={() => setFilter('CANCELLED')}
+              className={`px-4 py-2 rounded-lg font-semibold ${
+                filter === 'CANCELLED' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+              }`}
+            >
+              Cancelados ({orders.filter((o) => o.status === 'CANCELLED').length})
+            </button>
           </div>
         </div>
 
@@ -173,12 +212,12 @@ export default function MyOrdersPage() {
                     <div className="flex items-center gap-4 mb-2">
                       <span
                         className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
-                          order.type === 'PIX'
+                          getPaymentMethod(order) === 'PIX'
                             ? 'bg-green-100 text-green-800'
                             : 'bg-blue-100 text-blue-800'
                         }`}
                       >
-                        {order.type}
+                        {getPaymentMethod(order)}
                       </span>
                       <span
                         className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(

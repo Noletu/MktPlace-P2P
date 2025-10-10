@@ -5,9 +5,12 @@ const prisma = new PrismaClient();
 
 export interface AuditLogInput {
   userId?: string;
+  email?: string;
+  role?: string;
   action: string;
   resource: string;
   resourceId?: string;
+  description?: string;
   ipAddress?: string;
   userAgent?: string;
   metadata?: Record<string, any>;
@@ -22,9 +25,12 @@ export class AuditLogService {
       await prisma.auditLog.create({
         data: {
           userId: input.userId,
+          email: input.email,
+          role: input.role,
           action: input.action,
           resource: input.resource,
           resourceId: input.resourceId,
+          description: input.description,
           ipAddress: input.ipAddress,
           userAgent: input.userAgent,
           metadata: input.metadata ? JSON.stringify(input.metadata) : undefined,
@@ -109,6 +115,88 @@ export class AuditLogService {
     });
 
     return result.count;
+  }
+
+  // SECURITY: Buscar logs com filtros avançados (para admin)
+  async getLogs(filters: {
+    userId?: string;
+    action?: string;
+    resource?: string;
+    ipAddress?: string;
+    startDate?: Date;
+    endDate?: Date;
+    success?: boolean;
+    limit?: number;
+    offset?: number;
+  }) {
+    const where: any = {};
+
+    if (filters.userId) where.userId = filters.userId;
+    if (filters.action) where.action = filters.action;
+    if (filters.resource) where.resource = filters.resource;
+    if (filters.ipAddress) where.ipAddress = filters.ipAddress;
+    if (filters.success !== undefined) where.success = filters.success;
+
+    if (filters.startDate || filters.endDate) {
+      where.createdAt = {};
+      if (filters.startDate) where.createdAt.gte = filters.startDate;
+      if (filters.endDate) where.createdAt.lte = filters.endDate;
+    }
+
+    const [logs, total] = await Promise.all([
+      prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: filters.limit || 50,
+        skip: filters.offset || 0,
+      }),
+      prisma.auditLog.count({ where }),
+    ]);
+
+    return { logs, total };
+  }
+
+  // SECURITY: Obter estatísticas de auditoria
+  async getStats(filters?: {
+    startDate?: Date;
+    endDate?: Date;
+  }) {
+    const where: any = {};
+
+    if (filters?.startDate || filters?.endDate) {
+      where.createdAt = {};
+      if (filters.startDate) where.createdAt.gte = filters.startDate;
+      if (filters.endDate) where.createdAt.lte = filters.endDate;
+    }
+
+    const [total, successCount, failedCount, byAction, byResource] = await Promise.all([
+      prisma.auditLog.count({ where }),
+      prisma.auditLog.count({ where: { ...where, success: true } }),
+      prisma.auditLog.count({ where: { ...where, success: false } }),
+      prisma.auditLog.groupBy({
+        by: ['action'],
+        where,
+        _count: true,
+        orderBy: { _count: { action: 'desc' } },
+        take: 10,
+      }),
+      prisma.auditLog.groupBy({
+        by: ['resource'],
+        where,
+        _count: true,
+        orderBy: { _count: { resource: 'desc' } },
+        take: 10,
+      }),
+    ]);
+
+    return {
+      total,
+      successCount,
+      failedCount,
+      successRate: total > 0 ? (successCount / total) * 100 : 0,
+      byAction,
+      byResource,
+    };
   }
 }
 
