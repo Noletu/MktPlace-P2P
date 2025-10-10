@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { formatBRL } from '@/utils/formatters';
 
 interface DashboardStats {
   users: {
@@ -122,7 +123,7 @@ export default function AdminDashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Volume Total</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">R$ {stats.volume.totalBRL}</p>
+              <p className="text-3xl font-bold text-gray-900 mt-2">{formatBRL(stats.volume.totalBRL)}</p>
               <p className="text-xs text-gray-500 mt-1">Completados</p>
             </div>
             <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
