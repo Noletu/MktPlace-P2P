@@ -367,5 +367,49 @@ Consulte: `DOCUMENTACAO_COMPLETA.md` para detalhes técnicos aprofundados.
 
 ---
 
+## 🔐 Verificação Blockchain
+
+### Status Atual
+- ✅ **Bitcoin (BTC):** Funcional sem configuração
+- ⚠️ **Ethereum/Base/Arbitrum:** Requer API keys
+- ✅ **Tron (TRC20):** Funcional sem configuração
+
+### Configurar APIs (Produção)
+
+```bash
+# Adicionar ao .env da API
+ETHERSCAN_API_KEY=sua_key_aqui
+BASESCAN_API_KEY=sua_key_aqui
+ARBISCAN_API_KEY=sua_key_aqui
+```
+
+**Obter keys grátis:**
+- Etherscan: https://etherscan.io/myapikey
+- Basescan: https://basescan.org/myapikey
+- Arbiscan: https://arbiscan.io/myapikey
+
+### Como Funciona
+
+1. Usuário deposita cripto no endereço da plataforma
+2. Frontend verifica status a cada 10s
+3. Backend consulta blockchain via APIs públicas
+4. Quando confirmado, pedido vai para marketplace
+
+**Modo de Teste:**
+- Botão "SIMULAR PAGAMENTO" disponível em desenvolvimento
+- Confirma depósito instantaneamente sem transação real
+
+---
+
+## 💰 Formatação de Valores
+
+Sistema formata valores em padrão brasileiro:
+- `10000` → `R$ 10.000,00`
+- Aplicado em todo o sistema
+- Função: `formatBRL()` em `/apps/web/utils/formatters.ts`
+
+---
+
 **Última atualização:** 10/10/2025
+**Versão:** 1.0.1
 **Status:** ✅ Sistema Operacional

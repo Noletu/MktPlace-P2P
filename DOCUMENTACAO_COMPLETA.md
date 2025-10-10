@@ -889,6 +889,71 @@ Projeto proprietário - MktPlace P2P © 2025
 
 ---
 
+## 🔐 Verificação de Depósitos Blockchain
+
+### Status: ✅ Funcional (Requer configuração para produção)
+
+O sistema possui verificação automática de depósitos em blockchain implementada e funcional.
+
+**APIs Blockchain Integradas:**
+
+#### Bitcoin (BTC) - ✅ Funcional
+- API: BlockCypher (gratuita)
+- Endpoint: `https://api.blockcypher.com/v1/btc/main`
+- Status: Funciona SEM API key
+- Verifica: Saldo + Transações + Confirmações
+
+#### Ethereum/Base/Arbitrum - ⚠️ Requer API Key
+- APIs: Etherscan, Basescan, Arbiscan
+- Status: Implementado, precisa API keys
+- Obter keys grátis em:
+  - Etherscan: https://etherscan.io/myapikey
+  - Basescan: https://basescan.org/myapikey
+  - Arbiscan: https://arbiscan.io/myapikey
+
+#### Tokens ERC20 (USDT, USDC) - ⚠️ Requer API Key
+- Verifica saldo de tokens
+- Contratos conhecidos em Ethereum, Base, Arbitrum
+- Usa mesmas API keys acima
+
+#### Tron (TRC20) - ✅ Funcional
+- API: TronGrid (gratuita)
+- Status: Funciona SEM API key
+- Endpoint: `https://api.trongrid.io/v1`
+
+**Configuração Necessária (`.env`):**
+```env
+ETHERSCAN_API_KEY=sua_key_aqui
+BASESCAN_API_KEY=sua_key_aqui
+ARBISCAN_API_KEY=sua_key_aqui
+```
+
+**Melhorias Recomendadas para Produção:**
+1. Adicionar verificação de confirmações mínimas
+2. Implementar background job de verificação automática
+3. Adicionar webhooks para notificações instantâneas
+4. Sistema de monitoramento e alertas
+
+---
+
+## 💵 Formatação de Valores em BRL
+
+Sistema implementado para formatação brasileira de valores:
+
+**Função:** `formatBRL()` em `/apps/web/utils/formatters.ts`
+
+**Conversão:**
+- `10000` → `R$ 10.000,00`
+- Ponto (.) como separador de milhares
+- Vírgula (,) como separador decimal
+
+**Aplicado em:**
+- Página de criar pedido (resumo PIX/Boleto)
+- Dashboard admin (Volume Total)
+- Todas as exibições de valores monetários
+
+---
+
 **Última atualização:** 10 de Outubro de 2025
-**Versão:** 1.0.0
+**Versão:** 1.0.1
 **Status:** ✅ Funcional
