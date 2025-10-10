@@ -5,27 +5,50 @@ const prisma = new PrismaClient();
 
 export class KYCService {
   async submitLevel1(userId: string, data: KYCLevel1Data): Promise<void> {
-    // Validar idade mínima (18 anos)
-    const birthDate = new Date(data.dateOfBirth);
-    const today = new Date();
-    const age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
+    // KYC Level 1: Simplesmente ativa usando dados do registro
+    // CPF é obrigatório no registro, telefone é opcional
+    // Se telefone não foi fornecido no registro, deve ser fornecido aqui
 
-    if (age < 18 || (age === 18 && monthDiff < 0)) {
-      throw new Error('Usuário deve ter no mínimo 18 anos');
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        cpf: true,
+        phone: true,
+        kycLevel: true,
+      },
+    });
+
+    if (!user) {
+      throw new Error('Usuário não encontrado');
     }
 
-    // Validar CEP
-    if (!/^\d{5}-?\d{3}$/.test(data.address.zipCode)) {
-      throw new Error('CEP inválido');
+    if (user.kycLevel !== KYCLevel.NONE) {
+      throw new Error(`Você já possui ${user.kycLevel}`);
     }
 
-    // Atualizar usuário
+    if (!user.cpf) {
+      throw new Error('CPF não encontrado. Seu cadastro está incompleto. Entre em contato com o suporte.');
+    }
+
+    // Determinar telefone final
+    const finalPhone = data.phone || user.phone;
+
+    if (!finalPhone) {
+      throw new Error('Telefone é obrigatório para KYC Level 1. Por favor, forneça seu telefone.');
+    }
+
+    // Ativar KYC Level 1
     await prisma.user.update({
       where: { id: userId },
       data: {
+        phone: finalPhone, // Atualizar se foi fornecido
         kycLevel: KYCLevel.LEVEL_1,
-        kycData: JSON.stringify(data),
+        kycData: JSON.stringify({
+          cpf: user.cpf,
+          phone: finalPhone,
+          activatedAt: new Date().toISOString(),
+        }),
       },
     });
   }

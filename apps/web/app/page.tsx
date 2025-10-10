@@ -125,40 +125,43 @@ export default function HomePage() {
         {/* Criptos Aceitas */}
         <div className="bg-white rounded-xl shadow-lg p-10 mb-16">
           <h2 className="text-3xl font-bold text-center mb-10">Criptomoedas Aceitas</h2>
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-6 text-center">
-            <div className="p-4">
-              <div className="text-3xl mb-2">₿</div>
-              <p className="font-bold">Bitcoin</p>
-              <p className="text-sm text-gray-600">BTC</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-3xl mx-auto">
+            <div className="p-6 bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl shadow-md">
+              <div className="flex justify-center mb-4">
+                <svg width="64" height="64" viewBox="0 0 32 32">
+                  <circle cx="16" cy="16" r="16" fill="#F7931A"/>
+                  <path d="M23.189 14.02c.314-2.096-1.283-3.223-3.465-3.975l.708-2.84-1.728-.43-.69 2.765c-.454-.114-.92-.22-1.385-.326l.695-2.783L15.596 6l-.708 2.839c-.376-.086-.746-.17-1.104-.26l.002-.009-2.384-.595-.46 1.846s1.283.294 1.256.312c.7.175.826.638.805 1.006l-.806 3.235c.048.012.11.03.18.057l-.183-.045-1.13 4.532c-.086.212-.303.531-.793.41.018.025-1.256-.313-1.256-.313l-.858 1.978 2.25.561c.418.105.828.215 1.231.318l-.715 2.872 1.727.43.708-2.84c.472.127.93.245 1.378.357l-.706 2.828 1.728.43.715-2.866c2.948.558 5.164.333 6.097-2.333.752-2.146-.037-3.385-1.588-4.192 1.13-.26 1.98-1.003 2.207-2.538zm-3.95 5.538c-.533 2.147-4.148.986-5.32.695l.95-3.805c1.172.293 4.929.872 4.37 3.11zm.535-5.569c-.487 1.953-3.495.96-4.47.717l.86-3.45c.975.243 4.118.696 3.61 2.733z" fill="white"/>
+                </svg>
+              </div>
+              <p className="font-bold text-xl text-center mb-2">Bitcoin</p>
+              <p className="text-sm text-gray-600 text-center mb-3">BTC</p>
+              <p className="text-xs text-gray-600 text-center">Rede: Bitcoin</p>
             </div>
-            <div className="p-4">
-              <div className="text-3xl mb-2">Ξ</div>
-              <p className="font-bold">Ethereum</p>
-              <p className="text-sm text-gray-600">ETH</p>
+            <div className="p-6 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl shadow-md">
+              <div className="flex justify-center mb-4">
+                <svg width="64" height="64" viewBox="0 0 32 32">
+                  <circle cx="16" cy="16" r="16" fill="#2775CA"/>
+                  <path d="M19.5 17.5c0-1.3-.9-1.7-2.7-1.9-1.4-.2-1.7-.4-1.7-.9 0-.4.3-.7 1.1-.7 1 0 1.4.3 1.6.9h2.3c-.2-1.5-1.3-2.5-3.2-2.7v-1.5h-1.8v1.5c-2 .2-3.1 1.3-3.1 2.8 0 1.7 1.3 2.3 3.1 2.5 1.3.2 1.7.4 1.7.9 0 .5-.5.8-1.2.8-1 0-1.6-.4-1.7-1.1h-2.3c.2 1.8 1.6 2.7 3.3 2.9v1.5h1.8v-1.5c1.9-.3 3.2-1.3 3.2-2.8v-.2zm7.5-1.5c0 4.4-3.6 8-8 8s-8-3.6-8-8 3.6-8 8-8 8 3.6 8 8zm-1.5 0c0-3.6-2.9-6.5-6.5-6.5s-6.5 2.9-6.5 6.5 2.9 6.5 6.5 6.5 6.5-2.9 6.5-6.5z" fill="white"/>
+                </svg>
+              </div>
+              <p className="font-bold text-xl text-center mb-2">USD Coin</p>
+              <p className="text-sm text-gray-600 text-center mb-3">USDC</p>
+              <p className="text-xs text-gray-600 text-center">Redes: Ethereum, TRC20, Base, Arbitrum</p>
             </div>
-            <div className="p-4">
-              <div className="text-3xl mb-2">🔒</div>
-              <p className="font-bold">Monero</p>
-              <p className="text-sm text-gray-600">XMR</p>
-            </div>
-            <div className="p-4">
-              <div className="text-3xl mb-2">🛡️</div>
-              <p className="font-bold">Zcash</p>
-              <p className="text-sm text-gray-600">ZEC</p>
-            </div>
-            <div className="p-4">
-              <div className="text-3xl mb-2">💵</div>
-              <p className="font-bold">USDC</p>
-              <p className="text-sm text-gray-600">Stablecoin</p>
-            </div>
-            <div className="p-4">
-              <div className="text-3xl mb-2">💰</div>
-              <p className="font-bold">USDT</p>
-              <p className="text-sm text-gray-600">Tether</p>
+            <div className="p-6 bg-gradient-to-br from-green-50 to-green-100 rounded-xl shadow-md">
+              <div className="flex justify-center mb-4">
+                <svg width="64" height="64" viewBox="0 0 32 32">
+                  <circle cx="16" cy="16" r="16" fill="#26A17B"/>
+                  <path d="M17.5 13.5v-2h5v-3h-13v3h5v2c-3.6.2-6.3 1.2-6.3 2.5 0 1.4 3.3 2.5 7.3 2.5s7.3-1.1 7.3-2.5c0-1.3-2.7-2.3-6.3-2.5zm-.5 4c-3.9 0-7-.9-7-2s3.1-2 7-2 7 .9 7 2-3.1 2-7 2z" fill="white"/>
+                </svg>
+              </div>
+              <p className="font-bold text-xl text-center mb-2">Tether</p>
+              <p className="text-sm text-gray-600 text-center mb-3">USDT</p>
+              <p className="text-xs text-gray-600 text-center">Redes: Ethereum, TRC20, Base, Arbitrum</p>
             </div>
           </div>
-          <p className="text-center text-gray-600 mt-6">
-            Suporte para múltiplas redes: Solana, Polygon, BSC, TRC20, e mais!
+          <p className="text-center text-gray-600 mt-8 text-sm">
+            💡 <strong>Dica:</strong> Use TRC20 ou Layer 2 (Base/Arbitrum) para taxas mais baixas!
           </p>
         </div>
 

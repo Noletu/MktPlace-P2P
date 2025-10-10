@@ -4,9 +4,10 @@ import { Response } from 'express';
 const COOKIE_OPTIONS = {
   httpOnly: true, // Prevenir acesso via JavaScript (XSS protection)
   secure: process.env.NODE_ENV === 'production', // HTTPS only em produção
-  sameSite: process.env.NODE_ENV === 'production' ? 'strict' as const : 'lax' as const, // CSRF protection
+  sameSite: process.env.NODE_ENV === 'production' ? 'strict' as const : 'none' as const, // CSRF protection - 'none' em dev para permitir cross-origin
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 dias em millisegundos
   path: '/',
+  domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost', // Domínio localhost em dev
 };
 
 const REFRESH_COOKIE_OPTIONS = {

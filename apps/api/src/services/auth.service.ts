@@ -170,6 +170,18 @@ export class AuthService {
     return userWithoutPassword;
   }
 
+  async getUserByEmail(email: string): Promise<User | null> {
+    return await prisma.user.findUnique({
+      where: { email },
+    });
+  }
+
+  async getUserByCpf(cpf: string): Promise<User | null> {
+    return await prisma.user.findUnique({
+      where: { cpf },
+    });
+  }
+
   async updateKYCLevel(userId: string, kycLevel: string, kycData?: any): Promise<User> {
     const user = await prisma.user.update({
       where: { id: userId },

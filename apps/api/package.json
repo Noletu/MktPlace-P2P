@@ -9,10 +9,15 @@
     "lint": "eslint src --ext .ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "prisma:seed": "tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.8.0",
+    "@types/multer": "^2.0.0",
     "axios": "^1.12.2",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
@@ -23,6 +28,8 @@
     "express-recaptcha": "^5.1.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "multicoin-address-validator": "^0.5.26",
     "qrcode": "^1.5.4",
     "speakeasy": "^2.0.0",
     "winston": "^3.18.3",

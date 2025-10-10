@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { twoFactorService } from '../services/twoFactor.service';
+import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from '../services/auditLog.service';
 
 export class TwoFactorController {
   // SECURITY: Gerar secret e QR Code para 2FA
@@ -57,6 +58,15 @@ export class TwoFactorController {
 
       await twoFactorService.enableTwoFactor(userId, token);
 
+      // SECURITY: Audit log - 2FA habilitado
+      auditLogService.logFromRequest(
+        req,
+        '2FA_ENABLED',
+        'AUTH',
+        userId,
+        { email: req.user?.email }
+      );
+
       res.status(200).json({
         success: true,
         message: '2FA habilitado com sucesso',
@@ -94,6 +104,15 @@ export class TwoFactorController {
       }
 
       await twoFactorService.disableTwoFactor(userId, token);
+
+      // SECURITY: Audit log - 2FA desabilitado
+      auditLogService.logFromRequest(
+        req,
+        '2FA_DISABLED',
+        'AUTH',
+        userId,
+        { email: req.user?.email }
+      );
 
       res.status(200).json({
         success: true,

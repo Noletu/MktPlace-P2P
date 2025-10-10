@@ -111,6 +111,28 @@ export class WalletController {
       });
     }
   }
+
+  async deleteWallet(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { walletId } = req.params;
+
+      await walletService.deleteWallet(walletId, userId);
+
+      res.json({
+        success: true,
+        message: 'Carteira deletada permanentemente com sucesso',
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Erro ao deletar carteira',
+      });
+    }
+  }
 }
 
 export const walletController = new WalletController();

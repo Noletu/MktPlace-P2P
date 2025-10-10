@@ -7,6 +7,10 @@ export enum KYCLevel {
 }
 
 export interface KYCLevel1Data {
+  phone?: string; // Opcional - usa o do registro se não fornecido
+}
+
+export interface KYCLevel2Data extends KYCLevel1Data {
   fullName: string;
   dateOfBirth: string; // ISO date format
   address: {
@@ -18,9 +22,6 @@ export interface KYCLevel1Data {
     state: string;
     zipCode: string;
   };
-}
-
-export interface KYCLevel2Data extends KYCLevel1Data {
   documentType: 'RG' | 'CNH';
   documentNumber: string;
   documentFrontUrl: string;
@@ -40,9 +41,9 @@ export interface KYCLevel4Data extends KYCLevel3Data {
 export type KYCData = KYCLevel1Data | KYCLevel2Data | KYCLevel3Data | KYCLevel4Data;
 
 export const KYC_TRANSACTION_LIMITS = {
-  [KYCLevel.NONE]: 0,
-  [KYCLevel.LEVEL_1]: 500,
-  [KYCLevel.LEVEL_2]: 2000,
-  [KYCLevel.LEVEL_3]: 10000,
-  [KYCLevel.LEVEL_4]: Infinity,
+  [KYCLevel.NONE]: 1000,      // R$ 1.000 (1k)
+  [KYCLevel.LEVEL_1]: 10000,  // R$ 10.000 (10k)
+  [KYCLevel.LEVEL_2]: 50000,  // R$ 50.000 (50k)
+  [KYCLevel.LEVEL_3]: 100000, // R$ 100.000 (100k)
+  [KYCLevel.LEVEL_4]: Infinity, // Sem limite
 };

@@ -2,36 +2,31 @@
 
 export enum KYCLevel {
   NONE = 'NONE',
-  LEVEL_1 = 'LEVEL_1', // CPF + Email (R$1k/dia)
-  LEVEL_2 = 'LEVEL_2', // + Selfie + Prova endereço (R$5k/dia)
-  LEVEL_3 = 'LEVEL_3', // + Renda + Banco (R$15k/dia)
-  LEVEL_4 = 'LEVEL_4', // Enhanced Due Diligence (>R$50k/mês)
+  LEVEL_1 = 'LEVEL_1', // CPF + Email (R$ 10k/dia)
+  LEVEL_2 = 'LEVEL_2', // + Selfie + Prova endereço (R$ 50k/dia)
+  LEVEL_3 = 'LEVEL_3', // + Renda + Banco (R$ 100k/dia)
+  LEVEL_4 = 'LEVEL_4', // Enhanced Due Diligence (sem limite)
 }
 
 export enum UserRole {
   USER = 'USER',
   ADMIN = 'ADMIN',
   SUPPORT = 'SUPPORT',
+  MASTER = 'MASTER', // Acesso total, gerencia plataforma e carteiras
 }
 
 export enum CryptoType {
   BTC = 'BTC',      // Bitcoin
-  ETH = 'ETH',      // Ethereum
-  XMR = 'XMR',      // Monero
-  ZEC = 'ZEC',      // Zcash
   USDC = 'USDC',    // USD Coin
   USDT = 'USDT',    // Tether
 }
 
 export enum NetworkType {
   BITCOIN = 'BITCOIN',
-  ETHEREUM = 'ETHEREUM',
-  POLYGON = 'POLYGON',
-  BSC = 'BSC',          // Binance Smart Chain
-  SOLANA = 'SOLANA',
-  TRC20 = 'TRC20',      // Tron
-  MONERO = 'MONERO',
-  ZCASH = 'ZCASH',
+  ETHEREUM = 'ETHEREUM',   // ERC20
+  TRC20 = 'TRC20',         // Tron
+  BASE = 'BASE',           // Base (L2 Ethereum)
+  ARBITRUM = 'ARBITRUM',   // Arbitrum (L2 Ethereum)
 }
 
 export enum OrderType {
@@ -151,35 +146,14 @@ export interface NetworkInfo {
   priority: number; // 1-5 (5 = recommended)
 }
 
+// Mapeamento de quais redes cada cripto suporta
+export const CRYPTO_SUPPORTED_NETWORKS: Record<CryptoType, NetworkType[]> = {
+  [CryptoType.BTC]: [NetworkType.BITCOIN],
+  [CryptoType.USDC]: [NetworkType.ETHEREUM, NetworkType.TRC20, NetworkType.BASE, NetworkType.ARBITRUM],
+  [CryptoType.USDT]: [NetworkType.ETHEREUM, NetworkType.TRC20, NetworkType.BASE, NetworkType.ARBITRUM],
+};
+
 export const NETWORK_INFO: Record<NetworkType, NetworkInfo> = {
-  [NetworkType.SOLANA]: {
-    type: NetworkType.SOLANA,
-    name: 'Solana',
-    averageFee: '$0.00025',
-    confirmationTime: '1-2s',
-    priority: 5,
-  },
-  [NetworkType.POLYGON]: {
-    type: NetworkType.POLYGON,
-    name: 'Polygon',
-    averageFee: '$0.01',
-    confirmationTime: '2-5s',
-    priority: 4,
-  },
-  [NetworkType.BSC]: {
-    type: NetworkType.BSC,
-    name: 'Binance Smart Chain',
-    averageFee: '$0.15',
-    confirmationTime: '3-5s',
-    priority: 3,
-  },
-  [NetworkType.TRC20]: {
-    type: NetworkType.TRC20,
-    name: 'Tron (TRC20)',
-    averageFee: '$1',
-    confirmationTime: '3-5min',
-    priority: 2,
-  },
   [NetworkType.BITCOIN]: {
     type: NetworkType.BITCOIN,
     name: 'Bitcoin',
@@ -189,23 +163,30 @@ export const NETWORK_INFO: Record<NetworkType, NetworkInfo> = {
   },
   [NetworkType.ETHEREUM]: {
     type: NetworkType.ETHEREUM,
-    name: 'Ethereum',
+    name: 'Ethereum (ERC20)',
     averageFee: '$5-50',
     confirmationTime: '1-3min',
-    priority: 2,
+    priority: 3,
   },
-  [NetworkType.MONERO]: {
-    type: NetworkType.MONERO,
-    name: 'Monero',
-    averageFee: '$0.02',
-    confirmationTime: '2-20min',
+  [NetworkType.TRC20]: {
+    type: NetworkType.TRC20,
+    name: 'Tron (TRC20)',
+    averageFee: '$1',
+    confirmationTime: '3-5min',
     priority: 4,
   },
-  [NetworkType.ZCASH]: {
-    type: NetworkType.ZCASH,
-    name: 'Zcash',
+  [NetworkType.BASE]: {
+    type: NetworkType.BASE,
+    name: 'Base',
     averageFee: '$0.01',
-    confirmationTime: '2-10min',
-    priority: 4,
+    confirmationTime: '2-5s',
+    priority: 5,
+  },
+  [NetworkType.ARBITRUM]: {
+    type: NetworkType.ARBITRUM,
+    name: 'Arbitrum',
+    averageFee: '$0.10',
+    confirmationTime: '1-5s',
+    priority: 5,
   },
 };

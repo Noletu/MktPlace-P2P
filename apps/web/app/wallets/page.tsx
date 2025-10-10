@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import CryptoIcon from '@/components/ui/CryptoIcon';
+import { CryptoType, NetworkType, CRYPTO_SUPPORTED_NETWORKS } from '@mktplace/shared';
 
 interface Wallet {
   id: string;
@@ -15,9 +17,6 @@ interface Wallet {
 
 const CRYPTO_NAMES: Record<string, string> = {
   BTC: 'Bitcoin',
-  ETH: 'Ethereum',
-  XMR: 'Monero',
-  ZEC: 'Zcash',
   USDC: 'USD Coin',
   USDT: 'Tether',
 };
@@ -35,13 +34,11 @@ export default function WalletsPage() {
   const [address, setAddress] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const NETWORK_OPTIONS: Record<string, string[]> = {
-    BTC: ['BITCOIN'],
-    ETH: ['ETHEREUM'],
-    XMR: ['MONERO'],
-    ZEC: ['ZCASH'],
-    USDC: ['ETHEREUM', 'POLYGON', 'BSC', 'SOLANA'],
-    USDT: ['ETHEREUM', 'POLYGON', 'BSC', 'TRC20'],
+  // Use CRYPTO_SUPPORTED_NETWORKS do shared
+  const NETWORK_OPTIONS: Record<string, NetworkType[]> = {
+    BTC: CRYPTO_SUPPORTED_NETWORKS[CryptoType.BTC],
+    USDC: CRYPTO_SUPPORTED_NETWORKS[CryptoType.USDC],
+    USDT: CRYPTO_SUPPORTED_NETWORKS[CryptoType.USDT],
   };
 
   useEffect(() => {
@@ -55,8 +52,16 @@ export default function WalletsPage() {
 
   const fetchWallets = async () => {
     try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        router.push('/login');
+        return;
+      }
+
       const response = await fetch('http://localhost:3001/api/v1/wallets', {
-        credentials: 'include', // SECURITY: Envia cookies HttpOnly
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
 
       if (!response.ok) {
@@ -78,12 +83,18 @@ export default function WalletsPage() {
     setError('');
 
     try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        router.push('/login');
+        return;
+      }
+
       const response = await fetch('http://localhost:3001/api/v1/wallets', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
-        credentials: 'include', // SECURITY: Envia cookies HttpOnly
         body: JSON.stringify({
           crypto,
           network,
@@ -107,20 +118,36 @@ export default function WalletsPage() {
     }
   };
 
-  const handleDeleteWallet = async (walletId: string) => {
-    if (!confirm('Tem certeza que deseja desativar esta carteira?')) {
+  const handleDeleteWallet = async (walletId: string, permanent: boolean = false) => {
+    const message = permanent
+      ? 'Tem certeza que deseja DELETAR PERMANENTEMENTE esta carteira? Esta ação não pode ser desfeita!'
+      : 'Tem certeza que deseja desativar esta carteira?';
+
+    if (!confirm(message)) {
       return;
     }
 
     try {
-      const response = await fetch(`http://localhost:3001/api/v1/wallets/${walletId}`, {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        router.push('/login');
+        return;
+      }
+
+      const url = permanent
+        ? `http://localhost:3001/api/v1/wallets/${walletId}/permanent`
+        : `http://localhost:3001/api/v1/wallets/${walletId}`;
+
+      const response = await fetch(url, {
         method: 'DELETE',
-        credentials: 'include', // SECURITY: Envia cookies HttpOnly
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || 'Erro ao desativar carteira');
+        throw new Error(data.error || 'Erro ao deletar carteira');
       }
 
       await fetchWallets();
@@ -141,13 +168,13 @@ export default function WalletsPage() {
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">Minhas Carteiras</h1>
+          <h1 className="text-3xl font-bold">💳 Meus Endereços</h1>
           <div className="flex gap-4">
             <button
               onClick={() => setShowAddForm(!showAddForm)}
               className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors"
             >
-              {showAddForm ? 'Cancelar' : '+ Nova Carteira'}
+              {showAddForm ? 'Cancelar' : '+ Novo Endereço'}
             </button>
             <button
               onClick={() => router.push('/dashboard')}
@@ -167,40 +194,46 @@ export default function WalletsPage() {
         {/* Formulário Adicionar Carteira */}
         {showAddForm && (
           <div className="bg-white rounded-lg shadow-md p-8 mb-6">
-            <h2 className="text-2xl font-bold mb-6">Adicionar Nova Carteira</h2>
-            <form onSubmit={handleAddWallet} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Criptomoeda
-                  </label>
-                  <select
-                    value={crypto}
-                    onChange={(e) => setCrypto(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    {Object.entries(CRYPTO_NAMES).map(([key, name]) => (
-                      <option key={key} value={key}>
-                        {name} ({key})
-                      </option>
-                    ))}
-                  </select>
+            <h2 className="text-2xl font-bold mb-6">Adicionar Novo Endereço</h2>
+            <form onSubmit={handleAddWallet} className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Selecione a Criptomoeda
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  {Object.entries(CRYPTO_NAMES).map(([key, name]) => (
+                    <div
+                      key={key}
+                      onClick={() => setCrypto(key)}
+                      className={`flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition ${
+                        crypto === key
+                          ? 'border-blue-500 bg-blue-50 shadow-md'
+                          : 'border-gray-300 hover:border-blue-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <CryptoIcon crypto={key as CryptoType} size={28} />
+                      <div>
+                        <p className="font-semibold text-sm">{key}</p>
+                        <p className="text-xs text-gray-600">{name}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Rede</label>
-                  <select
-                    value={network}
-                    onChange={(e) => setNetwork(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    {NETWORK_OPTIONS[crypto].map((net) => (
-                      <option key={net} value={net}>
-                        {net}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Rede</label>
+                <select
+                  value={network}
+                  onChange={(e) => setNetwork(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  {NETWORK_OPTIONS[crypto].map((net) => (
+                    <option key={net} value={net}>
+                      {net}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -244,18 +277,29 @@ export default function WalletsPage() {
             {wallets.map((wallet) => (
               <div key={wallet.id} className="bg-white rounded-lg shadow-md p-6">
                 <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-xl font-bold">
-                      {CRYPTO_NAMES[wallet.crypto]} ({wallet.crypto})
-                    </h3>
-                    <p className="text-sm text-gray-600">{wallet.network}</p>
+                  <div className="flex items-center gap-3">
+                    <CryptoIcon crypto={wallet.crypto as CryptoType} size={32} />
+                    <div>
+                      <h3 className="text-xl font-bold">
+                        {CRYPTO_NAMES[wallet.crypto]} ({wallet.crypto})
+                      </h3>
+                      <p className="text-sm text-gray-600">{wallet.network}</p>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => handleDeleteWallet(wallet.id)}
-                    className="text-red-600 hover:text-red-700 font-semibold"
-                  >
-                    Desativar
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleDeleteWallet(wallet.id, false)}
+                      className="text-orange-600 hover:text-orange-700 font-semibold text-sm"
+                    >
+                      Desativar
+                    </button>
+                    <button
+                      onClick={() => handleDeleteWallet(wallet.id, true)}
+                      className="text-red-600 hover:text-red-700 font-semibold text-sm"
+                    >
+                      Deletar
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mb-4">

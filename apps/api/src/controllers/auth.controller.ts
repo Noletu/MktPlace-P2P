@@ -33,7 +33,9 @@ export class AuthController {
         success: true,
         data: {
           user: result.user,
-          // Tokens agora enviados via cookies seguros
+          // Tokens enviados via cookies E no JSON (para desenvolvimento/compatibilidade)
+          accessToken: result.token,
+          refreshToken: result.refreshToken,
         },
         message: 'Usuário registrado com sucesso',
       });
@@ -60,10 +62,11 @@ export class AuthController {
         return;
       }
 
-      // Não expor mensagens de erro internas
+      // DEBUG: Expor erro para desenvolvimento
+      console.error('❌ [AUTH] Registration error:', error);
       res.status(400).json({
         success: false,
-        error: 'Erro ao registrar usuário',
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Erro ao registrar usuário',
       });
     }
   }
@@ -95,7 +98,9 @@ export class AuthController {
         success: true,
         data: {
           user: result.user,
-          // Tokens agora enviados via cookies seguros
+          // Tokens enviados via cookies E no JSON (para desenvolvimento/compatibilidade)
+          accessToken: result.token,
+          refreshToken: result.refreshToken,
         },
         message: 'Login realizado com sucesso',
       });
@@ -200,6 +205,60 @@ export class AuthController {
       res.status(500).json({
         success: false,
         error: 'Erro ao fazer logout',
+      });
+    }
+  }
+
+  // Verificar se email está disponível
+  async checkEmail(req: Request, res: Response): Promise<void> {
+    try {
+      const { email } = req.query;
+
+      if (!email || typeof email !== 'string') {
+        res.status(400).json({
+          success: false,
+          error: 'Email é obrigatório',
+        });
+        return;
+      }
+
+      const existingUser = await authService.getUserByEmail(email);
+
+      res.json({
+        success: true,
+        available: !existingUser,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: 'Erro ao verificar email',
+      });
+    }
+  }
+
+  // Verificar se CPF está disponível
+  async checkCpf(req: Request, res: Response): Promise<void> {
+    try {
+      const { cpf } = req.query;
+
+      if (!cpf || typeof cpf !== 'string') {
+        res.status(400).json({
+          success: false,
+          error: 'CPF é obrigatório',
+        });
+        return;
+      }
+
+      const existingUser = await authService.getUserByCpf(cpf);
+
+      res.json({
+        success: true,
+        available: !existingUser,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: 'Erro ao verificar CPF',
       });
     }
   }

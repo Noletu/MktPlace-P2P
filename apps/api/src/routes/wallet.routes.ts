@@ -13,6 +13,9 @@ router.post('/', walletController.createWallet.bind(walletController));
 // Listar carteiras do usuário
 router.get('/', walletController.getUserWallets.bind(walletController));
 
+// Deletar carteira permanentemente (deve vir ANTES do /:walletId genérico)
+router.delete('/:walletId/permanent', walletController.deleteWallet.bind(walletController));
+
 // Obter carteira específica
 router.get('/:walletId', walletController.getWallet.bind(walletController));
 

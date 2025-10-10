@@ -188,6 +188,112 @@ export class TransactionController {
       });
     }
   }
+
+  /**
+   * Histórico completo com filtros
+   */
+  async getTransactionHistory(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Não autorizado',
+        });
+      }
+
+      const { status, startDate, endDate, type, limit, offset } = req.query;
+
+      const result = await transactionService.getTransactionHistory({
+        userId,
+        status: status as string,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
+        type: type as string,
+        limit: limit ? parseInt(limit as string) : 50,
+        offset: offset ? parseInt(offset as string) : 0,
+      });
+
+      res.json({
+        success: true,
+        data: {
+          transactions: result.transactions,
+          total: result.total,
+          limit: limit ? parseInt(limit as string) : 50,
+          offset: offset ? parseInt(offset as string) : 0,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar histórico',
+      });
+    }
+  }
+
+  /**
+   * Estatísticas de transações
+   */
+  async getTransactionStats(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Não autorizado',
+        });
+      }
+
+      const { startDate, endDate } = req.query;
+
+      const stats = await transactionService.getTransactionStats(userId, {
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
+      });
+
+      res.json({
+        success: true,
+        data: stats,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar estatísticas',
+      });
+    }
+  }
+
+  /**
+   * Timeline de atividades
+   */
+  async getActivityTimeline(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Não autorizado',
+        });
+      }
+
+      const { limit } = req.query;
+
+      const timeline = await transactionService.getActivityTimeline(
+        userId,
+        limit ? parseInt(limit as string) : 20
+      );
+
+      res.json({
+        success: true,
+        data: timeline,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar timeline',
+      });
+    }
+  }
 }
 
 export const transactionController = new TransactionController();

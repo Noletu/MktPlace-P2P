@@ -33,8 +33,11 @@ export default function ProfilePage() {
     const fetchData = async () => {
       try {
         // Buscar perfil do usuário
+        const token = localStorage.getItem('accessToken');
         const profileRes = await fetch('http://localhost:3001/api/v1/auth/me', {
-          credentials: 'include', // SECURITY: Envia cookies HttpOnly
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         });
 
         if (!profileRes.ok) {
@@ -42,11 +45,22 @@ export default function ProfilePage() {
         }
 
         const profileData = await profileRes.json();
-        setProfile(profileData.data);
+        const userData = profileData.data;
+
+        // Se for ADMIN ou MASTER, redirecionar para dashboard admin
+        if (userData.role === 'ADMIN' || userData.role === 'MASTER') {
+          console.log('Redirecionando para dashboard admin...');
+          router.push('/admin');
+          return;
+        }
+
+        setProfile(userData);
 
         // Buscar status KYC
         const kycRes = await fetch('http://localhost:3001/api/v1/kyc/status', {
-          credentials: 'include', // SECURITY: Envia cookies HttpOnly
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         });
 
         if (!kycRes.ok) {
