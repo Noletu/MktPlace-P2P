@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import ChatWindow from '@/components/chat/ChatWindow';
 
 interface Order {
   id: string;
@@ -52,6 +53,10 @@ export default function OrderDetailsPage() {
   const [proofImage, setProofImage] = useState<string>('');
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [confirmingReceived, setConfirmingReceived] = useState(false);
+  const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
 
   useEffect(() => {
     fetchOrder();
@@ -181,6 +186,87 @@ export default function OrderDetailsPage() {
       await fetchOrder();
     } catch (err: any) {
       alert(err.message);
+    }
+  };
+
+  const handleConfirmPaymentReceived = async () => {
+    if (!confirm('Você confirma que recebeu o pagamento? Esta ação liberará a criptomoeda para o comprador.')) {
+      return;
+    }
+
+    setConfirmingReceived(true);
+    setError('');
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('Você precisa estar logado');
+      }
+
+      const transaction = order?.transactions[0];
+      if (!transaction) {
+        throw new Error('Transação não encontrada');
+      }
+
+      const response = await fetch(`http://localhost:3001/api/v1/transactions/${transaction.id}/confirm-received`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao confirmar recebimento');
+      }
+
+      alert('✅ Pagamento confirmado! A criptomoeda foi liberada.');
+      await fetchOrder();
+    } catch (err: any) {
+      setError(err.message);
+      alert(err.message);
+    } finally {
+      setConfirmingReceived(false);
+    }
+  };
+
+  const handleConfirmPaymentMade = async () => {
+    setConfirmingPayment(true);
+    setError('');
+    setShowPaymentConfirmModal(false);
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('Você precisa estar logado');
+      }
+
+      const transaction = order?.transactions[0];
+      if (!transaction) {
+        throw new Error('Transação não encontrada');
+      }
+
+      const response = await fetch(`http://localhost:3001/api/v1/transactions/${transaction.id}/confirm-payment-made`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao confirmar pagamento');
+      }
+
+      alert('✅ Pagamento confirmado! Agora você pode enviar o comprovante.');
+      await fetchOrder();
+    } catch (err: any) {
+      setError(err.message);
+      alert(err.message);
+    } finally {
+      setConfirmingPayment(false);
     }
   };
 
@@ -556,6 +642,38 @@ export default function OrderDetailsPage() {
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="font-bold mb-4">Ações</h3>
               <div className="space-y-2">
+                {/* Chat - Disponível após MATCHED */}
+                {(order.status === 'MATCHED' || order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
+                  <button
+                    onClick={() => setShowChat(true)}
+                    className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg"
+                  >
+                    💬 Abrir Chat
+                  </button>
+                )}
+
+                {/* Confirmar Pagamento Feito - Pagador no status MATCHED */}
+                {!isCreator && order.status === 'MATCHED' && (
+                  <button
+                    onClick={() => setShowPaymentConfirmModal(true)}
+                    disabled={confirmingPayment}
+                    className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg disabled:opacity-50"
+                  >
+                    {confirmingPayment ? 'Confirmando...' : '✅ Confirmo Pagamento Feito'}
+                  </button>
+                )}
+
+                {/* Confirmar Pagamento Recebido - Vendedor após comprovante enviado */}
+                {isCreator && (order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
+                  <button
+                    onClick={handleConfirmPaymentReceived}
+                    disabled={confirmingReceived}
+                    className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg disabled:opacity-50"
+                  >
+                    {confirmingReceived ? 'Confirmando...' : '✅ Confirmar Pagamento Recebido'}
+                  </button>
+                )}
+
                 {/* Cancelar Pedido - Disponível para criador em status PENDING ou MATCHED (antes do pagamento) */}
                 {isCreator && (order.status === 'PENDING' || order.status === 'MATCHED') && (
                   <div>
@@ -584,6 +702,45 @@ export default function OrderDetailsPage() {
             </div>
           </div>
         </div>
+
+        {/* Modal de Confirmação de Pagamento */}
+        {showPaymentConfirmModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full">
+              <h3 className="text-xl font-bold mb-4">⚠️ Confirmar Pagamento</h3>
+              <p className="text-gray-700 mb-6">
+                Tem certeza que o pagamento já foi feito? Essa operação não poderá ser desfeita.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowPaymentConfirmModal(false)}
+                  className="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold rounded-lg"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleConfirmPaymentMade}
+                  disabled={confirmingPayment}
+                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg disabled:opacity-50"
+                >
+                  {confirmingPayment ? 'Confirmando...' : 'Sim, Confirmar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Chat */}
+        {showChat && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="w-full max-w-2xl h-[600px]">
+              <ChatWindow
+                orderId={orderId}
+                onClose={() => setShowChat(false)}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

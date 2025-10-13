@@ -15,8 +15,8 @@ class OrderExpirationWorker {
     console.log('🚀 Starting order expiration worker...');
     this.isRunning = true;
 
-    // Verificar a cada hora
-    this.interval = setInterval(() => this.checkExpiredOrders(), 60 * 60 * 1000);
+    // Verificar a cada 1 minuto (para timeout de 30min ser preciso)
+    this.interval = setInterval(() => this.checkExpiredOrders(), 60 * 1000);
 
     // Primeira execução imediata
     await this.checkExpiredOrders();
@@ -35,15 +35,20 @@ class OrderExpirationWorker {
     try {
       console.log('🔍 Checking for expired orders...');
 
-      // Buscar pedidos expirados
+      // Buscar pedidos expirados (PENDING ou MATCHED)
       const expiredOrders = await prisma.order.findMany({
         where: {
-          status: 'PENDING',
+          status: {
+            in: ['PENDING', 'MATCHED'],
+          },
           timeoutAt: {
             lt: new Date(), // Menor que agora
             not: null, // Não null (pedidos com timeout definido)
           },
           manualCancelOnly: false, // Não é só cancelamento manual
+        },
+        include: {
+          transactions: true, // Incluir transações para pedidos MATCHED
         },
       });
 
@@ -68,6 +73,39 @@ class OrderExpirationWorker {
     try {
       const orderData = JSON.parse(order.orderData);
 
+      // MATCHED orders: return to marketplace
+      if (order.status === 'MATCHED') {
+        console.log(`⏰ MATCHED order expired: ${order.id} - Returning to marketplace`);
+
+        // Resetar timeout para 24 horas (disponível novamente no marketplace)
+        const newTimeout = new Date();
+        newTimeout.setHours(newTimeout.getHours() + 24);
+
+        // Retornar para PENDING
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: 'PENDING',
+            timeoutAt: newTimeout,
+          },
+        });
+
+        // Deletar transações associadas
+        if (order.transactions && order.transactions.length > 0) {
+          const transactionIds = order.transactions.map((t: any) => t.id);
+          await prisma.transaction.deleteMany({
+            where: {
+              id: { in: transactionIds },
+            },
+          });
+          console.log(`🗑️ Deleted ${transactionIds.length} transaction(s) for order ${order.id}`);
+        }
+
+        console.log(`✅ Order ${order.id} returned to PENDING - Available in marketplace again`);
+        return;
+      }
+
+      // PENDING orders: cancel definitively
       let cancelReason = '';
 
       if (order.type === 'BOLETO') {
