@@ -12,6 +12,8 @@ export default function RegisterForm() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [countdown, setCountdown] = useState(3);
 
   // Validações em tempo real
   const [emailValid, setEmailValid] = useState<boolean | null>(null);
@@ -98,15 +100,26 @@ export default function RegisterForm() {
 
       // Salvar token e usuário
       if (data.data.accessToken) {
-        localStorage.setItem('token', data.data.accessToken);
+        localStorage.setItem('accessToken', data.data.accessToken);
       }
       if (data.data.refreshToken) {
         localStorage.setItem('refreshToken', data.data.refreshToken);
       }
       localStorage.setItem('user', JSON.stringify(data.data.user));
 
-      // Redirecionar para dashboard (KYC é opcional)
-      router.push('/dashboard');
+      // Mostrar mensagem de sucesso
+      setSuccess(true);
+
+      // Countdown e redirect
+      let counter = 3;
+      const interval = setInterval(() => {
+        counter--;
+        setCountdown(counter);
+        if (counter === 0) {
+          clearInterval(interval);
+          router.push('/dashboard');
+        }
+      }, 1000);
     } catch (err: any) {
       if (err.message === 'Failed to fetch') {
         setError('❌ Não foi possível conectar à API. Verifique se o servidor está rodando em http://localhost:3001');
@@ -119,6 +132,46 @@ export default function RegisterForm() {
       setLoading(false);
     }
   };
+
+  // Renderizar card de sucesso
+  if (success) {
+    return (
+      <div className="w-full max-w-md animate-fade-in">
+        <div className="p-8 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-400 rounded-lg shadow-lg">
+          <div className="text-center">
+            <div className="mb-4">
+              <span className="text-6xl">✅</span>
+            </div>
+            <h2 className="text-3xl font-bold text-green-800 mb-2">
+              Conta criada com sucesso!
+            </h2>
+            <p className="text-xl text-green-700 mb-4">
+              Bem-vindo(a), <strong>{formData.name || formData.email.split('@')[0]}</strong>!
+            </p>
+            <div className="p-4 bg-white/70 rounded-lg mb-4">
+              <p className="text-gray-700 mb-2">
+                🎉 Você já pode começar a usar a plataforma!
+              </p>
+              <p className="text-sm text-gray-600">
+                Seu limite inicial é de <strong>R$ 1.000/dia</strong>
+              </p>
+            </div>
+            <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <p className="text-blue-800 font-semibold mb-2">
+                Redirecionando para o dashboard em...
+              </p>
+              <p className="text-5xl font-bold text-blue-600 animate-pulse">
+                {countdown}
+              </p>
+            </div>
+            <p className="text-xs text-gray-500 mt-4">
+              Aguarde ou será redirecionado automaticamente
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 w-full max-w-md">

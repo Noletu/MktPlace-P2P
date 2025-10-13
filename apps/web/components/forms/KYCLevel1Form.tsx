@@ -37,7 +37,7 @@ export default function KYCLevel1Form() {
     setError('');
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       if (!token) {
         throw new Error('Você precisa fazer login novamente');
       }

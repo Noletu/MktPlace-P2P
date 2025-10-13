@@ -57,7 +57,7 @@ export const loginSchema = z.object({
 export const registerSchema = z.object({
   email: z.string().email('Email inválido'),
   password: strongPasswordSchema, // SECURITY: Usar política de senha forte
-  name: z.string().min(2, 'Nome deve ter no mínimo 2 caracteres').optional(),
+  name: z.string().optional(),
 });
 
 // Order schemas
