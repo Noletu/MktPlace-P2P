@@ -22,6 +22,16 @@ interface UserProfile {
   createdAt: string;
 }
 
+interface KYCLevelData {
+  level: string;
+  name: string;
+  limit: string;
+  description: string;
+  completed: boolean;
+  isNext: boolean;
+  url: string;
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -98,60 +108,88 @@ export default function ProfilePage() {
     );
   }
 
-  const getKYCLevelInfo = (level: string) => {
-    switch (level) {
-      case 'NONE':
-        return {
-          name: 'Não verificado',
-          limit: 'R$ 0,00',
-          color: 'gray',
-          nextStep: 'Completar KYC Level 1',
-          nextUrl: '/kyc/level1',
-        };
-      case 'LEVEL_1':
-        return {
-          name: 'Level 1',
-          limit: 'R$ 500,00',
-          color: 'green',
-          nextStep: 'Completar KYC Level 2',
-          nextUrl: '/kyc/level2',
-        };
-      case 'LEVEL_2':
-        return {
-          name: 'Level 2',
-          limit: 'R$ 2.000,00',
-          color: 'blue',
-          nextStep: 'Completar KYC Level 3',
-          nextUrl: '/kyc/level3',
-        };
-      case 'LEVEL_3':
-        return {
-          name: 'Level 3',
-          limit: 'R$ 10.000,00',
-          color: 'purple',
-          nextStep: 'Completar KYC Level 4',
-          nextUrl: '/kyc/level4',
-        };
-      case 'LEVEL_4':
-        return {
-          name: 'Level 4 (Máximo)',
-          limit: 'Ilimitado',
-          color: 'yellow',
-          nextStep: null,
-          nextUrl: null,
-        };
-      default:
-        return {
-          name: 'Desconhecido',
-          limit: 'R$ 0,00',
-          color: 'gray',
-          nextStep: null,
-          nextUrl: null,
-        };
+  // Nova lógica de verificação de níveis KYC
+  const getKYCLevelsInfo = (currentLevel: string): {
+    currentLevelName: string;
+    currentLimit: string;
+    levels: KYCLevelData[];
+    allComplete: boolean;
+  } => {
+    const allLevels: KYCLevelData[] = [
+      {
+        level: 'LEVEL_1',
+        name: 'Level 1',
+        limit: 'R$ 10.000/dia',
+        description: 'Nome completo + CPF + Telefone',
+        completed: false,
+        isNext: false,
+        url: '/kyc/level1',
+      },
+      {
+        level: 'LEVEL_2',
+        name: 'Level 2',
+        limit: 'R$ 50.000/dia',
+        description: 'Endereço + Data de nascimento',
+        completed: false,
+        isNext: false,
+        url: '/kyc/level2',
+      },
+      {
+        level: 'LEVEL_3',
+        name: 'Level 3',
+        limit: 'R$ 100.000/dia',
+        description: 'Documento + Selfie',
+        completed: false,
+        isNext: false,
+        url: '/kyc/level3',
+      },
+      {
+        level: 'LEVEL_4',
+        name: 'Level 4',
+        limit: 'Ilimitado',
+        description: 'Comprovante de residência',
+        completed: false,
+        isNext: false,
+        url: '/kyc/level4',
+      },
+    ];
+
+    // Determinar índice do nível atual
+    const currentLevelIndex = allLevels.findIndex(l => l.level === currentLevel);
+
+    // Marcar níveis completados
+    allLevels.forEach((level, index) => {
+      if (currentLevel !== 'NONE' && index <= currentLevelIndex) {
+        level.completed = true;
+      }
+    });
+
+    // Marcar próximo nível a completar
+    const nextLevelIndex = currentLevel === 'NONE' ? 0 : currentLevelIndex + 1;
+    if (nextLevelIndex < allLevels.length) {
+      allLevels[nextLevelIndex].isNext = true;
     }
+
+    // Informações do nível atual
+    let currentLevelName = 'Não verificado';
+    let currentLimit = 'R$ 1.000/dia';
+
+    if (currentLevel !== 'NONE' && currentLevelIndex >= 0) {
+      currentLevelName = allLevels[currentLevelIndex].name;
+      currentLimit = allLevels[currentLevelIndex].limit;
+    }
+
+    const allComplete = currentLevel === 'LEVEL_4';
+
+    return {
+      currentLevelName,
+      currentLimit,
+      levels: allLevels,
+      allComplete,
+    };
   };
 
-  const kycInfo = getKYCLevelInfo(kycStatus?.kycLevel || 'NONE');
+  const kycInfo = getKYCLevelsInfo(kycStatus?.kycLevel || 'NONE');
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
@@ -183,30 +221,111 @@ export default function ProfilePage() {
 
         {/* Status KYC */}
         <div className="bg-white rounded-lg shadow-md p-8 mb-6">
-          <h2 className="text-2xl font-bold mb-4">Verificação KYC</h2>
-          <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold mb-6">Verificação KYC</h2>
+
+          {/* Resumo do nível atual */}
+          <div className="flex items-center justify-between mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
             <div>
-              <p className="text-sm text-gray-600">Nível Atual</p>
-              <p className="text-2xl font-bold text-blue-600">{kycInfo.name}</p>
+              <p className="text-sm text-gray-600 mb-1">Nível Atual</p>
+              <p className="text-3xl font-bold text-blue-600">{kycInfo.currentLevelName}</p>
             </div>
             <div className="text-right">
-              <p className="text-sm text-gray-600">Limite de Transação</p>
-              <p className="text-2xl font-bold text-green-600">{kycInfo.limit}</p>
+              <p className="text-sm text-gray-600 mb-1">Limite de Transação</p>
+              <p className="text-3xl font-bold text-green-600">{kycInfo.currentLimit}</p>
             </div>
           </div>
 
-          {kycInfo.nextStep && kycInfo.nextUrl && (
-            <button
-              onClick={() => router.push(kycInfo.nextUrl)}
-              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
-            >
-              {kycInfo.nextStep}
-            </button>
+          {/* Mensagem de todos completos */}
+          {kycInfo.allComplete && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
+              <span className="text-3xl">🎉</span>
+              <div>
+                <p className="font-bold text-green-800">Parabéns!</p>
+                <p className="text-green-700 text-sm">
+                  Você completou todos os níveis de verificação KYC!
+                </p>
+              </div>
+            </div>
           )}
 
-          {kycStatus?.kycLevel === 'LEVEL_4' && (
-            <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
-              ✓ Você completou todos os níveis de verificação KYC!
+          {/* Lista de níveis */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">
+              Níveis de Verificação:
+            </h3>
+
+            {kycInfo.levels.map((level) => (
+              <div
+                key={level.level}
+                className={`p-5 rounded-lg border-2 transition-all ${
+                  level.completed
+                    ? 'bg-green-50 border-green-300'
+                    : level.isNext
+                    ? 'bg-blue-50 border-blue-300'
+                    : 'bg-gray-50 border-gray-200'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  {/* Informações do nível */}
+                  <div className="flex items-center gap-4">
+                    {/* Badge de status */}
+                    <div className="flex-shrink-0">
+                      {level.completed ? (
+                        <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
+                          <span className="text-white text-2xl font-bold">✓</span>
+                        </div>
+                      ) : level.isNext ? (
+                        <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
+                          <span className="text-white text-xl font-bold">!</span>
+                        </div>
+                      ) : (
+                        <div className="w-12 h-12 bg-gray-300 rounded-full flex items-center justify-center">
+                          <span className="text-gray-500 text-2xl">○</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Detalhes */}
+                    <div>
+                      <h4 className="font-bold text-lg text-gray-900">{level.name}</h4>
+                      <p className="text-sm text-gray-600">{level.description}</p>
+                      <p className="text-sm font-semibold text-gray-700 mt-1">
+                        Limite: {level.limit}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Botão de ação */}
+                  <div>
+                    {level.completed ? (
+                      <span className="px-4 py-2 bg-green-100 text-green-700 font-semibold rounded-lg">
+                        ✓ Completo
+                      </span>
+                    ) : level.isNext ? (
+                      <button
+                        onClick={() => router.push(level.url)}
+                        className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors shadow-md hover:shadow-lg"
+                      >
+                        Completar Agora
+                      </button>
+                    ) : (
+                      <span className="px-4 py-2 bg-gray-200 text-gray-500 font-semibold rounded-lg cursor-not-allowed">
+                        Bloqueado
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Dica */}
+          {!kycInfo.allComplete && (
+            <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm text-yellow-800">
+                💡 <strong>Dica:</strong> Complete os níveis KYC em ordem para aumentar
+                seu limite de transação e acessar mais recursos da plataforma.
+              </p>
             </div>
           )}
         </div>
@@ -243,6 +362,7 @@ export default function ProfilePage() {
           <button
             onClick={() => {
               localStorage.removeItem('token');
+              localStorage.removeItem('accessToken');
               router.push('/login');
             }}
             className="flex-1 py-3 px-4 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors"

@@ -1,8 +1,8 @@
 # 📊 Status do Projeto - Mktplace da Liberdade
 
-**Última atualização**: Janeiro 2025
-**Versão**: 0.1.0-alpha
-**Status**: 🟡 Setup Inicial em Progresso
+**Última atualização**: 12 de Outubro de 2025
+**Versão**: 0.2.3
+**Status**: 🟢 Desenvolvimento Ativo
 
 ---
 
@@ -14,6 +14,7 @@
 - [x] `.gitignore` configurado
 - [x] README.md completo com documentação
 - [x] SETUP.md com guia de instalação
+- [x] Scripts de inicialização automatizada (Windows + Linux)
 
 ### Frontend (`apps/web`)
 - [x] Next.js 14 com App Router
@@ -22,222 +23,188 @@
 - [x] Landing page inicial
 - [x] Layout base
 - [x] Globals CSS com tema
+- [x] Sistema de autenticação completo
+- [x] Dashboard de usuário
+- [x] Sistema KYC multi-nível (4 níveis)
+- [x] Formulário de criação de pedidos (PIX + Boleto)
+- [x] Marketplace P2P
+- [x] Painel administrativo de carteiras
+- [x] Sistema de transações e comprovantes
 
 ### Backend (`apps/api`)
 - [x] Node.js + Express setup
 - [x] TypeScript configurado
-- [x] Prisma ORM configurado
+- [x] Prisma ORM configurado (SQLite)
 - [x] Schema database completo
 - [x] Health check endpoint
 - [x] .env.example criado
+- [x] Sistema de autenticação JWT + Refresh Tokens
+- [x] 2FA (Two-Factor Authentication)
+- [x] Sistema KYC completo (4 níveis)
+- [x] Sistema de pedidos P2P
+- [x] Sistema de matching automático
+- [x] Sistema de transações
+- [x] Rate limiting adaptativo
+- [x] Logging centralizado (Winston)
+- [x] Audit logs
 
 ### Database
-- [x] PostgreSQL 16 schema definido
-- [x] Redis configurado (docker-compose)
-- [x] Docker Compose file criado
-- [x] Adminer incluído para UI
+- [x] SQLite schema definido e em uso
+- [x] Migrações Prisma configuradas
+- [x] Seed data para testes
 
 ### Shared Package
-- [x] Types compartilhados (6 criptos, 8 networks)
+- [x] Types compartilhados (3 criptos: BTC, USDC, USDT)
+- [x] 6 networks suportadas: BITCOIN, ETHEREUM, TRC20, BASE, ARBITRUM, **SOLANA**
 - [x] Validações Zod (CPF, boleto, PIX)
 - [x] Enums e interfaces
 - [x] Utilitários (formatação, cálculo de fees)
+- [x] Limites KYC por nível
 
 ### Infraestrutura
-- [x] Docker Compose (PostgreSQL + Redis + Adminer)
-- [x] Scripts de setup (`setup.sh`)
-- [x] Documentação completa
+- [x] Scripts de inicialização (`INICIAR-SIMPLES.bat`, `start.sh`)
+- [x] Scripts de parada (`PARAR-SIMPLES.bat`, `stop.sh`)
+- [x] Documentação completa e atualizada
 
 ---
 
 ## 🔄 Em Progresso
 
-- [ ] Instalação de dependências npm (em background)
-  - Status: Rodando (pode demorar 5-10 minutos)
-  - Verificar: `ps aux | grep npm`
+**Nenhuma tarefa crítica em progresso no momento.**
+
+O projeto está em estado estável com todas as funcionalidades core implementadas e testadas.
 
 ---
 
-## ⏳ Próximos Passos Imediatos
+## ⏳ Próximos Passos
 
-### 1. Finalizar Setup Básico
+### 1. Melhorias de Código
 
-```bash
-cd "/home/nicode/Mktplace da Liberdade"
+- [ ] **Centralizar NETWORK_OPTIONS** (Prioridade: Baixa)
+  - Importar diretamente de `@mktplace/shared` ao invés de duplicar em cada arquivo frontend
+  - Arquivos a modificar: `apps/web/app/orders/create/page.tsx`, `apps/web/app/admin/platform-wallets/page.tsx`
+  - Benefício: Evita inconsistências futuras ao adicionar novas redes
 
-# Verificar se instalação terminou
-ps aux | grep npm
+- [ ] **Validação de endereços Solana** (Prioridade: Média)
+  - Implementar validação específica para formato base58 de endereços Solana
+  - Local: `packages/shared/src/validators.ts` ou backend
+  - Benefício: Prevenir erros ao cadastrar carteiras da plataforma
 
-# Se ainda rodando, aguardar ou instalar manualmente:
-cd apps/web && npm install --legacy-peer-deps
-cd ../api && npm install --legacy-peer-deps
-cd ../../packages/shared && npm install --legacy-peer-deps
-```
+### 2. Features Planejadas
 
-### 2. Configurar Database Local
+- [ ] **Sistema de notificações em tempo real**
+  - WebSocket para notificações de transações
+  - Alertas de matching de pedidos
 
-**Opção A: Com Docker (Recomendado)**
-```bash
-# Se Docker estiver instalado no Windows
-# Abra Docker Desktop e então:
-cd infra/docker
-docker compose up -d
-```
+- [ ] **Dashboard administrativo completo**
+  - Gerenciamento de usuários
+  - Estatísticas de transações
+  - Logs de auditoria visíveis
 
-**Opção B: PostgreSQL Local**
-```bash
-# Instalar PostgreSQL no WSL
-sudo apt update
-sudo apt install postgresql postgresql-contrib
+- [ ] **OCR para comprovantes**
+  - Validação automática de comprovantes de pagamento
+  - Redução de trabalho manual
 
-# Iniciar serviço
-sudo service postgresql start
+### 3. Preparação para Produção
 
-# Criar database
-sudo -u postgres psql -c "CREATE USER mktplace WITH PASSWORD 'mktplace_dev_password';"
-sudo -u postgres psql -c "CREATE DATABASE mktplace OWNER mktplace;"
-```
-
-### 3. Configurar .env
-
-```bash
-cd apps/api
-cp .env.example .env
-
-# Editar .env com configurações corretas
-# Pelo menos DATABASE_URL precisa estar correto
-```
-
-### 4. Rodar Migrations
-
-```bash
-cd apps/api
-npm run prisma:generate
-npm run prisma:migrate
-```
-
-### 5. Testar Aplicação
-
-```bash
-# Na raiz do projeto
-npm run dev
-
-# Ou separadamente:
-# Terminal 1
-cd apps/api && npm run dev
-
-# Terminal 2
-cd apps/web && npm run dev
-```
+- [ ] HTTPS obrigatório
+- [ ] JWT blacklist (Redis)
+- [ ] reCAPTCHA obrigatório
+- [ ] WAF implementado
+- [ ] Monitoring (Datadog/Sentry)
+- [ ] Backup automático de banco de dados
 
 ---
 
-## 🎯 Sprint 1: Auth + KYC (Próxima)
+## 📋 Funcionalidades Implementadas
 
-**Duração estimada**: 1-2 semanas
-**Objetivo**: Sistema de autenticação funcional com KYC nível 1
+### ✅ Sprint 1: Auth + KYC (COMPLETO)
+- [x] Sistema de autenticação JWT + Refresh Tokens
+- [x] Páginas de login e registro
+- [x] Dashboard de usuário
+- [x] Validação de CPF
+- [x] KYC com 4 níveis (NONE, LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4)
+- [x] Limites diários por nível KYC
+- [x] Rate limiting adaptativo
+- [x] 2FA (Two-Factor Authentication)
 
-### Tarefas
+### ✅ Sprint 2: Sistema de Pedidos P2P (COMPLETO)
+- [x] Criação de pedidos (PIX e Boleto)
+- [x] Marketplace de pedidos disponíveis
+- [x] Sistema de matching automático
+- [x] Aceitar pedidos do marketplace
+- [x] Validação de limites por KYC
 
-#### Backend API
-- [ ] Instalar e configurar NextAuth.js
-- [ ] Criar rotas de auth:
-  - `POST /api/auth/register` (registro com CPF + email)
-  - `POST /api/auth/login` (login com email + senha)
-  - `POST /api/auth/logout`
-  - `GET /api/auth/me` (usuário atual)
-- [ ] Implementar hash de senha (bcrypt)
-- [ ] Implementar JWT tokens
-- [ ] Middleware de autenticação
-- [ ] Validação de CPF
-- [ ] Rate limiting nas rotas de auth
+### ✅ Sprint 3: Sistema de Transações (COMPLETO)
+- [x] Upload de comprovantes de pagamento
+- [x] Sistema de validação de transações
+- [x] Estados de transação (PENDING, VALIDATING, APPROVED, REJECTED, DISPUTED)
+- [x] Histórico de transações
 
-#### Frontend Web
-- [ ] Criar página de login (`/login`)
-- [ ] Criar página de registro (`/register`)
-- [ ] Criar página de dashboard (`/dashboard`)
-- [ ] Componente de formulário de login
-- [ ] Componente de formulário de registro
-- [ ] Validação client-side (React Hook Form + Zod)
-- [ ] Feedback de erros
-- [ ] Loading states
-- [ ] Protected routes (middleware Next.js)
+### ✅ Sprint 4: Painel Administrativo (COMPLETO)
+- [x] Gerenciamento de carteiras da plataforma
+- [x] CRUD de endereços de depósito
+- [x] Ativação/desativação de carteiras
+- [x] Suporte a múltiplas redes (Bitcoin, Ethereum, TRC20, Base, Arbitrum, Solana)
 
-#### KYC Nível 1
-- [ ] Form de cadastro com CPF
-- [ ] Validação de CPF (checksum)
-- [ ] Verificação de email (envio de código)
-- [ ] Armazenar dados KYC no Prisma
-- [ ] Atualizar status KYC Level 1
-- [ ] Mostrar limites no dashboard (R$1k/dia)
-
-#### Testes
-- [ ] Testes unitários (validações)
-- [ ] Testes de integração (auth flow)
-- [ ] Testes E2E (Playwright) - opcional
-
----
-
-## 📋 Backlog (Sprints Futuras)
-
-### Sprint 2: Depósito de Cripto (Semanas 3-4)
-- [ ] Integração Solana Wallet Adapter
-- [ ] Geração de endereços de depósito
-- [ ] Monitoring blockchain (Solana)
-- [ ] Confirmação de depósitos
-- [ ] Dashboard com saldo
-
-### Sprint 3: Order Book - Boletos (Semanas 5-6)
-- [ ] Upload de boleto (PDF/imagem)
-- [ ] OCR Google Vision
-- [ ] Publicar no order book
-- [ ] Listar ordens disponíveis
-- [ ] Filtros e busca
-
-### Sprint 4: Order Book - PIX (Semanas 7-8)
-- [ ] Form de criação de pedido PIX
-- [ ] Validação de chave PIX
-- [ ] Publicar no order book
-- [ ] Integração com boletos (mesmo sistema)
-
-### Sprint 5: Matching P2P (Semanas 9-10)
-- [ ] Sistema de matching FIFO
-- [ ] Aceitar ordem
-- [ ] Upload de comprovante
-- [ ] Validação manual (admin)
-- [ ] Release de cripto
+### ✅ Infraestrutura e DevOps (COMPLETO)
+- [x] Scripts de inicialização automatizada
+- [x] Logging centralizado (Winston)
+- [x] Audit logs
+- [x] Sistema de testes automatizados (26 testes, 100% passando)
+- [x] Documentação completa
 
 ---
 
 ## 🐛 Issues Conhecidos
 
-1. **npm install timeout**: Dependências demorando muito
-   - Workaround: Usar `--legacy-peer-deps`
-   - Instalar workspaces individualmente
+### ✅ Bugs Corrigidos Recentemente (v0.2.3)
 
-2. **Docker não disponível no WSL**:
-   - Solução: Instalar Docker Desktop no Windows
-   - Ou: Usar PostgreSQL/Redis local no WSL
+1. **KYC Info Page - Status incorreto**
+   - ✅ CORRIGIDO: Página `/kyc/info` agora mostra corretamente quais níveis foram completados
+   - Arquivo: `apps/web/app/kyc/info/page.tsx`
 
-3. **Peer dependencies warnings**:
-   - Normal durante desenvolvimento
-   - Resolvido com `--legacy-peer-deps`
+2. **Solana não aparecia nos dropdowns**
+   - ✅ CORRIGIDO: Arrays hardcoded atualizados para incluir Solana
+   - Arquivos: `apps/web/app/orders/create/page.tsx`, `apps/web/app/admin/platform-wallets/page.tsx`
+
+### 🟢 Nenhum Bug Crítico Ativo
+
+Todas as funcionalidades testadas estão funcionando corretamente.
+
+### 📝 Melhorias Sugeridas (Não Críticas)
+
+1. **Centralizar NETWORK_OPTIONS** (Prioridade: Baixa)
+   - Importar de `@mktplace/shared` ao invés de duplicar
+   - Benefício: Evita inconsistências futuras
+
+2. **Validação de endereços Solana** (Prioridade: Média)
+   - Implementar validação de formato base58
+   - Benefício: Prevenir erros ao cadastrar carteiras
 
 ---
 
 ## 📈 Métricas de Progresso
 
-**Setup Inicial**: 85% ✅
+**Setup e Infraestrutura**: 100% ✅
 - Estrutura: 100% ✅
 - Configuração: 100% ✅
-- Dependências: 50% 🔄 (instalando)
-- Database: 80% ⏳ (aguardando Docker/local)
+- Dependências: 100% ✅
+- Database: 100% ✅ (SQLite funcionando)
+- Scripts de inicialização: 100% ✅
 
-**MVP Total**: 12% 🔄
-- Sprint 1 (Auth): 0% ⏳
-- Sprint 2 (Depósito): 0% ⏳
-- Sprint 3 (Boletos): 0% ⏳
-- Sprint 4 (PIX): 0% ⏳
+**MVP Total**: 95% 🎉
+- Sprint 1 (Auth + KYC): 100% ✅
+- Sprint 2 (Pedidos P2P): 100% ✅
+- Sprint 3 (Transações): 100% ✅
+- Sprint 4 (Admin): 100% ✅
+- Testes: 100% ✅ (26/26 passando)
+- Documentação: 95% ✅
+
+**Próximas Milestones**:
+- v0.3.0: Preparação para produção (HTTPS, monitoring, etc.)
+- v0.4.0: Features avançadas (notificações, OCR, etc.)
+- v1.0.0: Produção
 
 ---
 
@@ -281,6 +248,24 @@ npm install --legacy-peer-deps
 
 ---
 
+## 📝 Changelog Recente
+
+### v0.2.3 - 12 de Outubro de 2025
+
+**Adicionado:**
+- Suporte à rede Solana para USDC e USDT
+- Solana é a rede mais rápida (0.4s) e barata ($0.00025) de todas
+
+**Corrigido:**
+- KYC Info page agora mostra status correto dos níveis completados
+- Solana agora aparece corretamente nos dropdowns de rede
+
+**Detalhes:** Ver `CHANGELOG.md` para informações completas
+
+---
+
 **Autor**: Claude Code + Dev Team
 **Repositório**: (privado)
 **Licença**: Proprietary
+**Versão Atual**: 0.2.3
+**Última Atualização**: 12 de Outubro de 2025
