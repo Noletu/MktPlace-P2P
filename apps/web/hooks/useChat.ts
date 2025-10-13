@@ -38,7 +38,7 @@ export function useChat(chatId?: string) {
 
   // Conectar ao WebSocket
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('accessToken');
     if (!token) return;
 
     const newSocket = io('http://localhost:3001', {
@@ -96,7 +96,7 @@ export function useChat(chatId?: string) {
     if (!chatId) return;
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       const response = await fetch(`http://localhost:3001/api/v1/chat/${chatId}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });

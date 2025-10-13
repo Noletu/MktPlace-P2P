@@ -20,7 +20,7 @@ export function useNotifications() {
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       if (!token) return;
 
       const response = await fetch('http://localhost:3001/api/v1/notifications?limit=20', {
@@ -43,7 +43,7 @@ export function useNotifications() {
 
   const fetchUnreadCount = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       if (!token) return;
 
       const response = await fetch('http://localhost:3001/api/v1/notifications/unread-count', {
@@ -63,7 +63,7 @@ export function useNotifications() {
 
   const markAsRead = useCallback(async (notificationId: string) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       if (!token) return;
 
       const response = await fetch(`http://localhost:3001/api/v1/notifications/${notificationId}/read`, {
@@ -83,7 +83,7 @@ export function useNotifications() {
 
   const markAllAsRead = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('accessToken');
       if (!token) return;
 
       const response = await fetch('http://localhost:3001/api/v1/notifications/mark-all-read', {
