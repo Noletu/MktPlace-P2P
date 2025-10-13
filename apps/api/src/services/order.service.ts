@@ -318,9 +318,14 @@ export class OrderService {
       }
 
       // Atualizar pedido para MATCHED dentro da transação
+      // TIMEOUT: 30 minutos para pagamento ser confirmado
+      const timeout = new Date(Date.now() + 30 * 60 * 1000); // 30 minutos
       const updatedOrder = await tx.order.update({
         where: { id: orderId },
-        data: { status: OrderStatus.MATCHED },
+        data: {
+          status: OrderStatus.MATCHED,
+          timeoutAt: timeout,
+        },
       });
 
       // Criar transação dentro da mesma transação atômica

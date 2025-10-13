@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { transactionService } from '../services/transaction.service';
 import { z } from 'zod';
+import { PrismaClient } from '@prisma/client';
 
 const SubmitProofSchema = z.object({
   transactionId: z.string(),
@@ -291,6 +292,125 @@ export class TransactionController {
       res.status(500).json({
         success: false,
         error: error.message || 'Erro ao buscar timeline',
+      });
+    }
+  }
+
+  /**
+   * Vendedor confirma que recebeu o pagamento
+   * Isso aprova automaticamente a transação
+   */
+  async confirmPaymentReceived(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { transactionId } = req.params;
+
+      // Buscar transação com pedido
+      const transaction = await transactionService.getTransactionById(transactionId);
+
+      if (!transaction) {
+        return res.status(404).json({ error: 'Transação não encontrada' });
+      }
+
+      // SECURITY: Verificar se usuário é o vendedor (dono do pedido)
+      if (transaction.order.userId !== userId) {
+        return res.status(403).json({
+          error: 'Apenas o vendedor pode confirmar o recebimento do pagamento',
+        });
+      }
+
+      // Verificar se transação está em estado válido para confirmação
+      if (transaction.status !== 'VALIDATING') {
+        return res.status(400).json({
+          error: 'Esta transação não está aguardando confirmação de recebimento',
+        });
+      }
+
+      // Aprovar a transação
+      const updatedTransaction = await transactionService.validateProof({
+        transactionId,
+        validatedBy: userId,
+        approved: true,
+        validationScore: 100,
+      });
+
+      res.json({
+        success: true,
+        data: updatedTransaction,
+        message: 'Pagamento confirmado! A criptomoeda foi liberada.',
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Erro ao confirmar recebimento',
+      });
+    }
+  }
+
+  /**
+   * Pagador confirma que o pagamento foi feito
+   * Isso muda o status do pedido para PAYMENT_SENT
+   */
+  async confirmPaymentMade(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { transactionId } = req.params;
+
+      // Buscar transação com pedido
+      const transaction = await transactionService.getTransactionById(transactionId);
+
+      if (!transaction) {
+        return res.status(404).json({ error: 'Transação não encontrada' });
+      }
+
+      // SECURITY: Verificar se usuário é o pagador
+      if (transaction.payerId !== userId) {
+        return res.status(403).json({
+          error: 'Apenas o pagador pode confirmar que o pagamento foi feito',
+        });
+      }
+
+      // Verificar se transação está em estado válido (deve estar PENDING)
+      if (transaction.status !== 'PENDING') {
+        return res.status(400).json({
+          error: 'Esta transação não está aguardando confirmação de pagamento',
+        });
+      }
+
+      // Verificar se o pedido está MATCHED
+      if (transaction.order.status !== 'MATCHED') {
+        return res.status(400).json({
+          error: 'O pedido não está no status correto para confirmar pagamento',
+        });
+      }
+
+      // Atualizar o status do pedido para PAYMENT_SENT
+      const prisma = new PrismaClient();
+      await prisma.order.update({
+        where: { id: transaction.orderId },
+        data: {
+          status: 'PAYMENT_SENT',
+        },
+      });
+
+      // Buscar pedido atualizado
+      const updatedTransaction = await transactionService.getTransactionById(transactionId);
+
+      res.json({
+        success: true,
+        data: updatedTransaction,
+        message: 'Pagamento confirmado! Envie o comprovante para continuar.',
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Erro ao confirmar pagamento',
       });
     }
   }

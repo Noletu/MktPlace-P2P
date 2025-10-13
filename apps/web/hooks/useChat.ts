@@ -7,6 +7,8 @@ export interface ChatMessage {
   senderId: string;
   message: string;
   type: string;
+  attachmentUrl?: string;
+  attachmentType?: string;
   createdAt: string;
   sender: {
     id: string;
@@ -111,12 +113,15 @@ export function useChat(chatId?: string) {
     }
   }, [chatId]);
 
-  const sendMessage = useCallback((message: string) => {
-    if (!socket || !chatId || !message.trim()) return;
+  const sendMessage = useCallback((message: string, attachment?: { url: string; type: string }) => {
+    if (!socket || !chatId) return;
+    if (!message.trim() && !attachment) return;
 
     socket.emit('message:send', {
       chatId,
-      message: message.trim(),
+      message: message.trim() || '📎 Anexo',
+      attachmentUrl: attachment?.url,
+      attachmentType: attachment?.type,
     });
 
     stopTyping();

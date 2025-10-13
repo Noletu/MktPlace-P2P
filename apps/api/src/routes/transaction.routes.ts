@@ -32,4 +32,10 @@ router.post('/:transactionId/validate', transactionController.validateProof.bind
 // SECURITY: Criar disputa com rate limiting
 router.post('/:transactionId/dispute', disputeLimiter, transactionController.createDispute.bind(transactionController));
 
+// Vendedor confirmar recebimento de pagamento
+router.post('/:transactionId/confirm-received', transactionController.confirmPaymentReceived.bind(transactionController));
+
+// Pagador confirmar que o pagamento foi feito
+router.post('/:transactionId/confirm-payment-made', transactionController.confirmPaymentMade.bind(transactionController));
+
 export default router;
