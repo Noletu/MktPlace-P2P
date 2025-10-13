@@ -27,6 +27,7 @@ export enum NetworkType {
   TRC20 = 'TRC20',         // Tron
   BASE = 'BASE',           // Base (L2 Ethereum)
   ARBITRUM = 'ARBITRUM',   // Arbitrum (L2 Ethereum)
+  SOLANA = 'SOLANA',       // Solana (SPL)
 }
 
 export enum OrderType {
@@ -149,8 +150,8 @@ export interface NetworkInfo {
 // Mapeamento de quais redes cada cripto suporta
 export const CRYPTO_SUPPORTED_NETWORKS: Record<CryptoType, NetworkType[]> = {
   [CryptoType.BTC]: [NetworkType.BITCOIN],
-  [CryptoType.USDC]: [NetworkType.ETHEREUM, NetworkType.TRC20, NetworkType.BASE, NetworkType.ARBITRUM],
-  [CryptoType.USDT]: [NetworkType.ETHEREUM, NetworkType.TRC20, NetworkType.BASE, NetworkType.ARBITRUM],
+  [CryptoType.USDC]: [NetworkType.ETHEREUM, NetworkType.TRC20, NetworkType.BASE, NetworkType.ARBITRUM, NetworkType.SOLANA],
+  [CryptoType.USDT]: [NetworkType.ETHEREUM, NetworkType.TRC20, NetworkType.BASE, NetworkType.ARBITRUM, NetworkType.SOLANA],
 };
 
 export const NETWORK_INFO: Record<NetworkType, NetworkInfo> = {
@@ -187,6 +188,13 @@ export const NETWORK_INFO: Record<NetworkType, NetworkInfo> = {
     name: 'Arbitrum',
     averageFee: '$0.10',
     confirmationTime: '1-5s',
+    priority: 5,
+  },
+  [NetworkType.SOLANA]: {
+    type: NetworkType.SOLANA,
+    name: 'Solana (SPL)',
+    averageFee: '$0.00025',
+    confirmationTime: '0.4s',
     priority: 5,
   },
 };

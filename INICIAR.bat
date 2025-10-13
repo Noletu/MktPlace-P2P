@@ -4,7 +4,7 @@ setlocal EnableDelayedExpansion
 
 echo.
 echo ========================================
-echo   MktPlace P2P - Inicializacao
+echo   MktPlace P2P - Inicializacao Completa
 echo ========================================
 echo.
 
@@ -26,7 +26,61 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [1/5] Verificando portas...
+echo [1/7] Verificando dependencias...
+echo.
+
+:: Verificar se node_modules existe na API
+if not exist "apps\api\node_modules" (
+    echo Dependencias da API nao encontradas!
+    echo Instalando dependencias da API... (isso pode demorar alguns minutos)
+    echo.
+    cd apps\api
+    call npm install
+    if errorlevel 1 (
+        echo ERRO: Falha ao instalar dependencias da API!
+        cd ..\..
+        pause
+        exit /b 1
+    )
+    cd ..\..
+    echo OK - Dependencias da API instaladas
+    echo.
+)
+
+:: Verificar se node_modules existe no Frontend
+if not exist "apps\web\node_modules" (
+    echo Dependencias do Frontend nao encontradas!
+    echo Instalando dependencias do Frontend... (isso pode demorar alguns minutos)
+    echo.
+    cd apps\web
+    call npm install
+    if errorlevel 1 (
+        echo ERRO: Falha ao instalar dependencias do Frontend!
+        cd ..\..
+        pause
+        exit /b 1
+    )
+    cd ..\..
+    echo OK - Dependencias do Frontend instaladas
+    echo.
+)
+
+echo OK - Todas as dependencias instaladas
+echo.
+
+echo [2/7] Gerando Prisma Client...
+echo.
+cd apps\api
+call npx prisma generate >nul 2>&1
+if errorlevel 1 (
+    echo AVISO: Falha ao gerar Prisma Client (tentando continuar...)
+) else (
+    echo OK - Prisma Client gerado
+)
+cd ..\..
+echo.
+
+echo [3/7] Verificando portas...
 echo.
 
 :: Verificar porta 3001 (API)
@@ -53,7 +107,7 @@ if not errorlevel 1 (
 echo OK - Portas 3000 e 3001 disponiveis
 echo.
 
-echo [2/5] Iniciando API (Backend)...
+echo [4/7] Iniciando API (Backend)...
 echo.
 
 :: Criar diretorio de logs se nao existir
@@ -69,7 +123,7 @@ timeout /t 5 /nobreak >nul
 echo OK - API iniciada em http://localhost:3001
 echo.
 
-echo [3/5] Iniciando Frontend (Next.js)...
+echo [5/7] Iniciando Frontend (Next.js)...
 echo.
 
 :: Iniciar Frontend em background
@@ -82,7 +136,7 @@ timeout /t 5 /nobreak >nul
 echo OK - Frontend iniciado em http://localhost:3000
 echo.
 
-echo [4/5] Abrindo navegador...
+echo [6/7] Abrindo navegador...
 echo.
 
 :: Aguardar mais 2 segundos para garantir que tudo inicializou
@@ -94,7 +148,7 @@ start http://localhost:3000
 echo OK - Navegador aberto
 echo.
 
-echo [5/5] Status dos Servicos
+echo [7/7] Status dos Servicos
 echo.
 echo +------------------------------------------+
 echo ^|  OK - API:       http://localhost:3001  ^|
@@ -125,15 +179,16 @@ pause >nul
 :SHOW_LOGS
 cls
 echo ========================================
-echo   Logs da Aplicacao
+echo   Logs da Aplicacao (Atualizacao a cada 5s)
 echo ========================================
 echo.
-echo --- API LOG (logs\api.log) ---
-type logs\api.log 2>nul
+echo --- API LOG (ultimas 30 linhas) ---
+type logs\api.log 2>nul | more +0 | findstr /V "^$" | tail -n 30 2>nul || type logs\api.log 2>nul
 echo.
-echo --- FRONTEND LOG (logs\web.log) ---
-type logs\web.log 2>nul
+echo --- FRONTEND LOG (ultimas 30 linhas) ---
+type logs\web.log 2>nul | more +0 | findstr /V "^$" | tail -n 30 2>nul || type logs\web.log 2>nul
 echo.
 echo ========================================
+echo Pressione Ctrl+C para sair
 timeout /t 5 >nul
 goto SHOW_LOGS

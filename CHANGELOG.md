@@ -7,6 +7,84 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [0.2.3] - 2025-10-12
+
+### Adicionado
+
+#### 🚀 Suporte à Rede Solana
+- **Solana adicionada como rede suportada** para USDC e USDT
+  - Adicionado `SOLANA` ao enum `NetworkType` em `packages/shared/src/types.ts:30`
+  - Adicionado Solana ao mapeamento `CRYPTO_SUPPORTED_NETWORKS` para USDC e USDT (`packages/shared/src/types.ts:153-154`)
+  - Adicionado Solana ao mapeamento backend `CRYPTO_NETWORKS` em `apps/api/src/types/crypto.types.ts:28`
+  - Configurado informações da rede Solana:
+    - Taxa média: **$0.00025** (mais barata de todas)
+    - Tempo de confirmação: **0.4s** (mais rápida de todas)
+    - Prioridade: **5** (máxima recomendação)
+- **Frontend atualizado** para incluir Solana nas opções de rede:
+  - `apps/web/app/orders/create/page.tsx:44-45` - Formulário de criação de pedidos
+  - `apps/web/app/admin/platform-wallets/page.tsx:19-20` - Painel administrativo de carteiras
+
+### Corrigido
+
+#### 🐛 KYC Info Page - Status de Níveis
+- **Corrigido display de status dos níveis KYC** em `/kyc/info`
+  - **Problema:** Usuários com KYC Level 1 completo ainda viam botão "Fazer KYC Nível 1"
+  - **Causa raiz:** Página não consultava o nível atual do usuário
+  - **Solução implementada:**
+    - Implementado função `getLevelStatus()` para determinar corretamente se um nível está:
+      - ✓ **Completo** (completed) - nível já atingido
+      - → **Próximo** (next) - próximo nível disponível
+      - ○ **Bloqueado** (blocked) - níveis futuros ainda inacessíveis
+    - Adicionado `useEffect` para buscar o nível KYC atual do usuário via API
+    - Adicionados badges visuais coloridos para indicar status de cada nível
+    - Corrigida lógica de botões:
+      - Mostrar "Completar Agora" apenas para o próximo nível disponível
+      - Mostrar "✓ Completo" para níveis já atingidos
+      - Mostrar "Bloqueado" para níveis ainda inacessíveis
+  - **Arquivo:** `apps/web/app/kyc/info/page.tsx` (reescrito, 272 linhas)
+  - **Impacto:** Usuários agora veem corretamente quais níveis já completaram
+
+#### 🔧 Opções de Rede Hardcoded
+- **Corrigido Solana não aparecendo nos dropdowns**
+  - **Problema:** Mesmo com Solana adicionada aos tipos compartilhados, não aparecia nas opções de rede
+  - **Causa raiz:** Frontend tinha arrays hardcoded `NETWORK_OPTIONS` que não incluíam Solana
+  - **Arquivos corrigidos:**
+    - `apps/web/app/orders/create/page.tsx:42-46`
+    - `apps/web/app/admin/platform-wallets/page.tsx:17-21`
+  - **Nota técnica:** Futuramente, considerar importar `CRYPTO_SUPPORTED_NETWORKS` diretamente do pacote `@mktplace/shared` ao invés de duplicar arrays
+
+### 📝 Arquivos Modificados
+
+- `packages/shared/src/types.ts` - Adicionado suporte Solana (enum + mapeamentos + info)
+- `apps/api/src/types/crypto.types.ts` - Adicionado Solana para USDT
+- `apps/web/app/kyc/info/page.tsx` - Reescrito para corrigir status dos níveis (272 linhas)
+- `apps/web/app/orders/create/page.tsx` - Adicionado Solana nas opções de rede
+- `apps/web/app/admin/platform-wallets/page.tsx` - Adicionado Solana nas opções de rede
+
+### 🔍 Bugs Críticos Ativos
+
+**✅ Nenhum bug crítico identificado no momento.**
+
+Todas as funcionalidades testadas estão funcionando corretamente:
+- ✅ Solana aparece nas opções de rede para USDC e USDT
+- ✅ KYC Info page mostra status correto dos níveis
+- ✅ Formulário de criação de pedidos funcional
+- ✅ Painel admin de carteiras funcional
+
+### 📊 Melhorias Futuras Sugeridas
+
+1. **Centralizar NETWORK_OPTIONS**
+   - Prioridade: Baixa
+   - Importar diretamente de `@mktplace/shared` ao invés de duplicar em cada arquivo
+   - Evita inconsistências futuras
+
+2. **Validação de endereços Solana**
+   - Prioridade: Média
+   - Implementar validação específica para endereços Solana (formato base58)
+   - Prevenir erros ao cadastrar carteiras
+
+---
+
 ## [0.2.2] - 2025-10-05
 
 ### Adicionado
@@ -295,6 +373,6 @@ Para contribuir com este projeto:
 
 ---
 
-**Última atualização:** 05 de Outubro de 2025
-**Versão atual:** 0.2.2
+**Última atualização:** 12 de Outubro de 2025
+**Versão atual:** 0.2.3
 **Status:** ✅ Desenvolvimento ativo

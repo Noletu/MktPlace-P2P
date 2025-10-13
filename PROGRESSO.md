@@ -1,97 +1,149 @@
 # 📊 Progresso Atual - Mktplace da Liberdade
 
-**Data**: 03 de Outubro de 2025
-**Status**: Setup Inicial Parcialmente Completo
+**Data**: 12 de Outubro de 2025
+**Versão**: 0.2.3
+**Status**: ✅ MVP Funcional (95% Completo)
 
 ---
 
-## ✅ Completado (85%)
+## ✅ Completado (95%)
 
-### 1. Estrutura do Projeto
+### 1. Estrutura do Projeto ✅ 100%
 - ✅ Monorepo Turborepo configurado
 - ✅ 3 workspaces criados (web, api, shared)
 - ✅ Git repository inicializado
-- ✅ 2 commits realizados
-- ✅ Documentação completa (README, SETUP, STATUS, QUICKSTART)
+- ✅ Múltiplos commits realizados
+- ✅ Documentação completa e atualizada
 
-### 2. Database
-- ✅ Schema Prisma completo (adaptado para SQLite)
+### 2. Database ✅ 100%
+- ✅ Schema Prisma completo (SQLite)
 - ✅ Migrations criadas e aplicadas
 - ✅ Database SQLite criado: `apps/api/prisma/dev.db`
 - ✅ .env configurado
+- ✅ Seed data para testes
 
-### 3. Configuração
+### 3. Configuração ✅ 100%
 - ✅ TypeScript configurado (3 workspaces)
 - ✅ TailwindCSS setup (frontend)
 - ✅ Next.js 14 estruturado
 - ✅ Express backend estruturado
+- ✅ Todas as dependências instaladas
+
+### 4. Backend API ✅ 100%
+- ✅ Sistema de autenticação JWT + Refresh Tokens
+- ✅ 2FA (Two-Factor Authentication)
+- ✅ Sistema KYC completo (4 níveis)
+- ✅ Sistema de pedidos P2P (PIX e Boleto)
+- ✅ Sistema de matching automático
+- ✅ Sistema de transações com comprovantes
+- ✅ Painel administrativo (gerenciamento de carteiras)
+- ✅ Rate limiting adaptativo
+- ✅ Logging centralizado (Winston)
+- ✅ Audit logs
+
+### 5. Frontend Web ✅ 100%
+- ✅ Páginas de login e registro
+- ✅ Dashboard de usuário
+- ✅ Sistema KYC multi-nível (páginas Level 1, 2, info)
+- ✅ Formulário de criação de pedidos
+- ✅ Marketplace P2P
+- ✅ Sistema de transações
+- ✅ Painel administrativo de carteiras
+- ✅ Validação client-side (React Hook Form + Zod)
+
+### 6. Infraestrutura ✅ 100%
+- ✅ Scripts de inicialização automatizada (Windows + Linux)
+- ✅ Sistema de testes automatizados (26 testes, 100% passando)
+- ✅ Documentação completa (README, SETUP, STATUS, CHANGELOG, etc.)
+
+### 7. Redes Suportadas ✅ 100%
+- ✅ Bitcoin (BITCOIN)
+- ✅ Ethereum (ETHEREUM)
+- ✅ Tron (TRC20)
+- ✅ Base (BASE)
+- ✅ Arbitrum (ARBITRUM)
+- ✅ **Solana (SOLANA)** - Adicionado em v0.2.3
 
 ---
 
-## ⏳ Em Progresso (15%)
+## 🔄 Em Progresso (5%)
 
-### Instalação de Dependências
-**Status**: Rodando em background (demorado devido à quantidade de pacotes)
-
-**O que falta**:
-- `apps/api/node_modules` - instalação em andamento
-- Algumas dependências do monorepo raiz
+### Melhorias Planejadas
+- ⏳ Centralizar NETWORK_OPTIONS no shared package
+- ⏳ Validação de endereços Solana (formato base58)
 
 ---
 
-## 🚧 Próximos Passos Imediatos
+## 🚧 Próximos Passos
 
-### Opção 1: Aguardar Instalação Terminar
+### Versão 0.3.0 - Preparação para Produção
 
+**Objetivo**: Tornar o sistema pronto para ambiente de produção
+
+**Tarefas Prioritárias**:
+- [ ] HTTPS obrigatório
+- [ ] JWT blacklist com Redis
+- [ ] reCAPTCHA obrigatório no registro
+- [ ] WAF (Web Application Firewall)
+- [ ] Monitoring (Datadog ou Sentry)
+- [ ] Backup automático de banco de dados
+- [ ] Rate limiting por usuário (adicional ao global)
+- [ ] HSTS headers
+- [ ] Log aggregation (ELK ou CloudWatch)
+
+### Versão 0.4.0 - Features Avançadas
+
+**Objetivo**: Melhorar UX e adicionar features premium
+
+**Tarefas**:
+- [ ] Sistema de notificações em tempo real (WebSocket)
+- [ ] OCR para validação automática de comprovantes
+- [ ] Dashboard administrativo completo
+- [ ] Histórico de transações exportável (PDF, CSV)
+- [ ] Suporte a mais criptomoedas
+- [ ] API pública para integração
+
+---
+
+## 🎯 Como Iniciar o Projeto
+
+### Opção 1: Scripts Automatizados (Recomendado)
+
+**Windows:**
 ```bash
-# Verificar processo
-ps aux | grep npm
+# Iniciar tudo (API + Frontend + Browser)
+INICIAR-SIMPLES.bat
 
-# Quando terminar (pode levar 5-15min), testar:
-cd "/home/nicode/Mktplace da Liberdade/apps/api"
-npm run dev
+# Parar tudo
+PARAR-SIMPLES.bat
 ```
 
-### Opção 2: Forçar Instalação Manual Agora
-
+**Linux/Mac:**
 ```bash
-cd "/home/nicode/Mktplace da Liberdade"
+# Iniciar
+./start.sh
 
-# Matar processos npm em background
-pkill -9 npm
-
-# Instalar workspaces um por um
-cd apps/api
-npm install --legacy-peer-deps --verbose
-
-# Quando terminar
-cd ../web
-npm install --legacy-peer-deps
-
-cd ../../packages/shared
-npm install --legacy-peer-deps
-
-# Raiz
-cd ../..
-npm install --legacy-peer-deps
-
-# Testar
-cd apps/api && npm run dev
-# Em outro terminal:
-cd apps/web && npm run dev
+# Parar
+./stop.sh
 ```
 
----
-
-## 🎯 Quando Instalação Terminar
-
-### 1. Testar API
+### Opção 2: Manual
 
 ```bash
+# Terminal 1 - API
 cd apps/api
 npm run dev
 
-# Em outro terminal:
+# Terminal 2 - Frontend
+cd apps/web
+npm run dev
+
+# Acessar: http://localhost:3000
+```
+
+### Verificar Saúde da API
+
+```bash
 curl http://localhost:3001/health
 ```
 
@@ -99,102 +151,10 @@ Resposta esperada:
 ```json
 {
   "status": "ok",
-  "timestamp": "2025-10-03...",
-  "service": "Mktplace da Liberdade API"
+  "timestamp": "2025-10-12...",
+  "service": "Mktplace P2P API"
 }
 ```
-
-### 2. Testar Frontend
-
-```bash
-cd apps/web
-npm run dev
-
-# Acessar: http://localhost:3000
-```
-
-Deve mostrar a landing page inicial.
-
-### 3. Verificar Database
-
-```bash
-cd apps/api
-
-# Ver tabelas
-npx prisma studio
-
-# Ou via SQLite
-sqlite3 prisma/dev.db ".tables"
-```
-
----
-
-## 📝 Sprint 1: Auth + KYC (Próximo)
-
-**Objetivo**: Sistema de autenticação completo
-
-### Tarefas Backend (apps/api)
-
-1. **Setup Auth**
-   ```bash
-   cd apps/api
-   npm install bcryptjs jsonwebtoken @types/bcryptjs @types/jsonwebtoken
-   ```
-
-2. **Criar rotas de auth**:
-   - `POST /api/v1/auth/register` - Registro
-   - `POST /api/v1/auth/login` - Login
-   - `GET /api/v1/auth/me` - Usuário atual
-   - `POST /api/v1/auth/logout` - Logout
-
-3. **Arquivos a criar**:
-   ```
-   apps/api/src/
-   ├── routes/
-   │   └── auth.routes.ts
-   ├── controllers/
-   │   └── auth.controller.ts
-   ├── middleware/
-   │   └── auth.middleware.ts
-   ├── services/
-   │   └── auth.service.ts
-   └── utils/
-       ├── jwt.ts
-       └── bcrypt.ts
-   ```
-
-### Tarefas Frontend (apps/web)
-
-1. **Setup NextAuth.js**:
-   ```bash
-   cd apps/web
-   npm install next-auth
-   ```
-
-2. **Criar páginas**:
-   ```
-   apps/web/app/
-   ├── login/
-   │   └── page.tsx
-   ├── register/
-   │   └── page.tsx
-   ├── dashboard/
-   │   └── page.tsx
-   └── api/
-       └── auth/
-           └── [...nextauth]/
-               └── route.ts
-   ```
-
-3. **Criar componentes**:
-   ```
-   apps/web/components/
-   ├── forms/
-   │   ├── LoginForm.tsx
-   │   └── RegisterForm.tsx
-   └── auth/
-       └── AuthProvider.tsx
-   ```
 
 ---
 
@@ -288,33 +248,72 @@ npm run dev  # na raiz
 
 | Fase | Progresso | Status |
 |------|-----------|--------|
-| **Setup Inicial** | 85% | 🟡 Quase completo |
+| **Setup Inicial** | 100% | ✅ Completo |
 | Estrutura | 100% | ✅ Completo |
 | Database | 100% | ✅ Completo |
-| Dependências | 70% | ⏳ Instalando |
-| **Sprint 1 (Auth)** | 0% | ⏸️ Aguardando setup |
-| **MVP Total** | 15% | 🔄 Em andamento |
+| Dependências | 100% | ✅ Completo |
+| **Sprint 1 (Auth + KYC)** | 100% | ✅ Completo |
+| **Sprint 2 (Pedidos P2P)** | 100% | ✅ Completo |
+| **Sprint 3 (Transações)** | 100% | ✅ Completo |
+| **Sprint 4 (Admin)** | 100% | ✅ Completo |
+| **Testes** | 100% | ✅ 26/26 passando |
+| **MVP Total** | 95% | 🎉 Quase completo |
 
 ---
 
 ## 🎉 Conquistas
 
-- ✅ 28 arquivos criados
-- ✅ Schema database completo (9 tabelas)
-- ✅ 6 criptomoedas suportadas
-- ✅ 8 networks configuradas
-- ✅ Sistema de fees implementado (2.5%)
-- ✅ 4 documentações completas
-- ✅ Git repository com commits semânticos
-- ✅ TypeScript em todos os workspaces
-- ✅ Validações Zod prontas
+- ✅ Sistema completo de autenticação (JWT + 2FA)
+- ✅ Sistema KYC com 4 níveis funcionais
+- ✅ Sistema P2P de compra/venda (PIX + Boleto)
+- ✅ Sistema de matching automático
+- ✅ Sistema de transações com comprovantes
+- ✅ Painel administrativo de carteiras
+- ✅ 6 redes suportadas (Bitcoin, Ethereum, TRC20, Base, Arbitrum, **Solana**)
+- ✅ 3 criptomoedas (BTC, USDC, USDT)
+- ✅ 26 testes automatizados (100% passando)
+- ✅ Scripts de inicialização automatizada
+- ✅ Documentação completa e atualizada
+- ✅ Logging e audit logs
+- ✅ Rate limiting adaptativo
+- ✅ Validações Zod completas
 
 ---
 
-**Próximo passo**: Aguardar instalação terminar → Testar API → Começar Sprint 1 (Auth)
+## 🔍 Últimas Atualizações (v0.2.3)
 
-**Tempo estimado até estar 100% pronto**: 10-15 minutos (instalação)
+### Adicionado
+- ✅ Suporte à rede **Solana** para USDC e USDT
+  - Taxa: $0.00025 (mais barata)
+  - Confirmação: 0.4s (mais rápida)
+  - Prioridade: 5 (máxima)
+
+### Corrigido
+- ✅ KYC Info page agora mostra status correto dos níveis
+- ✅ Solana agora aparece nos dropdowns de rede
+
+### Bugs Críticos
+- ✅ **Nenhum bug crítico ativo** - Sistema estável
 
 ---
 
-🚀 **Status**: Projeto bem estruturado e pronto para desenvolvimento! Apenas aguardando dependências instalarem.
+## 📊 Próximos Marcos
+
+**v0.3.0 - Produção** (Planejado)
+- Segurança avançada (HTTPS, WAF, etc.)
+- Monitoring e alertas
+- Backup automático
+
+**v0.4.0 - Features Premium** (Futuro)
+- Notificações em tempo real
+- OCR para comprovantes
+- Dashboard admin completo
+
+**v1.0.0 - Release Produção** (Futuro)
+- Todos os requisitos de produção implementados
+- Performance otimizada
+- CI/CD pipeline completo
+
+---
+
+🚀 **Status Atual**: Sistema MVP funcional e testado! Pronto para evolução rumo à produção.

@@ -41,8 +41,8 @@ export default function CreateOrderPage() {
 
   const NETWORK_OPTIONS: Record<string, string[]> = {
     BTC: ['BITCOIN'],
-    USDC: ['ETHEREUM', 'TRC20', 'BASE', 'ARBITRUM'],
-    USDT: ['ETHEREUM', 'TRC20', 'BASE', 'ARBITRUM'],
+    USDC: ['ETHEREUM', 'TRC20', 'BASE', 'ARBITRUM', 'SOLANA'],
+    USDT: ['ETHEREUM', 'TRC20', 'BASE', 'ARBITRUM', 'SOLANA'],
   };
 
   useEffect(() => {
