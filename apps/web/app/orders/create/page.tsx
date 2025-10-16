@@ -6,6 +6,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import { CryptoType } from '@mktplace/shared';
 import { formatBRL } from '@/utils/formatters';
+import ThemeToggle from '@/components/ThemeToggle';
 
 export default function CreateOrderPage() {
   const router = useRouter();
@@ -442,27 +443,27 @@ export default function CreateOrderPage() {
   // Se estiver na tela de depósito de colateral
   if (showCollateralDeposit && collateralAddress) {
     return (
-      <div className="min-h-screen bg-gray-50 py-12 px-4">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
         <div className="max-w-2xl mx-auto">
-          <div className="bg-white rounded-lg shadow-lg p-8">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
             <div className="text-center mb-6">
-              <h1 className="text-3xl font-bold mb-2">Deposite o Colateral</h1>
-              <p className="text-gray-600">
+              <h1 className="text-3xl font-bold mb-2 text-gray-900 dark:text-white">Deposite o Colateral</h1>
+              <p className="text-gray-600 dark:text-gray-300">
                 Envie {collateralAddress.expectedAmount} {collateralAddress.cryptoType} para o endereço abaixo
               </p>
             </div>
 
             {/* Timer */}
-            <div className="bg-yellow-50 border-2 border-yellow-400 rounded-lg p-4 mb-6 text-center">
-              <p className="text-sm text-yellow-800 mb-2">Tempo restante para depósito:</p>
-              <p className={`text-4xl font-bold ${timeLeft < 300 ? 'text-red-600' : 'text-yellow-600'}`}>
+            <div className="bg-yellow-50 dark:bg-yellow-900/30 border-2 border-yellow-400 dark:border-yellow-600 rounded-lg p-4 mb-6 text-center">
+              <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-2">Tempo restante para depósito:</p>
+              <p className={`text-4xl font-bold ${timeLeft < 300 ? 'text-red-600 dark:text-red-400' : 'text-yellow-600 dark:text-yellow-400'}`}>
                 {formatTime(timeLeft)}
               </p>
             </div>
 
             {/* Endereço de depósito */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Endereço de depósito ({collateralAddress.cryptoNetwork}):
               </label>
               <div className="flex gap-2">
@@ -470,14 +471,14 @@ export default function CreateOrderPage() {
                   type="text"
                   value={collateralAddress.address}
                   readOnly
-                  className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg font-mono text-sm bg-gray-50"
+                  className="flex-1 px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg font-mono text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
                 />
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(collateralAddress.address);
                     alert('Endereço copiado!');
                   }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-800"
                 >
                   📋 Copiar
                 </button>
@@ -487,7 +488,7 @@ export default function CreateOrderPage() {
             {/* QR Code */}
             <div className="mb-6">
               <div className="flex flex-col items-center">
-                <div className="bg-white border-4 border-gray-300 p-6 rounded-lg shadow-lg">
+                <div className="bg-white border-4 border-gray-300 dark:border-gray-600 p-6 rounded-lg shadow-lg">
                   <QRCodeSVG
                     value={collateralAddress.address}
                     size={256}
@@ -497,16 +498,16 @@ export default function CreateOrderPage() {
                     fgColor="#000000"
                   />
                 </div>
-                <p className="text-sm text-gray-600 mt-3 text-center">
+                <p className="text-sm text-gray-600 dark:text-gray-300 mt-3 text-center">
                   Escaneie o QR Code com sua carteira de {collateralAddress.cryptoType}
                 </p>
               </div>
             </div>
 
             {/* Instruções */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-              <h3 className="font-semibold text-blue-900 mb-2">📌 Instruções:</h3>
-              <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+            <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-6">
+              <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">📌 Instruções:</h3>
+              <ol className="text-sm text-blue-800 dark:text-blue-300 space-y-1 list-decimal list-inside">
                 <li>Envie exatamente {collateralAddress.expectedAmount} {collateralAddress.cryptoType}</li>
                 <li>Use a rede {collateralAddress.cryptoNetwork}</li>
                 <li>O pedido será criado automaticamente após confirmação</li>
@@ -517,19 +518,19 @@ export default function CreateOrderPage() {
             {/* Botões de ação */}
             <div className="space-y-3">
               {/* Aviso sobre simulação */}
-              <div className="bg-green-50 border-2 border-green-300 rounded-lg p-4">
-                <h4 className="font-bold text-green-800 mb-2 flex items-center gap-2">
+              <div className="bg-green-50 dark:bg-green-900/30 border-2 border-green-300 dark:border-green-700 rounded-lg p-4">
+                <h4 className="font-bold text-green-800 dark:text-green-200 mb-2 flex items-center gap-2">
                   <span className="text-2xl">⚡</span>
                   MODO DE TESTE
                 </h4>
-                <p className="text-sm text-green-900 mb-3">
+                <p className="text-sm text-green-900 dark:text-green-300 mb-3">
                   Este botão simula que o depósito foi confirmado na blockchain.
                   Use para testar o fluxo completo sem fazer um depósito real.
                 </p>
-                <p className="text-xs text-green-800 font-semibold">
+                <p className="text-xs text-green-800 dark:text-green-200 font-semibold">
                   ✅ O que vai acontecer:
                 </p>
-                <ul className="text-xs text-green-800 list-disc list-inside mt-1 space-y-1">
+                <ul className="text-xs text-green-800 dark:text-green-200 list-disc list-inside mt-1 space-y-1">
                   <li>Sistema marca o colateral como CONFIRMADO</li>
                   <li>Pedido é criado automaticamente</li>
                   <li>Pedido aparece no marketplace</li>
@@ -539,7 +540,7 @@ export default function CreateOrderPage() {
               <button
                 onClick={handleSimulatePayment}
                 disabled={checkingPayment}
-                className="w-full py-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg disabled:opacity-50 text-lg"
+                className="w-full py-4 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-bold rounded-lg disabled:opacity-50 text-lg"
               >
                 {checkingPayment ? '🔄 Simulando pagamento...' : '⚡ SIMULAR PAGAMENTO (TESTE)'}
               </button>
@@ -549,14 +550,14 @@ export default function CreateOrderPage() {
                   setShowCollateralDeposit(false);
                   sessionStorage.removeItem('pendingOrder');
                 }}
-                className="w-full py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg"
+                className="w-full py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg"
               >
                 Cancelar
               </button>
             </div>
 
             {error && (
-              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+              <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">
                 {error}
               </div>
             )}
@@ -567,31 +568,34 @@ export default function CreateOrderPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">Criar Novo Pedido</h1>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg"
-          >
-            Voltar
-          </button>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Criar Novo Pedido</h1>
+          <div className="flex gap-4">
+            <ThemeToggle />
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg"
+            >
+              Voltar
+            </button>
+          </div>
         </div>
 
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">
             {error}
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Formulário */}
-          <div className="lg:col-span-2 bg-white rounded-lg shadow-md p-8">
+          <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Tipo de Pagamento */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Tipo de Pagamento
                 </label>
                 <div className="flex gap-4">
@@ -600,8 +604,8 @@ export default function CreateOrderPage() {
                     onClick={() => setOrderType('PIX')}
                     className={`flex-1 py-3 px-4 rounded-lg font-semibold ${
                       orderType === 'PIX'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-200 text-gray-700'
+                        ? 'bg-blue-600 dark:bg-blue-700 text-white'
+                        : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                     }`}
                   >
                     PIX
@@ -611,8 +615,8 @@ export default function CreateOrderPage() {
                     onClick={() => setOrderType('BOLETO')}
                     className={`flex-1 py-3 px-4 rounded-lg font-semibold ${
                       orderType === 'BOLETO'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-200 text-gray-700'
+                        ? 'bg-blue-600 dark:bg-blue-700 text-white'
+                        : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                     }`}
                   >
                     Boleto
@@ -624,11 +628,11 @@ export default function CreateOrderPage() {
               {orderType === 'BOLETO' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Código de Barras do Boleto
-                      {barcodeValidating && <span className="text-blue-600 text-xs ml-2">Validando...</span>}
-                      {barcodeValid === true && <span className="text-green-600 text-xs ml-2">✓ Válido</span>}
-                      {barcodeValid === false && <span className="text-red-600 text-xs ml-2">✗ Inválido</span>}
+                      {barcodeValidating && <span className="text-blue-600 dark:text-blue-400 text-xs ml-2">Validando...</span>}
+                      {barcodeValid === true && <span className="text-green-600 dark:text-green-400 text-xs ml-2">✓ Válido</span>}
+                      {barcodeValid === false && <span className="text-red-600 dark:text-red-400 text-xs ml-2">✗ Inválido</span>}
                     </label>
                     <input
                       type="text"
@@ -637,30 +641,30 @@ export default function CreateOrderPage() {
                       placeholder="Digite ou cole o código de barras (47 ou 48 dígitos)"
                       minLength={44}
                       required
-                      className={`w-full px-4 py-2 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm ${
+                      className={`w-full px-4 py-2 border-2 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm text-gray-900 dark:text-white ${
                         barcodeValid === true
-                          ? 'border-green-500 bg-green-50'
+                          ? 'border-green-500 bg-green-50 dark:bg-green-900/30'
                           : barcodeValid === false
-                          ? 'border-red-500 bg-red-50'
-                          : 'border-gray-300'
+                          ? 'border-red-500 bg-red-50 dark:bg-red-900/30'
+                          : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700'
                       }`}
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                       Os dados do boleto serão extraídos automaticamente
                     </p>
                   </div>
 
                   {/* Upload opcional de imagem */}
-                  <div className="border-t border-gray-200 pt-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Ou faça upload da imagem do boleto (opcional)
                     </label>
                     <div className="flex items-center gap-3">
                       <label
                         className={`flex-1 px-4 py-2 border-2 border-dashed rounded-lg text-center cursor-pointer transition ${
                           uploadingImage
-                            ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
+                            ? 'border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/30'
+                            : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-gray-50 dark:hover:bg-gray-700'
                         }`}
                       >
                         <input
@@ -670,12 +674,12 @@ export default function CreateOrderPage() {
                           disabled={uploadingImage}
                           className="hidden"
                         />
-                        <span className="text-sm text-gray-600">
+                        <span className="text-sm text-gray-600 dark:text-gray-300">
                           {uploadingImage ? '📤 Processando imagem...' : '📷 Clique para selecionar imagem'}
                         </span>
                       </label>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                       OCR extrairá código de barras, valor, vencimento e beneficiário automaticamente
                     </p>
                   </div>
@@ -684,9 +688,9 @@ export default function CreateOrderPage() {
 
               {/* Valor em BRL */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Valor em BRL
-                  {orderType === 'BOLETO' && barcodeValid && <span className="text-xs text-gray-500 ml-2">(preenchido automaticamente)</span>}
+                  {orderType === 'BOLETO' && barcodeValid && <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">(preenchido automaticamente)</span>}
                 </label>
                 <input
                   type="number"
@@ -697,8 +701,8 @@ export default function CreateOrderPage() {
                   min="10"
                   required
                   readOnly={orderType === 'BOLETO' && barcodeValid === true}
-                  className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                    orderType === 'BOLETO' && barcodeValid === true ? 'bg-gray-100' : ''
+                  className={`w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white ${
+                    orderType === 'BOLETO' && barcodeValid === true ? 'bg-gray-100 dark:bg-gray-700' : 'bg-white dark:bg-gray-700'
                   }`}
                 />
               </div>
@@ -706,7 +710,7 @@ export default function CreateOrderPage() {
               {/* Criptomoeda e Rede */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Criptomoeda
                   </label>
                   <div className="space-y-2">
@@ -716,12 +720,12 @@ export default function CreateOrderPage() {
                         onClick={() => setCrypto(c)}
                         className={`flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition ${
                           crypto === c
-                            ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-300 hover:border-blue-300'
+                            ? 'border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/30'
+                            : 'border-gray-300 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-500'
                         }`}
                       >
                         <CryptoIcon crypto={c as CryptoType} size={24} />
-                        <span className="font-medium">
+                        <span className="font-medium text-gray-900 dark:text-white">
                           {c === 'BTC' && 'Bitcoin (BTC)'}
                           {c === 'USDC' && 'USD Coin (USDC)'}
                           {c === 'USDT' && 'Tether (USDT)'}
@@ -732,11 +736,11 @@ export default function CreateOrderPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Rede</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Rede</label>
                   <select
                     value={network}
                     onChange={(e) => setNetwork(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   >
                     {NETWORK_OPTIONS[crypto].map((net) => (
                       <option key={net} value={net}>
@@ -751,13 +755,13 @@ export default function CreateOrderPage() {
               {orderType === 'PIX' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Tipo de Chave PIX
                     </label>
                     <select
                       value={pixKeyType}
                       onChange={(e) => setPixKeyType(e.target.value as any)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     >
                       <option value="CPF">CPF</option>
                       <option value="CNPJ">CNPJ</option>
@@ -768,7 +772,7 @@ export default function CreateOrderPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Chave PIX
                     </label>
                     <input
@@ -777,12 +781,12 @@ export default function CreateOrderPage() {
                       onChange={(e) => setPixKey(e.target.value)}
                       placeholder="Digite a chave PIX"
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Nome do Beneficiário
                     </label>
                     <input
@@ -791,7 +795,7 @@ export default function CreateOrderPage() {
                       onChange={(e) => setPixRecipientName(e.target.value)}
                       placeholder="Nome completo"
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     />
                   </div>
                 </>
@@ -801,21 +805,21 @@ export default function CreateOrderPage() {
               {orderType === 'BOLETO' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Data de Vencimento
-                      {barcodeValid && dueDate && <span className="text-xs text-gray-500 ml-2">(preenchido automaticamente)</span>}
+                      {barcodeValid && dueDate && <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">(preenchido automaticamente)</span>}
                     </label>
                     <input
                       type="date"
                       value={dueDate}
                       onChange={(e) => setDueDate(e.target.value)}
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Nome do Beneficiário
                     </label>
                     <input
@@ -823,12 +827,12 @@ export default function CreateOrderPage() {
                       value={boletoRecipientName}
                       onChange={(e) => setBoletoRecipientName(e.target.value)}
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       CPF/CNPJ do Beneficiário
                     </label>
                     <input
@@ -836,7 +840,7 @@ export default function CreateOrderPage() {
                       value={boletoRecipientDocument}
                       onChange={(e) => setBoletoRecipientDocument(e.target.value)}
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     />
                   </div>
                 </>
@@ -845,7 +849,7 @@ export default function CreateOrderPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg disabled:opacity-50"
+                className="w-full py-3 px-4 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg disabled:opacity-50"
               >
                 {loading ? 'Gerando endereço...' : '🔒 Depositar Colateral em Cripto'}
               </button>
@@ -853,57 +857,57 @@ export default function CreateOrderPage() {
           </div>
 
           {/* Resumo */}
-          <div className="bg-white rounded-lg shadow-md p-6 h-fit">
-            <h2 className="text-xl font-bold mb-4">Resumo</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 h-fit">
+            <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Resumo</h2>
             <div className="space-y-3">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
-                <p className="text-xs font-semibold text-blue-800 mb-1">Como funciona:</p>
-                <p className="text-xs text-blue-700">
+              <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 mb-2">
+                <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">Como funciona:</p>
+                <p className="text-xs text-blue-700 dark:text-blue-300">
                   Você deposita {crypto} como garantia. Alguém paga seu {orderType === 'PIX' ? 'PIX' : 'boleto'}.
                   Após confirmação, seu {crypto} é liberado para quem pagou.
                 </p>
               </div>
 
               <div>
-                <p className="text-sm text-gray-600">Valor do {orderType === 'PIX' ? 'PIX' : 'boleto'}</p>
-                <p className="text-xl font-bold">{formatBRL(brlAmount || '0')}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Valor do {orderType === 'PIX' ? 'PIX' : 'boleto'}</p>
+                <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(brlAmount || '0')}</p>
               </div>
 
               <div>
-                <p className="text-sm text-gray-600">Você vai depositar (bruto)</p>
-                <p className="text-lg font-semibold">
+                <p className="text-sm text-gray-600 dark:text-gray-400">Você vai depositar (bruto)</p>
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">
                   {cryptoAmount} {crypto}
                 </p>
               </div>
 
-              <hr />
+              <hr className="border-gray-200 dark:border-gray-700" />
 
               <div>
-                <p className="text-sm text-gray-600">Taxa da plataforma (1.5%)</p>
-                <p className="text-sm">
+                <p className="text-sm text-gray-600 dark:text-gray-400">Taxa da plataforma (1.5%)</p>
+                <p className="text-sm text-gray-900 dark:text-white">
                   {fees.platformFee} {crypto}
                 </p>
               </div>
 
               <div>
-                <p className="text-sm text-gray-600">Recompensa do pagador (1%)</p>
-                <p className="text-sm text-green-600">
+                <p className="text-sm text-gray-600 dark:text-gray-400">Recompensa do pagador (1%)</p>
+                <p className="text-sm text-green-600 dark:text-green-400">
                   {fees.payerReward} {crypto}
                 </p>
               </div>
 
               <div>
-                <p className="text-sm text-gray-600">Taxa total (2.5%)</p>
-                <p className="text-sm font-semibold text-red-600">
+                <p className="text-sm text-gray-600 dark:text-gray-400">Taxa total (2.5%)</p>
+                <p className="text-sm font-semibold text-red-600 dark:text-red-400">
                   {fees.totalFee} {crypto}
                 </p>
               </div>
 
-              <hr />
+              <hr className="border-gray-200 dark:border-gray-700" />
 
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-3">
-                <p className="text-xs font-semibold text-green-800 mb-1">✅ Você recebe:</p>
-                <p className="text-xs text-green-700">
+              <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
+                <p className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✅ Você recebe:</p>
+                <p className="text-xs text-green-700 dark:text-green-300">
                   Seu {orderType === 'PIX' ? 'PIX' : 'boleto'} de {formatBRL(brlAmount || '0')} pago!
                 </p>
               </div>

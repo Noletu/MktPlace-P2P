@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import ThemeToggle from '@/components/ThemeToggle';
 
 interface KYCStatus {
   kycLevel: string;
@@ -91,18 +92,18 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-xl">Carregando...</div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-xl text-gray-900 dark:text-white">Carregando...</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="max-w-md p-8 bg-red-50 border border-red-200 rounded-lg">
-          <h2 className="text-xl font-bold text-red-800 mb-2">Erro</h2>
-          <p className="text-red-700">{error}</p>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="max-w-md p-8 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg">
+          <h2 className="text-xl font-bold text-red-800 dark:text-red-200 mb-2">Erro</h2>
+          <p className="text-red-700 dark:text-red-300">{error}</p>
         </div>
       </div>
     );
@@ -192,56 +193,59 @@ export default function ProfilePage() {
   const kycInfo = getKYCLevelsInfo(kycStatus?.kycLevel || 'NONE');
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Meu Perfil</h1>
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Meu Perfil</h1>
+          <ThemeToggle />
+        </div>
 
         {/* Informações Básicas */}
-        <div className="bg-white rounded-lg shadow-md p-8 mb-6">
-          <h2 className="text-2xl font-bold mb-4">Informações Básicas</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 mb-6">
+          <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Informações Básicas</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <p className="text-sm text-gray-600">Nome</p>
-              <p className="font-semibold">{profile?.name || 'Não informado'}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Nome</p>
+              <p className="font-semibold text-gray-900 dark:text-white">{profile?.name || 'Não informado'}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Email</p>
-              <p className="font-semibold">{profile?.email}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Email</p>
+              <p className="font-semibold text-gray-900 dark:text-white">{profile?.email}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">CPF</p>
-              <p className="font-semibold">{profile?.cpf}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">CPF</p>
+              <p className="font-semibold text-gray-900 dark:text-white">{profile?.cpf}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Telefone</p>
-              <p className="font-semibold">{profile?.phone || 'Não informado'}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Telefone</p>
+              <p className="font-semibold text-gray-900 dark:text-white">{profile?.phone || 'Não informado'}</p>
             </div>
           </div>
         </div>
 
         {/* Status KYC */}
-        <div className="bg-white rounded-lg shadow-md p-8 mb-6">
-          <h2 className="text-2xl font-bold mb-6">Verificação KYC</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 mb-6">
+          <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Verificação KYC</h2>
 
           {/* Resumo do nível atual */}
-          <div className="flex items-center justify-between mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+          <div className="flex items-center justify-between mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 rounded-lg border border-blue-200 dark:border-blue-700">
             <div>
-              <p className="text-sm text-gray-600 mb-1">Nível Atual</p>
-              <p className="text-3xl font-bold text-blue-600">{kycInfo.currentLevelName}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Nível Atual</p>
+              <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{kycInfo.currentLevelName}</p>
             </div>
             <div className="text-right">
-              <p className="text-sm text-gray-600 mb-1">Limite de Transação</p>
-              <p className="text-3xl font-bold text-green-600">{kycInfo.currentLimit}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Limite de Transação</p>
+              <p className="text-3xl font-bold text-green-600 dark:text-green-400">{kycInfo.currentLimit}</p>
             </div>
           </div>
 
           {/* Mensagem de todos completos */}
           {kycInfo.allComplete && (
-            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
+            <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg flex items-center gap-3">
               <span className="text-3xl">🎉</span>
               <div>
-                <p className="font-bold text-green-800">Parabéns!</p>
-                <p className="text-green-700 text-sm">
+                <p className="font-bold text-green-800 dark:text-green-200">Parabéns!</p>
+                <p className="text-green-700 dark:text-green-300 text-sm">
                   Você completou todos os níveis de verificação KYC!
                 </p>
               </div>
@@ -250,7 +254,7 @@ export default function ProfilePage() {
 
           {/* Lista de níveis */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">
               Níveis de Verificação:
             </h3>
 
@@ -259,10 +263,10 @@ export default function ProfilePage() {
                 key={level.level}
                 className={`p-5 rounded-lg border-2 transition-all ${
                   level.completed
-                    ? 'bg-green-50 border-green-300'
+                    ? 'bg-green-50 dark:bg-green-900/30 border-green-300 dark:border-green-700'
                     : level.isNext
-                    ? 'bg-blue-50 border-blue-300'
-                    : 'bg-gray-50 border-gray-200'
+                    ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'
+                    : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -271,25 +275,25 @@ export default function ProfilePage() {
                     {/* Badge de status */}
                     <div className="flex-shrink-0">
                       {level.completed ? (
-                        <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
+                        <div className="w-12 h-12 bg-green-500 dark:bg-green-600 rounded-full flex items-center justify-center">
                           <span className="text-white text-2xl font-bold">✓</span>
                         </div>
                       ) : level.isNext ? (
-                        <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
+                        <div className="w-12 h-12 bg-blue-500 dark:bg-blue-600 rounded-full flex items-center justify-center">
                           <span className="text-white text-xl font-bold">!</span>
                         </div>
                       ) : (
-                        <div className="w-12 h-12 bg-gray-300 rounded-full flex items-center justify-center">
-                          <span className="text-gray-500 text-2xl">○</span>
+                        <div className="w-12 h-12 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center">
+                          <span className="text-gray-500 dark:text-gray-400 text-2xl">○</span>
                         </div>
                       )}
                     </div>
 
                     {/* Detalhes */}
                     <div>
-                      <h4 className="font-bold text-lg text-gray-900">{level.name}</h4>
-                      <p className="text-sm text-gray-600">{level.description}</p>
-                      <p className="text-sm font-semibold text-gray-700 mt-1">
+                      <h4 className="font-bold text-lg text-gray-900 dark:text-white">{level.name}</h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">{level.description}</p>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mt-1">
                         Limite: {level.limit}
                       </p>
                     </div>
@@ -298,18 +302,18 @@ export default function ProfilePage() {
                   {/* Botão de ação */}
                   <div>
                     {level.completed ? (
-                      <span className="px-4 py-2 bg-green-100 text-green-700 font-semibold rounded-lg">
+                      <span className="px-4 py-2 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 font-semibold rounded-lg">
                         ✓ Completo
                       </span>
                     ) : level.isNext ? (
                       <button
                         onClick={() => router.push(level.url)}
-                        className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors shadow-md hover:shadow-lg"
+                        className="px-6 py-3 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg transition-colors shadow-md hover:shadow-lg"
                       >
                         Completar Agora
                       </button>
                     ) : (
-                      <span className="px-4 py-2 bg-gray-200 text-gray-500 font-semibold rounded-lg cursor-not-allowed">
+                      <span className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-400 font-semibold rounded-lg cursor-not-allowed">
                         Bloqueado
                       </span>
                     )}
@@ -321,8 +325,8 @@ export default function ProfilePage() {
 
           {/* Dica */}
           {!kycInfo.allComplete && (
-            <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-sm text-yellow-800">
+            <div className="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg">
+              <p className="text-sm text-yellow-800 dark:text-yellow-200">
                 💡 <strong>Dica:</strong> Complete os níveis KYC em ordem para aumentar
                 seu limite de transação e acessar mais recursos da plataforma.
               </p>
@@ -331,20 +335,20 @@ export default function ProfilePage() {
         </div>
 
         {/* Reputação */}
-        <div className="bg-white rounded-lg shadow-md p-8 mb-6">
-          <h2 className="text-2xl font-bold mb-4">Reputação</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 mb-6">
+          <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Reputação</h2>
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <p className="text-sm text-gray-600">Score</p>
-              <p className="text-2xl font-bold">{profile?.reputationScore || 0}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Score</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{profile?.reputationScore || 0}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Total de Transações</p>
-              <p className="text-2xl font-bold">{profile?.totalTransactions || 0}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Total de Transações</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{profile?.totalTransactions || 0}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Transações Bem-sucedidas</p>
-              <p className="text-2xl font-bold text-green-600">
+              <p className="text-sm text-gray-600 dark:text-gray-400">Transações Bem-sucedidas</p>
+              <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                 {profile?.successfulTransactions || 0}
               </p>
             </div>
@@ -355,7 +359,7 @@ export default function ProfilePage() {
         <div className="flex gap-4">
           <button
             onClick={() => router.push('/dashboard')}
-            className="flex-1 py-3 px-4 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg transition-colors"
+            className="flex-1 py-3 px-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg transition-colors"
           >
             Voltar ao Dashboard
           </button>
@@ -365,7 +369,7 @@ export default function ProfilePage() {
               localStorage.removeItem('accessToken');
               router.push('/login');
             }}
-            className="flex-1 py-3 px-4 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors"
+            className="flex-1 py-3 px-4 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg transition-colors"
           >
             Sair
           </button>

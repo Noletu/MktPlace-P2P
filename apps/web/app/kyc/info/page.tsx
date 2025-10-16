@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DAILY_LIMITS } from '@mktplace/shared';
+import ThemeToggle from '@/components/ThemeToggle';
 
 export default function KYCInfoPage() {
   const router = useRouter();
@@ -63,7 +64,7 @@ export default function KYCInfoPage() {
       features: [
         'Acesso básico à plataforma',
         'Visualizar marketplace',
-        'Criar pedidos de até R$ 1.000/dia',
+        'Criar pedidos de até R$ 1.000,00/dia',
       ],
     },
     {
@@ -73,7 +74,7 @@ export default function KYCInfoPage() {
       requirements: ['Email verificado', 'Telefone confirmado', 'CPF válido'],
       features: [
         'Todas as funcionalidades do Nível 0',
-        'Criar pedidos de até R$ 10.000/dia',
+        'Criar pedidos de até R$ 10.000,00/dia',
         'Aceitar pedidos do marketplace',
         'Melhor reputação na plataforma',
       ],
@@ -91,7 +92,7 @@ export default function KYCInfoPage() {
       ],
       features: [
         'Todas as funcionalidades do Nível 1',
-        'Criar pedidos de até R$ 50.000/dia',
+        'Criar pedidos de até R$ 50.000,00/dia',
         'Prioridade no matching de pedidos',
         'Taxa de plataforma reduzida',
       ],
@@ -109,7 +110,7 @@ export default function KYCInfoPage() {
       ],
       features: [
         'Todas as funcionalidades do Nível 2',
-        'Criar pedidos de até R$ 100.000/dia',
+        'Criar pedidos de até R$ 100.000,00/dia',
         'Acesso a recursos premium',
         'Suporte prioritário',
       ],
@@ -139,24 +140,27 @@ export default function KYCInfoPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-xl">Carregando...</div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-xl text-gray-900 dark:text-white">Carregando...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="mb-4 text-blue-600 hover:text-blue-700 font-semibold"
-          >
-            ← Voltar ao Dashboard
-          </button>
-          <h1 className="text-4xl font-bold mb-4">Níveis de Verificação (KYC)</h1>
-          <p className="text-gray-600 text-lg">
+          <div className="flex justify-between items-center mb-4">
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-500 font-semibold"
+            >
+              ← Voltar ao Dashboard
+            </button>
+            <ThemeToggle />
+          </div>
+          <h1 className="text-4xl font-bold mb-4 text-gray-900 dark:text-white">Níveis de Verificação (KYC)</h1>
+          <p className="text-gray-600 dark:text-gray-300 text-lg">
             Aumente seu limite diário completando os níveis de verificação.
           </p>
         </div>
@@ -172,7 +176,7 @@ export default function KYCInfoPage() {
               <div
                 key={level.level}
                 className={`rounded-lg shadow-md p-6 border-l-4 ${
-                  isCompleted ? 'bg-green-50' : isNext ? 'bg-blue-50' : 'bg-gray-50'
+                  isCompleted ? 'bg-green-50 dark:bg-green-900/30' : isNext ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-gray-50 dark:bg-gray-800'
                 }`}
                 style={{
                   borderLeftColor: isCompleted ? '#10b981' : isNext ? '#3b82f6' : '#94a3b8',
@@ -181,19 +185,19 @@ export default function KYCInfoPage() {
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <div className="flex items-center gap-3 mb-2">
-                      <h2 className="text-2xl font-bold">{level.name}</h2>
+                      <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{level.name}</h2>
                       {isCompleted && (
-                        <span className="text-sm px-3 py-1 bg-green-100 text-green-700 font-semibold rounded-full">
+                        <span className="text-sm px-3 py-1 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 font-semibold rounded-full">
                           ✓ Concluído
                         </span>
                       )}
                       {isNext && (
-                        <span className="text-sm px-3 py-1 bg-blue-100 text-blue-700 font-semibold rounded-full animate-pulse">
+                        <span className="text-sm px-3 py-1 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-semibold rounded-full animate-pulse">
                           → Próximo
                         </span>
                       )}
                     </div>
-                    <p className="text-3xl font-bold text-green-600">
+                    <p className="text-3xl font-bold text-green-600 dark:text-green-400">
                       {level.limit >= 999999999
                         ? 'Limite: Ilimitado'
                         : `Limite: R$ ${level.limit.toLocaleString('pt-BR')}/dia`}
@@ -202,7 +206,7 @@ export default function KYCInfoPage() {
 
                   <div>
                     {isCompleted && (
-                      <div className="px-6 py-3 bg-green-100 text-green-700 font-semibold rounded-lg flex items-center gap-2">
+                      <div className="px-6 py-3 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 font-semibold rounded-lg flex items-center gap-2">
                         <span className="text-xl">✓</span>
                         <span>Completo</span>
                       </div>
@@ -210,18 +214,18 @@ export default function KYCInfoPage() {
                     {isNext && level.route && (
                       <button
                         onClick={() => router.push(level.route)}
-                        className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all"
+                        className="px-6 py-3 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all"
                       >
                         Completar Agora
                       </button>
                     )}
                     {isNext && !level.route && (
-                      <button disabled className="px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg cursor-not-allowed">
+                      <button disabled className="px-6 py-3 bg-gray-400 dark:bg-gray-600 text-white font-semibold rounded-lg cursor-not-allowed">
                         Em breve
                       </button>
                     )}
                     {isBlocked && (
-                      <div className="px-6 py-3 bg-gray-200 text-gray-500 font-semibold rounded-lg">
+                      <div className="px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 font-semibold rounded-lg">
                         Bloqueado
                       </div>
                     )}
@@ -230,10 +234,10 @@ export default function KYCInfoPage() {
 
                 <div className="grid md:grid-cols-2 gap-6">
                   <div>
-                    <h3 className="font-semibold text-lg mb-3">📋 Requisitos:</h3>
+                    <h3 className="font-semibold text-lg mb-3 text-gray-900 dark:text-white">📋 Requisitos:</h3>
                     <ul className="space-y-2">
                       {level.requirements.map((req, i) => (
-                        <li key={i} className="text-gray-700">
+                        <li key={i} className="text-gray-700 dark:text-gray-300">
                           • {req}
                         </li>
                       ))}
@@ -241,10 +245,10 @@ export default function KYCInfoPage() {
                   </div>
 
                   <div>
-                    <h3 className="font-semibold text-lg mb-3">🎁 Benefícios:</h3>
+                    <h3 className="font-semibold text-lg mb-3 text-gray-900 dark:text-white">🎁 Benefícios:</h3>
                     <ul className="space-y-2">
                       {level.features.map((feature, i) => (
-                        <li key={i} className="text-gray-700">
+                        <li key={i} className="text-gray-700 dark:text-gray-300">
                           • {feature}
                         </li>
                       ))}
@@ -256,9 +260,9 @@ export default function KYCInfoPage() {
           })}
         </div>
 
-        <div className="mt-12 bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h3 className="text-xl font-bold mb-3">ℹ️ Informações Importantes</h3>
-          <ul className="space-y-2 text-gray-700">
+        <div className="mt-12 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-6">
+          <h3 className="text-xl font-bold mb-3 text-gray-900 dark:text-white">ℹ️ Informações Importantes</h3>
+          <ul className="space-y-2 text-gray-700 dark:text-gray-300">
             <li>• Os limites diários são cumulativos</li>
             <li>• A verificação pode levar de 1 a 48 horas úteis</li>
             <li>• Todos os documentos são criptografados</li>
