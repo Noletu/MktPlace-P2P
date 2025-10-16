@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import ThemeToggle from '@/components/ThemeToggle';
 
 export default function KYCLevel2Page() {
   const router = useRouter();
@@ -51,19 +52,22 @@ export default function KYCLevel2Page() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
       <div className="max-w-3xl mx-auto">
-        <div className="bg-white rounded-lg shadow-md p-8">
+        <div className="flex justify-end mb-4">
+          <ThemeToggle />
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">KYC Nível 2</h1>
-            <p className="text-gray-600">
+            <h1 className="text-3xl font-bold mb-2 text-gray-900 dark:text-white">KYC Nível 2</h1>
+            <p className="text-gray-600 dark:text-gray-300">
               Complete seu cadastro para aumentar seu limite diário para <strong>R$ 50.000</strong>
             </p>
           </div>
 
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h3 className="font-semibold text-blue-900 mb-2">📋 Documentos necessários:</h3>
-            <ul className="text-sm text-blue-800 space-y-1">
+          <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
+            <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">📋 Documentos necessários:</h3>
+            <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1">
               <li>• Selfie segurando o documento de identidade</li>
               <li>• Foto do documento de identidade (RG ou CNH)</li>
               <li>• Comprovante de endereço (últimos 3 meses)</li>
@@ -71,7 +75,7 @@ export default function KYCLevel2Page() {
           </div>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">
               {error}
             </div>
           )}
@@ -221,14 +225,14 @@ export default function KYCLevel2Page() {
               <button
                 type="button"
                 onClick={() => router.push('/dashboard')}
-                className="flex-1 py-3 px-4 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg"
+                className="flex-1 py-3 px-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="flex-1 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg disabled:opacity-50"
+                className="flex-1 py-3 px-4 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg disabled:opacity-50"
               >
                 {loading ? 'Enviando...' : 'Enviar Documentos'}
               </button>

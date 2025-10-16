@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import { CryptoType } from '@mktplace/shared';
+import { formatBRL } from '@/utils/formatters';
+import ThemeToggle from '@/components/ThemeToggle';
 
 interface Order {
   id: string;
@@ -143,30 +145,31 @@ export default function MarketplacePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-xl">Carregando...</div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-xl dark:text-white">Carregando...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Marketplace</h1>
-            <p className="text-gray-600">Aceite pedidos e ganhe cripto pagando contas!</p>
+            <h1 className="text-3xl font-bold mb-2 dark:text-white">Marketplace</h1>
+            <p className="text-gray-600 dark:text-gray-300">Aceite pedidos e ganhe cripto pagando contas!</p>
           </div>
           <div className="flex gap-4">
+            <ThemeToggle />
             <button
               onClick={() => router.push('/orders/create')}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg"
+              className="px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg"
             >
               + Criar Pedido
             </button>
             <button
               onClick={() => router.push('/dashboard')}
-              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg"
+              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg"
             >
               Voltar
             </button>
@@ -174,12 +177,12 @@ export default function MarketplacePage() {
         </div>
 
         {/* Filtros */}
-        <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6">
           <div className="flex gap-4">
             <button
               onClick={() => setFilter('ALL')}
               className={`px-4 py-2 rounded-lg font-semibold ${
-                filter === 'ALL' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                filter === 'ALL' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
               }`}
             >
               Todos ({orders.length})
@@ -187,7 +190,7 @@ export default function MarketplacePage() {
             <button
               onClick={() => setFilter('PIX')}
               className={`px-4 py-2 rounded-lg font-semibold ${
-                filter === 'PIX' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                filter === 'PIX' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
               }`}
             >
               PIX ({orders.filter((o) => o.type === 'PIX').length})
@@ -195,7 +198,7 @@ export default function MarketplacePage() {
             <button
               onClick={() => setFilter('BOLETO')}
               className={`px-4 py-2 rounded-lg font-semibold ${
-                filter === 'BOLETO' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                filter === 'BOLETO' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
               }`}
             >
               Boleto ({orders.filter((o) => o.type === 'BOLETO').length})
@@ -204,18 +207,18 @@ export default function MarketplacePage() {
         </div>
 
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400">
             {error}
           </div>
         )}
 
         {/* Lista de Pedidos */}
         {filteredOrders.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-md p-8 text-center">
-            <p className="text-gray-600 mb-4">Nenhum pedido disponível no momento.</p>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 text-center">
+            <p className="text-gray-600 dark:text-gray-300 mb-4">Nenhum pedido disponível no momento.</p>
             <button
               onClick={() => router.push('/orders/create')}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg"
+              className="px-6 py-3 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg"
             >
               Criar Primeiro Pedido
             </button>
@@ -226,60 +229,60 @@ export default function MarketplacePage() {
               const isOwnOrder = currentUserId && order.user.id === currentUserId;
 
               return (
-                <div key={order.id} className={`bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow ${isOwnOrder ? 'border-2 border-red-200' : ''}`}>
+                <div key={order.id} className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow ${isOwnOrder ? 'border-2 border-red-200 dark:border-red-800' : ''}`}>
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex flex-col gap-2">
                       <span
                         className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
                           order.type === 'PIX'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-blue-100 text-blue-800'
+                            ? 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300'
+                            : 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300'
                         }`}
                       >
                         {order.type}
                       </span>
                       {isOwnOrder && (
-                        <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800">
+                        <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300">
                           SEU PEDIDO
                         </span>
                       )}
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-gray-500">Expira em</p>
-                      <p className="text-sm font-semibold">{getTimeRemaining(order.timeoutAt)}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Expira em</p>
+                      <p className="text-sm font-semibold dark:text-gray-200">{getTimeRemaining(order.timeoutAt)}</p>
                     </div>
                   </div>
 
                 <div className="mb-4">
-                  <p className="text-sm text-gray-600">Valor do Pagamento</p>
-                  <p className="text-3xl font-bold text-gray-900">R$ {parseFloat(order.brlAmount).toFixed(2)}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Valor do Pagamento</p>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(order.brlAmount)}</p>
                 </div>
 
                 <div className="mb-4">
-                  <p className="text-sm text-gray-600">Você receberá</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Você receberá</p>
                   <div className="flex items-center gap-2">
                     <CryptoIcon crypto={order.cryptoType as CryptoType} size={28} />
-                    <p className="text-xl font-bold text-green-600">
+                    <p className="text-xl font-bold text-green-600 dark:text-green-400">
                       {(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward)).toFixed(8)} {order.cryptoType}
                     </p>
                   </div>
-                  <p className="text-xs text-green-700 font-semibold">
+                  <p className="text-xs text-green-700 dark:text-green-400 font-semibold">
                     ✨ Inclui +{parseFloat(order.payerReward).toFixed(8)} de cashback (1%)
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
                     Rede: {order.cryptoNetwork}
                   </p>
                 </div>
 
-                <div className="mb-4 pb-4 border-b">
-                  <p className="text-sm text-gray-600 mb-2">Vendedor</p>
+                <div className="mb-4 pb-4 border-b dark:border-gray-700">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Vendedor</p>
                   <div className="flex items-center justify-between">
-                    <p className="font-semibold">{order.user.name || 'Anônimo'}</p>
+                    <p className="font-semibold dark:text-gray-200">{order.user.name || 'Anônimo'}</p>
                     <div className="text-right">
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
                         Score: {order.user.reputationScore}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
                         {order.user.successfulTransactions}/{order.user.totalTransactions} sucesso
                       </p>
                     </div>
@@ -289,14 +292,14 @@ export default function MarketplacePage() {
                 {isOwnOrder ? (
                   <button
                     disabled
-                    className="w-full py-3 px-4 bg-gray-400 text-white font-semibold rounded-lg cursor-not-allowed"
+                    className="w-full py-3 px-4 bg-gray-400 dark:bg-gray-600 text-white font-semibold rounded-lg cursor-not-allowed"
                   >
                     Seu Pedido - Não pode aceitar
                   </button>
                 ) : (
                   <button
                     onClick={() => handleMatch(order.id)}
-                    className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+                    className="w-full py-3 px-4 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg transition-colors"
                   >
                     Aceitar e Pagar
                   </button>

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { formatBRL } from '@/utils/formatters';
+import ThemeToggle from '@/components/ThemeToggle';
 
 interface Order {
   id: string;
@@ -70,16 +72,16 @@ export default function MyOrdersPage() {
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-      PENDING: 'bg-yellow-100 text-yellow-800',
-      MATCHED: 'bg-blue-100 text-blue-800',
-      PAYMENT_SENT: 'bg-purple-100 text-purple-800',
-      VALIDATING: 'bg-orange-100 text-orange-800',
-      COMPLETED: 'bg-green-100 text-green-800',
-      DISPUTED: 'bg-red-100 text-red-800',
-      CANCELLED: 'bg-gray-100 text-gray-800',
-      TIMEOUT: 'bg-gray-100 text-gray-800',
+      PENDING: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300',
+      MATCHED: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300',
+      PAYMENT_SENT: 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300',
+      VALIDATING: 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300',
+      COMPLETED: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300',
+      DISPUTED: 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300',
+      CANCELLED: 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300',
+      TIMEOUT: 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300',
     };
-    return colors[status] || 'bg-gray-100 text-gray-800';
+    return colors[status] || 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300';
   };
 
   const getStatusText = (status: string) => {
@@ -115,27 +117,28 @@ export default function MyOrdersPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-xl">Carregando...</div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-xl dark:text-white">Carregando...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">Meus Pedidos</h1>
+          <h1 className="text-3xl font-bold dark:text-white">Meus Pedidos</h1>
           <div className="flex gap-4">
+            <ThemeToggle />
             <button
               onClick={() => router.push('/orders/create')}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg"
+              className="px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg"
             >
               + Novo Pedido
             </button>
             <button
               onClick={() => router.push('/dashboard')}
-              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg"
+              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg"
             >
               Dashboard
             </button>
@@ -143,12 +146,12 @@ export default function MyOrdersPage() {
         </div>
 
         {/* Filtros */}
-        <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6">
           <div className="flex gap-4">
             <button
               onClick={() => setFilter('ALL')}
               className={`px-4 py-2 rounded-lg font-semibold ${
-                filter === 'ALL' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                filter === 'ALL' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
               }`}
             >
               Todos ({orders.length})
@@ -156,7 +159,7 @@ export default function MyOrdersPage() {
             <button
               onClick={() => setFilter('ACTIVE')}
               className={`px-4 py-2 rounded-lg font-semibold ${
-                filter === 'ACTIVE' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                filter === 'ACTIVE' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
               }`}
             >
               Ativos (
@@ -166,7 +169,7 @@ export default function MyOrdersPage() {
             <button
               onClick={() => setFilter('COMPLETED')}
               className={`px-4 py-2 rounded-lg font-semibold ${
-                filter === 'COMPLETED' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                filter === 'COMPLETED' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
               }`}
             >
               Concluídos ({orders.filter((o) => o.status === 'COMPLETED').length})
@@ -174,7 +177,7 @@ export default function MyOrdersPage() {
             <button
               onClick={() => setFilter('CANCELLED')}
               className={`px-4 py-2 rounded-lg font-semibold ${
-                filter === 'CANCELLED' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                filter === 'CANCELLED' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
               }`}
             >
               Cancelados ({orders.filter((o) => o.status === 'CANCELLED').length})
@@ -183,18 +186,18 @@ export default function MyOrdersPage() {
         </div>
 
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400">
             {error}
           </div>
         )}
 
         {/* Lista de Pedidos */}
         {filteredOrders.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-md p-8 text-center">
-            <p className="text-gray-600 mb-4">Você ainda não criou nenhum pedido.</p>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 text-center">
+            <p className="text-gray-600 dark:text-gray-300 mb-4">Você ainda não criou nenhum pedido.</p>
             <button
               onClick={() => router.push('/orders/create')}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg"
+              className="px-6 py-3 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg"
             >
               Criar Primeiro Pedido
             </button>
@@ -204,7 +207,7 @@ export default function MyOrdersPage() {
             {filteredOrders.map((order) => (
               <div
                 key={order.id}
-                className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer"
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer"
                 onClick={() => router.push(`/orders/${order.id}`)}
               >
                 <div className="flex justify-between items-start">
@@ -213,8 +216,8 @@ export default function MyOrdersPage() {
                       <span
                         className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
                           getPaymentMethod(order) === 'PIX'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-blue-100 text-blue-800'
+                            ? 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300'
+                            : 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300'
                         }`}
                       >
                         {getPaymentMethod(order)}
@@ -230,25 +233,25 @@ export default function MyOrdersPage() {
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                       <div>
-                        <p className="text-sm text-gray-600">Valor em BRL</p>
-                        <p className="text-lg font-bold">R$ {parseFloat(order.brlAmount).toFixed(2)}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Valor em BRL</p>
+                        <p className="text-lg font-bold dark:text-gray-200">{formatBRL(order.brlAmount)}</p>
                       </div>
 
                       <div>
-                        <p className="text-sm text-gray-600">Crypto</p>
-                        <p className="text-lg font-semibold">
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Crypto</p>
+                        <p className="text-lg font-semibold dark:text-gray-200">
                           {parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}
                         </p>
                       </div>
 
                       <div>
-                        <p className="text-sm text-gray-600">Rede</p>
-                        <p className="text-sm font-semibold">{order.cryptoNetwork}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Rede</p>
+                        <p className="text-sm font-semibold dark:text-gray-200">{order.cryptoNetwork}</p>
                       </div>
 
                       <div>
-                        <p className="text-sm text-gray-600">Criado em</p>
-                        <p className="text-sm">
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Criado em</p>
+                        <p className="text-sm dark:text-gray-300">
                           {new Date(order.createdAt).toLocaleDateString()} às{' '}
                           {new Date(order.createdAt).toLocaleTimeString()}
                         </p>
@@ -256,8 +259,8 @@ export default function MyOrdersPage() {
                     </div>
 
                     {order.transactions.length > 0 && (
-                      <div className="mt-4 pt-4 border-t">
-                        <p className="text-sm text-gray-600">
+                      <div className="mt-4 pt-4 border-t dark:border-gray-700">
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
                           {order.transactions.length} transação(ões) associada(s)
                         </p>
                       </div>
@@ -266,7 +269,7 @@ export default function MyOrdersPage() {
 
                   <div>
                     <svg
-                      className="w-6 h-6 text-gray-400"
+                      className="w-6 h-6 text-gray-400 dark:text-gray-500"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"

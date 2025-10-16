@@ -137,34 +137,34 @@ export default function RegisterForm() {
   if (success) {
     return (
       <div className="w-full max-w-md animate-fade-in">
-        <div className="p-8 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-400 rounded-lg shadow-lg">
+        <div className="p-8 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/30 dark:to-emerald-900/30 border-2 border-green-400 dark:border-green-600 rounded-lg shadow-lg">
           <div className="text-center">
             <div className="mb-4">
               <span className="text-6xl">✅</span>
             </div>
-            <h2 className="text-3xl font-bold text-green-800 mb-2">
+            <h2 className="text-3xl font-bold text-green-800 dark:text-green-300 mb-2">
               Conta criada com sucesso!
             </h2>
-            <p className="text-xl text-green-700 mb-4">
+            <p className="text-xl text-green-700 dark:text-green-400 mb-4">
               Bem-vindo(a), <strong>{formData.name || formData.email.split('@')[0]}</strong>!
             </p>
-            <div className="p-4 bg-white/70 rounded-lg mb-4">
-              <p className="text-gray-700 mb-2">
+            <div className="p-4 bg-white/70 dark:bg-gray-800/70 rounded-lg mb-4">
+              <p className="text-gray-700 dark:text-gray-300 mb-2">
                 🎉 Você já pode começar a usar a plataforma!
               </p>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
                 Seu limite inicial é de <strong>R$ 1.000/dia</strong>
               </p>
             </div>
-            <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <p className="text-blue-800 font-semibold mb-2">
+            <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700">
+              <p className="text-blue-800 dark:text-blue-300 font-semibold mb-2">
                 Redirecionando para o dashboard em...
               </p>
-              <p className="text-5xl font-bold text-blue-600 animate-pulse">
+              <p className="text-5xl font-bold text-blue-600 dark:text-blue-400 animate-pulse">
                 {countdown}
               </p>
             </div>
-            <p className="text-xs text-gray-500 mt-4">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-4">
               Aguarde ou será redirecionado automaticamente
             </p>
           </div>
@@ -176,14 +176,14 @@ export default function RegisterForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4 w-full max-w-md">
       {/* Informação sobre o fluxo simplificado */}
-      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+      <div className="p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg text-sm text-blue-800 dark:text-blue-300">
         <p>
           ℹ️ <strong>Cadastro simplificado:</strong> Apenas email e senha para começar! Você pode usar a plataforma imediatamente com limite de R$ 1.000/dia.
         </p>
       </div>
 
       <div>
-        <label htmlFor="name" className="block text-sm font-medium mb-2">
+        <label htmlFor="name" className="block text-sm font-medium text-gray-900 dark:text-gray-200 mb-2">
           Nome (opcional)
         </label>
         <input
@@ -192,14 +192,14 @@ export default function RegisterForm() {
           type="text"
           value={formData.name}
           onChange={handleChange}
-          className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+          className="w-full px-4 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 focus:border-transparent"
           placeholder="João da Silva"
         />
-        <p className="text-xs text-gray-500 mt-1">Opcional - pode ser preenchido depois</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Opcional - pode ser preenchido depois</p>
       </div>
 
       <div>
-        <label htmlFor="email" className="block text-sm font-medium mb-2">
+        <label htmlFor="email" className="block text-sm font-medium text-gray-900 dark:text-gray-200 mb-2">
           Email *
         </label>
         <div className="relative">
@@ -210,7 +210,7 @@ export default function RegisterForm() {
             value={formData.email}
             onChange={handleChange}
             required
-            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
+            className={`w-full px-4 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-primary focus:border-transparent ${
               emailValid === false ? 'border-red-500' : emailValid === true ? 'border-green-500' : ''
             }`}
             placeholder="seu@email.com"
@@ -228,12 +228,12 @@ export default function RegisterForm() {
           )}
         </div>
         {emailValid === false && (
-          <p className="text-xs text-red-600 mt-1">Este email já está cadastrado</p>
+          <p className="text-xs text-red-600 dark:text-red-400 mt-1">Este email já está cadastrado</p>
         )}
       </div>
 
       <div>
-        <label htmlFor="password" className="block text-sm font-medium mb-2">
+        <label htmlFor="password" className="block text-sm font-medium text-gray-900 dark:text-gray-200 mb-2">
           Senha *
         </label>
         <div className="relative">
@@ -245,7 +245,7 @@ export default function RegisterForm() {
             onChange={handleChange}
             required
             minLength={8}
-            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
+            className={`w-full px-4 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-primary focus:border-transparent ${
               formData.password && (passwordValid ? 'border-green-500' : 'border-red-500')
             }`}
             placeholder="********"
@@ -258,26 +258,26 @@ export default function RegisterForm() {
           )}
         </div>
         <div className="text-xs mt-1 space-y-1">
-          <p className={formData.password.length >= 8 ? 'text-green-600' : 'text-gray-500'}>
+          <p className={formData.password.length >= 8 ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}>
             {formData.password.length >= 8 ? '✓' : '○'} Mínimo 8 caracteres
           </p>
-          <p className={/[A-Z]/.test(formData.password) ? 'text-green-600' : 'text-gray-500'}>
+          <p className={/[A-Z]/.test(formData.password) ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}>
             {/[A-Z]/.test(formData.password) ? '✓' : '○'} 1 letra maiúscula
           </p>
-          <p className={/[a-z]/.test(formData.password) ? 'text-green-600' : 'text-gray-500'}>
+          <p className={/[a-z]/.test(formData.password) ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}>
             {/[a-z]/.test(formData.password) ? '✓' : '○'} 1 letra minúscula
           </p>
-          <p className={/[0-9]/.test(formData.password) ? 'text-green-600' : 'text-gray-500'}>
+          <p className={/[0-9]/.test(formData.password) ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}>
             {/[0-9]/.test(formData.password) ? '✓' : '○'} 1 número
           </p>
-          <p className={/[^A-Za-z0-9]/.test(formData.password) ? 'text-green-600' : 'text-gray-500'}>
+          <p className={/[^A-Za-z0-9]/.test(formData.password) ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}>
             {/[^A-Za-z0-9]/.test(formData.password) ? '✓' : '○'} 1 caractere especial (!@#$%...)
           </p>
         </div>
       </div>
 
       {error && (
-        <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+        <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-800 text-red-700 dark:text-red-400 rounded">
           {error}
         </div>
       )}
@@ -285,12 +285,12 @@ export default function RegisterForm() {
       <button
         type="submit"
         disabled={loading || emailValid === false}
-        className="w-full bg-primary text-white py-2 px-4 rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full bg-blue-600 dark:bg-blue-700 text-white py-2 px-4 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {loading ? 'Criando conta...' : 'Criar Conta'}
       </button>
 
-      <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600">
+      <div className="p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs text-gray-600 dark:text-gray-400">
         <p className="mb-2"><strong>Após o cadastro:</strong></p>
         <ul className="list-disc list-inside space-y-1">
           <li>✅ Use a plataforma imediatamente (limite: R$ 1.000/dia)</li>
@@ -300,9 +300,9 @@ export default function RegisterForm() {
         </ul>
       </div>
 
-      <p className="text-center text-sm text-muted-foreground">
+      <p className="text-center text-sm text-gray-600 dark:text-gray-400">
         Já tem uma conta?{' '}
-        <a href="/login" className="text-primary hover:underline">
+        <a href="/login" className="text-blue-600 dark:text-blue-400 hover:underline">
           Fazer login
         </a>
       </p>

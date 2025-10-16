@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { KYCLevel } from '@mktplace/shared';
+import ThemeToggle from '@/components/ThemeToggle';
 
 interface User {
   id: string;
@@ -100,22 +101,23 @@ export default function DashboardPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col p-24">
+    <main className="flex min-h-screen flex-col p-24 bg-gray-50 dark:bg-gray-900 transition-colors">
       <div className="z-10 w-full max-w-5xl">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-4xl font-bold">
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
             Dashboard
           </h1>
-          <div className="flex gap-4">
+          <div className="flex gap-3 items-center">
+            <ThemeToggle />
             <button
               onClick={() => router.push('/profile')}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+              className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700"
             >
               Meu Perfil
             </button>
             <button
               onClick={handleLogout}
-              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+              className="px-4 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700"
             >
               Sair
             </button>
@@ -123,25 +125,25 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="p-6 border rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50">
-            <h2 className="text-xl font-bold mb-4">Informações Pessoais</h2>
-            <div className="space-y-3">
+          <div className="p-6 border border-gray-200 dark:border-gray-700 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20">
+            <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Informações Pessoais</h2>
+            <div className="space-y-3 text-gray-700 dark:text-gray-300">
               <p><strong>Nome:</strong> {user.name || 'Não informado'}</p>
               <p><strong>Email:</strong> {user.email}</p>
               <p><strong>CPF:</strong> {user.cpf}</p>
-              <div className="pt-2 border-t">
-                <p className="text-sm text-gray-600 mb-1">Nível de Verificação:</p>
+              <div className="pt-2 border-t border-gray-300 dark:border-gray-600">
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Nível de Verificação:</p>
                 <p className={`text-lg font-bold ${getKYCLevelDisplay(user.kycLevel).color}`}>
                   {getKYCLevelDisplay(user.kycLevel).label}
                 </p>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                   {getKYCLevelDisplay(user.kycLevel).limit}
                 </p>
               </div>
               {user.kycLevel === 'NONE' && (
                 <button
                   onClick={() => router.push('/kyc/level1')}
-                  className="mt-4 w-full px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+                  className="mt-4 w-full px-4 py-2 bg-green-500 dark:bg-green-600 text-white rounded-lg hover:bg-green-600 dark:hover:bg-green-700"
                 >
                   ⬆️ Completar KYC Level 1
                 </button>
@@ -149,7 +151,7 @@ export default function DashboardPage() {
               {user.kycLevel !== 'NONE' && user.kycLevel !== 'LEVEL_4' && (
                 <button
                   onClick={() => router.push('/kyc/info')}
-                  className="mt-4 w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                  className="mt-4 w-full px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700"
                 >
                   ⬆️ Aumentar Limite
                 </button>
@@ -157,44 +159,44 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="p-6 border rounded-lg">
-            <h2 className="text-xl font-bold mb-4">Reputação</h2>
-            <div className="space-y-2">
+          <div className="p-6 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800">
+            <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Reputação</h2>
+            <div className="space-y-2 text-gray-700 dark:text-gray-300">
               <p><strong>Score:</strong> {user.reputationScore}</p>
               <p><strong>Role:</strong> {user.role}</p>
             </div>
           </div>
 
-          <div className="p-6 border rounded-lg bg-gradient-to-br from-purple-50 to-pink-50">
-            <h2 className="text-xl font-bold mb-4">💳 Meus Endereços</h2>
-            <p className="text-gray-600 mb-4">Gerencie seus endereços de criptomoedas</p>
+          <div className="p-6 border border-gray-200 dark:border-gray-700 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20">
+            <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">💳 Meus Endereços</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">Gerencie seus endereços de criptomoedas</p>
             <button
               onClick={() => router.push('/wallets')}
-              className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600"
+              className="w-full px-4 py-2 bg-purple-500 dark:bg-purple-600 text-white rounded-lg hover:bg-purple-600 dark:hover:bg-purple-700"
             >
               Gerenciar Endereços
             </button>
           </div>
 
-          <div className="p-6 border rounded-lg">
-            <h2 className="text-xl font-bold mb-4">Marketplace</h2>
-            <p className="text-gray-600 mb-4">Veja pedidos disponíveis ou crie o seu</p>
+          <div className="p-6 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800">
+            <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Marketplace</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">Veja pedidos disponíveis ou crie o seu</p>
             <div className="space-y-2">
               <button
                 onClick={() => router.push('/marketplace')}
-                className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                className="w-full px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700"
               >
                 Ver Marketplace
               </button>
               <button
                 onClick={() => router.push('/orders/create')}
-                className="w-full px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+                className="w-full px-4 py-2 bg-green-500 dark:bg-green-600 text-white rounded-lg hover:bg-green-600 dark:hover:bg-green-700"
               >
                 Criar Pedido
               </button>
               <button
                 onClick={() => router.push('/orders/my-orders')}
-                className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600"
+                className="w-full px-4 py-2 bg-purple-500 dark:bg-purple-600 text-white rounded-lg hover:bg-purple-600 dark:hover:bg-purple-700"
               >
                 Meus Pedidos
               </button>

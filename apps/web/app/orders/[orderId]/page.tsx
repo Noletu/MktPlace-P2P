@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import ChatWindow from '@/components/chat/ChatWindow';
+import CountdownTimer from '@/components/CountdownTimer';
+import { formatBRL } from '@/utils/formatters';
+import ThemeToggle from '@/components/ThemeToggle';
 
 interface Order {
   id: string;
@@ -19,7 +22,7 @@ interface Order {
   createdAt: string;
   timeoutAt: string;
   user: {
-    id: true;
+    id: string;
     name: string;
     email: string;
     reputationScore: number;
@@ -57,6 +60,8 @@ export default function OrderDetailsPage() {
   const [confirmingReceived, setConfirmingReceived] = useState(false);
   const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
   const [confirmingPayment, setConfirmingPayment] = useState(false);
+  const [modalProofImage, setModalProofImage] = useState<string>('');
+  const [isChatMinimized, setIsChatMinimized] = useState(false);
 
   useEffect(() => {
     fetchOrder();
@@ -98,6 +103,17 @@ export default function OrderDetailsPage() {
     const reader = new FileReader();
     reader.onloadend = () => {
       setProofImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleModalImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setModalProofImage(reader.result as string);
     };
     reader.readAsDataURL(file);
   };
@@ -232,6 +248,12 @@ export default function OrderDetailsPage() {
   };
 
   const handleConfirmPaymentMade = async () => {
+    // Validar se há comprovante
+    if (!modalProofImage) {
+      alert('⚠️ Por favor, anexe o comprovante de pagamento antes de confirmar.');
+      return;
+    }
+
     setConfirmingPayment(true);
     setError('');
     setShowPaymentConfirmModal(false);
@@ -247,20 +269,41 @@ export default function OrderDetailsPage() {
         throw new Error('Transação não encontrada');
       }
 
-      const response = await fetch(`http://localhost:3001/api/v1/transactions/${transaction.id}/confirm-payment-made`, {
+      // 1. Confirmar que o pagamento foi feito
+      const confirmResponse = await fetch(`http://localhost:3001/api/v1/transactions/${transaction.id}/confirm-payment-made`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       });
 
-      const data = await response.json();
+      const confirmData = await confirmResponse.json();
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao confirmar pagamento');
+      if (!confirmResponse.ok) {
+        throw new Error(confirmData.error || 'Erro ao confirmar pagamento');
       }
 
-      alert('✅ Pagamento confirmado! Agora você pode enviar o comprovante.');
+      // 2. Enviar o comprovante
+      const proofResponse = await fetch('http://localhost:3001/api/v1/transactions/submit-proof', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          transactionId: transaction.id,
+          comprovanteData: modalProofImage,
+        }),
+      });
+
+      const proofData = await proofResponse.json();
+
+      if (!proofResponse.ok) {
+        throw new Error(proofData.error || 'Erro ao enviar comprovante');
+      }
+
+      alert('✅ Pagamento confirmado e comprovante enviado com sucesso!');
+      setModalProofImage(''); // Limpar imagem do modal
       await fetchOrder();
     } catch (err: any) {
       setError(err.message);
@@ -308,16 +351,16 @@ export default function OrderDetailsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-xl">Carregando...</div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-xl text-gray-900 dark:text-white">Carregando...</div>
       </div>
     );
   }
 
   if (!order) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-xl">Pedido não encontrado</div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-xl text-gray-900 dark:text-white">Pedido não encontrado</div>
       </div>
     );
   }
@@ -335,15 +378,38 @@ export default function OrderDetailsPage() {
   const isCreator = order.user.id === currentUserId;
   const isPayer = transaction?.payer?.id === currentUserId;
 
-  // Debug: mostrar informações no console
+  // Debug: mostrar informações detalhadas no console
   console.log('🔍 Debug Order Details:', {
     orderId: order.id,
     orderStatus: order.status,
     orderUserId: order.user.id,
+    orderUserIdType: typeof order.user.id,
     currentUserId,
+    currentUserIdType: typeof currentUserId,
     isCreator,
+    isPayer,
+    transaction: transaction ? {
+      id: transaction.id,
+      status: transaction.status,
+      payerId: transaction.payer?.id,
+      hasComprovante: !!transaction.comprovanteData,
+    } : null,
     canCancel: isCreator && (order.status === 'PENDING' || order.status === 'MATCHED'),
+    shouldShowConfirmButton: isCreator && (order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING'),
   });
+
+  const translateStatus = (status: string): string => {
+    const translations: Record<string, string> = {
+      PENDING: 'Pendente',
+      MATCHED: 'Aceito',
+      PAYMENT_SENT: 'Pagamento Enviado',
+      VALIDATING: 'Validando',
+      COMPLETED: 'Concluído',
+      DISPUTED: 'Em Disputa',
+      CANCELLED: 'Cancelado',
+    };
+    return translations[status] || status;
+  };
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
@@ -359,24 +425,24 @@ export default function OrderDetailsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
       {/* Modal de Cancelamento */}
       {showCancelModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
-            <h3 className="text-xl font-bold mb-4 text-red-600">⚠️ Cancelar Pedido</h3>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full p-6">
+            <h3 className="text-xl font-bold mb-4 text-red-600 dark:text-red-400">⚠️ Cancelar Pedido</h3>
 
             <div className="space-y-4 mb-6">
-              <p className="text-gray-700 font-semibold">
+              <p className="text-gray-700 dark:text-gray-300 font-semibold">
                 Você tem certeza que deseja cancelar este pedido?
               </p>
 
-              <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4">
-                <h4 className="font-bold text-red-800 mb-3 flex items-center gap-2">
+              <div className="bg-red-50 dark:bg-red-900/30 border-2 border-red-300 dark:border-red-700 rounded-lg p-4">
+                <h4 className="font-bold text-red-800 dark:text-red-200 mb-3 flex items-center gap-2">
                   <span className="text-2xl">💰</span>
                   IMPORTANTE - Devolução do Colateral
                 </h4>
-                <ul className="text-sm text-red-900 space-y-3">
+                <ul className="text-sm text-red-900 dark:text-red-300 space-y-3">
                   <li className="flex gap-2">
                     <span className="font-bold">•</span>
                     <span>
@@ -404,14 +470,14 @@ export default function OrderDetailsPage() {
                 </ul>
               </div>
 
-              <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3">
-                <p className="text-sm text-yellow-900">
+              <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded-lg p-3">
+                <p className="text-sm text-yellow-900 dark:text-yellow-200">
                   <strong>⚠️ Atenção:</strong> As taxas de rede podem variar de acordo com a blockchain escolhida.
                   Redes como Base e Arbitrum têm taxas menores (~$0.01-0.10). Bitcoin e Ethereum podem ter taxas maiores ($2-50).
                 </p>
               </div>
 
-              <p className="text-sm text-gray-600 font-semibold">
+              <p className="text-sm text-gray-600 dark:text-gray-400 font-semibold">
                 ❌ Esta ação não pode ser desfeita.
               </p>
             </div>
@@ -420,14 +486,14 @@ export default function OrderDetailsPage() {
               <button
                 onClick={() => setShowCancelModal(false)}
                 disabled={cancelling}
-                className="flex-1 px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg disabled:opacity-50"
+                className="flex-1 px-4 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg disabled:opacity-50"
               >
                 ← Voltar
               </button>
               <button
                 onClick={handleCancelOrder}
                 disabled={cancelling}
-                className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg disabled:opacity-50"
+                className="flex-1 px-4 py-3 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg disabled:opacity-50"
               >
                 {cancelling ? 'Cancelando...' : 'Confirmar e Pagar Taxas'}
               </button>
@@ -438,17 +504,20 @@ export default function OrderDetailsPage() {
 
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">Detalhes do Pedido</h1>
-          <button
-            onClick={() => router.push('/orders/my-orders')}
-            className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg"
-          >
-            Voltar
-          </button>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Detalhes do Pedido</h1>
+          <div className="flex gap-4">
+            <ThemeToggle />
+            <button
+              onClick={() => router.push('/orders/my-orders')}
+              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg"
+            >
+              Voltar
+            </button>
+          </div>
         </div>
 
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">
             {error}
           </div>
         )}
@@ -456,19 +525,31 @@ export default function OrderDetailsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Informações do Pedido */}
           <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white rounded-lg shadow-md p-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
               <div className="flex justify-between items-start mb-6">
                 <div>
-                  <h2 className="text-2xl font-bold mb-2">
+                  <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">
                     {paymentMethod === 'PIX' ? 'Pagamento PIX' : 'Pagamento de Boleto'}
                   </h2>
-                  <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(order.status)}`}>
-                    {order.status}
-                  </span>
+                  <div className="flex flex-col gap-3">
+                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(order.status)}`}>
+                      {translateStatus(order.status)}
+                    </span>
+                    {/* Countdown Timer - Mostrar apenas para status MATCHED */}
+                    {order.status === 'MATCHED' && order.timeoutAt && (
+                      <CountdownTimer
+                        timeoutAt={order.timeoutAt}
+                        onExpire={() => {
+                          console.log('Timer expirado, recarregando página...');
+                          fetchOrder();
+                        }}
+                      />
+                    )}
+                  </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-3xl font-bold">R$ {parseFloat(order.brlAmount).toFixed(2)}</p>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(order.brlAmount)}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
                     {parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}
                   </p>
                 </div>
@@ -476,60 +557,79 @@ export default function OrderDetailsPage() {
 
               <div className="space-y-4">
                 <div>
-                  <h3 className="font-bold mb-2">Dados do Pagamento</h3>
+                  <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Dados do Pagamento</h3>
                   {paymentMethod === 'PIX' ? (
                     <>
-                      <p><strong>Tipo de Chave:</strong> {orderData.pixKeyType}</p>
-                      <p><strong>Chave PIX:</strong> {orderData.pixKey}</p>
-                      <p><strong>Beneficiário:</strong> {orderData.recipientName}</p>
+                      <p className="text-gray-800 dark:text-gray-300"><strong>Tipo de Chave:</strong> {orderData.pixKeyType}</p>
+                      <p className="text-gray-800 dark:text-gray-300"><strong>Chave PIX:</strong> {orderData.pixKey}</p>
+                      <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiário:</strong> {orderData.recipientName}</p>
                     </>
                   ) : (
                     <>
-                      <p><strong>Código de Barras:</strong></p>
-                      <p className="font-mono text-sm bg-gray-50 p-2 rounded break-all">
+                      <p className="text-gray-800 dark:text-gray-300"><strong>Código de Barras:</strong></p>
+                      <p className="font-mono text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white p-2 rounded break-all">
                         {orderData.barcode}
                       </p>
-                      <p><strong>Vencimento:</strong> {new Date(orderData.dueDate).toLocaleDateString()}</p>
-                      <p><strong>Beneficiário:</strong> {orderData.recipientName}</p>
+                      <p className="text-gray-800 dark:text-gray-300"><strong>Vencimento:</strong> {new Date(orderData.dueDate).toLocaleDateString()}</p>
+                      <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiário:</strong> {orderData.recipientName}</p>
                     </>
                   )}
                 </div>
 
                 <div>
-                  <h3 className="font-bold mb-2">Vendedor</h3>
-                  <p><strong>Nome:</strong> {order.user.name}</p>
-                  <p><strong>Reputação:</strong> {order.user.reputationScore}/100</p>
+                  <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Vendedor</h3>
+                  <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {order.user.name}</p>
+                  <p className="text-gray-800 dark:text-gray-300"><strong>Reputação:</strong> {order.user.reputationScore}/100</p>
                 </div>
 
                 {transaction && (
                   <div>
-                    <h3 className="font-bold mb-2">Pagador</h3>
-                    <p><strong>Nome:</strong> {transaction.payer.name}</p>
+                    <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Pagador</h3>
+                    <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {transaction.payer.name}</p>
                   </div>
                 )}
               </div>
             </div>
 
+            {/* Mensagem de Aguardando Confirmação */}
+            {(order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
+              <div className="bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-300 dark:border-blue-700 rounded-lg shadow-md p-6">
+                <div className="flex items-center gap-4">
+                  <div className="text-5xl animate-pulse">⏳</div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-blue-800 dark:text-blue-200 mb-2">
+                      Aguardando confirmação da outra parte
+                    </h3>
+                    <p className="text-blue-700 dark:text-blue-300">
+                      {isPayer
+                        ? 'O vendedor está verificando seu comprovante de pagamento'
+                        : 'O comprador enviou o comprovante. Verifique e confirme o recebimento'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Upload de Comprovante */}
             {isPayer && order.status === 'MATCHED' && (
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-xl font-bold mb-4">Enviar Comprovante</h3>
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Enviar Comprovante</h3>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Foto do Comprovante
                     </label>
                     <input
                       type="file"
                       accept="image/*"
                       onChange={handleImageUpload}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     />
                   </div>
 
                   {proofImage && (
                     <div>
-                      <p className="text-sm text-gray-600 mb-2">Preview:</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Preview:</p>
                       <img src={proofImage} alt="Preview" className="max-w-full h-auto rounded-lg" />
                     </div>
                   )}
@@ -537,7 +637,7 @@ export default function OrderDetailsPage() {
                   <button
                     onClick={handleSubmitProof}
                     disabled={uploadingProof || !proofImage}
-                    className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg disabled:opacity-50"
+                    className="w-full py-3 px-4 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg disabled:opacity-50"
                   >
                     {uploadingProof ? 'Enviando...' : 'Enviar Comprovante'}
                   </button>
@@ -547,18 +647,18 @@ export default function OrderDetailsPage() {
 
             {/* Comprovante Enviado */}
             {transaction?.comprovanteData && (
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-xl font-bold mb-4">Comprovante</h3>
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Comprovante</h3>
                 <img
                   src={transaction.comprovanteData}
                   alt="Comprovante"
                   className="max-w-full h-auto rounded-lg"
                 />
-                <p className="text-sm text-gray-600 mt-2">
-                  Status: <strong>{transaction.status}</strong>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+                  Status: <strong>{translateStatus(transaction.status)}</strong>
                 </p>
                 {transaction.validatedAt && (
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
                     Validado em: {new Date(transaction.validatedAt).toLocaleString()}
                   </p>
                 )}
@@ -568,45 +668,45 @@ export default function OrderDetailsPage() {
 
           {/* Resumo e Ações */}
           <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="font-bold mb-4">Resumo Financeiro</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+              <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Resumo Financeiro</h3>
               <div className="space-y-3">
                 {isCreator ? (
                   <>
                     {/* CRIADOR: Pediu BRL, depositou cripto como colateral */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                      <p className="text-xs text-blue-700 font-semibold mb-1">💰 VOCÊ RECEBERÁ EM BRL:</p>
-                      <p className="text-2xl font-bold text-green-600">
-                        R$ {parseFloat(order.brlAmount).toFixed(2)}
+                    <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
+                      <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">💰 VOCÊ RECEBERÁ EM BRL:</p>
+                      <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                        {formatBRL(order.brlAmount)}
                       </p>
-                      <p className="text-xs text-blue-600 mt-1">
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
                         Quando alguém pagar seu {paymentMethod}
                       </p>
                     </div>
 
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mt-3">
-                      <p className="text-xs font-semibold text-gray-700 uppercase mb-2">Sobre o Colateral:</p>
+                    <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-3 mt-3">
+                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase mb-2">Sobre o Colateral:</p>
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
-                          <p className="text-sm text-gray-600">Valor depositado</p>
-                          <p className="font-semibold">{parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">Valor depositado</p>
+                          <p className="font-semibold text-gray-900 dark:text-white">{parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}</p>
                         </div>
                         <div className="flex justify-between items-center">
-                          <p className="text-sm text-gray-600">Taxa total (2.5%)</p>
-                          <p className="text-red-600 text-sm">-{parseFloat(order.totalFee).toFixed(8)} {order.cryptoType}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">Taxa total (2.5%)</p>
+                          <p className="text-red-600 dark:text-red-400 text-sm">-{parseFloat(order.totalFee).toFixed(8)} {order.cryptoType}</p>
                         </div>
-                        <div className="text-xs text-gray-600 bg-white p-2 rounded mt-2 space-y-1">
+                        <div className="text-xs text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 p-2 rounded mt-2 space-y-1">
                           <p>• 1.5% vai para a plataforma</p>
                           <p>• 1% vai como cashback para quem pagar</p>
                         </div>
                       </div>
 
-                      <div className="bg-yellow-50 border border-yellow-300 rounded p-2 mt-3">
-                        <p className="text-xs text-yellow-900 font-semibold">
+                      <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded p-2 mt-3">
+                        <p className="text-xs text-yellow-900 dark:text-yellow-200 font-semibold">
                           ⚠️ O colateral NÃO será devolvido
                         </p>
-                        <p className="text-xs text-yellow-800 mt-1">
-                          Ele será transferido para quem pagar seu {paymentMethod}. Você receberá os R$ {parseFloat(order.brlAmount).toFixed(2)} em BRL.
+                        <p className="text-xs text-yellow-800 dark:text-yellow-300 mt-1">
+                          Ele será transferido para quem pagar seu {paymentMethod}. Você receberá os {formatBRL(order.brlAmount)} em BRL.
                         </p>
                       </div>
                     </div>
@@ -614,22 +714,22 @@ export default function OrderDetailsPage() {
                 ) : (
                   <>
                     {/* PAGADOR: Pagará BRL, receberá cripto */}
-                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                      <p className="text-xs text-orange-700 font-semibold mb-1">💸 VOCÊ PAGARÁ EM BRL:</p>
-                      <p className="text-2xl font-bold text-orange-600">
-                        R$ {parseFloat(order.brlAmount).toFixed(2)}
+                    <div className="bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg p-3">
+                      <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">💸 VOCÊ PAGARÁ EM BRL:</p>
+                      <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                        {formatBRL(order.brlAmount)}
                       </p>
-                      <p className="text-xs text-orange-600 mt-1">
+                      <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
                         Via {paymentMethod}
                       </p>
                     </div>
 
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-3">
-                      <p className="text-xs text-green-700 font-semibold mb-1">💰 VOCÊ RECEBERÁ EM CRIPTO:</p>
-                      <p className="text-2xl font-bold text-green-600">
+                    <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
+                      <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">💰 VOCÊ RECEBERÁ EM CRIPTO:</p>
+                      <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                         {(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward)).toFixed(8)} {order.cryptoType}
                       </p>
-                      <p className="text-xs text-green-600 mt-1">
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1">
                         ✨ Inclui +{parseFloat(order.payerReward).toFixed(8)} de cashback (1%)
                       </p>
                     </div>
@@ -639,14 +739,14 @@ export default function OrderDetailsPage() {
             </div>
 
             {/* Ações */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="font-bold mb-4">Ações</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+              <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Ações</h3>
               <div className="space-y-2">
                 {/* Chat - Disponível após MATCHED */}
                 {(order.status === 'MATCHED' || order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
                   <button
                     onClick={() => setShowChat(true)}
-                    className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg"
+                    className="w-full px-4 py-2 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg"
                   >
                     💬 Abrir Chat
                   </button>
@@ -657,7 +757,7 @@ export default function OrderDetailsPage() {
                   <button
                     onClick={() => setShowPaymentConfirmModal(true)}
                     disabled={confirmingPayment}
-                    className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg disabled:opacity-50"
+                    className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
                   >
                     {confirmingPayment ? 'Confirmando...' : '✅ Confirmo Pagamento Feito'}
                   </button>
@@ -668,7 +768,7 @@ export default function OrderDetailsPage() {
                   <button
                     onClick={handleConfirmPaymentReceived}
                     disabled={confirmingReceived}
-                    className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg disabled:opacity-50"
+                    className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
                   >
                     {confirmingReceived ? 'Confirmando...' : '✅ Confirmar Pagamento Recebido'}
                   </button>
@@ -679,11 +779,11 @@ export default function OrderDetailsPage() {
                   <div>
                     <button
                       onClick={() => setShowCancelModal(true)}
-                      className="w-full px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg"
+                      className="w-full px-4 py-2 bg-orange-600 dark:bg-orange-700 hover:bg-orange-700 dark:hover:bg-orange-800 text-white font-semibold rounded-lg"
                     >
                       ⚠️ Cancelar Pedido
                     </button>
-                    <p className="text-xs text-gray-500 mt-1 text-center">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
                       Taxa de rede será cobrada para devolver colateral
                     </p>
                   </div>
@@ -693,7 +793,7 @@ export default function OrderDetailsPage() {
                 {order.status !== 'COMPLETED' && order.status !== 'CANCELLED' && (
                   <button
                     onClick={handleDispute}
-                    className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg"
+                    className="w-full px-4 py-2 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg"
                   >
                     Abrir Disputa
                   </button>
@@ -706,39 +806,86 @@ export default function OrderDetailsPage() {
         {/* Modal de Confirmação de Pagamento */}
         {showPaymentConfirmModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full">
-              <h3 className="text-xl font-bold mb-4">⚠️ Confirmar Pagamento</h3>
-              <p className="text-gray-700 mb-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
+              <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">⚠️ Confirmar Pagamento</h3>
+              <p className="text-gray-700 dark:text-gray-300 mb-4">
                 Tem certeza que o pagamento já foi feito? Essa operação não poderá ser desfeita.
               </p>
+
+              {/* Campo de Upload de Comprovante */}
+              <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-300 dark:border-blue-700 rounded-lg">
+                <label className="block text-sm font-bold text-blue-800 dark:text-blue-200 mb-2">
+                  📎 Anexar Comprovante (Obrigatório)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleModalImageUpload}
+                  className="w-full px-3 py-2 border border-blue-300 dark:border-blue-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+                {modalProofImage && (
+                  <div className="mt-3">
+                    <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-2">Preview:</p>
+                    <img
+                      src={modalProofImage}
+                      alt="Preview do comprovante"
+                      className="max-w-full h-auto rounded-lg border-2 border-blue-300 dark:border-blue-600"
+                    />
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-3">
                 <button
-                  onClick={() => setShowPaymentConfirmModal(false)}
-                  className="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold rounded-lg"
+                  onClick={() => {
+                    setShowPaymentConfirmModal(false);
+                    setModalProofImage(''); // Limpar ao cancelar
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-300 dark:bg-gray-700 hover:bg-gray-400 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={handleConfirmPaymentMade}
-                  disabled={confirmingPayment}
-                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg disabled:opacity-50"
+                  disabled={confirmingPayment || !modalProofImage}
+                  className="flex-1 px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {confirmingPayment ? 'Confirmando...' : 'Sim, Confirmar'}
+                  {confirmingPayment ? 'Enviando...' : 'Sim, Confirmar'}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Modal de Chat */}
-        {showChat && (
+        {/* Modal de Chat - Expandido */}
+        {showChat && !isChatMinimized && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="w-full max-w-2xl h-[600px]">
               <ChatWindow
                 orderId={orderId}
-                onClose={() => setShowChat(false)}
+                onClose={() => {
+                  setShowChat(false);
+                  setIsChatMinimized(false);
+                }}
+                onMinimize={() => setIsChatMinimized(true)}
               />
             </div>
+          </div>
+        )}
+
+        {/* Chat Minimizado - Botão Flutuante */}
+        {showChat && isChatMinimized && (
+          <div className="fixed bottom-4 right-4 z-50">
+            <button
+              onClick={() => setIsChatMinimized(false)}
+              className="bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3 transition-all hover:scale-105"
+            >
+              <span className="text-2xl">💬</span>
+              <div className="text-left">
+                <p className="font-bold text-sm">Chat</p>
+                <p className="text-xs">Clique para expandir</p>
+              </div>
+            </button>
           </div>
         )}
       </div>

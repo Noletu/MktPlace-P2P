@@ -35,14 +35,14 @@ export class TransactionController {
         userId,
       });
 
-      // Auto-validar (futuramente usar OCR/AI)
-      setTimeout(async () => {
-        try {
-          await transactionService.autoValidateProof(transaction.id);
-        } catch (error) {
-          console.error('Erro na auto-validação:', error);
-        }
-      }, 5000); // 5 segundos de delay
+      // Auto-validação DESABILITADA - Requer confirmação manual do vendedor
+      // setTimeout(async () => {
+      //   try {
+      //     await transactionService.autoValidateProof(transaction.id);
+      //   } catch (error) {
+      //     console.error('Erro na auto-validação:', error);
+      //   }
+      // }, 5000); // 5 segundos de delay
 
       res.json({
         success: true,

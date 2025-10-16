@@ -7,9 +7,10 @@ import ChatMessage from './ChatMessage';
 interface ChatWindowProps {
   orderId: string;
   onClose?: () => void;
+  onMinimize?: () => void;
 }
 
-export default function ChatWindow({ orderId, onClose }: ChatWindowProps) {
+export default function ChatWindow({ orderId, onClose, onMinimize }: ChatWindowProps) {
   const [chatId, setChatId] = useState<string | null>(null);
   const [inputMessage, setInputMessage] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -176,14 +177,26 @@ export default function ChatWindow({ orderId, onClose }: ChatWindowProps) {
             </div>
           </div>
         </div>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="text-white hover:bg-blue-700 rounded-full p-2 transition-colors"
-          >
-            ✕
-          </button>
-        )}
+        <div className="flex gap-2">
+          {onMinimize && (
+            <button
+              onClick={onMinimize}
+              className="text-white hover:bg-blue-700 rounded-full p-2 transition-colors"
+              title="Minimizar"
+            >
+              −
+            </button>
+          )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="text-white hover:bg-blue-700 rounded-full p-2 transition-colors"
+              title="Fechar"
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Messages */}

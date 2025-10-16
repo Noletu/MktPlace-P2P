@@ -221,13 +221,37 @@ export class OrderService {
 
   /**
    * Obter pedidos do usuário
+   * Retorna pedidos onde o usuário é o CRIADOR ou o PAGADOR
    */
   async getUserOrders(userId: string): Promise<Order[]> {
     const orders = await prisma.order.findMany({
-      where: { userId },
+      where: {
+        OR: [
+          { userId }, // Pedidos criados pelo usuário
+          { transactions: { some: { payerId: userId } } }, // Pedidos onde é pagador
+        ],
+      },
       orderBy: { createdAt: 'desc' },
       include: {
-        transactions: true,
+        transactions: {
+          include: {
+            payer: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            reputationScore: true,
+          },
+        },
       },
     });
 
