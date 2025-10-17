@@ -20,10 +20,14 @@ import reviewRoutes from './routes/review.routes';
 import notificationRoutes from './routes/notification.routes';
 import chatRoutes from './routes/chat.routes';
 import keysRoutes from './routes/keys.routes';
+import presenceRoutes from './routes/presence.routes';
+import negotiationRoutes from './routes/negotiation.routes';
 import { apiLimiter } from './middleware/rateLimiter.middleware';
 import { logger } from './utils/logger';
 import { depositMonitorWorker } from './workers/deposit-monitor.worker';
 import { orderExpirationWorker } from './workers/order-expiration.worker';
+import { negotiationTimeoutWorker } from './workers/negotiation-timeout.worker';
+import { presenceMonitorWorker } from './workers/presence-monitor.worker';
 import { initializeChatSocket } from './socket/chat.socket';
 
 dotenv.config();
@@ -192,6 +196,12 @@ app.use('/api/v1/chat', chatRoutes);
 // Keys routes (encryption)
 app.use('/api/v1/keys', keysRoutes);
 
+// Presence routes (online/offline status)
+app.use('/api/v1/presence', presenceRoutes);
+
+// Negotiation routes (pre-match negotiation)
+app.use('/api/v1/negotiation', negotiationRoutes);
+
 // 404 handler
 app.use((req: Request, res: Response) => {
   res.status(404).json({ error: 'Route not found' });
@@ -244,6 +254,9 @@ httpServer.listen(port, () => {
   // Iniciar workers
   depositMonitorWorker.start();
   orderExpirationWorker.start();
+  negotiationTimeoutWorker.start();
+  presenceMonitorWorker.start();
+  console.log('⚙️  [workers]: All background workers started');
 });
 
 // Exportar para uso em outros módulos

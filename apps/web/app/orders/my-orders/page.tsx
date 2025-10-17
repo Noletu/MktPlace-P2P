@@ -16,6 +16,8 @@ interface Order {
   brlAmount: string;
   createdAt: string;
   timeoutAt: string;
+  ownerOnline: boolean;
+  ownerLastSeenAt: string;
   transactions: any[];
   orderData?: string | {
     barcode?: string;
@@ -35,6 +37,34 @@ export default function MyOrdersPage() {
   useEffect(() => {
     fetchOrders();
   }, []);
+
+  // Heartbeat automático para pedidos online
+  useEffect(() => {
+    const onlineOrders = orders.filter(
+      o => o.ownerOnline && ['PENDING', 'IN_NEGOTIATION'].includes(o.status)
+    );
+
+    if (onlineOrders.length === 0) return;
+
+    const interval = setInterval(async () => {
+      const token = localStorage.getItem('accessToken');
+      if (!token) return;
+
+      // Enviar heartbeat para cada pedido online
+      for (const order of onlineOrders) {
+        try {
+          await fetch(`http://localhost:3001/api/v1/presence/orders/${order.id}/heartbeat`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+        } catch (err) {
+          console.error('Heartbeat failed for order:', order.id);
+        }
+      }
+    }, 30000); // 30 segundos
+
+    return () => clearInterval(interval);
+  }, [orders]);
 
   const fetchOrders = async () => {
     try {
@@ -61,6 +91,47 @@ export default function MyOrdersPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTogglePresence = async (orderId: string, currentStatus: boolean) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        alert('Você precisa estar logado');
+        return;
+      }
+
+      const response = await fetch(`http://localhost:3001/api/v1/presence/orders/${orderId}/toggle`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ online: !currentStatus }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Erro ao alterar status');
+      }
+
+      // Atualizar lista de pedidos
+      await fetchOrders();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const getTimeAgo = (date: string) => {
+    const diff = Date.now() - new Date(date).getTime();
+    const minutes = Math.floor(diff / 60000);
+
+    if (minutes < 1) return 'Agora';
+    if (minutes < 60) return `${minutes}min`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h`;
+    const days = Math.floor(hours / 24);
+    return `${days}d`;
   };
 
   const filteredOrders = orders.filter((order) => {
@@ -267,6 +338,41 @@ export default function MyOrdersPage() {
                         </p>
                       </div>
                     </div>
+
+                    {/* Toggle de Presença - Apenas para pedidos PENDING ou IN_NEGOTIATION */}
+                    {['PENDING', 'IN_NEGOTIATION'].includes(order.status) && (
+                      <div
+                        className="mt-4 pt-4 border-t dark:border-gray-700"
+                        onClick={(e) => e.stopPropagation()} // Prevenir navegação ao clicar no toggle
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                              Disponível para negociar:
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {order.ownerOnline ? (
+                                <span className="text-green-600 dark:text-green-400">🟢 ONLINE - Ativo agora</span>
+                              ) : (
+                                <span className="text-gray-500 dark:text-gray-400">⚫ OFFLINE - há {getTimeAgo(order.ownerLastSeenAt)}</span>
+                              )}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => handleTogglePresence(order.id, order.ownerOnline)}
+                            className={`relative inline-flex h-8 w-16 items-center rounded-full transition-colors ${
+                              order.ownerOnline ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
+                                order.ownerOnline ? 'translate-x-9' : 'translate-x-1'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {order.transactions.length > 0 && (
                       <div className="mt-4 pt-4 border-t dark:border-gray-700">

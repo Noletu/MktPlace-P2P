@@ -52,9 +52,18 @@ export class ChatService {
     const isOrderOwner = order.userId === userId;
     const transaction = order.transactions[0];
     const isPayer = transaction?.payerId === userId;
+    const isMarketplaceOrder = ['PENDING', 'IN_NEGOTIATION'].includes(order.status);
 
-    if (!isOrderOwner && !isPayer) {
+    // Permitir acesso se:
+    // 1. É owner/payer (sempre)
+    // 2. Pedido está no marketplace (PENDING/IN_NEGOTIATION) - comprador pode iniciar negociação
+    if (!isOrderOwner && !isPayer && !isMarketplaceOrder) {
       throw new Error('Você não tem permissão para acessar este chat');
+    }
+
+    // Impedir owner de criar chat com ele mesmo
+    if (isOrderOwner && !isPayer && !transaction) {
+      throw new Error('Chat não disponível para seu próprio pedido');
     }
 
     // Verificar se chat já existe
@@ -80,6 +89,15 @@ export class ChatService {
     });
 
     if (chat) {
+      // NOVO: Limpar mensagens antigas se pedido voltou para PENDING (negociação cancelada/expirada)
+      if (order.status === 'PENDING') {
+        const oldMessageCount = await prisma.chatMessage.count({ where: { chatId: chat.id } });
+        if (oldMessageCount > 0) {
+          await prisma.chatMessage.deleteMany({ where: { chatId: chat.id } });
+          console.log(`🗑️ Cleared ${oldMessageCount} old messages - order is PENDING again`);
+        }
+      }
+
       // Adicionar contador de não lidas para o usuário
       const unreadCount = chat.participant1Id === userId ? chat.unreadCount1 : chat.unreadCount2;
       const otherParticipant = chat.participant1Id === userId ? chat.participant2 : chat.participant1;
@@ -88,16 +106,20 @@ export class ChatService {
         ...chat,
         unreadCount,
         otherParticipant,
+        messages: order.status === 'PENDING' ? [] : chat.messages, // Chat vazio se PENDING
       };
     }
 
     // Criar novo chat
-    if (!transaction) {
-      throw new Error('Pedido ainda não foi aceito. Chat será criado quando houver um comprador.');
-    }
+    // Para pedidos no marketplace (PENDING/IN_NEGOTIATION), criar chat entre owner e comprador interessado
+    // Para pedidos já aceitos (MATCHED+), usar transaction.payerId
+    const participant1Id = order.userId; // Owner
+    const participant2Id = transaction ? transaction.payerId : userId; // Payer (se existe) ou comprador interessado
 
-    const participant1Id = order.userId;
-    const participant2Id = transaction.payerId;
+    // Garantir que não está criando chat consigo mesmo
+    if (participant1Id === participant2Id) {
+      throw new Error('Não é possível criar chat consigo mesmo');
+    }
 
     chat = await prisma.chat.create({
       data: {
@@ -150,6 +172,7 @@ export class ChatService {
       include: {
         participant1: { select: { id: true, name: true } },
         participant2: { select: { id: true, name: true } },
+        order: { select: { id: true, status: true, userId: true } },
       },
     });
 
@@ -164,6 +187,30 @@ export class ChatService {
       input.type !== 'SYSTEM'
     ) {
       throw new Error('Você não tem permissão para enviar mensagens neste chat');
+    }
+
+    // NOVO: Verificar se é a primeira mensagem e iniciar negociação
+    if (input.type !== 'SYSTEM') {
+      const messageCount = await prisma.chatMessage.count({
+        where: { chatId: input.chatId },
+      });
+
+      console.log(`📨 Message check - chatId: ${input.chatId}, messageCount: ${messageCount}, senderId: ${input.senderId}, orderId: ${chat.order.id}, orderOwnerId: ${chat.order.userId}`);
+
+      // Se for a primeira mensagem E o sender NÃO é o owner do pedido
+      if (messageCount === 0 && chat.order.userId !== input.senderId) {
+        console.log(`✅ First message conditions met - starting negotiation`);
+        const negotiationService = require('./negotiation.service').default;
+        try {
+          await negotiationService.startNegotiation(chat.order.id, input.senderId);
+          console.log(`💬 First message sent - negotiation started for order ${chat.order.id}`);
+        } catch (error) {
+          console.error('❌ Failed to start negotiation:', error);
+          // Continuar mesmo se falhar (não bloquear o envio da mensagem)
+        }
+      } else {
+        console.log(`⏭️ Not first message or sender is owner - skipping negotiation start`);
+      }
     }
 
     // Criar mensagem (suporta formato híbrido)
