@@ -36,6 +36,13 @@ router.get('/:disputeId', disputeController.getDispute.bind(disputeController));
  */
 router.post('/:disputeId/messages', disputeController.addMessage.bind(disputeController));
 
+/**
+ * @route   POST /api/v1/disputes/:disputeId/respond
+ * @desc    Responder à disputa (outra parte)
+ * @access  Private
+ */
+router.post('/:disputeId/respond', disputeController.respondToDispute.bind(disputeController));
+
 // ============================================
 // ADMIN ROUTES
 // ============================================
