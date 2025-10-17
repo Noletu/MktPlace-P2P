@@ -6,6 +6,7 @@ import CryptoIcon from '@/components/ui/CryptoIcon';
 import { CryptoType } from '@mktplace/shared';
 import { formatBRL } from '@/utils/formatters';
 import ThemeToggle from '@/components/ThemeToggle';
+import PresenceBadge from '@/components/PresenceBadge';
 
 interface Order {
   id: string;
@@ -20,6 +21,9 @@ interface Order {
   totalFee: string;
   createdAt: string;
   timeoutAt: string;
+  ownerOnline: boolean;
+  ownerLastSeenAt: string;
+  negotiatingUserId?: string;
   user: {
     id: string;
     name: string;
@@ -92,37 +96,8 @@ export default function MarketplacePage() {
     }
   };
 
-  const handleMatch = async (orderId: string) => {
-    if (!confirm('Você confirma que deseja aceitar este pedido e realizar o pagamento?')) {
-      return;
-    }
-
-    try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        alert('Você precisa fazer login para aceitar pedidos');
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}/match`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao fazer match');
-      }
-
-      alert('Match realizado! Você pode agora efetuar o pagamento.');
-      router.push(`/orders/${orderId}`);
-    } catch (err: any) {
-      alert(err.message);
-    }
+  const handleViewMore = (orderId: string) => {
+    router.push(`/orders/${orderId}/preview`);
   };
 
   const filteredOrders = orders.filter((order) => {
@@ -227,6 +202,7 @@ export default function MarketplacePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredOrders.map((order) => {
               const isOwnOrder = currentUserId && order.user.id === currentUserId;
+              const isInNegotiationWithOther = order.status === 'IN_NEGOTIATION' && order.negotiatingUserId !== currentUserId;
 
               return (
                 <div key={order.id} className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow ${isOwnOrder ? 'border-2 border-red-200 dark:border-red-800' : ''}`}>
@@ -246,11 +222,25 @@ export default function MarketplacePage() {
                           SEU PEDIDO
                         </span>
                       )}
+                      {isInNegotiationWithOther && (
+                        <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300">
+                          🔒 EM NEGOCIAÇÃO
+                        </span>
+                      )}
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-gray-500 dark:text-gray-400">Expira em</p>
                       <p className="text-sm font-semibold dark:text-gray-200">{getTimeRemaining(order.timeoutAt)}</p>
                     </div>
+                  </div>
+
+                  {/* Presence Badge */}
+                  <div className="mb-4">
+                    <PresenceBadge
+                      online={order.ownerOnline}
+                      lastSeenAt={order.ownerLastSeenAt}
+                      size="small"
+                    />
                   </div>
 
                 <div className="mb-4">
@@ -296,12 +286,19 @@ export default function MarketplacePage() {
                   >
                     Seu Pedido - Não pode aceitar
                   </button>
+                ) : isInNegotiationWithOther ? (
+                  <button
+                    disabled
+                    className="w-full py-3 px-4 bg-gray-400 dark:bg-gray-600 text-white font-semibold rounded-lg cursor-not-allowed"
+                  >
+                    🔒 Em Negociação
+                  </button>
                 ) : (
                   <button
-                    onClick={() => handleMatch(order.id)}
+                    onClick={() => handleViewMore(order.id)}
                     className="w-full py-3 px-4 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg transition-colors"
                   >
-                    Aceitar e Pagar
+                    Ver Mais
                   </button>
                 )}
               </div>

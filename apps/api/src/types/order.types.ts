@@ -10,6 +10,7 @@ export enum PaymentMethod {
 
 export enum OrderStatus {
   PENDING = 'PENDING', // Esperando matching
+  IN_NEGOTIATION = 'IN_NEGOTIATION', // Em negociação (chat iniciado, sem match confirmado)
   MATCHED = 'MATCHED', // Match encontrado
   PAYMENT_SENT = 'PAYMENT_SENT', // Pagador enviou comprovante
   VALIDATING = 'VALIDATING', // Validando comprovante

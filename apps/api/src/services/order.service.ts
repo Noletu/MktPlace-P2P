@@ -191,16 +191,21 @@ export class OrderService {
   async getAvailableOrders(excludeUserId?: string): Promise<Order[]> {
     const orders = await prisma.order.findMany({
       where: {
-        status: OrderStatus.PENDING,
+        status: {
+          in: [OrderStatus.PENDING, OrderStatus.IN_NEGOTIATION], // Incluir negociações
+        },
         // SECURITY: Só mostrar pedidos com colateral confirmado na blockchain
         collateralConfirmed: true,
         // REMOVIDO: não excluir pedidos do próprio usuário do marketplace
         // userId: excludeUserId ? { not: excludeUserId } : undefined,
         timeoutAt: { gt: new Date() }, // Não expirados
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: [
+        { ownerOnline: 'desc' }, // Online primeiro
+        { status: 'asc' }, // PENDING antes de IN_NEGOTIATION
+        { ownerLastSeenAt: 'desc' }, // Mais recente primeiro
+        { createdAt: 'desc' }, // Mais novo primeiro
+      ],
       include: {
         user: {
           select: {
@@ -214,7 +219,7 @@ export class OrderService {
       },
     });
 
-    console.log(`📊 Marketplace: found ${orders.length} orders with confirmed collateral`);
+    console.log(`📊 Marketplace: found ${orders.length} orders (online prioritized)`);
 
     return orders;
   }

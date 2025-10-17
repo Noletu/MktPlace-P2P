@@ -139,8 +139,12 @@ export class OrderController {
       const isOwner = order.userId === userId;
       const isPayer = order.transactions.some((t: any) => t.payerId === userId);
       const isAdmin = req.user?.role === 'ADMIN';
+      const isMarketplaceOrder = ['PENDING', 'IN_NEGOTIATION'].includes(order.status);
 
-      if (!isOwner && !isPayer && !isAdmin) {
+      // Permitir acesso se:
+      // 1. É owner/payer/admin (sempre)
+      // 2. Pedido está no marketplace (PENDING ou IN_NEGOTIATION) - qualquer usuário pode ver
+      if (!isOwner && !isPayer && !isAdmin && !isMarketplaceOrder) {
         return res.status(403).json({ error: 'Acesso negado' });
       }
 

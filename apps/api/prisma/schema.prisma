@@ -171,6 +171,15 @@ model Order {
   refundedAt DateTime?
   cancelReason String? // AUTO_EXPIRED_BOLETO, AUTO_EXPIRED_PIX, USER_CANCELLED
 
+  // Negotiation system
+  negotiatingUserId    String?   // Quem está negociando agora (reserva por 10min)
+  negotiationStartedAt DateTime? // Quando negociação iniciou
+
+  // Presence system (por pedido)
+  ownerOnline          Boolean   @default(false) // Toggle manual do vendedor
+  ownerLastSeenAt      DateTime  @default(now()) // Último heartbeat recebido
+  ownerLastActivityAt  DateTime  @default(now()) // Última mudança de toggle
+
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   completedAt DateTime?
@@ -179,6 +188,11 @@ model Order {
   disputes     Dispute[]
   reviews      Review[]
   chat         Chat?
+
+  @@index([negotiatingUserId])
+  @@index([negotiationStartedAt])
+  @@index([ownerOnline])
+  @@index([ownerLastSeenAt])
 }
 
 model Transaction {
