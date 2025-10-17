@@ -39,7 +39,8 @@ export default function ChatWindow({ orderId, onClose, onMinimize }: ChatWindowP
         const userStr = localStorage.getItem('user');
         if (!token || !userStr) return;
 
-        setCurrentUserId(JSON.parse(userStr).id);
+        const userId = JSON.parse(userStr).id;
+        setCurrentUserId(userId);
 
         const response = await fetch(`http://localhost:3001/api/v1/chat/order/${orderId}`, {
           headers: {
@@ -141,7 +142,7 @@ export default function ChatWindow({ orderId, onClose, onMinimize }: ChatWindowP
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-gray-500">Carregando chat...</div>
+        <div className="text-gray-500 dark:text-gray-400">Carregando chat...</div>
       </div>
     );
   }
@@ -149,7 +150,7 @@ export default function ChatWindow({ orderId, onClose, onMinimize }: ChatWindowP
   if (!chatId) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-gray-500">Chat não disponível</div>
+        <div className="text-gray-500 dark:text-gray-400">Chat não disponível</div>
       </div>
     );
   }
@@ -157,9 +158,9 @@ export default function ChatWindow({ orderId, onClose, onMinimize }: ChatWindowP
   const otherParticipant = chat?.otherParticipant;
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-lg shadow-lg">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-800 rounded-lg shadow-lg">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-blue-600 text-white rounded-t-lg">
+      <div className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-700 bg-blue-600 dark:bg-blue-700 text-white rounded-t-lg">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center font-bold">
             {otherParticipant?.name?.[0]?.toUpperCase() || '?'}
@@ -202,24 +203,27 @@ export default function ChatWindow({ orderId, onClose, onMinimize }: ChatWindowP
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
         {messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+          <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500 text-sm">
             Nenhuma mensagem ainda. Inicie a conversa!
           </div>
         ) : (
-          messages.map((msg) => (
-            <ChatMessage
-              key={msg.id}
-              message={msg}
-              isOwnMessage={msg.senderId === currentUserId}
-            />
-          ))
+          messages.map((msg) => {
+            const isOwn = String(msg.sender?.id) === String(currentUserId);
+            return (
+              <ChatMessage
+                key={msg.id}
+                message={msg}
+                isOwnMessage={isOwn}
+              />
+            );
+          })
         )}
         {isTyping && (
-          <div className="flex items-center gap-2 text-gray-500 text-sm">
+          <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-sm">
             <div className="flex gap-1">
-              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              <span className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
             <span>{otherParticipant?.name} está digitando...</span>
           </div>
@@ -228,10 +232,10 @@ export default function ChatWindow({ orderId, onClose, onMinimize }: ChatWindowP
       </div>
 
       {/* Input */}
-      <div className="border-t px-4 py-3 bg-gray-50 rounded-b-lg">
+      <div className="border-t dark:border-gray-700 px-4 py-3 bg-gray-50 dark:bg-gray-900 rounded-b-lg">
         {/* File Preview */}
         {filePreview && selectedFile && (
-          <div className="mb-3 bg-white rounded-lg p-3 border border-gray-300">
+          <div className="mb-3 bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-300 dark:border-gray-600">
             <div className="flex items-start gap-3">
               {selectedFile.type.startsWith('image/') ? (
                 <img
@@ -240,21 +244,21 @@ export default function ChatWindow({ orderId, onClose, onMinimize }: ChatWindowP
                   className="w-20 h-20 object-cover rounded"
                 />
               ) : (
-                <div className="w-20 h-20 bg-red-100 rounded flex items-center justify-center">
+                <div className="w-20 h-20 bg-red-100 dark:bg-red-900 rounded flex items-center justify-center">
                   <span className="text-2xl">📄</span>
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                   {selectedFile.name}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
                   {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
                 </p>
               </div>
               <button
                 onClick={handleRemoveFile}
-                className="text-red-500 hover:text-red-700 font-bold"
+                className="text-red-500 hover:text-red-700 dark:hover:text-red-400 font-bold"
               >
                 ✕
               </button>
@@ -273,7 +277,7 @@ export default function ChatWindow({ orderId, onClose, onMinimize }: ChatWindowP
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={!isConnected || !!selectedFile}
-            className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             title="Anexar arquivo"
           >
             📎
@@ -284,19 +288,19 @@ export default function ChatWindow({ orderId, onClose, onMinimize }: ChatWindowP
             onChange={handleInputChange}
             onKeyPress={handleKeyPress}
             placeholder="Digite uma mensagem..."
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500"
             disabled={!isConnected}
           />
           <button
             onClick={handleSendMessage}
             disabled={(!inputMessage.trim() && !selectedFile) || !isConnected}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white font-semibold rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             Enviar
           </button>
         </div>
         {!isConnected && (
-          <p className="text-xs text-red-500 mt-2">
+          <p className="text-xs text-red-500 dark:text-red-400 mt-2">
             Desconectado. Tentando reconectar...
           </p>
         )}

@@ -13,8 +13,13 @@ export interface CreateChatInput {
 export interface SendMessageInput {
   chatId: string;
   senderId: string;
-  message: string;
-  attachments?: string[];
+  message?: string; // Optional para mensagens antigas/não criptografadas
+  encryptedContent?: string; // Para mensagens criptografadas
+  isEncrypted?: boolean; // Flag de criptografia
+  iv?: string; // Initialization Vector para AES-GCM
+  attachments?: string[]; // Retrocompatibilidade
+  attachmentUrl?: string; // URL do anexo (novo formato)
+  attachmentType?: string; // Tipo MIME do anexo
   type?: 'TEXT' | 'IMAGE' | 'SYSTEM';
 }
 
@@ -75,7 +80,15 @@ export class ChatService {
     });
 
     if (chat) {
-      return chat;
+      // Adicionar contador de não lidas para o usuário
+      const unreadCount = chat.participant1Id === userId ? chat.unreadCount1 : chat.unreadCount2;
+      const otherParticipant = chat.participant1Id === userId ? chat.participant2 : chat.participant1;
+
+      return {
+        ...chat,
+        unreadCount,
+        otherParticipant,
+      };
     }
 
     // Criar novo chat
@@ -117,7 +130,15 @@ export class ChatService {
       participants: [participant1Id, participant2Id],
     });
 
-    return chat;
+    // Adicionar contador de não lidas e other participant
+    const unreadCount = chat.participant1Id === userId ? chat.unreadCount1 : chat.unreadCount2;
+    const otherParticipant = chat.participant1Id === userId ? chat.participant2 : chat.participant1;
+
+    return {
+      ...chat,
+      unreadCount,
+      otherParticipant,
+    };
   }
 
   /**
@@ -145,13 +166,21 @@ export class ChatService {
       throw new Error('Você não tem permissão para enviar mensagens neste chat');
     }
 
-    // Criar mensagem
+    // Criar mensagem (suporta formato híbrido)
     const message = await prisma.chatMessage.create({
       data: {
         chatId: input.chatId,
         senderId: input.senderId,
-        message: input.message,
+        // Mensagem não criptografada (retrocompatibilidade)
+        message: input.message || null,
+        // Mensagem criptografada (E2E)
+        encryptedContent: input.encryptedContent || null,
+        isEncrypted: input.isEncrypted || false,
+        iv: input.iv || null,
+        // Anexos
         attachments: input.attachments ? JSON.stringify(input.attachments) : null,
+        attachmentUrl: input.attachmentUrl || null,
+        attachmentType: input.attachmentType || null,
         type: input.type || 'TEXT',
       },
       include: {
@@ -187,14 +216,19 @@ export class ChatService {
               ? chat.participant1.name
               : chat.participant2.name;
 
+          // Para mensagens criptografadas, não mostrar conteúdo na notificação
+          const notificationMessage = input.isEncrypted
+            ? `${senderName || 'Usuário'} enviou uma mensagem` // 🔒 Mensagem criptografada
+            : `${senderName || 'Usuário'}: ${input.message?.substring(0, 50) || ''}${
+                input.message && input.message.length > 50 ? '...' : ''
+              }`;
+
           await notificationService.createNotification({
             userId: recipientId,
             type: 'CHAT_MESSAGE',
             category: 'ORDER',
             title: '💬 Nova mensagem',
-            message: `${senderName || 'Usuário'}: ${input.message.substring(0, 50)}${
-              input.message.length > 50 ? '...' : ''
-            }`,
+            message: notificationMessage,
             actionUrl: `/orders/${chat.orderId}/chat`,
             actionLabel: 'Ver Chat',
             relatedId: chat.orderId,

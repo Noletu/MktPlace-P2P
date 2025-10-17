@@ -19,6 +19,7 @@ import disputeRoutes from './routes/dispute.routes';
 import reviewRoutes from './routes/review.routes';
 import notificationRoutes from './routes/notification.routes';
 import chatRoutes from './routes/chat.routes';
+import keysRoutes from './routes/keys.routes';
 import { apiLimiter } from './middleware/rateLimiter.middleware';
 import { logger } from './utils/logger';
 import { depositMonitorWorker } from './workers/deposit-monitor.worker';
@@ -137,7 +138,8 @@ app.get('/api/v1', (req: Request, res: Response) => {
       notifications: '/api/v1/notifications',
       disputes: '/api/v1/disputes',
       reviews: '/api/v1/reviews',
-      chat: '/api/v1/chat'
+      chat: '/api/v1/chat',
+      keys: '/api/v1/keys'
     }
   });
 });
@@ -186,6 +188,9 @@ app.use('/api/v1/notifications', notificationRoutes);
 
 // Chat routes
 app.use('/api/v1/chat', chatRoutes);
+
+// Keys routes (encryption)
+app.use('/api/v1/keys', keysRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

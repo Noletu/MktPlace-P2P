@@ -15,8 +15,13 @@ interface JoinChatPayload {
 
 interface SendMessagePayload {
   chatId: string;
-  message: string;
-  attachments?: string[];
+  message?: string; // Para mensagens não criptografadas
+  encryptedContent?: string; // Para mensagens criptografadas
+  isEncrypted?: boolean; // Flag de criptografia
+  iv?: string; // Initialization Vector para AES-GCM
+  attachments?: string[]; // Retrocompatibilidade
+  attachmentUrl?: string; // URL do anexo (novo formato)
+  attachmentType?: string; // Tipo MIME do anexo
 }
 
 interface TypingPayload {
@@ -134,14 +139,19 @@ export class ChatSocketServer {
       // Enviar mensagem
       socket.on('message:send', async (payload: SendMessagePayload) => {
         try {
-          const { chatId, message, attachments } = payload;
+          const { chatId, message, encryptedContent, isEncrypted, iv, attachments, attachmentUrl, attachmentType } = payload;
 
-          // Enviar mensagem via serviço
+          // Enviar mensagem via serviço (suporta formato híbrido)
           const newMessage = await chatService.sendMessage({
             chatId,
             senderId: socket.userId!,
             message,
+            encryptedContent,
+            isEncrypted,
+            iv,
             attachments,
+            attachmentUrl,
+            attachmentType,
           });
 
           // Emitir para todos na sala (incluindo sender)
@@ -151,6 +161,7 @@ export class ChatSocketServer {
             messageId: newMessage.id,
             chatId,
             senderId: socket.userId,
+            encrypted: isEncrypted || false,
           });
         } catch (error: any) {
           logger.error('[SOCKET] Failed to send message', { error: error.message });
