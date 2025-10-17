@@ -62,10 +62,15 @@ export default function OrderDetailsPage() {
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [modalProofImage, setModalProofImage] = useState<string>('');
   const [isChatMinimized, setIsChatMinimized] = useState(false);
+  const [chatUnreadCount, setChatUnreadCount] = useState<number>(0);
 
   useEffect(() => {
     fetchOrder();
-    const interval = setInterval(fetchOrder, 5000); // Atualizar a cada 5s
+    fetchChatUnreadCount();
+    const interval = setInterval(() => {
+      fetchOrder();
+      fetchChatUnreadCount();
+    }, 5000); // Atualizar a cada 5s
     return () => clearInterval(interval);
   }, [orderId]);
 
@@ -93,6 +98,27 @@ export default function OrderDetailsPage() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchChatUnreadCount = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) return;
+
+      const response = await fetch(`http://localhost:3001/api/v1/chat/order/${orderId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setChatUnreadCount(data.data.unreadCount || 0);
+      }
+    } catch (err: any) {
+      // Silently fail - chat might not exist yet
+      console.log('Chat não encontrado ou erro:', err.message);
     }
   };
 
@@ -745,10 +771,18 @@ export default function OrderDetailsPage() {
                 {/* Chat - Disponível após MATCHED */}
                 {(order.status === 'MATCHED' || order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
                   <button
-                    onClick={() => setShowChat(true)}
-                    className="w-full px-4 py-2 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg"
+                    onClick={() => {
+                      setShowChat(true);
+                      setChatUnreadCount(0); // Reset ao abrir
+                    }}
+                    className="w-full px-4 py-2 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg relative"
                   >
                     💬 Abrir Chat
+                    {chatUnreadCount > 0 && (
+                      <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
+                        {chatUnreadCount}
+                      </span>
+                    )}
                   </button>
                 )}
 
@@ -878,13 +912,18 @@ export default function OrderDetailsPage() {
           <div className="fixed bottom-4 right-4 z-50">
             <button
               onClick={() => setIsChatMinimized(false)}
-              className="bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3 transition-all hover:scale-105"
+              className="bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3 transition-all hover:scale-105 relative"
             >
               <span className="text-2xl">💬</span>
               <div className="text-left">
                 <p className="font-bold text-sm">Chat</p>
                 <p className="text-xs">Clique para expandir</p>
               </div>
+              {chatUnreadCount > 0 && (
+                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
+                  {chatUnreadCount}
+                </span>
+              )}
             </button>
           </div>
         )}

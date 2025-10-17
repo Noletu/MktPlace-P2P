@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/utils/formatters';
 import ThemeToggle from '@/components/ThemeToggle';
+import { useChats } from '@/hooks/useChats';
 
 interface Order {
   id: string;
@@ -29,6 +30,7 @@ export default function MyOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED'>('ACTIVE');
+  const { getUnreadCountByOrderId } = useChats();
 
   useEffect(() => {
     fetchOrders();
@@ -204,32 +206,40 @@ export default function MyOrdersPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredOrders.map((order) => (
-              <div
-                key={order.id}
-                className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => router.push(`/orders/${order.id}`)}
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-4 mb-2">
-                      <span
-                        className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
-                          getPaymentMethod(order) === 'PIX'
-                            ? 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300'
-                            : 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300'
-                        }`}
-                      >
-                        {getPaymentMethod(order)}
-                      </span>
-                      <span
-                        className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(
-                          order.status
-                        )}`}
-                      >
-                        {getStatusText(order.status)}
-                      </span>
-                    </div>
+            {filteredOrders.map((order) => {
+              const unreadCount = getUnreadCountByOrderId(order.id);
+
+              return (
+                <div
+                  key={order.id}
+                  className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer"
+                  onClick={() => router.push(`/orders/${order.id}`)}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-4 mb-2">
+                        <span
+                          className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
+                            getPaymentMethod(order) === 'PIX'
+                              ? 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300'
+                              : 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300'
+                          }`}
+                        >
+                          {getPaymentMethod(order)}
+                        </span>
+                        <span
+                          className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(
+                            order.status
+                          )}`}
+                        >
+                          {getStatusText(order.status)}
+                        </span>
+                        {unreadCount > 0 && (
+                          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300">
+                            💬 {unreadCount} nova{unreadCount > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                       <div>
@@ -284,7 +294,8 @@ export default function MyOrdersPage() {
                   </div>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </div>

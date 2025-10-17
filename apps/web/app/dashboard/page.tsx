@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { KYCLevel } from '@mktplace/shared';
 import ThemeToggle from '@/components/ThemeToggle';
+import { useChats } from '@/hooks/useChats';
 
 interface User {
   id: string;
@@ -30,6 +31,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const { getTotalUnreadCount } = useChats();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -196,9 +198,14 @@ export default function DashboardPage() {
               </button>
               <button
                 onClick={() => router.push('/orders/my-orders')}
-                className="w-full px-4 py-2 bg-purple-500 dark:bg-purple-600 text-white rounded-lg hover:bg-purple-600 dark:hover:bg-purple-700"
+                className="w-full px-4 py-2 bg-purple-500 dark:bg-purple-600 text-white rounded-lg hover:bg-purple-600 dark:hover:bg-purple-700 relative"
               >
                 Meus Pedidos
+                {getTotalUnreadCount() > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
+                    {getTotalUnreadCount()}
+                  </span>
+                )}
               </button>
             </div>
           </div>
