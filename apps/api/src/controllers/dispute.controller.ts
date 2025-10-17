@@ -17,6 +17,11 @@ const AddMessageSchema = z.object({
   attachments: z.array(z.string().url()).optional(),
 });
 
+const RespondDisputeSchema = z.object({
+  contestation: z.string().min(50, 'Contestação deve ter no mínimo 50 caracteres'),
+  counterEvidences: z.array(z.string().url()).optional(),
+});
+
 const ResolveDisputeSchema = z.object({
   resolution: z.string().min(20, 'Resolução deve ter no mínimo 20 caracteres'),
   resolutionType: z.enum(['REFUND_BUYER', 'RELEASE_SELLER', 'PARTIAL_REFUND', 'CANCELLED']),
@@ -115,6 +120,56 @@ export class DisputeController {
       res.status(400).json({
         success: false,
         error: error.message || 'Erro ao adicionar mensagem',
+      });
+    }
+  }
+
+  /**
+   * Responder à disputa (outra parte)
+   */
+  async respondToDispute(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Não autorizado',
+        });
+      }
+
+      const { disputeId } = req.params;
+      const validatedData = RespondDisputeSchema.parse(req.body);
+
+      const dispute = await disputeService.respondToDispute(userId, disputeId, validatedData);
+
+      // SECURITY: Audit log
+      auditLogService.logFromRequest(
+        req,
+        'RESPOND_DISPUTE',
+        'DISPUTE',
+        disputeId,
+        {
+          userId,
+        }
+      );
+
+      res.json({
+        success: true,
+        data: dispute,
+        message: 'Resposta enviada com sucesso. Nossa equipe está analisando o caso.',
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Dados inválidos',
+          details: error.errors,
+        });
+      }
+
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao responder disputa',
       });
     }
   }

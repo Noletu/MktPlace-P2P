@@ -1,8 +1,21 @@
 import { PrismaClient } from '@prisma/client';
 import { notificationService } from './notification.service';
+import {
+  DisputeStatus,
+  DisputeCategory,
+  ResolutionType,
+  CreateDisputeInput as CreateDisputeInputType,
+  RespondDisputeInput,
+  ResolveDisputeInput as ResolveDisputeInputType,
+  DISPUTE_DEADLINES,
+  DISPUTE_REPUTATION,
+} from '../types/dispute.types';
+import { OrderStatus } from '../types/order.types';
+import { logger } from '../utils/logger';
 
 const prisma = new PrismaClient();
 
+// Keep backwards compatibility with old interfaces
 export interface CreateDisputeInput {
   orderId: string;
   transactionId?: string;
@@ -150,6 +163,108 @@ export class DisputeService {
     });
 
     return dispute;
+  }
+
+  /**
+   * Outra parte responde à disputa
+   */
+  async respondToDispute(userId: string, disputeId: string, input: RespondDisputeInput) {
+    // Buscar disputa
+    const dispute = await prisma.dispute.findUnique({
+      where: { id: disputeId },
+      include: {
+        creator: { select: { id: true, name: true } },
+        order: {
+          include: {
+            transactions: true,
+            user: { select: { id: true } },
+          },
+        },
+      },
+    });
+
+    if (!dispute) {
+      throw new Error('Disputa não encontrada');
+    }
+
+    // Validar que usuário é a outra parte (não o criador)
+    const transaction = dispute.order.transactions[0];
+    const otherPartyId =
+      dispute.createdBy === dispute.order.userId ? transaction?.payerId : dispute.order.userId;
+
+    if (userId !== otherPartyId) {
+      throw new Error('Apenas a outra parte pode responder à disputa');
+    }
+
+    // Validar status
+    if (dispute.status !== 'OPEN') {
+      throw new Error('Esta disputa não está mais aberta para respostas');
+    }
+
+    // Validar deadline (24h)
+    const timeSinceCreated = Date.now() - dispute.createdAt.getTime();
+    if (timeSinceCreated > DISPUTE_DEADLINES.RESPONSE_TIME) {
+      throw new Error('Prazo para responder expirou (24h)');
+    }
+
+    // Validar campos
+    if (!input.contestation || input.contestation.length < 50) {
+      throw new Error('Contestação deve ter no mínimo 50 caracteres');
+    }
+
+    // Adicionar mensagem de resposta
+    await prisma.disputeMessage.create({
+      data: {
+        disputeId,
+        authorId: userId,
+        message: input.contestation,
+        attachments: input.counterEvidences ? JSON.stringify(input.counterEvidences) : null,
+        isAdminMessage: false,
+      },
+    });
+
+    // Atualizar status para UNDER_REVIEW
+    const updatedDispute = await prisma.dispute.update({
+      where: { id: disputeId },
+      data: {
+        status: 'UNDER_REVIEW',
+      },
+      include: {
+        creator: { select: { id: true, name: true } },
+        order: {
+          select: {
+            id: true,
+            type: true,
+            brlAmount: true,
+            cryptoAmount: true,
+          },
+        },
+      },
+    });
+
+    // Notificar criador da disputa
+    await notificationService.createNotification({
+      userId: dispute.createdBy,
+      type: 'DISPUTE_RESPONDED',
+      category: 'DISPUTE',
+      title: '💬 Resposta Recebida',
+      message: 'A outra parte respondeu à disputa. Nossa equipe está analisando o caso.',
+      actionUrl: `/disputes/${disputeId}`,
+      actionLabel: 'Ver Disputa',
+      relatedId: disputeId,
+      relatedType: 'DISPUTE',
+      priority: 'HIGH',
+    });
+
+    // Notificar admins
+    await this.notifyAdmins(disputeId, 'Disputa precisa de análise');
+
+    logger.info('[DISPUTE] Response added', {
+      disputeId,
+      respondedBy: userId,
+    });
+
+    return updatedDispute;
   }
 
   /**
@@ -634,6 +749,57 @@ export class DisputeService {
         return 'CANCELLED';
       default:
         return 'RESOLVED_BUYER';
+    }
+  }
+
+  /**
+   * Helper: Ajustar reputação de usuário
+   */
+  private async adjustReputation(userId: string, adjustment: number, reason: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { reputationScore: true },
+    });
+
+    if (!user) return;
+
+    const newScore = Math.max(0, user.reputationScore + adjustment); // Não pode ser negativo
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { reputationScore: newScore },
+    });
+
+    logger.info('[REPUTATION] Adjusted', {
+      userId,
+      adjustment,
+      newScore,
+      reason,
+    });
+  }
+
+  /**
+   * Helper: Notificar todos os admins
+   */
+  private async notifyAdmins(disputeId: string, message: string) {
+    const admins = await prisma.user.findMany({
+      where: { role: { in: ['ADMIN', 'MASTER'] } },
+      select: { id: true },
+    });
+
+    for (const admin of admins) {
+      await notificationService.createNotification({
+        userId: admin.id,
+        type: 'ADMIN_DISPUTE',
+        category: 'DISPUTE',
+        title: '🚨 Disputa Precisa de Análise',
+        message,
+        actionUrl: `/admin/disputes/${disputeId}`,
+        actionLabel: 'Analisar',
+        relatedId: disputeId,
+        relatedType: 'DISPUTE',
+        priority: 'HIGH',
+      });
     }
   }
 }
