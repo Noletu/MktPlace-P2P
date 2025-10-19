@@ -375,6 +375,68 @@ export class DisputeController {
       });
     }
   }
+
+  /**
+   * Analytics de disputas por período (admin)
+   */
+  async getDisputeAnalytics(req: Request, res: Response) {
+    try {
+      const userRole = req.user?.role;
+
+      if (userRole !== 'ADMIN' && userRole !== 'MASTER') {
+        return res.status(403).json({
+          success: false,
+          error: 'Apenas administradores podem visualizar analytics',
+        });
+      }
+
+      const { days } = req.query;
+      const daysNum = days ? parseInt(days as string) : 30;
+
+      const analytics = await disputeService.getDisputeAnalytics(daysNum);
+
+      res.json({
+        success: true,
+        data: analytics,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar analytics',
+      });
+    }
+  }
+
+  /**
+   * Top disputantes (admin)
+   */
+  async getTopDisputants(req: Request, res: Response) {
+    try {
+      const userRole = req.user?.role;
+
+      if (userRole !== 'ADMIN' && userRole !== 'MASTER') {
+        return res.status(403).json({
+          success: false,
+          error: 'Apenas administradores podem visualizar top disputantes',
+        });
+      }
+
+      const { limit } = req.query;
+      const limitNum = limit ? parseInt(limit as string) : 10;
+
+      const topDisputants = await disputeService.getTopDisputants(limitNum);
+
+      res.json({
+        success: true,
+        data: topDisputants,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar top disputantes',
+      });
+    }
+  }
 }
 
 export const disputeController = new DisputeController();

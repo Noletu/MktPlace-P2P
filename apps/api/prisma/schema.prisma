@@ -13,21 +13,21 @@ datasource db {
 // SQLite não suporta ENUMs - usando String com defaults
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String?
+  id       String  @id @default(cuid())
+  email    String  @unique
+  password String
+  name     String?
 
   // KYC - NONE, LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4
-  kycLevel  String   @default("NONE")
+  kycLevel String @default("NONE")
 
   // Reputation
-  reputationScore Int @default(0)
-  totalTransactions Int @default(0)
+  reputationScore        Int @default(0)
+  totalTransactions      Int @default(0)
   successfulTransactions Int @default(0)
 
   // Role - USER, ADMIN, SUPPORT
-  role      String   @default("USER")
+  role String @default("USER")
 
   // SECURITY: 2FA
   twoFactorEnabled Boolean @default(false)
@@ -36,26 +36,26 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  wallets       Wallet[]
-  orders        Order[]
-  transactions  Transaction[] @relation("payer")
-  reviews       Review[]      @relation("reviewer")
-  reviewsReceived Review[]    @relation("reviewed")
-  refreshTokens RefreshToken[]
-  adminActions  AdminAction[]
+  wallets          Wallet[]
+  orders           Order[]
+  transactions     Transaction[]     @relation("payer")
+  reviews          Review[]          @relation("reviewer")
+  reviewsReceived  Review[]          @relation("reviewed")
+  refreshTokens    RefreshToken[]
+  adminActions     AdminAction[]
   internalBalances InternalBalance[]
 
   // Disputas
-  disputesCreated Dispute[] @relation("DisputeCreator")
-  disputesResolved Dispute[] @relation("DisputeResolver")
-  disputeMessages DisputeMessage[] @relation("DisputeMessageAuthor")
+  disputesCreated  Dispute[]        @relation("DisputeCreator")
+  disputesResolved Dispute[]        @relation("DisputeResolver")
+  disputeMessages  DisputeMessage[] @relation("DisputeMessageAuthor")
 
   // Notificações
   notifications Notification[] @relation("notifications")
 
   // Chat
-  chatsAsParticipant1 Chat[] @relation("ChatParticipant1")
-  chatsAsParticipant2 Chat[] @relation("ChatParticipant2")
+  chatsAsParticipant1 Chat[]        @relation("ChatParticipant1")
+  chatsAsParticipant2 Chat[]        @relation("ChatParticipant2")
   chatMessages        ChatMessage[] @relation("ChatMessageSender")
 
   // KYC Verification (1:1 relationship)
@@ -66,21 +66,21 @@ model User {
 }
 
 model Wallet {
-  id          String      @id @default(cuid())
-  userId      String
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Crypto - BTC, ETH, XMR, ZEC, USDC, USDT
-  crypto      String
+  crypto  String
   // Network - BITCOIN, ETHEREUM, POLYGON, BSC, SOLANA, TRC20, MONERO, ZCASH
-  network     String
-  address     String
-  balance     String      @default("0")
+  network String
+  address String
+  balance String @default("0")
 
-  isActive    Boolean     @default(true)
+  isActive Boolean @default(true)
 
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   deposits    Deposit[]
   withdrawals Withdrawal[]
@@ -89,17 +89,17 @@ model Wallet {
 }
 
 model Deposit {
-  id        String   @id @default(cuid())
-  walletId  String
-  wallet    Wallet   @relation(fields: [walletId], references: [id])
+  id       String @id @default(cuid())
+  walletId String
+  wallet   Wallet @relation(fields: [walletId], references: [id])
 
-  txHash    String   @unique
-  amount    String
+  txHash String @unique
+  amount String
 
-  confirmed Boolean  @default(false)
-  confirmations Int  @default(0)
+  confirmed     Boolean @default(false)
+  confirmations Int     @default(0)
 
-  createdAt DateTime @default(now())
+  createdAt   DateTime  @default(now())
   confirmedAt DateTime?
 
   // Relation for collateral
@@ -107,37 +107,37 @@ model Deposit {
 }
 
 model Withdrawal {
-  id        String   @id @default(cuid())
-  walletId  String
-  wallet    Wallet   @relation(fields: [walletId], references: [id])
+  id       String @id @default(cuid())
+  walletId String
+  wallet   Wallet @relation(fields: [walletId], references: [id])
 
   toAddress String
   amount    String
 
-  txHash    String?  @unique
-  status    String   @default("pending")
+  txHash String? @unique
+  status String  @default("pending")
 
-  createdAt DateTime @default(now())
+  createdAt   DateTime  @default(now())
   processedAt DateTime?
 }
 
 model Order {
-  id          String      @id @default(cuid())
-  userId      String
-  user        User        @relation(fields: [userId], references: [id])
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   // Type - BOLETO, PIX
-  type        String
+  type   String
   // Status - PENDING, MATCHED, PAYMENT_SENT, VALIDATING, COMPLETED, DISPUTED, CANCELLED, TIMEOUT
-  status      String      @default("PENDING")
+  status String @default("PENDING")
 
   // Crypto side
-  cryptoType  String
+  cryptoType    String
   cryptoNetwork String
-  cryptoAmount String
+  cryptoAmount  String
 
   // BRL side
-  brlAmount   String
+  brlAmount String
 
   // Fee calculation
   platformFee String
@@ -145,43 +145,43 @@ model Order {
   totalFee    String
 
   // Order specific data (JSON string)
-  orderData   String
+  orderData String
 
   // Collateral system
-  collateralTxHash String?
-  collateralConfirmed Boolean @default(false)
+  collateralTxHash    String?
+  collateralConfirmed Boolean  @default(false)
   collateralDepositId String?
   collateralDeposit   Deposit? @relation(fields: [collateralDepositId], references: [id])
 
   // Timeout handling
-  timeoutAt   DateTime?
-  paidByPlatform Boolean  @default(false)
+  timeoutAt      DateTime?
+  paidByPlatform Boolean   @default(false)
 
   // Expiration customization (PIX)
   customExpirationHours Int? // Usuário define prazo para PIX
-  manualCancelOnly Boolean @default(false) // PIX sem prazo automático
+  manualCancelOnly      Boolean @default(false) // PIX sem prazo automático
 
   // Refund system
-  refundStatus String @default("NOT_REQUIRED") // NOT_REQUIRED, PENDING_USER_CHOICE, PROCESSING, COMPLETED, FAILED
-  refundMethod String? // BLOCKCHAIN, INTERNAL_CREDIT
-  refundTxHash String? // Hash da transação de devolução
-  refundAmount String? // Valor devolvido (após taxas)
-  refundNetworkFee String? // Taxa de rede cobrada
+  refundStatus        String    @default("NOT_REQUIRED") // NOT_REQUIRED, PENDING_USER_CHOICE, PROCESSING, COMPLETED, FAILED
+  refundMethod        String? // BLOCKCHAIN, INTERNAL_CREDIT
+  refundTxHash        String? // Hash da transação de devolução
+  refundAmount        String? // Valor devolvido (após taxas)
+  refundNetworkFee    String? // Taxa de rede cobrada
   refundProcessingFee String? // Taxa de processamento (margem)
-  refundedAt DateTime?
-  cancelReason String? // AUTO_EXPIRED_BOLETO, AUTO_EXPIRED_PIX, USER_CANCELLED
+  refundedAt          DateTime?
+  cancelReason        String? // AUTO_EXPIRED_BOLETO, AUTO_EXPIRED_PIX, USER_CANCELLED
 
   // Negotiation system
-  negotiatingUserId    String?   // Quem está negociando agora (reserva por 10min)
+  negotiatingUserId    String? // Quem está negociando agora (reserva por 10min)
   negotiationStartedAt DateTime? // Quando negociação iniciou
 
   // Presence system (por pedido)
-  ownerOnline          Boolean   @default(false) // Toggle manual do vendedor
-  ownerLastSeenAt      DateTime  @default(now()) // Último heartbeat recebido
-  ownerLastActivityAt  DateTime  @default(now()) // Última mudança de toggle
+  ownerOnline         Boolean  @default(false) // Toggle manual do vendedor
+  ownerLastSeenAt     DateTime @default(now()) // Último heartbeat recebido
+  ownerLastActivityAt DateTime @default(now()) // Última mudança de toggle
 
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   completedAt DateTime?
 
   transactions Transaction[]
@@ -196,18 +196,18 @@ model Order {
 }
 
 model Transaction {
-  id          String            @id @default(cuid())
-  orderId     String
-  order       Order             @relation(fields: [orderId], references: [id])
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id])
 
-  payerId     String
-  payer       User              @relation("payer", fields: [payerId], references: [id])
+  payerId String
+  payer   User   @relation("payer", fields: [payerId], references: [id])
 
   // Status - PENDING, VALIDATING, APPROVED, REJECTED, DISPUTED
-  status      String            @default("PENDING")
+  status String @default("PENDING")
 
   // Comprovante
-  comprovanteUrl String?
+  comprovanteUrl  String?
   comprovanteData String?
 
   // Validation
@@ -216,15 +216,15 @@ model Transaction {
   validatedAt     DateTime?
 
   // Dispute
-  disputeReason   String?
-  disputeData     String?
+  disputeReason String?
+  disputeData   String?
 
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  fees        Fee[]
-  disputes    Dispute[]
-  reviews     Review[]
+  fees     Fee[]
+  disputes Dispute[]
+  reviews  Review[]
 }
 
 model Fee {
@@ -237,37 +237,37 @@ model Fee {
   cryptoAmount  String
   brlEquivalent String
 
-  createdAt     DateTime    @default(now())
+  createdAt DateTime @default(now())
 }
 
 // Sistema completo de Avaliações/Reviews
 model Review {
-  id          String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Quem avalia e quem é avaliado
-  reviewerId  String
-  reviewer    User     @relation("reviewer", fields: [reviewerId], references: [id])
+  reviewerId String
+  reviewer   User   @relation("reviewer", fields: [reviewerId], references: [id])
 
-  reviewedId  String
-  reviewed    User     @relation("reviewed", fields: [reviewedId], references: [id])
+  reviewedId String
+  reviewed   User   @relation("reviewed", fields: [reviewedId], references: [id])
 
   // Relacionamento com pedido/transação
-  orderId     String
-  order       Order    @relation(fields: [orderId], references: [id])
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id])
 
   transactionId String?
   transaction   Transaction? @relation(fields: [transactionId], references: [id])
 
   // Avaliação geral (1-5 estrelas)
-  rating      Int // 1-5
+  rating Int // 1-5
 
   // Avaliações por categoria (opcional, 1-5)
-  reliabilityRating Int? // Confiabilidade
+  reliabilityRating   Int? // Confiabilidade
   communicationRating Int? // Comunicação
-  speedRating Int? // Rapidez
+  speedRating         Int? // Rapidez
 
   // Comentário
-  comment     String?
+  comment String?
 
   // Resposta do avaliado
   response    String?
@@ -275,10 +275,10 @@ model Review {
 
   // Flags
   isSuspicious Boolean @default(false) // Review suspeita (possível fraude)
-  isHidden    Boolean @default(false) // Oculta por admin
+  isHidden     Boolean @default(false) // Oculta por admin
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([reviewerId, orderId]) // Um usuário só pode avaliar uma vez por pedido
   @@index([reviewedId])
@@ -288,20 +288,20 @@ model Review {
 }
 
 model PriceQuote {
-  id          String      @id @default(cuid())
+  id String @id @default(cuid())
 
-  cryptoType  String
-  brlPrice    String
-  source      String      @default("coingecko")
+  cryptoType String
+  brlPrice   String
+  source     String @default("coingecko")
 
-  createdAt   DateTime    @default(now())
+  createdAt DateTime @default(now())
 }
 
 // SECURITY: Refresh tokens para sessões persistentes
 model RefreshToken {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   token     String   @unique
   expiresAt DateTime
@@ -317,26 +317,26 @@ model RefreshToken {
 // SECURITY: Audit log para operações críticas
 // SECURITY: Audit Log completo para rastreabilidade de todas as ações críticas
 model AuditLog {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Quem fez a ação
-  userId    String?  // Pode ser null para ações do sistema
-  email     String?  // Email do usuário (denormalizado para histórico)
-  role      String?  // Role do usuário no momento da ação
+  userId String? // Pode ser null para ações do sistema
+  email  String? // Email do usuário (denormalizado para histórico)
+  role   String? // Role do usuário no momento da ação
 
   // Ação executada
-  action    String   // LOGIN, LOGOUT, LOGIN_FAILED, CREATE_ORDER, CANCEL_ORDER, etc
-  resource  String   // AUTH, ORDER, WALLET, KYC, TRANSACTION, USER, etc
+  action     String // LOGIN, LOGOUT, LOGIN_FAILED, CREATE_ORDER, CANCEL_ORDER, etc
+  resource   String // AUTH, ORDER, WALLET, KYC, TRANSACTION, USER, etc
   resourceId String? // ID do recurso afetado (ex: orderId, walletId)
 
   // Detalhes da ação
   description String? // Descrição legível da ação
-  metadata  String?  // JSON com dados adicionais (antes/depois, etc)
+  metadata    String? // JSON com dados adicionais (antes/depois, etc)
 
   // Informações de contexto
-  ipAddress String?  // IP do cliente
-  userAgent String?  // User-Agent do navegador
-  success   Boolean  @default(true) // Se a ação foi bem-sucedida
+  ipAddress    String? // IP do cliente
+  userAgent    String? // User-Agent do navegador
+  success      Boolean @default(true) // Se a ação foi bem-sucedida
   errorMessage String? // Mensagem de erro se success=false
 
   // Timestamp
@@ -353,46 +353,46 @@ model AuditLog {
 
 // Endereços de depósito temporários para colateral
 model CollateralAddress {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  userId    String
-  orderId   String?  // Null até pedido ser criado
+  userId  String
+  orderId String? // Null até pedido ser criado
 
-  cryptoType String
+  cryptoType    String
   cryptoNetwork String
-  address   String   // REMOVIDO @unique - mesmo endereço da plataforma pode ter múltiplos depósitos
+  address       String // REMOVIDO @unique - mesmo endereço da plataforma pode ter múltiplos depósitos
 
   expectedAmount String
-  status    String   @default("AWAITING_PAYMENT") // AWAITING_PAYMENT, PAYMENT_RECEIVED, CONFIRMED, EXPIRED, USED
+  status         String @default("AWAITING_PAYMENT") // AWAITING_PAYMENT, PAYMENT_RECEIVED, CONFIRMED, EXPIRED, USED
 
   // Dados da transação blockchain
-  txHash    String?  // Hash da transação que fez o pagamento
+  txHash       String? // Hash da transação que fez o pagamento
   actualAmount String? // Valor real recebido
-  confirmedAt DateTime? // Timestamp da confirmação na blockchain
+  confirmedAt  DateTime? // Timestamp da confirmação na blockchain
 
   expiresAt DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId])
-  @@index([address])  // Índice para buscar por endereço rapidamente
+  @@index([address]) // Índice para buscar por endereço rapidamente
   @@index([status])
 }
 
 // Carteiras da plataforma para receber colaterais
 model PlatformWallet {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  cryptoType String  // BTC, USDT, USDC, etc
-  network   String   // ETHEREUM, BASE, ARBITRUM, TRC20, etc
-  address   String   @unique
+  cryptoType String // BTC, USDT, USDC, etc
+  network    String // ETHEREUM, BASE, ARBITRUM, TRC20, etc
+  address    String @unique
 
-  label     String?  // Nome/descrição do endereço (ex: "Carteira Principal USDT Base")
-  isActive  Boolean  @default(true)
+  label    String? // Nome/descrição do endereço (ex: "Carteira Principal USDT Base")
+  isActive Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  createdBy String?  // ID do admin que criou
+  createdBy String? // ID do admin que criou
 
   @@index([cryptoType])
   @@index([network])
@@ -401,17 +401,17 @@ model PlatformWallet {
 
 // Audit log de ações administrativas
 model AdminAction {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  adminId   String   // ID do admin que executou a ação
-  admin     User     @relation(fields: [adminId], references: [id])
+  adminId String // ID do admin que executou a ação
+  admin   User   @relation(fields: [adminId], references: [id])
 
-  action    String   // CREATE, UPDATE, DELETE, APPROVE, REJECT, etc
-  resource  String   // USER, ORDER, WALLET, KYC, etc
+  action     String // CREATE, UPDATE, DELETE, APPROVE, REJECT, etc
+  resource   String // USER, ORDER, WALLET, KYC, etc
   resourceId String? // ID do recurso afetado
 
-  metadata  String?  // JSON com dados adicionais
-  ip        String?  // IP do admin
+  metadata String? // JSON com dados adicionais
+  ip       String? // IP do admin
 
   createdAt DateTime @default(now())
 
@@ -422,14 +422,14 @@ model AdminAction {
 
 // Saldo interno de usuários (crédito de devoluções)
 model InternalBalance {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  cryptoType String  // BTC, USDT, USDC, etc
-  network   String   // ETHEREUM, BASE, ARBITRUM, TRC20, BITCOIN, etc
-  balance   String   @default("0")
+  cryptoType String // BTC, USDT, USDC, etc
+  network    String // ETHEREUM, BASE, ARBITRUM, TRC20, BITCOIN, etc
+  balance    String @default("0")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -440,42 +440,42 @@ model InternalBalance {
 
 // Sistema completo de Disputas
 model Dispute {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Relacionamento
-  orderId      String
-  order        Order @relation(fields: [orderId], references: [id])
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id])
 
   transactionId String?
   transaction   Transaction? @relation(fields: [transactionId], references: [id])
 
   // Quem criou a disputa
-  createdBy    String
-  creator      User @relation("DisputeCreator", fields: [createdBy], references: [id])
+  createdBy String
+  creator   User   @relation("DisputeCreator", fields: [createdBy], references: [id])
 
   // Status: OPEN, UNDER_REVIEW, RESOLVED_BUYER, RESOLVED_SELLER, CANCELLED
-  status       String @default("OPEN")
+  status String @default("OPEN")
 
   // Categoria: PAYMENT_NOT_RECEIVED, PAYMENT_ISSUE, FRAUD, OTHER
-  category     String
+  category String
 
   // Descrição inicial
-  title        String
-  description  String
+  title       String
+  description String
 
   // Resolução (quando resolvida)
-  resolvedBy   String?
-  resolver     User? @relation("DisputeResolver", fields: [resolvedBy], references: [id])
+  resolvedBy String?
+  resolver   User?   @relation("DisputeResolver", fields: [resolvedBy], references: [id])
 
-  resolution   String? // Descrição da resolução
+  resolution     String? // Descrição da resolução
   resolutionType String? // REFUND_BUYER, RELEASE_SELLER, PARTIAL_REFUND, CANCELLED
 
-  resolvedAt   DateTime?
+  resolvedAt DateTime?
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  messages     DisputeMessage[]
+  messages DisputeMessage[]
 
   @@index([orderId])
   @@index([transactionId])
@@ -486,17 +486,17 @@ model Dispute {
 
 // Mensagens/Evidências de Disputa
 model DisputeMessage {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
   disputeId String
   dispute   Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
 
   // Autor (pode ser usuário ou admin)
-  authorId  String
-  author    User @relation("DisputeMessageAuthor", fields: [authorId], references: [id])
+  authorId String
+  author   User   @relation("DisputeMessageAuthor", fields: [authorId], references: [id])
 
   // Conteúdo
-  message   String
+  message String
 
   // Evidências (URLs de imagens/documentos)
   attachments String? // JSON array de URLs
@@ -513,37 +513,37 @@ model DisputeMessage {
 
 // Sistema completo de Notificações
 model Notification {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Destinatário
-  userId    String
-  user      User     @relation("notifications", fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation("notifications", fields: [userId], references: [id], onDelete: Cascade)
 
   // Tipo de notificação
-  type      String   // ORDER_MATCHED, PAYMENT_RECEIVED, DEPOSIT_CONFIRMED, REVIEW_RECEIVED, etc
-  category  String   // ORDER, TRANSACTION, DISPUTE, REVIEW, WALLET, KYC, SYSTEM
+  type     String // ORDER_MATCHED, PAYMENT_RECEIVED, DEPOSIT_CONFIRMED, REVIEW_RECEIVED, etc
+  category String // ORDER, TRANSACTION, DISPUTE, REVIEW, WALLET, KYC, SYSTEM
 
   // Conteúdo
-  title     String
-  message   String
+  title   String
+  message String
 
   // Link/Ação
-  actionUrl String?  // URL para onde o usuário deve ir
+  actionUrl   String? // URL para onde o usuário deve ir
   actionLabel String? // Texto do botão (ex: "Ver pedido", "Responder disputa")
 
   // Recurso relacionado
-  relatedId String?  // ID do pedido, transação, disputa, etc
+  relatedId   String? // ID do pedido, transação, disputa, etc
   relatedType String? // ORDER, TRANSACTION, DISPUTE, REVIEW
 
   // Prioridade: LOW, NORMAL, HIGH, URGENT
-  priority  String   @default("NORMAL")
+  priority String @default("NORMAL")
 
   // Metadata adicional (JSON)
-  metadata  String?
+  metadata String?
 
   // Estado
-  isRead    Boolean  @default(false)
-  readAt    DateTime?
+  isRead Boolean   @default(false)
+  readAt DateTime?
 
   createdAt DateTime @default(now())
 
@@ -557,21 +557,21 @@ model Notification {
 
 // Sistema completo de Chat em Tempo Real
 model Chat {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Relacionamento com pedido
-  orderId   String   @unique
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId String @unique
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   // Participantes (vendedor e comprador)
   participant1Id String
-  participant1   User @relation("ChatParticipant1", fields: [participant1Id], references: [id])
+  participant1   User   @relation("ChatParticipant1", fields: [participant1Id], references: [id])
 
   participant2Id String
-  participant2   User @relation("ChatParticipant2", fields: [participant2Id], references: [id])
+  participant2   User   @relation("ChatParticipant2", fields: [participant2Id], references: [id])
 
   // Status do chat
-  isActive  Boolean  @default(true)
+  isActive Boolean @default(true)
 
   // Última atividade
   lastMessageAt DateTime?
@@ -583,7 +583,7 @@ model Chat {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  messages  ChatMessage[]
+  messages ChatMessage[]
 
   @@index([orderId])
   @@index([participant1Id])
@@ -594,17 +594,17 @@ model Chat {
 
 // Mensagens do Chat
 model ChatMessage {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  chatId    String
-  chat      Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  chatId String
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   // Autor da mensagem
-  senderId  String
-  sender    User @relation("ChatMessageSender", fields: [senderId], references: [id])
+  senderId String
+  sender   User   @relation("ChatMessageSender", fields: [senderId], references: [id])
 
   // Conteúdo (retrocompatibilidade)
-  message   String?  // Mensagens antigas (sem criptografia)
+  message String? // Mensagens antigas (sem criptografia)
 
   // Criptografia end-to-end
   encryptedContent String? // Mensagens novas (criptografadas)
@@ -612,16 +612,16 @@ model ChatMessage {
   iv               String? // Initialization Vector para AES-GCM
 
   // Anexos (URLs de imagens)
-  attachments String? // JSON array de URLs (retrocompatibilidade)
+  attachments    String? // JSON array de URLs (retrocompatibilidade)
   attachmentUrl  String? // URL do anexo (novo formato simples)
   attachmentType String? // Tipo MIME do anexo (image/png, image/jpeg, application/pdf)
 
   // Status de leitura
-  isRead    Boolean  @default(false)
-  readAt    DateTime?
+  isRead Boolean   @default(false)
+  readAt DateTime?
 
   // Tipo de mensagem
-  type      String   @default("TEXT") // TEXT, IMAGE, SYSTEM
+  type String @default("TEXT") // TEXT, IMAGE, SYSTEM
 
   createdAt DateTime @default(now())
 
@@ -633,58 +633,58 @@ model ChatMessage {
 
 // Sistema completo de KYC Verification (Progressive Disclosure)
 model KYCVerification {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Relacionamento 1:1 com User
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Status da verificação: PENDING, APPROVED, REJECTED
-  status    String   @default("PENDING")
+  status String @default("PENDING")
 
   // Nível atual de KYC submetido: LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4
-  level     String
+  level String
 
   // --- LEVEL 1: Dados básicos (CPF + Telefone + Nome completo) ---
-  fullName  String?
-  cpf       String?  @unique
-  phone     String?
-  phoneVerified Boolean @default(false)
+  fullName        String?
+  cpf             String?   @unique
+  phone           String?
+  phoneVerified   Boolean   @default(false)
   phoneVerifiedAt DateTime?
 
   // --- LEVEL 2: Endereço + Data de Nascimento ---
   dateOfBirth DateTime?
 
-  addressStreet String?
-  addressNumber String?
-  addressComplement String?
+  addressStreet       String?
+  addressNumber       String?
+  addressComplement   String?
   addressNeighborhood String?
-  addressCity String?
-  addressState String?  // UF
-  addressZipCode String?
+  addressCity         String?
+  addressState        String? // UF
+  addressZipCode      String?
 
   // --- LEVEL 3: Documento + Selfie + Liveness ---
-  documentType String?  // RG, CNH
-  documentNumber String?
+  documentType     String? // RG, CNH
+  documentNumber   String?
   documentFrontUrl String?
-  documentBackUrl String?
+  documentBackUrl  String?
 
-  selfieUrl String?
-  livenessScore Float?
+  selfieUrl        String?
+  livenessScore    Float?
   livenessVerified Boolean @default(false)
 
   // --- LEVEL 4: Comprovante de Residência ---
-  proofOfResidenceUrl String?
-  proofOfResidenceType String?  // CONTA_LUZ, CONTA_AGUA, CONTA_TELEFONE, EXTRATO_BANCARIO
+  proofOfResidenceUrl  String?
+  proofOfResidenceType String? // CONTA_LUZ, CONTA_AGUA, CONTA_TELEFONE, EXTRATO_BANCARIO
 
   // Metadados de revisão
-  reviewedBy String?  // ID do admin que aprovou/rejeitou
-  reviewedAt DateTime?
+  reviewedBy      String? // ID do admin que aprovou/rejeitou
+  reviewedAt      DateTime?
   rejectionReason String?
 
   // Timestamps
-  submittedAt DateTime @default(now())
-  approvedAt DateTime?
+  submittedAt DateTime  @default(now())
+  approvedAt  DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -698,17 +698,17 @@ model KYCVerification {
 
 // Códigos de verificação de telefone
 model PhoneVerificationCode {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  phone     String
-  code      String   // Código de 6 dígitos
+  phone String
+  code  String // Código de 6 dígitos
 
   // Status: PENDING, VERIFIED, EXPIRED, USED
-  status    String   @default("PENDING")
+  status String @default("PENDING")
 
-  attempts  Int      @default(0) // Tentativas de verificação
+  attempts Int @default(0) // Tentativas de verificação
 
-  expiresAt DateTime
+  expiresAt  DateTime
   verifiedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -721,14 +721,14 @@ model PhoneVerificationCode {
 
 // Chaves de criptografia end-to-end para chat
 model UserKeys {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Relacionamento 1:1 com User
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Chave pública RSA em formato PEM (armazenada no servidor)
-  publicKey String   // Base64 encoded public key
+  publicKey String // Base64 encoded public key
 
   // Backup da chave privada criptografada com senha do usuário
   encryptedPrivateKeyBackup String? // Para recuperação em novos dispositivos

@@ -39,8 +39,13 @@ export default function LoginForm() {
       }
       localStorage.setItem('user', JSON.stringify(data.data.user));
 
-      // Redirecionar para dashboard
-      router.push('/dashboard');
+      // Redirecionar baseado no role
+      const userRole = data.data.user?.role;
+      if (userRole === 'ADMIN' || userRole === 'MASTER') {
+        router.push('/admin');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {

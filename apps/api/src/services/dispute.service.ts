@@ -686,20 +686,19 @@ export class DisputeService {
       total,
       open,
       underReview,
-      resolved,
+      resolvedBuyer,
+      resolvedSeller,
+      cancelled,
       byCategory,
       byResolutionType,
+      recentDisputes,
     ] = await Promise.all([
       prisma.dispute.count(),
       prisma.dispute.count({ where: { status: 'OPEN' } }),
       prisma.dispute.count({ where: { status: 'UNDER_REVIEW' } }),
-      prisma.dispute.count({
-        where: {
-          status: {
-            in: ['RESOLVED_BUYER', 'RESOLVED_SELLER', 'CANCELLED'],
-          },
-        },
-      }),
+      prisma.dispute.count({ where: { status: 'RESOLVED_BUYER' } }),
+      prisma.dispute.count({ where: { status: 'RESOLVED_SELLER' } }),
+      prisma.dispute.count({ where: { status: 'CANCELLED' } }),
       prisma.dispute.groupBy({
         by: ['category'],
         _count: true,
@@ -721,17 +720,119 @@ export class DisputeService {
           },
         },
       }),
+      prisma.dispute.count({
+        where: {
+          createdAt: {
+            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // Last 7 days
+          },
+        },
+      }),
     ]);
+
+    const resolved = resolvedBuyer + resolvedSeller + cancelled;
 
     return {
       total,
       open,
       underReview,
       resolved,
+      resolvedBuyer,
+      resolvedSeller,
+      cancelled,
+      recent: recentDisputes,
       byCategory,
       byResolutionType,
       resolutionRate: total > 0 ? (resolved / total) * 100 : 0,
     };
+  }
+
+  /**
+   * Analytics de disputas por período
+   */
+  async getDisputeAnalytics(days: number = 30) {
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const disputes = await prisma.dispute.findMany({
+      where: {
+        createdAt: {
+          gte: startDate,
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+        category: true,
+        resolutionType: true,
+        createdAt: true,
+        resolvedAt: true,
+      },
+    });
+
+    // Calculate average resolution time
+    const resolvedDisputes = disputes.filter(d => d.resolvedAt);
+    const avgResolutionTime = resolvedDisputes.length > 0
+      ? resolvedDisputes.reduce((sum, d) => {
+          const time = d.resolvedAt!.getTime() - d.createdAt.getTime();
+          return sum + time;
+        }, 0) / resolvedDisputes.length
+      : 0;
+
+    // Group by status
+    const byStatus = disputes.reduce((acc: any, d) => {
+      acc[d.status] = (acc[d.status] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Group by category
+    const byCategory = disputes.reduce((acc: any, d) => {
+      acc[d.category] = (acc[d.category] || 0) + 1;
+      return acc;
+    }, {});
+
+    return {
+      period: `${days} days`,
+      totalDisputes: disputes.length,
+      avgResolutionTimeHours: avgResolutionTime / (1000 * 60 * 60),
+      byStatus,
+      byCategory,
+      resolvedCount: resolvedDisputes.length,
+      resolutionRate: disputes.length > 0 ? (resolvedDisputes.length / disputes.length) * 100 : 0,
+    };
+  }
+
+  /**
+   * Top disputantes (usuários com mais disputas)
+   */
+  async getTopDisputants(limit: number = 10) {
+    const disputes = await prisma.dispute.findMany({
+      select: {
+        createdBy: true,
+        creator: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            reputationScore: true,
+          },
+        },
+      },
+    });
+
+    const userCounts = disputes.reduce((acc: any, d) => {
+      const userId = d.createdBy;
+      if (!acc[userId]) {
+        acc[userId] = {
+          user: d.creator,
+          count: 0,
+        };
+      }
+      acc[userId].count += 1;
+      return acc;
+    }, {});
+
+    return Object.values(userCounts)
+      .sort((a: any, b: any) => b.count - a.count)
+      .slice(0, limit);
   }
 
   /**
