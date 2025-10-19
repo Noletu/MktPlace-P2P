@@ -16,6 +16,13 @@ router.use(authMiddleware);
 router.post('/', disputeLimiter, disputeController.createDispute.bind(disputeController));
 
 /**
+ * @route   GET /api/v1/disputes/stats
+ * @desc    Estatísticas de disputas (admin)
+ * @access  Admin
+ */
+router.get('/stats', adminMiddleware, disputeController.getDisputeStats.bind(disputeController));
+
+/**
  * @route   GET /api/v1/disputes/my-disputes
  * @desc    Listar disputas do usuário
  * @access  Private
@@ -53,13 +60,6 @@ router.post('/:disputeId/respond', disputeController.respondToDispute.bind(dispu
  * @access  Admin
  */
 router.get('/', adminMiddleware, disputeController.getAllDisputes.bind(disputeController));
-
-/**
- * @route   GET /api/v1/disputes/stats
- * @desc    Estatísticas de disputas (admin)
- * @access  Admin
- */
-router.get('/stats', adminMiddleware, disputeController.getDisputeStats.bind(disputeController));
 
 /**
  * @route   POST /api/v1/disputes/:disputeId/resolve

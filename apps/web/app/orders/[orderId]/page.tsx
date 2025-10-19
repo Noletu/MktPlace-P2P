@@ -63,6 +63,7 @@ export default function OrderDetailsPage() {
   const [modalProofImage, setModalProofImage] = useState<string>('');
   const [isChatMinimized, setIsChatMinimized] = useState(false);
   const [chatUnreadCount, setChatUnreadCount] = useState<number>(0);
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
 
   useEffect(() => {
     fetchOrder();
@@ -193,42 +194,32 @@ export default function OrderDetailsPage() {
     }
   };
 
-  const handleDispute = async () => {
-    const reason = prompt('Digite o motivo da disputa:');
-    if (!reason) return;
-
-    try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        alert('Você precisa estar logado');
-        return;
-      }
-
-      const transaction = order?.transactions[0];
-
-      const response = await fetch(
-        `http://localhost:3001/api/v1/transactions/${transaction?.id}/dispute`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ reason }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao criar disputa');
-      }
-
-      alert('Disputa criada! Nossa equipe irá analisar o caso.');
-      await fetchOrder();
-    } catch (err: any) {
-      alert(err.message);
+  const canOpenDispute = () => {
+    // Não permitir se já completado ou cancelado
+    if (order?.status === 'COMPLETED' || order?.status === 'CANCELLED') {
+      return false;
     }
+
+    // Comprador/Pagador pode abrir disputa quando enviar pagamento (PAYMENT_SENT ou VALIDATING)
+    if (isPayer && (order?.status === 'PAYMENT_SENT' || order?.status === 'VALIDATING')) {
+      return true; // Removida restrição de 24h para facilitar testes
+    }
+
+    // Vendedor/Criador pode abrir após receber comprovante (PAYMENT_SENT ou VALIDATING)
+    if (isCreator && (order?.status === 'PAYMENT_SENT' || order?.status === 'VALIDATING')) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const handleOpenDispute = () => {
+    setShowDisputeModal(true);
+  };
+
+  const confirmOpenDispute = () => {
+    setShowDisputeModal(false);
+    router.push(`/orders/${orderId}/dispute/new`);
   };
 
   const handleConfirmPaymentReceived = async () => {
@@ -619,17 +610,30 @@ export default function OrderDetailsPage() {
 
             {/* Mensagem de Aguardando Confirmação */}
             {(order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
-              <div className="bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-300 dark:border-blue-700 rounded-lg shadow-md p-6">
+              <div className={`border-2 rounded-lg shadow-md p-6 ${
+                isPayer
+                  ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'
+                  : 'bg-orange-50 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700'
+              }`}>
                 <div className="flex items-center gap-4">
-                  <div className="text-5xl animate-pulse">⏳</div>
+                  <div className="text-5xl animate-pulse">{isPayer ? '⏳' : '👀'}</div>
                   <div>
-                    <h3 className="text-2xl font-bold text-blue-800 dark:text-blue-200 mb-2">
-                      Aguardando confirmação da outra parte
-                    </h3>
-                    <p className="text-blue-700 dark:text-blue-300">
+                    <h3 className={`text-2xl font-bold mb-2 ${
+                      isPayer
+                        ? 'text-blue-800 dark:text-blue-200'
+                        : 'text-orange-800 dark:text-orange-200'
+                    }`}>
                       {isPayer
-                        ? 'O vendedor está verificando seu comprovante de pagamento'
-                        : 'O comprador enviou o comprovante. Verifique e confirme o recebimento'}
+                        ? 'Aguardando confirmação do vendedor'
+                        : '⚠️ Aguardando SUA confirmação de recebimento'}
+                    </h3>
+                    <p className={isPayer
+                        ? 'text-blue-700 dark:text-blue-300'
+                        : 'text-orange-700 dark:text-orange-300'
+                    }>
+                      {isPayer
+                        ? 'O vendedor está verificando seu comprovante de pagamento. Você será notificado quando ele confirmar.'
+                        : 'O comprador enviou o comprovante de pagamento. Verifique se recebeu o valor e confirme abaixo para liberar a criptomoeda.'}
                     </p>
                   </div>
                 </div>
@@ -824,13 +828,20 @@ export default function OrderDetailsPage() {
                 )}
 
                 {/* Abrir Disputa */}
-                {order.status !== 'COMPLETED' && order.status !== 'CANCELLED' && (
-                  <button
-                    onClick={handleDispute}
-                    className="w-full px-4 py-2 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg"
-                  >
-                    Abrir Disputa
-                  </button>
+                {canOpenDispute() && (
+                  <div>
+                    <button
+                      onClick={handleOpenDispute}
+                      className="w-full px-4 py-2 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg"
+                    >
+                      ⚠️ Abrir Disputa
+                    </button>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                      {isPayer
+                        ? 'Se o vendedor não confirmar o recebimento'
+                        : 'Se houver problemas com o pagamento'}
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
@@ -927,6 +938,56 @@ export default function OrderDetailsPage() {
             </button>
           </div>
         )}
+
+      {/* Modal de Confirmação de Disputa */}
+      {showDisputeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">
+              ⚠️ Você tem certeza que quer abrir uma disputa?
+            </h3>
+
+            <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4 mb-6">
+              <h4 className="text-sm font-semibold text-yellow-800 dark:text-yellow-200 mb-3">
+                Antes de abrir uma disputa:
+              </h4>
+              <ul className="text-sm text-yellow-700 dark:text-yellow-300 space-y-2">
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5">•</span>
+                  <span>Certifique-se de ter tentado contato com a outra parte</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5">•</span>
+                  <span>Tenha em mãos todos os comprovantes e evidências</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5">•</span>
+                  <span>A descrição deve ser clara e detalhada (mínimo 50 caracteres)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5">•</span>
+                  <span>Você terá 24h para responder caso a outra parte conteste</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDisputeModal(false)}
+                className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-semibold"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmOpenDispute}
+                className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold"
+              >
+                Sim, Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

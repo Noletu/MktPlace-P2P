@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { adminController } from '../controllers/admin.controller';
+import { financeController } from '../controllers/finance.controller';
+import { disputeController } from '../controllers/dispute.controller';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
 import { adminActionLimiter } from '../middleware/rateLimiter.middleware';
 
@@ -13,6 +15,12 @@ router.use(adminMiddleware);
  * Dashboard
  */
 router.get('/dashboard', adminController.getDashboard.bind(adminController));
+
+/**
+ * Finance & Analytics
+ */
+router.get('/finance/stats', financeController.getFinanceStats.bind(financeController));
+router.get('/finance/wallet-balances', financeController.getWalletBalances.bind(financeController));
 
 /**
  * Gestão de Endereços da Plataforma
@@ -59,5 +67,11 @@ router.get('/kyc/:userId', adminController.getKYCVerification.bind(adminControll
 // SECURITY: Aprovação/Rejeição de KYC com rate limiting
 router.post('/kyc/:userId/approve', adminActionLimiter, adminController.approveKYC.bind(adminController));
 router.post('/kyc/:userId/reject', adminActionLimiter, adminController.rejectKYC.bind(adminController));
+
+/**
+ * Dispute Analytics
+ */
+router.get('/disputes/analytics', disputeController.getDisputeAnalytics.bind(disputeController));
+router.get('/disputes/top-disputants', disputeController.getTopDisputants.bind(disputeController));
 
 export default router;

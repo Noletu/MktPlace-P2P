@@ -8,16 +8,10 @@ async function main() {
 
   // ============ CRIAR USUÁRIO MASTER ============
   const masterEmail = 'master@mktplace.com';
-  const masterCPF = '99999999999';
   const masterPassword = 'Master@2025!'; // MUDAR EM PRODUÇÃO!
 
-  const existingMaster = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { email: masterEmail },
-        { cpf: masterCPF },
-      ],
-    },
+  const existingMaster = await prisma.user.findUnique({
+    where: { email: masterEmail },
   });
 
   if (existingMaster) {
@@ -30,10 +24,7 @@ async function main() {
       data: {
         role: 'MASTER',
         password: hashedMasterPassword,
-        email: masterEmail,
-        cpf: masterCPF,
         name: 'Master Administrator',
-        kycLevel: 'LEVEL_4',
       },
     });
 
@@ -46,11 +37,9 @@ async function main() {
     const master = await prisma.user.create({
       data: {
         email: masterEmail,
-        cpf: masterCPF,
         password: hashedMasterPassword,
         name: 'Master Administrator',
         role: 'MASTER',
-        kycLevel: 'LEVEL_4',
       },
     });
 
@@ -59,17 +48,11 @@ async function main() {
 
   // ============ CRIAR USUÁRIO ADMIN ============
   const adminEmail = 'admin@mktplace.com';
-  const adminCPF = '00000000000';
   const adminPassword = 'Admin@123'; // MUDAR EM PRODUÇÃO!
 
-  // Verificar se admin já existe (por email ou CPF)
-  const existingAdmin = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { email: adminEmail },
-        { cpf: adminCPF },
-      ],
-    },
+  // Verificar se admin já existe
+  const existingAdmin = await prisma.user.findUnique({
+    where: { email: adminEmail },
   });
 
   if (existingAdmin) {
@@ -82,8 +65,6 @@ async function main() {
       data: {
         role: 'ADMIN',
         password: hashedPassword,
-        email: adminEmail,
-        cpf: adminCPF,
       },
     });
 
@@ -96,11 +77,9 @@ async function main() {
     const admin = await prisma.user.create({
       data: {
         email: adminEmail,
-        cpf: adminCPF, // CPF placeholder para admin
         password: hashedPassword,
         name: 'Administrador',
         role: 'ADMIN',
-        kycLevel: 'LEVEL_4', // Admin já tem KYC máximo
       },
     });
 

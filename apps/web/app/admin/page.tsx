@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { formatBRL } from '@/utils/formatters';
+import FinanceDashboard from '@/components/admin/FinanceDashboard';
+import WalletBalancesWidget from '@/components/admin/WalletBalancesWidget';
+import StatCard from '@/components/admin/shared/StatCard';
+import OrdersStatusChart from '@/components/admin/charts/OrdersStatusChart';
+import VolumeChart from '@/components/admin/charts/VolumeChart';
 
 interface DashboardStats {
   users: {
@@ -56,8 +61,8 @@ export default function AdminDashboard() {
   if (loading) {
     return (
       <div className="text-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-        <p className="mt-4 text-gray-600">Carregando estatísticas...</p>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+        <p className="mt-4 text-gray-300">Carregando estatísticas...</p>
       </div>
     );
   }
@@ -65,147 +70,163 @@ export default function AdminDashboard() {
   if (!stats) {
     return (
       <div className="text-center py-12">
-        <p className="text-red-600">Erro ao carregar estatísticas</p>
+        <p className="text-red-400">Erro ao carregar estatísticas</p>
       </div>
     );
   }
 
   return (
     <div>
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">Dashboard Administrativo</h1>
+      <h1 className="text-3xl font-bold text-white mb-8">Dashboard Administrativo</h1>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {/* Total Users */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Total de Usuários</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">{stats.users.total}</p>
-              <p className="text-xs text-green-600 mt-1">+{stats.users.recent} últimos 7 dias</p>
-            </div>
-            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-              <span className="text-2xl">👥</span>
-            </div>
-          </div>
-        </div>
+        <StatCard
+          title="Total de Usuários"
+          value={stats.users.total}
+          icon="👥"
+          change={{
+            value: `+${stats.users.recent} últimos 7 dias`,
+            isPositive: true,
+          }}
+          bgColor="bg-blue-600/10"
+        />
 
-        {/* Total Orders */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Total de Pedidos</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">{stats.orders.total}</p>
-              <p className="text-xs text-green-600 mt-1">+{stats.orders.recent} últimos 7 dias</p>
-            </div>
-            <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
-              <span className="text-2xl">📦</span>
-            </div>
-          </div>
-        </div>
+        <StatCard
+          title="Total de Pedidos"
+          value={stats.orders.total}
+          icon="📦"
+          change={{
+            value: `+${stats.orders.recent} últimos 7 dias`,
+            isPositive: true,
+          }}
+          bgColor="bg-purple-600/10"
+        />
 
-        {/* Active Orders */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Pedidos Ativos</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">{stats.orders.active}</p>
-              <p className="text-xs text-gray-500 mt-1">Em andamento</p>
-            </div>
-            <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
-              <span className="text-2xl">⏳</span>
-            </div>
-          </div>
-        </div>
+        <StatCard
+          title="Pedidos Ativos"
+          value={stats.orders.active}
+          icon="⏳"
+          change={{
+            value: 'Em andamento',
+            isPositive: true,
+          }}
+          bgColor="bg-yellow-600/10"
+        />
 
-        {/* Volume BRL */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Volume Total</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">{formatBRL(stats.volume.totalBRL)}</p>
-              <p className="text-xs text-gray-500 mt-1">Completados</p>
-            </div>
-            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-2xl">💰</span>
-            </div>
-          </div>
-        </div>
+        <StatCard
+          title="Volume Total"
+          value={formatBRL(stats.volume.totalBRL)}
+          icon="💰"
+          change={{
+            value: 'Completados',
+            isPositive: true,
+          }}
+          bgColor="bg-green-600/10"
+        />
       </div>
 
       {/* Secondary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         {/* Completed Orders */}
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-6">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+            <div className="w-10 h-10 bg-green-600/20 border border-green-500/30 rounded-full flex items-center justify-center">
               <span className="text-xl">✅</span>
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-600">Pedidos Completados</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.orders.completed}</p>
+              <p className="text-sm font-medium text-gray-400">Pedidos Completados</p>
+              <p className="text-2xl font-bold text-white">{stats.orders.completed}</p>
             </div>
           </div>
         </div>
 
         {/* Total Transactions */}
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-6">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+            <div className="w-10 h-10 bg-blue-600/20 border border-blue-500/30 rounded-full flex items-center justify-center">
               <span className="text-xl">💸</span>
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-600">Total de Transações</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.transactions.total}</p>
+              <p className="text-sm font-medium text-gray-400">Total de Transações</p>
+              <p className="text-2xl font-bold text-white">{stats.transactions.total}</p>
             </div>
           </div>
         </div>
 
         {/* Pending KYC */}
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-6">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+            <div className="w-10 h-10 bg-orange-600/20 border border-orange-500/30 rounded-full flex items-center justify-center">
               <span className="text-xl">🔍</span>
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-600">KYC Pendentes</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.kyc.pending}</p>
+              <p className="text-sm font-medium text-gray-400">KYC Pendentes</p>
+              <p className="text-2xl font-bold text-white">{stats.kyc.pending}</p>
             </div>
           </div>
         </div>
       </div>
 
+      {/* Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <OrdersStatusChart />
+        <VolumeChart />
+      </div>
+
+      {/* Finance Dashboard */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-white mb-4">💰 Financeiro</h2>
+        <FinanceDashboard />
+      </div>
+
+      {/* Wallet Balances */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <WalletBalancesWidget />
+
+        {/* Disputes Summary */}
+        <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-white">⚖️ Disputas</h3>
+            <a href="/admin/disputes" className="text-sm text-blue-400 hover:text-blue-300 hover:underline">
+              Ver todas →
+            </a>
+          </div>
+          <p className="text-sm text-gray-400">Acesse o painel de disputas para gerenciar casos pendentes</p>
+        </div>
+      </div>
+
       {/* Quick Actions */}
-      <div className="mt-8 bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Ações Rápidas</h2>
+      <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-6">
+        <h2 className="text-xl font-bold text-white mb-4">Ações Rápidas</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <a
-            href="/admin/platform-wallets"
-            className="p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-center"
+            href="/admin/wallets"
+            className="p-4 border-2 border-gray-700 rounded-lg hover:border-blue-500 hover:bg-blue-900/20 transition text-center"
           >
             <span className="text-3xl block mb-2">🏦</span>
-            <span className="text-sm font-medium text-gray-700">Endereços da Plataforma</span>
+            <span className="text-sm font-medium text-gray-300">Endereços da Plataforma</span>
+          </a>
+          <a
+            href="/admin/disputes"
+            className="p-4 border-2 border-gray-700 rounded-lg hover:border-blue-500 hover:bg-blue-900/20 transition text-center"
+          >
+            <span className="text-3xl block mb-2">⚖️</span>
+            <span className="text-sm font-medium text-gray-300">Gerenciar Disputas</span>
           </a>
           <a
             href="/admin/users"
-            className="p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-center"
+            className="p-4 border-2 border-gray-700 rounded-lg hover:border-blue-500 hover:bg-blue-900/20 transition text-center"
           >
             <span className="text-3xl block mb-2">👥</span>
-            <span className="text-sm font-medium text-gray-700">Gerenciar Usuários</span>
+            <span className="text-sm font-medium text-gray-300">Gerenciar Usuários</span>
           </a>
           <a
             href="/admin/orders"
-            className="p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-center"
+            className="p-4 border-2 border-gray-700 rounded-lg hover:border-blue-500 hover:bg-blue-900/20 transition text-center"
           >
             <span className="text-3xl block mb-2">📦</span>
-            <span className="text-sm font-medium text-gray-700">Gerenciar Pedidos</span>
-          </a>
-          <a
-            href="/admin/audit"
-            className="p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-center"
-          >
-            <span className="text-3xl block mb-2">📋</span>
-            <span className="text-sm font-medium text-gray-700">Ver Audit Log</span>
+            <span className="text-sm font-medium text-gray-300">Gerenciar Pedidos</span>
           </a>
         </div>
       </div>

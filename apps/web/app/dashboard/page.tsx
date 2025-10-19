@@ -209,6 +209,27 @@ export default function DashboardPage() {
               </button>
             </div>
           </div>
+
+          <div className="p-6 border border-gray-200 dark:border-gray-700 rounded-lg bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-900/20 dark:to-orange-900/20">
+            <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">⚖️ Disputas</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">Resolva problemas com transações</p>
+            <div className="space-y-2">
+              <button
+                onClick={() => router.push('/disputes')}
+                className="w-full px-4 py-2 bg-red-500 dark:bg-red-600 text-white rounded-lg hover:bg-red-600 dark:hover:bg-red-700"
+              >
+                Minhas Disputas
+              </button>
+              {user?.role === 'ADMIN' && (
+                <button
+                  onClick={() => router.push('/admin/disputes')}
+                  className="w-full px-4 py-2 bg-orange-500 dark:bg-orange-600 text-white rounded-lg hover:bg-orange-600 dark:hover:bg-orange-700"
+                >
+                  🛡️ Painel Admin
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </main>

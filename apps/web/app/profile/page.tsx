@@ -58,10 +58,10 @@ export default function ProfilePage() {
         const profileData = await profileRes.json();
         const userData = profileData.data;
 
-        // Se for ADMIN ou MASTER, redirecionar para dashboard admin
+        // Se for ADMIN ou MASTER, redirecionar para perfil admin
         if (userData.role === 'ADMIN' || userData.role === 'MASTER') {
-          console.log('Redirecionando para dashboard admin...');
-          router.push('/admin');
+          console.log('Redirecionando para perfil admin...');
+          router.push('/admin/profile');
           return;
         }
 

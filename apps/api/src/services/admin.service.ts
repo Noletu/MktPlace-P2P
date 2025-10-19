@@ -188,7 +188,6 @@ export class AdminService {
       pendingKYC,
       activeOrders,
       completedOrders,
-      totalVolumeBRL,
       recentUsers,
       recentOrders,
     ] = await Promise.all([
@@ -221,16 +220,6 @@ export class AdminService {
       prisma.order.count({
         where: {
           status: 'COMPLETED',
-        },
-      }),
-
-      // Volume total em BRL
-      prisma.order.aggregate({
-        where: {
-          status: 'COMPLETED',
-        },
-        _sum: {
-          brlAmount: true,
         },
       }),
 
