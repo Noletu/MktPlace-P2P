@@ -13,7 +13,9 @@ import transactionRoutes from './routes/transaction.routes';
 import twoFactorRoutes from './routes/twoFactor.routes';
 import boletoRoutes from './routes/boleto.routes';
 import collateralRoutes from './routes/collateral.routes';
+import collateralBalanceRoutes from './routes/collateral-balance.routes';
 import adminRoutes from './routes/admin.routes';
+import adminBalanceRoutes from './routes/admin-balance.routes';
 import refundRoutes from './routes/refund.routes';
 import disputeRoutes from './routes/dispute.routes';
 import reviewRoutes from './routes/review.routes';
@@ -28,6 +30,7 @@ import { depositMonitorWorker } from './workers/deposit-monitor.worker';
 import { orderExpirationWorker } from './workers/order-expiration.worker';
 import { negotiationTimeoutWorker } from './workers/negotiation-timeout.worker';
 import { presenceMonitorWorker } from './workers/presence-monitor.worker';
+import { collateralReleaseWorker } from './workers/collateral-release.worker';
 import { initializeChatSocket } from './socket/chat.socket';
 
 dotenv.config();
@@ -175,8 +178,14 @@ app.use('/api/v1/boleto', boletoRoutes);
 // Collateral routes
 app.use('/api/v1/collateral', collateralRoutes);
 
+// Collateral Balance routes (NEW: Internal Balance Management)
+app.use('/api/v1/collateral-balance', collateralBalanceRoutes);
+
 // Admin routes
 app.use('/api/v1/admin', adminRoutes);
+
+// Admin Balance Audit routes (NEW: v3.0.7 - Balance validation and fixing)
+app.use('/api/v1/admin/balance', adminBalanceRoutes);
 
 // Refund routes
 app.use('/api/v1/refund', refundRoutes);
@@ -256,6 +265,7 @@ httpServer.listen(port, () => {
   orderExpirationWorker.start();
   negotiationTimeoutWorker.start();
   presenceMonitorWorker.start();
+  collateralReleaseWorker.start();
   console.log('⚙️  [workers]: All background workers started');
 });
 

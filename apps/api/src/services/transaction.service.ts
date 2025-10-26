@@ -2,6 +2,7 @@ import { PrismaClient, Transaction } from '@prisma/client';
 import { TransactionStatus, SubmitProofInput, ValidateProofInput, DisputeInput } from '../types/transaction.types';
 import { OrderStatus } from '../types/order.types';
 import { notificationService } from './notification.service';
+import { internalBalanceService } from './internal-balance.service';
 
 const prisma = new PrismaClient();
 
@@ -102,6 +103,39 @@ export class TransactionService {
       await this.updateUserReputation(transaction.order.userId, true);
 
       // TODO: Criar Fee records e transferir crypto
+
+      // Processar saldo interno do vendedor (CORREÇÃO v3.0.7)
+      if (transaction.order.collateralSource === 'INTERNAL_BALANCE' &&
+          transaction.order.collateralLocked &&
+          transaction.order.collateralLockedAmount) {
+
+        try {
+          // 1. Desbloquear o saldo
+          await internalBalanceService.unlockBalance(
+            transaction.order.userId,
+            transaction.order.cryptoType,
+            transaction.order.cryptoNetwork,
+            transaction.order.collateralLockedAmount,
+            transaction.orderId
+          );
+
+          console.log(`🔓 Saldo desbloqueado após conclusão: ${transaction.order.collateralLockedAmount} ${transaction.order.cryptoType}`);
+
+          // 2. Debitar do saldo total (consumir o colateral)
+          await internalBalanceService.deductBalance(
+            transaction.order.userId,
+            transaction.order.cryptoType,
+            transaction.order.cryptoNetwork,
+            transaction.order.collateralLockedAmount
+          );
+
+          console.log(`💸 Saldo debitado (gasto): ${transaction.order.collateralLockedAmount} ${transaction.order.cryptoType}`);
+        } catch (error: any) {
+          console.error(`❌ Erro ao processar saldo interno após conclusão:`, error);
+          // Não falhar a validação se houver erro no processamento de saldo
+          // Mas registrar para correção manual
+        }
+      }
 
       // Enviar notificações de pagamento validado
       setImmediate(async () => {

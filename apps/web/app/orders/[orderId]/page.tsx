@@ -64,6 +64,7 @@ export default function OrderDetailsPage() {
   const [isChatMinimized, setIsChatMinimized] = useState(false);
   const [chatUnreadCount, setChatUnreadCount] = useState<number>(0);
   const [showDisputeModal, setShowDisputeModal] = useState(false);
+  const [disputeId, setDisputeId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchOrder();
@@ -95,6 +96,11 @@ export default function OrderDetailsPage() {
 
       const data = await response.json();
       setOrder(data.data);
+
+      // Se pedido está em disputa, buscar ID da disputa
+      if (data.data.status === 'DISPUTED') {
+        fetchDisputeId();
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -120,6 +126,32 @@ export default function OrderDetailsPage() {
     } catch (err: any) {
       // Silently fail - chat might not exist yet
       console.log('Chat não encontrado ou erro:', err.message);
+    }
+  };
+
+  const fetchDisputeId = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) return;
+
+      const response = await fetch('http://localhost:3001/api/v1/disputes/my-disputes', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (data.success && data.data) {
+        // Encontrar disputa deste pedido
+        const dispute = data.data.find((d: any) => d.orderId === orderId);
+        if (dispute) {
+          setDisputeId(dispute.id);
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao buscar disputa:', error);
     }
   };
 
@@ -195,8 +227,8 @@ export default function OrderDetailsPage() {
   };
 
   const canOpenDispute = () => {
-    // Não permitir se já completado ou cancelado
-    if (order?.status === 'COMPLETED' || order?.status === 'CANCELLED') {
+    // Não permitir se já completado, cancelado ou em disputa
+    if (order?.status === 'COMPLETED' || order?.status === 'CANCELLED' || order?.status === 'DISPUTED') {
       return false;
     }
 
@@ -545,9 +577,24 @@ export default function OrderDetailsPage() {
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
               <div className="flex justify-between items-start mb-6">
                 <div>
-                  <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">
+                  <h2 className="text-2xl font-bold mb-1 text-gray-900 dark:text-white">
                     {paymentMethod === 'PIX' ? 'Pagamento PIX' : 'Pagamento de Boleto'}
                   </h2>
+                  <div className="flex items-center gap-2 mb-3">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 font-mono">
+                      Pedido #{order.id.substring(0, 8).toUpperCase()}
+                    </p>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(order.id);
+                        alert('ID completo copiado para área de transferência!');
+                      }}
+                      className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 hover:underline"
+                      title="Copiar ID completo"
+                    >
+                      📋 Copiar
+                    </button>
+                  </div>
                   <div className="flex flex-col gap-3">
                     <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(order.status)}`}>
                       {translateStatus(order.status)}
@@ -772,8 +819,8 @@ export default function OrderDetailsPage() {
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
               <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Ações</h3>
               <div className="space-y-2">
-                {/* Chat - Disponível após MATCHED */}
-                {(order.status === 'MATCHED' || order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
+                {/* Chat - Disponível após IN_NEGOTIATION */}
+                {(order.status === 'IN_NEGOTIATION' || order.status === 'MATCHED' || order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
                   <button
                     onClick={() => {
                       setShowChat(true);
@@ -842,6 +889,16 @@ export default function OrderDetailsPage() {
                         : 'Se houver problemas com o pagamento'}
                     </p>
                   </div>
+                )}
+
+                {/* Ver Disputa - Quando pedido está em disputa */}
+                {order.status === 'DISPUTED' && disputeId && (
+                  <button
+                    onClick={() => router.push(`/disputes/${disputeId}`)}
+                    className="w-full px-4 py-2 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg"
+                  >
+                    🔍 Ver Disputa
+                  </button>
                 )}
               </div>
             </div>

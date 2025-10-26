@@ -20,12 +20,18 @@ const PixDataSchema = z.object({
 
 const CreateOrderSchema = z.object({
   type: z.nativeEnum(OrderType),
-  cryptoType: z.string(),
-  cryptoNetwork: z.string(),
-  cryptoAmount: z.string(),
-  brlAmount: z.string(),
+  paymentMethod: z.enum(['PIX', 'BOLETO']).optional(), // Método de pagamento (PIX ou Boleto)
+  cryptoType: z.string().min(1, 'Tipo de criptomoeda é obrigatório'),
+  cryptoNetwork: z.string().min(1, 'Rede blockchain é obrigatória'),
+  cryptoAmount: z.string()
+    .min(1, 'Valor em criptomoeda é obrigatório')
+    .refine((val) => parseFloat(val) > 0, 'Valor em criptomoeda deve ser maior que zero'),
+  brlAmount: z.string()
+    .min(1, 'Valor em BRL é obrigatório')
+    .refine((val) => parseFloat(val) > 0, 'Valor em BRL deve ser maior que zero'),
   orderData: z.union([BoletoDataSchema, PixDataSchema]),
   collateralAddressId: z.string().optional(), // ID do colateral confirmado
+  useInternalBalance: z.boolean().optional(), // Flag para usar saldo interno
 });
 
 export class OrderController {
@@ -36,12 +42,28 @@ export class OrderController {
         return res.status(401).json({ error: 'Não autorizado' });
       }
 
+      // Log completo do body para debug
+      console.log('📦 [ORDER] Request body:', JSON.stringify(req.body, null, 2));
+
       const validatedData = CreateOrderSchema.parse(req.body);
 
-      const order = await orderService.createOrder({
+      const result = await orderService.createOrder({
         userId,
         ...validatedData,
       });
+
+      // Verificar se é necessário depósito
+      if ('requiresDeposit' in result && result.requiresDeposit) {
+        return res.status(200).json({
+          success: true,
+          requiresDeposit: true,
+          data: result,
+          message: 'Saldo insuficiente. É necessário depositar mais colateral.',
+        });
+      }
+
+      // Pedido criado com sucesso
+      const order = result;
 
       // SECURITY: Audit log - pedido criado
       auditLogService.logFromRequest(
@@ -68,14 +90,33 @@ export class OrderController {
       });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
+        console.error('❌ [ORDER] Validation error - Campos inválidos:');
+        error.errors.forEach((err) => {
+          console.error(`  ❌ Campo: ${err.path.join('.')} - Erro: ${err.message}`);
+          console.error(`     Valor recebido:`, err);
+        });
+
+        // Criar mensagem mais clara
+        const fieldErrors = error.errors.map(err => ({
+          field: err.path.join('.'),
+          message: err.message,
+          received: err.code === 'invalid_type' ? err.received : undefined,
+        }));
+
         return res.status(400).json({
+          success: false,
           error: 'Dados inválidos',
-          details: error.errors,
+          message: `Erro de validação: ${fieldErrors[0].message}`,
+          details: fieldErrors,
         });
       }
 
+      console.error('❌ [ORDER] Error creating order:', error.message);
+      console.error('Stack trace:', error.stack);
       res.status(400).json({
+        success: false,
         error: error.message || 'Erro ao criar pedido',
+        message: error.message || 'Ocorreu um erro ao processar seu pedido',
       });
     }
   }

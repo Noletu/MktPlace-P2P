@@ -20,10 +20,10 @@ export interface CreateDisputeInput {
   orderId: string;
   transactionId?: string;
   createdBy: string;
-  category: 'PAYMENT_NOT_RECEIVED' | 'PAYMENT_ISSUE' | 'FRAUD' | 'OTHER';
+  category: 'PAYMENT_SENT_NOT_CONFIRMED' | 'CRYPTO_NOT_RELEASED' | 'PAYMENT_NOT_RECEIVED' | 'FAKE_RECEIPT' | 'WRONG_AMOUNT' | 'WRONG_RECIPIENT' | 'OTHER';
   title: string;
   description: string;
-  attachments?: string[]; // URLs de evidências
+  attachments?: string[]; // URLs de evidências ou base64
 }
 
 export interface AddMessageInput {
@@ -448,12 +448,23 @@ export class DisputeService {
     // Atualizar status do pedido baseado na resolução
     let newOrderStatus = dispute.order.status;
 
-    if (input.resolutionType === 'RELEASE_SELLER') {
-      newOrderStatus = 'COMPLETED';
-    } else if (input.resolutionType === 'REFUND_BUYER') {
-      newOrderStatus = 'CANCELLED';
-    } else if (input.resolutionType === 'CANCELLED') {
-      newOrderStatus = 'CANCELLED';
+    switch (input.resolutionType) {
+      case 'RELEASE_SELLER':
+        newOrderStatus = 'COMPLETED';
+        break;
+      case 'REFUND_BUYER_FULL':
+      case 'REFUND_BUYER_PARTIAL':
+      case 'PENALTY_SELLER':
+        newOrderStatus = 'CANCELLED';
+        break;
+      case 'CANCEL_NO_PENALTY':
+        newOrderStatus = 'CANCELLED';
+        break;
+      case 'PENALTY_BUYER':
+        newOrderStatus = 'COMPLETED'; // Favor vendedor
+        break;
+      default:
+        newOrderStatus = 'CANCELLED';
     }
 
     await prisma.order.update({
@@ -840,14 +851,17 @@ export class DisputeService {
    */
   private getResolvedStatus(resolutionType: string): string {
     switch (resolutionType) {
-      case 'REFUND_BUYER':
+      case 'REFUND_BUYER_FULL':
+      case 'REFUND_BUYER_PARTIAL':
         return 'RESOLVED_BUYER';
       case 'RELEASE_SELLER':
         return 'RESOLVED_SELLER';
-      case 'PARTIAL_REFUND':
-        return 'RESOLVED_BUYER';
-      case 'CANCELLED':
+      case 'CANCEL_NO_PENALTY':
         return 'CANCELLED';
+      case 'PENALTY_BUYER':
+        return 'RESOLVED_SELLER'; // Penaliza comprador = favor vendedor
+      case 'PENALTY_SELLER':
+        return 'RESOLVED_BUYER';  // Penaliza vendedor = favor comprador
       default:
         return 'RESOLVED_BUYER';
     }

@@ -4,9 +4,10 @@
 
 **Email:** `master@mktplace.com`
 **Senha:** `Master@2025!`
-**CPF:** `99999999999`
 **Role:** `MASTER`
 **KYC Level:** `LEVEL_4` (Ilimitado)
+
+⚠️ **Atualizado em 26/10/2025**: Recriado após restauração completa do banco de dados (v3.0.8)
 
 ### Permissões:
 - ✅ Acesso total ao sistema
@@ -28,9 +29,10 @@
 
 **Email:** `admin@mktplace.com`
 **Senha:** `Admin@123`
-**CPF:** `00000000000`
 **Role:** `ADMIN`
 **KYC Level:** `LEVEL_4` (Ilimitado)
+
+⚠️ **Atualizado em 26/10/2025**: Recriado após restauração completa do banco de dados (v3.0.8)
 
 ### Permissões:
 - ✅ Gerenciar endereços da plataforma
@@ -81,20 +83,34 @@
    - **Label**: Nome identificador (opcional)
 3. Clique em "✅ Criar Endereço"
 
-### Endereços de exemplo (já cadastrados):
-⚠️ **Estes são endereços de EXEMPLO. Substitua por endereços REAIS!**
+### Endereços configurados (v3.0.8 - 26/10/2025):
+⚠️ **Estes são endereços de TESTE VÁLIDOS. Substitua por endereços REAIS antes de produção!**
 
-1. **USDT na rede TRC20**
-   - Endereço: `TExampleTRC20Address123456789012345`
-   - Status: Ativo ✅
+**Total**: 14 carteiras da plataforma configuradas
 
-2. **USDC na rede BASE**
-   - Endereço: `0xExampleBaseAddress1234567890123456789012`
-   - Status: Ativo ✅
+**Endereços Únicos Utilizados**:
+- **Bitcoin**: `bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh`
+- **EVM** (11 redes): `0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb`
+- **Tron**: `TRX9sW6qJjhPNaPKjUbVKMNqvz4RqDfWjM`
+- **Solana**: `7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV`
 
-3. **BTC na rede BITCOIN**
-   - Endereço: `bc1qExampleBitcoinAddress123456789012`
-   - Status: Ativo ✅
+**Carteiras Configuradas**:
+1. ✅ **BTC** - BITCOIN
+2. ✅ **ETH** - ETHEREUM
+3. ✅ **USDT** - TRC20 (Tron)
+4. ✅ **USDT** - ETHEREUM
+5. ✅ **USDT** - BASE
+6. ✅ **USDT** - ARBITRUM
+7. ✅ **USDT** - POLYGON
+8. ✅ **USDT** - BSC
+9. ✅ **USDC** - ETHEREUM
+10. ✅ **USDC** - BASE
+11. ✅ **USDC** - ARBITRUM
+12. ✅ **USDC** - POLYGON
+13. ✅ **USDC** - BSC
+14. ✅ **USDC** - SOLANA
+
+**Observação**: Endereços EVM (0x...) são reutilizados em múltiplas redes compatíveis (Ethereum, Base, Arbitrum, Polygon, BSC). Isso é normal e esperado.
 
 ---
 
@@ -145,9 +161,18 @@ npx prisma db seed
 
 ## 📝 Histórico de Mudanças
 
+### 26/10/2025 (v3.0.8) - Restauração Completa do Banco de Dados
+- ✅ Banco de dados deletado e recriado do zero
+- ✅ Usuário MASTER recriado via seed
+- ✅ Usuário ADMIN recriado via seed
+- ✅ 14 endereços da plataforma configurados com endereços de teste válidos
+- ✅ 23 tabelas criadas e operacionais
+- ✅ Schema 100% sincronizado com schema.prisma
+- ✅ Sistema pronto para testes funcionais
+
 ### 07/10/2025
-- ✅ Usuário MASTER criado via seed
-- ✅ Usuário ADMIN criado via seed
+- ✅ Usuário MASTER criado via seed (primeira vez)
+- ✅ Usuário ADMIN criado via seed (primeira vez)
 - ✅ Dashboard admin implementado
 - ✅ Interface de gerenciamento de endereços da plataforma
 - ✅ Redirecionamento automático de "Meu Perfil" para dashboard admin
@@ -175,6 +200,6 @@ npx prisma db seed
 
 ---
 
-**Última atualização:** 07/10/2025
-**Versão:** 2.0
-**Autor:** Claude (Anthropic)
+**Última atualização:** 26/10/2025
+**Versão:** 3.0.8
+**Autor:** Claude Code + Dev Team

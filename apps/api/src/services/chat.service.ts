@@ -61,8 +61,8 @@ export class ChatService {
       throw new Error('Você não tem permissão para acessar este chat');
     }
 
-    // Impedir owner de criar chat com ele mesmo
-    if (isOrderOwner && !isPayer && !transaction) {
+    // Impedir owner de criar chat com ele mesmo (EXCETO se já há mensagens/negociação)
+    if (isOrderOwner && !isPayer && !transaction && order.status !== 'IN_NEGOTIATION') {
       throw new Error('Chat não disponível para seu próprio pedido');
     }
 

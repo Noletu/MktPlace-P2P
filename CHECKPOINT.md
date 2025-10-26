@@ -1,28 +1,32 @@
-# 🔖 CHECKPOINT - Mktplace da Liberdade v0.2.2
+# 🔖 CHECKPOINT - Mktplace da Liberdade v0.2.9
 
 ## 📅 Data do Checkpoint
-**Data:** 2025-10-05
-**Versão:** 0.2.2
-**Status:** ✅ **100% TESTADO E VALIDADO - SCRIPTS DE INICIALIZAÇÃO AUTOMATIZADA**
+**Data:** 2025-10-22
+**Versão:** 0.2.9
+**Status:** ✅ **100% FUNCIONAL - SISTEMA DE DISPUTAS COMPLETO E VALIDADO**
 
 ---
 
 ## 📊 ESTADO ATUAL DO PROJETO
 
 ### Versão e Funcionalidades
-- ✅ **v0.2.2** - Plataforma completa e 100% funcional + Scripts de inicialização
+- ✅ **v0.2.9** - Plataforma completa e 100% funcional + Sistema de Disputas Completo
 - ✅ API REST totalmente implementada e testada
 - ✅ Frontend Next.js configurado
 - ✅ Sistema de autenticação JWT + Refresh Tokens
 - ✅ 2FA (Two-Factor Authentication) implementado
-- ✅ KYC multi-nível (Level 1, 2, 3) com validação completa
+- ✅ KYC multi-nível (Level 1, 2, 3, 4) com validação completa
 - ✅ Sistema de pedidos (PIX e Boleto) e matching P2P
 - ✅ Transações com comprovantes e auto-validação
+- ✅ **Sistema de Disputas Completo** (7 categorias, contestação, resolução)
+- ✅ **Sistema de Chat em Tempo Real** (WebSocket + Socket.io)
+- ✅ **Sistema de Notificações** (16 tipos, 6 categorias)
+- ✅ **Sistema de Colateral Obrigatório** (verificação blockchain automática)
 - ✅ Rate limiting adaptativo (dev/prod)
 - ✅ Logging centralizado (Winston)
 - ✅ Audit logs completos
 - ✅ Validação de CPF com algoritmo de checksum
-- ✅ **Scripts de inicialização automatizada** (Windows + Linux/Mac)
+- ✅ Scripts de inicialização automatizada (Windows + Linux/Mac)
 
 ### Testes Realizados
 1. ✅ **1º Set:** 10 testes funcionais (descoberta de bugs)

@@ -6,10 +6,18 @@ import { z } from 'zod';
 const CreateDisputeSchema = z.object({
   orderId: z.string().min(1, 'ID do pedido é obrigatório'),
   transactionId: z.string().optional(),
-  category: z.enum(['PAYMENT_NOT_RECEIVED', 'PAYMENT_ISSUE', 'FRAUD', 'OTHER']),
+  category: z.enum([
+    'PAYMENT_SENT_NOT_CONFIRMED',
+    'CRYPTO_NOT_RELEASED',
+    'PAYMENT_NOT_RECEIVED',
+    'FAKE_RECEIPT',
+    'WRONG_AMOUNT',
+    'WRONG_RECIPIENT',
+    'OTHER'
+  ]),
   title: z.string().min(10, 'Título deve ter no mínimo 10 caracteres'),
   description: z.string().min(20, 'Descrição deve ter no mínimo 20 caracteres'),
-  attachments: z.array(z.string().url()).optional(),
+  attachments: z.array(z.string()).optional(), // Mudado de z.string().url() para z.string() para aceitar base64
 });
 
 const AddMessageSchema = z.object({
@@ -24,7 +32,14 @@ const RespondDisputeSchema = z.object({
 
 const ResolveDisputeSchema = z.object({
   resolution: z.string().min(20, 'Resolução deve ter no mínimo 20 caracteres'),
-  resolutionType: z.enum(['REFUND_BUYER', 'RELEASE_SELLER', 'PARTIAL_REFUND', 'CANCELLED']),
+  resolutionType: z.enum([
+    'REFUND_BUYER_FULL',
+    'REFUND_BUYER_PARTIAL',
+    'RELEASE_SELLER',
+    'CANCEL_NO_PENALTY',
+    'PENALTY_BUYER',
+    'PENALTY_SELLER'
+  ]),
 });
 
 export class DisputeController {

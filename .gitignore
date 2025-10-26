@@ -43,6 +43,6 @@ yarn-error.log*
 *.sqlite
 
 # Prisma
-prisma/migrations
+# prisma/migrations - MUST be versioned in Git
 logs/
 tsconfig.tsbuildinfo
