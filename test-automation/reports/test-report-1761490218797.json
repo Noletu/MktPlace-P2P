@@ -1,0 +1,46 @@
+{
+  "timestamp": "2025-10-26T14:50:18.795Z",
+  "version": "3.0.7",
+  "results": {
+    "summary": {
+      "total": 16,
+      "passed": 7,
+      "failed": 9,
+      "percentage": "43.75"
+    },
+    "phases": {
+      "phase1": {
+        "passed": 7,
+        "total": 7
+      },
+      "phase2": {
+        "passed": 0,
+        "total": 4
+      },
+      "phase3": {
+        "passed": 0,
+        "total": 3
+      },
+      "phase4": {
+        "passed": 0,
+        "total": 2
+      }
+    },
+    "bugs": []
+  },
+  "state": {
+    "maria": {
+      "email": "maria.test@automation.com",
+      "password": "TestSenha123!",
+      "cpf": "52998224725",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjbWg3dHNtemkwMDB6bGl4aTV2eTY3eTcxIiwiZW1haWwiOiJtYXJpYS50ZXN0QGF1dG9tYXRpb24uY29tIiwicm9sZSI6IlVTRVIiLCJpYXQiOjE3NjE0OTAyMTgsImV4cCI6MTc2MjA5NTAxOH0.hXcAn-945jBUBHIBbS0IkH9oVkSQ9c5cJeGO2pNbWZY"
+    },
+    "joao": {
+      "email": "joao.test@automation.com",
+      "password": "TestSenha456!",
+      "cpf": "41933829030",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjbWg3dHNuMnYwMDEzbGl4aXNteGVidWRnIiwiZW1haWwiOiJqb2FvLnRlc3RAYXV0b21hdGlvbi5jb20iLCJyb2xlIjoiVVNFUiIsImlhdCI6MTc2MTQ5MDIxOCwiZXhwIjoxNzYyMDk1MDE4fQ.NyQ_23ADjN7Dt9-oUk00kr0hbKHy1rVeMzOK3PJh920"
+    },
+    "bugsFound": []
+  }
+}
