@@ -207,6 +207,12 @@ export default function DashboardPage() {
                   </span>
                 )}
               </button>
+              <button
+                onClick={() => router.push('/collateral-balance')}
+                className="w-full px-4 py-2 bg-yellow-500 dark:bg-yellow-600 text-white rounded-lg hover:bg-yellow-600 dark:hover:bg-yellow-700"
+              >
+                💰 Saldo de Colateral
+              </button>
             </div>
           </div>
 

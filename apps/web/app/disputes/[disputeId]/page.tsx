@@ -103,6 +103,11 @@ export default function DisputeDetailPage() {
       return;
     }
 
+    if (responseText.trim().length < 50) {
+      alert('A contestação deve ter pelo menos 50 caracteres');
+      return;
+    }
+
     setResponding(true);
     try {
       const token = localStorage.getItem('accessToken');
@@ -290,7 +295,7 @@ export default function DisputeDetailPage() {
       {canRespond() && (
         <div className="bg-yellow-50 dark:bg-yellow-900 border border-yellow-200 dark:border-yellow-700 rounded-lg p-6 mb-6">
           <h2 className="text-lg font-semibold text-yellow-900 dark:text-yellow-100 mb-3">
-            ⚠️ Você precisa responder a esta disputa
+            ⚠️ Você precisa responder a esta disputa (mínimo 50 caracteres)
           </h2>
           <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-4">
             A outra parte abriu uma disputa. Você tem 24 horas para apresentar sua contestação.
@@ -300,13 +305,16 @@ export default function DisputeDetailPage() {
             value={responseText}
             onChange={(e) => setResponseText(e.target.value)}
             placeholder="Escreva sua contestação detalhada..."
-            className="w-full px-4 py-3 border border-yellow-300 dark:border-yellow-600 rounded-lg focus:ring-2 focus:ring-yellow-500 dark:bg-gray-800 dark:text-white resize-none mb-3"
+            className="w-full px-4 py-3 border border-yellow-300 dark:border-yellow-600 rounded-lg focus:ring-2 focus:ring-yellow-500 dark:bg-gray-800 dark:text-white resize-none mb-1"
             rows={6}
             disabled={responding}
           />
+          <div className="text-sm text-yellow-700 dark:text-yellow-300 mb-3">
+            {responseText.length} / 50 caracteres mínimos
+          </div>
           <button
             onClick={handleRespond}
-            disabled={responding || !responseText.trim()}
+            disabled={responding || !responseText.trim() || responseText.trim().length < 50}
             className="px-6 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {responding ? 'Enviando...' : 'Enviar Resposta'}

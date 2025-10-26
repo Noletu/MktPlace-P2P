@@ -63,6 +63,14 @@ export default function DisputesPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      {/* Breadcrumb */}
+      <button
+        onClick={() => router.push('/dashboard')}
+        className="text-blue-600 dark:text-blue-400 hover:underline mb-4 flex items-center gap-1"
+      >
+        ← Voltar para o Dashboard
+      </button>
+
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">

@@ -89,30 +89,110 @@ async function main() {
   // Criar endereços da plataforma de exemplo (OPCIONAL - apenas para testes)
   console.log('\n📝 Verificando endereços de exemplo...');
 
+  // Endereços válidos para TESTE (NÃO enviar fundos reais!)
+  const BITCOIN_ADDRESS = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh';
+  const EVM_ADDRESS = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb';
+  const TRON_ADDRESS = 'TRX9sW6qJjhPNaPKjUbVKMNqvz4RqDfWjM';
+  const SOLANA_ADDRESS = '7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV';
+
   const platformWallets = [
+    // Bitcoin
+    {
+      cryptoType: 'BTC',
+      network: 'BITCOIN',
+      address: BITCOIN_ADDRESS,
+      label: 'Carteira Principal Bitcoin',
+    },
+    // Ethereum
+    {
+      cryptoType: 'ETH',
+      network: 'ETHEREUM',
+      address: EVM_ADDRESS,
+      label: 'Carteira Principal Ethereum',
+    },
+    // USDT - Múltiplas redes
     {
       cryptoType: 'USDT',
       network: 'TRC20',
-      address: 'TExampleTRC20Address123456789012345',
-      label: 'Carteira Principal USDT TRC20 (EXEMPLO)',
+      address: TRON_ADDRESS,
+      label: 'Carteira Principal USDT TRC20',
+    },
+    {
+      cryptoType: 'USDT',
+      network: 'ETHEREUM',
+      address: EVM_ADDRESS,
+      label: 'Carteira Principal USDT Ethereum',
+    },
+    {
+      cryptoType: 'USDT',
+      network: 'BASE',
+      address: EVM_ADDRESS,
+      label: 'Carteira Principal USDT Base',
+    },
+    {
+      cryptoType: 'USDT',
+      network: 'ARBITRUM',
+      address: EVM_ADDRESS,
+      label: 'Carteira Principal USDT Arbitrum',
+    },
+    {
+      cryptoType: 'USDT',
+      network: 'POLYGON',
+      address: EVM_ADDRESS,
+      label: 'Carteira Principal USDT Polygon',
+    },
+    {
+      cryptoType: 'USDT',
+      network: 'BSC',
+      address: EVM_ADDRESS,
+      label: 'Carteira Principal USDT BSC',
+    },
+    // USDC - Múltiplas redes
+    {
+      cryptoType: 'USDC',
+      network: 'ETHEREUM',
+      address: EVM_ADDRESS,
+      label: 'Carteira Principal USDC Ethereum',
     },
     {
       cryptoType: 'USDC',
       network: 'BASE',
-      address: '0xExampleBaseAddress1234567890123456789012',
-      label: 'Carteira Principal USDC Base (EXEMPLO)',
+      address: EVM_ADDRESS,
+      label: 'Carteira Principal USDC Base',
     },
     {
-      cryptoType: 'BTC',
-      network: 'BITCOIN',
-      address: 'bc1qExampleBitcoinAddress123456789012',
-      label: 'Carteira Principal Bitcoin (EXEMPLO)',
+      cryptoType: 'USDC',
+      network: 'ARBITRUM',
+      address: EVM_ADDRESS,
+      label: 'Carteira Principal USDC Arbitrum',
+    },
+    {
+      cryptoType: 'USDC',
+      network: 'POLYGON',
+      address: EVM_ADDRESS,
+      label: 'Carteira Principal USDC Polygon',
+    },
+    {
+      cryptoType: 'USDC',
+      network: 'BSC',
+      address: EVM_ADDRESS,
+      label: 'Carteira Principal USDC BSC',
+    },
+    {
+      cryptoType: 'USDC',
+      network: 'SOLANA',
+      address: SOLANA_ADDRESS,
+      label: 'Carteira Principal USDC Solana',
     },
   ];
 
   for (const wallet of platformWallets) {
-    const existing = await prisma.platformWallet.findUnique({
-      where: { address: wallet.address },
+    // Check by cryptoType + network (not just address, since EVM addresses are reused)
+    const existing = await prisma.platformWallet.findFirst({
+      where: {
+        cryptoType: wallet.cryptoType,
+        network: wallet.network,
+      },
     });
 
     if (!existing) {

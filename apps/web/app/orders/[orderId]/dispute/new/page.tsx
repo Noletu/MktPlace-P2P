@@ -150,6 +150,11 @@ export default function NewDisputePage() {
       return;
     }
 
+    if (title.trim().length < 10) {
+      alert('O título deve ter pelo menos 10 caracteres');
+      return;
+    }
+
     if (description.length < 50) {
       alert('A descrição deve ter pelo menos 50 caracteres');
       return;
@@ -339,6 +344,9 @@ export default function NewDisputePage() {
             className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
             required
           />
+          <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            {title.length} / 10 caracteres mínimos
+          </div>
         </div>
 
         {/* Description */}
@@ -431,7 +439,7 @@ export default function NewDisputePage() {
           </button>
           <button
             type="submit"
-            disabled={submitting || description.length < 50}
+            disabled={submitting || description.length < 50 || title.trim().length < 10}
             className="flex-1 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? 'Abrindo...' : 'Abrir Disputa'}

@@ -1,8 +1,8 @@
 # 📊 Progresso Atual - Mktplace da Liberdade
 
-**Data**: 12 de Outubro de 2025
-**Versão**: 0.2.3
-**Status**: ✅ MVP Funcional (95% Completo)
+**Data**: 19 de Outubro de 2025
+**Versão**: 0.2.4
+**Status**: ⚠️ MVP Funcional - Bug Crítico em Teste
 
 ---
 
@@ -36,10 +36,15 @@
 - ✅ Sistema de pedidos P2P (PIX e Boleto)
 - ✅ Sistema de matching automático
 - ✅ Sistema de transações com comprovantes
+- ✅ Sistema de negociação com timeout
+- ✅ Sistema de presença (online/offline)
+- ✅ Chat WebSocket (Socket.IO)
+- ✅ Sistema de disputas completo
 - ✅ Painel administrativo (gerenciamento de carteiras)
 - ✅ Rate limiting adaptativo
 - ✅ Logging centralizado (Winston)
 - ✅ Audit logs
+- ✅ Background workers (4 ativos)
 
 ### 5. Frontend Web ✅ 100%
 - ✅ Páginas de login e registro
@@ -48,7 +53,10 @@
 - ✅ Formulário de criação de pedidos
 - ✅ Marketplace P2P
 - ✅ Sistema de transações
-- ✅ Painel administrativo de carteiras
+- ✅ Chat P2P em tempo real (Socket.IO)
+- ✅ Criptografia E2E no chat (RSA + AES-GCM)
+- ✅ Sistema de disputas
+- ✅ Painel administrativo completo (dark theme)
 - ✅ Validação client-side (React Hook Form + Zod)
 
 ### 6. Infraestrutura ✅ 100%
@@ -66,9 +74,23 @@
 
 ---
 
-## 🔄 Em Progresso (5%)
+## 🔄 Em Progresso
 
-### Melhorias Planejadas
+### 🔴 CRÍTICO: Teste Funcional do Chat P2P (v0.2.4)
+
+**Status**: Correções de código implementadas, aguardando teste funcional completo
+
+**Contexto**:
+- Bug identificado: Chat não aparecia para owner do pedido quando outro usuário enviava primeira mensagem
+- Código corrigido no frontend (`page.tsx:776`) e backend (`chat.service.ts:65`)
+- Banco de dados recriado completamente
+- Backends duplicados eliminados
+
+**Próximo Passo**: Teste manual completo do fluxo de negociação entre dois usuários
+
+**Referência**: Ver `SESSAO_19_10_2025.md` para análise técnica detalhada
+
+### Melhorias Planejadas (Não Bloqueantes)
 - ⏳ Centralizar NETWORK_OPTIONS no shared package
 - ⏳ Validação de endereços Solana (formato base58)
 
@@ -238,9 +260,28 @@ npm run dev  # na raiz
 
 ## 🐛 Issues Conhecidos
 
+### 🔴 Bugs Críticos
+
+1. **Chat entre clientes após reserva** (v0.2.4)
+   - **Status**: ⚠️ Correções implementadas, teste pendente
+   - **Descrição**: Chat não aparecia para owner quando outro usuário enviava primeira mensagem
+   - **Correções**: Frontend e backend corrigidos
+   - **Próximo**: Validação funcional completa
+   - **Ver**: `SESSAO_19_10_2025.md` e `CHANGELOG.md`
+
+### ✅ Bugs Resolvidos Recentemente
+
+1. **Banco de dados com schema desatualizado** (v0.2.4) ✅
+   - Workers falhando com erro de coluna `negotiatingUserId`
+   - Resolvido: Banco deletado e recriado, backends duplicados eliminados
+
+2. **KYC Info Page - Status incorreto** (v0.2.3) ✅
+3. **Solana não aparecia nos dropdowns** (v0.2.3) ✅
+
+### ℹ️ Observações
+
 1. **npm install lento**: Normal para primeira instalação (muitas dependências)
-2. **tsx not found**: Será resolvido quando `apps/api/node_modules` terminar de instalar
-3. **Docker não disponível**: Usando SQLite em vez de PostgreSQL (OK para dev)
+2. **Docker não disponível**: Usando SQLite em vez de PostgreSQL (OK para dev)
 
 ---
 
@@ -268,7 +309,11 @@ npm run dev  # na raiz
 - ✅ Sistema P2P de compra/venda (PIX + Boleto)
 - ✅ Sistema de matching automático
 - ✅ Sistema de transações com comprovantes
-- ✅ Painel administrativo de carteiras
+- ✅ **Chat P2P em tempo real (Socket.IO + E2E encryption)**
+- ✅ **Sistema de negociação com timeout**
+- ✅ **Sistema de presença (online/offline)**
+- ✅ **Sistema de disputas completo**
+- ✅ Painel administrativo completo (dark theme)
 - ✅ 6 redes suportadas (Bitcoin, Ethereum, TRC20, Base, Arbitrum, **Solana**)
 - ✅ 3 criptomoedas (BTC, USDC, USDT)
 - ✅ 26 testes automatizados (100% passando)
@@ -277,23 +322,39 @@ npm run dev  # na raiz
 - ✅ Logging e audit logs
 - ✅ Rate limiting adaptativo
 - ✅ Validações Zod completas
+- ✅ Background workers (4 ativos)
 
 ---
 
-## 🔍 Últimas Atualizações (v0.2.3)
+## 🔍 Últimas Atualizações
 
-### Adicionado
+### v0.2.4 (19 de Outubro de 2025)
+
+#### Corrigido
+- ⚠️ **Chat P2P - Visibilidade do botão** (Código corrigido, teste pendente)
+  - Frontend: Adicionado `IN_NEGOTIATION` ao botão de chat (`page.tsx:776`)
+  - Backend: Permitir acesso durante negociação ativa (`chat.service.ts:65`)
+- ✅ **Banco de dados com schema desatualizado**
+  - Deletado e recriado completamente
+  - Backends duplicados eliminados
+  - Workers funcionando corretamente
+
+#### Infraestrutura
+- ✅ Recriação completa do banco SQLite
+- ✅ Sincronização de schema atualizado
+- ✅ Eliminação de processos duplicados
+
+### v0.2.3 (12 de Outubro de 2025)
+
+#### Adicionado
 - ✅ Suporte à rede **Solana** para USDC e USDT
   - Taxa: $0.00025 (mais barata)
   - Confirmação: 0.4s (mais rápida)
   - Prioridade: 5 (máxima)
 
-### Corrigido
+#### Corrigido
 - ✅ KYC Info page agora mostra status correto dos níveis
 - ✅ Solana agora aparece nos dropdowns de rede
-
-### Bugs Críticos
-- ✅ **Nenhum bug crítico ativo** - Sistema estável
 
 ---
 
@@ -316,4 +377,6 @@ npm run dev  # na raiz
 
 ---
 
-🚀 **Status Atual**: Sistema MVP funcional e testado! Pronto para evolução rumo à produção.
+🚀 **Status Atual**: Sistema MVP funcional com features avançadas implementadas (Chat E2E, Disputas, Negociação)! Aguardando validação do bug crítico de chat antes de prosseguir para preparação de produção.
+
+⚠️ **Prioridade Imediata**: Testar fluxo completo de chat P2P entre dois usuários (ver `SESSAO_19_10_2025.md`)

@@ -40,6 +40,10 @@ export default function CreateOrderPage() {
   const [timeLeft, setTimeLeft] = useState(1800); // 30 minutos em segundos
   const [checkingPayment, setCheckingPayment] = useState(false);
 
+  // Internal balance state
+  const [internalBalance, setInternalBalance] = useState<any>(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
+
   const NETWORK_OPTIONS: Record<string, string[]> = {
     BTC: ['BITCOIN'],
     USDC: ['ETHEREUM', 'TRC20', 'BASE', 'ARBITRUM', 'SOLANA'],
@@ -53,6 +57,11 @@ export default function CreateOrderPage() {
   useEffect(() => {
     fetchPrices();
   }, []);
+
+  // Carregar saldo interno quando mudar cripto ou rede
+  useEffect(() => {
+    fetchInternalBalance();
+  }, [crypto, network]);
 
   // Validar código de barras quando mudar
   useEffect(() => {
@@ -217,6 +226,40 @@ export default function CreateOrderPage() {
     }
   };
 
+  const fetchInternalBalance = async () => {
+    if (!crypto || !network) return;
+
+    setLoadingBalance(true);
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        console.log('⚠️ Token não encontrado - usuário não autenticado');
+        setInternalBalance(null);
+        return;
+      }
+
+      const response = await fetch(
+        `http://localhost:3001/api/v1/collateral-balance/${crypto}/${network}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+      if (data.success) {
+        console.log(`💰 Saldo interno carregado: ${data.data.balance.availableBalance} ${crypto}`);
+        setInternalBalance(data.data.balance);
+      }
+    } catch (error) {
+      console.error('❌ Erro ao buscar saldo interno:', error);
+      setInternalBalance(null);
+    } finally {
+      setLoadingBalance(false);
+    }
+  };
+
   // Calcular valor em crypto (reativo com useMemo)
   const cryptoAmount = useMemo(() => {
     if (!brlAmount || !prices[crypto]) {
@@ -254,6 +297,29 @@ export default function CreateOrderPage() {
     setError('');
 
     try {
+      // Validações básicas antes de enviar
+      if (!brlAmount || parseFloat(brlAmount) <= 0) {
+        throw new Error('Valor em BRL deve ser maior que zero');
+      }
+
+      if (!cryptoAmount || parseFloat(cryptoAmount) <= 0) {
+        throw new Error('Não foi possível calcular o valor em criptomoeda. Aguarde o carregamento dos preços.');
+      }
+
+      if (orderType === 'PIX' && !pixKey) {
+        throw new Error('Chave PIX é obrigatória');
+      }
+
+      console.log('✅ Validações básicas passaram:', {
+        brlAmount,
+        cryptoAmount,
+        crypto,
+        network,
+        orderType,
+        pixKeyType,
+        pixKey: pixKey ? 'Presente' : 'Ausente',
+      });
+
       // Verificar se está autenticado primeiro
       const token = localStorage.getItem('accessToken');
       console.log('🔐 Token de autenticação:', token ? 'Presente' : 'Ausente');
@@ -262,7 +328,106 @@ export default function CreateOrderPage() {
         throw new Error('Você precisa fazer login para criar um pedido');
       }
 
-      // Usar o cryptoAmount calculado pelo useMemo
+      // NOVO: Primeiro verificar se tem saldo interno suficiente
+      console.log('💰 Verificando saldo interno...');
+
+      // Calcular colateral necessário (cryptoAmount + 2.5% de taxa)
+      const requiredCollateral = (parseFloat(cryptoAmount) * 1.025).toFixed(8);
+
+      const checkBalanceResponse = await fetch(
+        `http://localhost:3001/api/v1/collateral-balance/check-sufficient/${crypto}/${network}/${requiredCollateral}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      );
+
+      const balanceData = await checkBalanceResponse.json();
+      console.log('💰 Saldo disponível:', balanceData);
+
+      // CASO 1: TEM SALDO SUFICIENTE → Criar pedido direto
+      if (balanceData.success && balanceData.data.hasSufficient) {
+        console.log('✅ Saldo suficiente! Criando pedido instantâneo...');
+
+        if (!confirm(
+          `✅ Você tem saldo suficiente!\n\n` +
+          `Disponível: ${balanceData.data.available} ${crypto}\n` +
+          `Necessário: ${balanceData.data.required} ${crypto}\n\n` +
+          `Criar pedido INSTANTÂNEO usando seu saldo interno?`
+        )) {
+          setLoading(false);
+          return;
+        }
+
+        // Criar pedido usando saldo interno
+        const createOrderResponse = await fetch('http://localhost:3001/api/v1/orders', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            type: 'SELL', // Usuário está vendendo crypto para receber BRL
+            paymentMethod: orderType, // PIX ou BOLETO
+            cryptoType: crypto,
+            cryptoNetwork: network,
+            cryptoAmount,
+            brlAmount,
+            orderData: orderType === 'PIX' ? {
+              pixKey,
+              pixKeyType,
+              recipientName: pixRecipientName,
+            } : {
+              barcode,
+              dueDate,
+              recipientName: boletoRecipientName,
+              recipientDocument: boletoRecipientDocument,
+            },
+            useInternalBalance: true, // Flag para usar saldo interno
+          }),
+        });
+
+        const createData = await createOrderResponse.json();
+
+        if (createData.success && createData.data) {
+          alert('✅ Pedido criado com sucesso usando seu saldo interno!\n\nSeu pedido já está no marketplace!');
+          router.push(`/orders/${createData.data.id}`);
+          return;
+        } else {
+          // Log completo do erro
+          console.error('❌ Erro ao criar pedido:', createData);
+
+          // Mostrar detalhes se houver
+          if (createData.details && createData.details.length > 0) {
+            const errorDetails = createData.details
+              .map((d: any) => `• ${d.field}: ${d.message}`)
+              .join('\n');
+            throw new Error(`${createData.message}\n\nDetalhes:\n${errorDetails}`);
+          }
+
+          throw new Error(createData.message || 'Erro ao criar pedido');
+        }
+      }
+
+      // CASO 2: NÃO TEM SALDO OU INSUFICIENTE → Fluxo de depósito externo
+      console.log('⚠️ Saldo insuficiente ou inexistente. Gerando endereço de depósito...');
+
+      if (balanceData.success && balanceData.data.available !== '0') {
+        // Tem saldo, mas não suficiente
+        const shouldContinue = confirm(
+          `⚠️ Saldo Insuficiente\n\n` +
+          `Você tem: ${balanceData.data.available} ${crypto}\n` +
+          `Falta: ${balanceData.data.missing} ${crypto}\n\n` +
+          `Deseja depositar a diferença e usar seu saldo automaticamente?`
+        );
+
+        if (!shouldContinue) {
+          setLoading(false);
+          return;
+        }
+      }
+
       // Gerar endereço de depósito para colateral
       console.log('🔐 Gerando endereço de colateral...', {
         cryptoType: crypto,
@@ -293,7 +458,7 @@ export default function CreateOrderPage() {
 
       // Salvar dados do pedido para usar após confirmação do depósito
       sessionStorage.setItem('pendingOrder', JSON.stringify({
-        type: 'BUY', // Sempre BUY para simplificar
+        type: orderType,
         cryptoType: crypto,
         cryptoNetwork: network,
         cryptoAmount,
@@ -860,6 +1025,45 @@ export default function CreateOrderPage() {
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 h-fit">
             <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Resumo</h2>
             <div className="space-y-3">
+              {/* Saldo Disponível */}
+              {internalBalance && parseFloat(internalBalance.availableBalance) > 0 && (
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/30 dark:to-emerald-900/30 border-2 border-green-300 dark:border-green-700 rounded-lg p-4 mb-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-2xl">💰</span>
+                    <h3 className="font-bold text-green-800 dark:text-green-200">
+                      Saldo Disponível
+                    </h3>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-xs text-green-700 dark:text-green-300">Total:</p>
+                      <p className="text-lg font-bold text-green-900 dark:text-green-100">
+                        {internalBalance.balance} {crypto}
+                      </p>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-green-700 dark:text-green-300">Disponível:</span>
+                      <span className="font-semibold text-green-800 dark:text-green-200">
+                        {internalBalance.availableBalance} {crypto}
+                      </span>
+                    </div>
+                    {parseFloat(internalBalance.lockedAmount) > 0 && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-orange-700 dark:text-orange-300">Bloqueado:</span>
+                        <span className="font-semibold text-orange-800 dark:text-orange-200">
+                          {internalBalance.lockedAmount} {crypto}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-green-300 dark:border-green-700">
+                    <p className="text-xs text-green-700 dark:text-green-300">
+                      ✨ Use seu saldo interno e economize até 99% em taxas de rede!
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 mb-2">
                 <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">Como funciona:</p>
                 <p className="text-xs text-blue-700 dark:text-blue-300">

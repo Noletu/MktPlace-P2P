@@ -36,14 +36,15 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  wallets          Wallet[]
-  orders           Order[]
-  transactions     Transaction[]     @relation("payer")
-  reviews          Review[]          @relation("reviewer")
-  reviewsReceived  Review[]          @relation("reviewed")
-  refreshTokens    RefreshToken[]
-  adminActions     AdminAction[]
-  internalBalances InternalBalance[]
+  wallets               Wallet[]
+  orders                Order[]
+  transactions          Transaction[]          @relation("payer")
+  reviews               Review[]               @relation("reviewer")
+  reviewsReceived       Review[]               @relation("reviewed")
+  refreshTokens         RefreshToken[]
+  adminActions          AdminAction[]
+  internalBalances      InternalBalance[]
+  collateralTransactions CollateralTransaction[]
 
   // Disputas
   disputesCreated  Dispute[]        @relation("DisputeCreator")
@@ -153,6 +154,14 @@ model Order {
   collateralDepositId String?
   collateralDeposit   Deposit? @relation(fields: [collateralDepositId], references: [id])
 
+  // NEW: Internal balance collateral system
+  collateralSource       String? // "EXTERNAL_DEPOSIT" ou "INTERNAL_BALANCE"
+  internalBalanceId      String? // ID do saldo interno usado
+  internalBalance        InternalBalance? @relation("OrderInternalBalance", fields: [internalBalanceId], references: [id])
+  collateralLocked       Boolean @default(false) // Se o colateral está bloqueado
+  collateralLockedAmount String? // Valor bloqueado do saldo interno
+  collateralUnlockedAt   DateTime? // Quando foi desbloqueado
+
   // Timeout handling
   timeoutAt      DateTime?
   paidByPlatform Boolean   @default(false)
@@ -184,15 +193,18 @@ model Order {
   updatedAt   DateTime  @updatedAt
   completedAt DateTime?
 
-  transactions Transaction[]
-  disputes     Dispute[]
-  reviews      Review[]
-  chat         Chat?
+  transactions           Transaction[]
+  disputes               Dispute[]
+  reviews                Review[]
+  chat                   Chat?
+  collateralTransactions CollateralTransaction[] @relation("CollateralTransactionOrder")
 
   @@index([negotiatingUserId])
   @@index([negotiationStartedAt])
   @@index([ownerOnline])
   @@index([ownerLastSeenAt])
+  @@index([collateralSource])
+  @@index([internalBalanceId])
 }
 
 model Transaction {
@@ -420,7 +432,7 @@ model AdminAction {
   @@index([createdAt])
 }
 
-// Saldo interno de usuários (crédito de devoluções)
+// Saldo interno de usuários (crédito de devoluções + colateral pré-depositado)
 model InternalBalance {
   id String @id @default(cuid())
 
@@ -429,13 +441,66 @@ model InternalBalance {
 
   cryptoType String // BTC, USDT, USDC, etc
   network    String // ETHEREUM, BASE, ARBITRUM, TRC20, BITCOIN, etc
-  balance    String @default("0")
+
+  // Controle de saldo
+  balance         String @default("0") // Saldo total (disponível + bloqueado)
+  lockedAmount    String @default("0") // Bloqueado em pedidos ativos
+  availableAmount String @default("0") // Disponível para usar (computed: balance - lockedAmount)
+
+  // Estatísticas
+  totalDeposited String @default("0") // Total depositado historicamente
+  totalUsed      String @default("0") // Total usado em pedidos
+  totalWithdrawn String @default("0") // Total sacado
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Relações
+  orders                Order[]                 @relation("OrderInternalBalance")
+  collateralTransactions CollateralTransaction[] @relation("BalanceTransactions")
+
   @@unique([userId, cryptoType, network])
   @@index([userId])
+  @@index([cryptoType, network])
+}
+
+// Histórico de transações de colateral (auditoria completa)
+model CollateralTransaction {
+  id String @id @default(cuid())
+
+  // Usuário e saldo
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balanceId String
+  balance   InternalBalance @relation("BalanceTransactions", fields: [balanceId], references: [id], onDelete: Cascade)
+
+  // Pedido relacionado (opcional)
+  orderId String?
+  order   Order?  @relation("CollateralTransactionOrder", fields: [orderId], references: [id])
+
+  // Tipo de transação
+  type String // DEPOSIT, LOCK, UNLOCK, REFUND, WITHDRAWAL, TRANSFER
+
+  // Valores
+  amount        String // Valor da transação
+  balanceBefore String // Saldo antes da transação
+  balanceAfter  String // Saldo após a transação
+
+  // Blockchain (se aplicável)
+  txHash  String? // Hash da transação blockchain (para DEPOSIT/WITHDRAWAL)
+  network String? // Rede blockchain
+
+  // Metadados
+  description String? // Descrição legível
+  metadata    String? // JSON com dados adicionais
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([balanceId])
+  @@index([orderId])
+  @@index([type])
+  @@index([createdAt])
 }
 
 // Sistema completo de Disputas
