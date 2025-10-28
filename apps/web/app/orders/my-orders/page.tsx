@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/utils/formatters';
-import ThemeToggle from '@/components/ThemeToggle';
 import { useChats } from '@/hooks/useChats';
+import AppHeader from '@/components/AppHeader';
 
 interface Order {
   id: string;
@@ -197,25 +197,18 @@ export default function MyOrdersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
-      <div className="max-w-7xl mx-auto">
+    <>
+      <AppHeader />
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
+        <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold dark:text-white">Meus Pedidos</h1>
-          <div className="flex gap-4">
-            <ThemeToggle />
-            <button
-              onClick={() => router.push('/orders/create')}
-              className="px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg"
-            >
-              + Novo Pedido
-            </button>
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg"
-            >
-              Dashboard
-            </button>
-          </div>
+          <button
+            onClick={() => router.push('/orders/create')}
+            className="px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg"
+          >
+            + Novo Pedido
+          </button>
         </div>
 
         {/* Filtros */}
@@ -406,5 +399,6 @@ export default function MyOrdersPage() {
         )}
       </div>
     </div>
+    </>
   );
 }
