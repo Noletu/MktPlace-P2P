@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import ThemeToggle from '@/components/ThemeToggle';
+import AppHeader from '@/components/AppHeader';
 
 interface KYCStatus {
   kycLevel: string;
@@ -193,11 +193,12 @@ export default function ProfilePage() {
   const kycInfo = getKYCLevelsInfo(kycStatus?.kycLevel || 'NONE');
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
+    <>
+      <AppHeader />
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
+        <div className="max-w-4xl mx-auto">
+        <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Meu Perfil</h1>
-          <ThemeToggle />
         </div>
 
         {/* Informações Básicas */}
@@ -356,25 +357,20 @@ export default function ProfilePage() {
         </div>
 
         {/* Ações */}
-        <div className="flex gap-4">
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="flex-1 py-3 px-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg transition-colors"
-          >
-            Voltar ao Dashboard
-          </button>
+        <div className="flex justify-end">
           <button
             onClick={() => {
               localStorage.removeItem('token');
               localStorage.removeItem('accessToken');
               router.push('/login');
             }}
-            className="flex-1 py-3 px-4 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg transition-colors"
+            className="py-3 px-6 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg transition-colors"
           >
             Sair
           </button>
         </div>
       </div>
     </div>
+    </>
   );
 }

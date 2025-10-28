@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import { CryptoType, NetworkType, CRYPTO_SUPPORTED_NETWORKS } from '@mktplace/shared';
-import ThemeToggle from '@/components/ThemeToggle';
+import AppHeader from '@/components/AppHeader';
 
 interface Wallet {
   id: string;
@@ -166,25 +166,18 @@ export default function WalletsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
-      <div className="max-w-6xl mx-auto">
+    <>
+      <AppHeader />
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
+        <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">💳 Meus Endereços</h1>
-          <div className="flex gap-4">
-            <ThemeToggle />
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg transition-colors"
-            >
-              {showAddForm ? 'Cancelar' : '+ Novo Endereço'}
-            </button>
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg transition-colors"
-            >
-              Voltar
-            </button>
-          </div>
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg transition-colors"
+          >
+            {showAddForm ? 'Cancelar' : '+ Novo Endereço'}
+          </button>
         </div>
 
         {error && (
@@ -323,5 +316,6 @@ export default function WalletsPage() {
         )}
       </div>
     </div>
+    </>
   );
 }
