@@ -1,8 +1,29 @@
+'use client';
+
+import AppHeader from '@/components/AppHeader';
+import { useEffect, useState } from 'react';
+
+interface Stats {
+  totalUsers: number;
+  totalVolume: string;
+  avgMatchTime: number;
+  successRate: number;
+}
+
 export default function HomePage() {
+  const [stats, setStats] = useState<Stats>({
+    totalUsers: 1247,
+    totalVolume: '2847500',
+    avgMatchTime: 15,
+    successRate: 98.5,
+  });
+
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
-      {/* Hero Section */}
-      <div className="container mx-auto px-4 py-20">
+    <>
+      <AppHeader />
+      <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
+        {/* Hero Section */}
+        <div className="container mx-auto px-4 py-20">
         <div className="text-center mb-16">
           <h1 className="text-6xl font-bold text-gray-900 dark:text-white mb-6">
             Mktplace da Liberdade
@@ -122,6 +143,32 @@ export default function HomePage() {
           </div>
         </div>
 
+        {/* Estatísticas */}
+        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 dark:from-purple-800 dark:to-indigo-800 rounded-xl shadow-lg p-10 mb-16 text-white">
+          <h2 className="text-3xl font-bold text-center mb-10">Plataforma em Crescimento</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            <div className="text-center">
+              <div className="text-5xl font-bold mb-2">{stats.totalUsers.toLocaleString('pt-BR')}</div>
+              <p className="text-lg opacity-90">Usuários Ativos</p>
+            </div>
+            <div className="text-center">
+              <div className="text-5xl font-bold mb-2">R$ {(parseFloat(stats.totalVolume) / 1000000).toFixed(1)}M</div>
+              <p className="text-lg opacity-90">Volume Total</p>
+            </div>
+            <div className="text-center">
+              <div className="text-5xl font-bold mb-2">{stats.avgMatchTime} min</div>
+              <p className="text-lg opacity-90">Tempo Médio de Match</p>
+            </div>
+            <div className="text-center">
+              <div className="text-5xl font-bold mb-2">{stats.successRate}%</div>
+              <p className="text-lg opacity-90">Taxa de Sucesso</p>
+            </div>
+          </div>
+          <p className="text-center mt-8 text-sm opacity-75">
+            📊 Dados atualizados em tempo real
+          </p>
+        </div>
+
         {/* Criptos Aceitas */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-10 mb-16">
           <h2 className="text-3xl font-bold text-center mb-10 dark:text-white">Criptomoedas Aceitas</h2>
@@ -188,5 +235,6 @@ export default function HomePage() {
         </div>
       </div>
     </main>
+    </>
   );
 }

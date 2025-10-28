@@ -3,7 +3,7 @@
 import { useRouter, usePathname } from 'next/navigation';
 import { NotificationBell } from './NotificationBell';
 import ThemeToggle from './ThemeToggle';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const navigationLinks = [
   { name: 'Dashboard', path: '/dashboard' },
@@ -13,23 +13,113 @@ const navigationLinks = [
   { name: 'Perfil', path: '/profile' },
 ];
 
+interface User {
+  id: string;
+  name?: string;
+  email: string;
+}
+
 export default function AppHeader() {
   const router = useRouter();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    // Verificar se o usuário está logado
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      fetchUser(token);
+    }
+  }, []);
+
+  const fetchUser = async (token: string) => {
+    try {
+      const response = await fetch('http://localhost:3001/api/v1/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUser(data.data);
+        setIsLoggedIn(true);
+      } else {
+        setIsLoggedIn(false);
+        setUser(null);
+      }
+    } catch (error) {
+      console.error('Error fetching user:', error);
+      setIsLoggedIn(false);
+      setUser(null);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const refreshToken = localStorage.getItem('refreshToken');
+
+      await fetch('http://localhost:3001/api/v1/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ refreshToken }),
+      });
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error);
+    }
+
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+    setUser(null);
+    setIsLoggedIn(false);
+    router.push('/');
+  };
 
   const isActive = (path: string) => {
     if (path === '/dashboard') return pathname === path;
     return pathname?.startsWith(path);
   };
 
+  // Header não logado - apenas logo
+  if (!isLoggedIn) {
+    return (
+      <header className="sticky top-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-center items-center h-14">
+            {/* Logo & Brand - Centrado */}
+            <button
+              onClick={() => router.push('/')}
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            >
+              <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm">MP</span>
+              </div>
+              <span className="text-lg font-bold text-gray-900 dark:text-white">
+                MktPlace P2P
+              </span>
+            </button>
+          </div>
+        </div>
+      </header>
+    );
+  }
+
+  // Header logado - completo
   return (
     <header className="sticky top-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-14">
           {/* Logo & Brand */}
           <button
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push('/')}
             className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-shrink-0"
           >
             <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
@@ -61,6 +151,56 @@ export default function AppHeader() {
           <div className="flex items-center gap-3 flex-shrink-0">
             <NotificationBell />
             <ThemeToggle />
+
+            {/* User Menu Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setDropdownOpen(!dropdownOpen)}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                <div className="w-8 h-8 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">
+                    {user?.name?.charAt(0).toUpperCase() || user?.email.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <span className="text-sm font-medium text-gray-900 dark:text-white hidden sm:block">
+                  {user?.name || user?.email.split('@')[0]}
+                </span>
+                <svg
+                  className={`w-4 h-4 text-gray-600 dark:text-gray-300 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Dropdown Menu */}
+              {dropdownOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-50">
+                  <button
+                    onClick={() => {
+                      setDropdownOpen(false);
+                      router.push('/profile');
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    👤 Meu Perfil
+                  </button>
+                  <div className="border-t border-gray-200 dark:border-gray-700"></div>
+                  <button
+                    onClick={() => {
+                      setDropdownOpen(false);
+                      handleLogout();
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  >
+                    🚪 Sair
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Mobile Menu Button */}
             <button
@@ -112,6 +252,26 @@ export default function AppHeader() {
                 {link.name}
               </button>
             ))}
+            <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  router.push('/profile');
+                }}
+                className="w-full text-left px-4 py-3 font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                👤 Meu Perfil
+              </button>
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  handleLogout();
+                }}
+                className="w-full text-left px-4 py-3 font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              >
+                🚪 Sair
+              </button>
+            </div>
           </nav>
         )}
       </div>
