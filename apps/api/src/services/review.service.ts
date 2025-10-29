@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
 import { notificationService } from './notification.service';
-
-const prisma = new PrismaClient();
+import { prisma } from '../utils/prisma';
 
 export interface CreateReviewInput {
   reviewerId: string;
@@ -23,7 +21,8 @@ export interface RespondReviewInput {
 
 export class ReviewService {
   /**
-   * Criar avaliação
+   * Criar avaliação (IDEMPOTENTE: usa upsert)
+   * REFATORADO: Permite reenvio sem erro - atualiza se já existe
    */
   async createReview(input: CreateReviewInput) {
     // Validar rating (1-5)
@@ -64,23 +63,25 @@ export class ReviewService {
       throw new Error('Você só pode avaliar a outra parte da transação');
     }
 
-    // Verificar se já avaliou
-    const existingReview = await prisma.review.findUnique({
+    // IDEMPOTÊNCIA: Usar upsert em vez de verificar + criar
+    // Se já existe, atualiza com novos valores
+    // Se não existe, cria novo
+    const review = await prisma.review.upsert({
       where: {
         reviewerId_orderId: {
           reviewerId: input.reviewerId,
           orderId: input.orderId,
         },
       },
-    });
-
-    if (existingReview) {
-      throw new Error('Você já avaliou este pedido');
-    }
-
-    // Criar review
-    const review = await prisma.review.create({
-      data: {
+      update: {
+        // Permitir atualização de avaliação (caso usuário revise sua opinião)
+        rating: input.rating,
+        reliabilityRating: input.reliabilityRating,
+        communicationRating: input.communicationRating,
+        speedRating: input.speedRating,
+        comment: input.comment,
+      },
+      create: {
         reviewerId: input.reviewerId,
         reviewedId: input.reviewedId,
         orderId: input.orderId,
@@ -119,10 +120,12 @@ export class ReviewService {
       },
     });
 
+    console.log(`✅ Review criada/atualizada: ${review.id} (idempotência)`);
+
     // Atualizar reputação do usuário avaliado
     await this.updateUserReputation(input.reviewedId);
 
-    // Enviar notificação para o usuário avaliado
+    // Enviar notificação para o usuário avaliado (apenas se for nova, não atualização)
     setImmediate(async () => {
       try {
         await notificationService.notifyReviewReceived(

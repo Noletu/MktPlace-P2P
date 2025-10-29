@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../utils/prisma';
 
 /**
  * Tipos de transações de colateral
@@ -8,7 +6,8 @@ const prisma = new PrismaClient();
 export enum CollateralTransactionType {
   DEPOSIT = 'DEPOSIT',       // Depósito na plataforma
   LOCK = 'LOCK',             // Bloqueio para pedido
-  UNLOCK = 'UNLOCK',         // Desbloqueio após pedido
+  UNLOCK = 'UNLOCK',         // Desbloqueio após pedido cancelado/timeout
+  DEDUCT = 'DEDUCT',         // Dedução após pedido completado (gasto permanente)
   REFUND = 'REFUND',         // Devolução ao usuário
   WITHDRAWAL = 'WITHDRAWAL', // Saque do saldo
   TRANSFER = 'TRANSFER',     // Transferência interna

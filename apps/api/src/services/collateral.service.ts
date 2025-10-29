@@ -1,9 +1,7 @@
-import { PrismaClient } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { blockchainService } from './blockchain.service';
 import { adminService } from './admin.service';
-
-const prisma = new PrismaClient();
+import { prisma } from '../utils/prisma';
 
 export class CollateralService {
   /**
@@ -145,6 +143,191 @@ export class CollateralService {
       mockTxHash,
       '1.0'
     );
+  }
+
+  /**
+   * Valida formato de endereço crypto
+   */
+  private validateCryptoAddress(address: string, cryptoType: string, network: string): boolean {
+    const patterns: Record<string, RegExp> = {
+      'BTC-BITCOIN': /^([13][a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-z0-9]{39,59})$/,
+      'USDT-ETHEREUM': /^0x[a-fA-F0-9]{40}$/,
+      'USDT-TRC20': /^T[a-zA-Z0-9]{33}$/,
+      'USDT-BASE': /^0x[a-fA-F0-9]{40}$/,
+      'USDT-ARBITRUM': /^0x[a-fA-F0-9]{40}$/,
+      'USDT-SOLANA': /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+      'USDC-ETHEREUM': /^0x[a-fA-F0-9]{40}$/,
+      'USDC-TRC20': /^T[a-zA-Z0-9]{33}$/,
+      'USDC-BASE': /^0x[a-fA-F0-9]{40}$/,
+      'USDC-ARBITRUM': /^0x[a-fA-F0-9]{40}$/,
+      'USDC-SOLANA': /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+    };
+
+    const key = `${cryptoType}-${network}`;
+    const pattern = patterns[key];
+
+    if (!pattern) {
+      console.warn(`⚠️ Padrão de validação não encontrado para ${key}`);
+      return false;
+    }
+
+    return pattern.test(address);
+  }
+
+  /**
+   * Obtém limites de saque por cripto/rede
+   */
+  private getWithdrawalLimits(cryptoType: string): { min: number; max: number } {
+    const limits: Record<string, { min: number; max: number }> = {
+      'BTC': { min: 0.0001, max: 10 },
+      'USDT': { min: 10, max: 100000 },
+      'USDC': { min: 10, max: 100000 },
+    };
+
+    return limits[cryptoType] || { min: 0, max: Infinity };
+  }
+
+  /**
+   * Requisita saque de colateral
+   */
+  async requestWithdrawal(
+    userId: string,
+    cryptoType: string,
+    cryptoNetwork: string,
+    amount: string,
+    destinationAddress: string
+  ) {
+    const numAmount = parseFloat(amount);
+
+    // Validação 1: Formato do endereço
+    if (!this.validateCryptoAddress(destinationAddress, cryptoType, cryptoNetwork)) {
+      throw new Error(`Endereço ${cryptoType} inválido para a rede ${cryptoNetwork}`);
+    }
+
+    // Validação 2: Limites mínimos/máximos
+    const limits = this.getWithdrawalLimits(cryptoType);
+    if (numAmount < limits.min) {
+      throw new Error(`Valor mínimo para saque: ${limits.min} ${cryptoType}`);
+    }
+    if (numAmount > limits.max) {
+      throw new Error(`Valor máximo para saque: ${limits.max} ${cryptoType}`);
+    }
+
+    // Validação 3: Saldo disponível
+    const balance = await prisma.collateralBalance.findUnique({
+      where: {
+        userId_cryptoType_network: {
+          userId,
+          cryptoType,
+          network: cryptoNetwork,
+        },
+      },
+    });
+
+    if (!balance || parseFloat(balance.availableBalance) < numAmount) {
+      throw new Error(`Saldo insuficiente. Disponível: ${balance?.availableBalance || 0} ${cryptoType}`);
+    }
+
+    // Criar registro de saque
+    const withdrawal = await prisma.collateralTransaction.create({
+      data: {
+        userId,
+        type: 'WITHDRAWAL_REQUEST',
+        cryptoType,
+        cryptoNetwork,
+        amount,
+        destinationAddress,
+        status: 'PENDING',
+        metadata: JSON.stringify({
+          requestedAt: new Date().toISOString(),
+        }),
+      },
+    });
+
+    // Bloquear saldo temporariamente
+    await prisma.collateralBalance.update({
+      where: {
+        userId_cryptoType_network: {
+          userId,
+          cryptoType,
+          network: cryptoNetwork,
+        },
+      },
+      data: {
+        availableBalance: {
+          decrement: numAmount,
+        },
+        lockedAmount: {
+          increment: numAmount,
+        },
+      },
+    });
+
+    console.log(`✅ Saque solicitado: ${withdrawal.id}`);
+    console.log(`   User: ${userId}`);
+    console.log(`   Amount: ${amount} ${cryptoType}`);
+    console.log(`   To: ${destinationAddress}`);
+
+    return withdrawal;
+  }
+
+  /**
+   * Simula conclusão de saque (APENAS PARA DESENVOLVIMENTO)
+   */
+  async simulateWithdrawalComplete(withdrawalId: string) {
+    console.log('⚠️ SIMULANDO CONCLUSÃO DE SAQUE (desenvolvimento)');
+
+    const withdrawal = await prisma.collateralTransaction.findUnique({
+      where: { id: withdrawalId },
+    });
+
+    if (!withdrawal) {
+      throw new Error('Saque não encontrado');
+    }
+
+    if (withdrawal.type !== 'WITHDRAWAL_REQUEST') {
+      throw new Error('Transação não é um saque');
+    }
+
+    const mockTxHash = `0x${randomBytes(32).toString('hex')}`;
+
+    // Atualizar status do saque
+    const completed = await prisma.collateralTransaction.update({
+      where: { id: withdrawalId },
+      data: {
+        status: 'COMPLETED',
+        txHash: mockTxHash,
+        metadata: JSON.stringify({
+          ...JSON.parse(withdrawal.metadata || '{}'),
+          completedAt: new Date().toISOString(),
+          simulatedTxHash: mockTxHash,
+        }),
+      },
+    });
+
+    // Deduzir do saldo bloqueado (já foi deduzido do availableBalance)
+    await prisma.collateralBalance.update({
+      where: {
+        userId_cryptoType_network: {
+          userId: withdrawal.userId,
+          cryptoType: withdrawal.cryptoType,
+          network: withdrawal.cryptoNetwork,
+        },
+      },
+      data: {
+        balance: {
+          decrement: parseFloat(withdrawal.amount),
+        },
+        lockedAmount: {
+          decrement: parseFloat(withdrawal.amount),
+        },
+      },
+    });
+
+    console.log(`✅ Saque completado: ${withdrawalId}`);
+    console.log(`   TxHash: ${mockTxHash}`);
+
+    return completed;
   }
 }
 

@@ -1,4 +1,4 @@
-import { PrismaClient, Order } from '@prisma/client';
+import { Order } from '@prisma/client';
 import {
   OrderType,
   OrderStatus,
@@ -15,8 +15,7 @@ import { boletoOCRService } from './boleto-ocr.service';
 import { CryptoType } from '../types/crypto.types';
 import { notificationService } from './notification.service';
 import { internalBalanceService } from './internal-balance.service';
-
-const prisma = new PrismaClient();
+import { prisma } from '../utils/prisma';
 
 export class OrderService {
   /**

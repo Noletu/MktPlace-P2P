@@ -7,6 +7,7 @@ import CryptoIcon from '@/components/ui/CryptoIcon';
 import { CryptoType } from '@mktplace/shared';
 import { formatBRL } from '@/utils/formatters';
 import ThemeToggle from '@/components/ThemeToggle';
+import AppHeader from '@/components/AppHeader';
 
 export default function CreateOrderPage() {
   const router = useRouter();
@@ -43,6 +44,10 @@ export default function CreateOrderPage() {
   // Internal balance state
   const [internalBalance, setInternalBalance] = useState<any>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
+
+  // Balance decision modal state
+  const [showBalanceDecisionModal, setShowBalanceDecisionModal] = useState(false);
+  const [balanceDecisionData, setBalanceDecisionData] = useState<any>(null);
 
   const NETWORK_OPTIONS: Record<string, string[]> = {
     BTC: ['BITCOIN'],
@@ -346,68 +351,15 @@ export default function CreateOrderPage() {
       const balanceData = await checkBalanceResponse.json();
       console.log('💰 Saldo disponível:', balanceData);
 
-      // CASO 1: TEM SALDO SUFICIENTE → Criar pedido direto
+      // CASO 1: TEM SALDO SUFICIENTE → Mostrar modal de decisão
       if (balanceData.success && balanceData.data.hasSufficient) {
-        console.log('✅ Saldo suficiente! Criando pedido instantâneo...');
+        console.log('✅ Saldo suficiente! Mostrando opções ao usuário...');
 
-        if (!confirm(
-          `✅ Você tem saldo suficiente!\n\n` +
-          `Disponível: ${balanceData.data.available} ${crypto}\n` +
-          `Necessário: ${balanceData.data.required} ${crypto}\n\n` +
-          `Criar pedido INSTANTÂNEO usando seu saldo interno?`
-        )) {
-          setLoading(false);
-          return;
-        }
-
-        // Criar pedido usando saldo interno
-        const createOrderResponse = await fetch('http://localhost:3001/api/v1/orders', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            type: 'SELL', // Usuário está vendendo crypto para receber BRL
-            paymentMethod: orderType, // PIX ou BOLETO
-            cryptoType: crypto,
-            cryptoNetwork: network,
-            cryptoAmount,
-            brlAmount,
-            orderData: orderType === 'PIX' ? {
-              pixKey,
-              pixKeyType,
-              recipientName: pixRecipientName,
-            } : {
-              barcode,
-              dueDate,
-              recipientName: boletoRecipientName,
-              recipientDocument: boletoRecipientDocument,
-            },
-            useInternalBalance: true, // Flag para usar saldo interno
-          }),
-        });
-
-        const createData = await createOrderResponse.json();
-
-        if (createData.success && createData.data) {
-          alert('✅ Pedido criado com sucesso usando seu saldo interno!\n\nSeu pedido já está no marketplace!');
-          router.push(`/orders/${createData.data.id}`);
-          return;
-        } else {
-          // Log completo do erro
-          console.error('❌ Erro ao criar pedido:', createData);
-
-          // Mostrar detalhes se houver
-          if (createData.details && createData.details.length > 0) {
-            const errorDetails = createData.details
-              .map((d: any) => `• ${d.field}: ${d.message}`)
-              .join('\n');
-            throw new Error(`${createData.message}\n\nDetalhes:\n${errorDetails}`);
-          }
-
-          throw new Error(createData.message || 'Erro ao criar pedido');
-        }
+        // Abrir modal de decisão
+        setBalanceDecisionData(balanceData.data);
+        setShowBalanceDecisionModal(true);
+        setLoading(false);
+        return;
       }
 
       // CASO 2: NÃO TEM SALDO OU INSUFICIENTE → Fluxo de depósito externo
@@ -458,7 +410,8 @@ export default function CreateOrderPage() {
 
       // Salvar dados do pedido para usar após confirmação do depósito
       sessionStorage.setItem('pendingOrder', JSON.stringify({
-        type: orderType,
+        type: 'SELL',
+        paymentMethod: orderType,
         cryptoType: crypto,
         cryptoNetwork: network,
         cryptoAmount,
@@ -605,6 +558,121 @@ export default function CreateOrderPage() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Handler: Usar saldo interno para criar pedido
+  const handleUseInternalBalance = async () => {
+    try {
+      setLoading(true);
+      setShowBalanceDecisionModal(false);
+
+      const token = localStorage.getItem('accessToken');
+
+      const createOrderResponse = await fetch('http://localhost:3001/api/v1/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          type: 'SELL',
+          paymentMethod: orderType,
+          cryptoType: crypto,
+          cryptoNetwork: network,
+          cryptoAmount,
+          brlAmount,
+          orderData: orderType === 'PIX' ? {
+            pixKey,
+            pixKeyType,
+            recipientName: pixRecipientName,
+          } : {
+            barcode,
+            dueDate,
+            recipientName: boletoRecipientName,
+            recipientDocument: boletoRecipientDocument,
+          },
+          useInternalBalance: true,
+        }),
+      });
+
+      const createData = await createOrderResponse.json();
+
+      if (createData.success && createData.data) {
+        alert('✅ Pedido criado com sucesso usando seu saldo interno!\n\nSeu pedido já está no marketplace!');
+        router.push(`/orders/${createData.data.id}`);
+      } else {
+        if (createData.details && createData.details.length > 0) {
+          const errorDetails = createData.details
+            .map((d: any) => `• ${d.field}: ${d.message}`)
+            .join('\n');
+          throw new Error(`${createData.message}\n\nDetalhes:\n${errorDetails}`);
+        }
+        throw new Error(createData.message || 'Erro ao criar pedido');
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handler: Fazer depósito específico
+  const handleMakeNewDeposit = async () => {
+    try {
+      setShowBalanceDecisionModal(false);
+      setLoading(true);
+
+      const token = localStorage.getItem('accessToken');
+
+      // Gerar endereço de depósito para colateral
+      const response = await fetch('http://localhost:3001/api/v1/collateral/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          cryptoType: crypto,
+          cryptoNetwork: network,
+          expectedAmount: cryptoAmount,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao gerar endereço de depósito');
+      }
+
+      // Salvar dados do pedido
+      sessionStorage.setItem('pendingOrder', JSON.stringify({
+        type: 'SELL',
+        paymentMethod: orderType,
+        cryptoType: crypto,
+        cryptoNetwork: network,
+        cryptoAmount,
+        brlAmount,
+        orderData: orderType === 'PIX' ? {
+          pixKey,
+          pixKeyType,
+          recipientName: pixRecipientName,
+        } : {
+          barcode,
+          dueDate,
+          recipientName: boletoRecipientName,
+          recipientDocument: boletoRecipientDocument,
+        },
+        collateralAddressId: data.data.id,
+      }));
+
+      setCollateralAddress(data.data);
+      setShowCollateralDeposit(true);
+      setTimeLeft(1800);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Se estiver na tela de depósito de colateral
   if (showCollateralDeposit && collateralAddress) {
     return (
@@ -732,8 +800,81 @@ export default function CreateOrderPage() {
     );
   }
 
+  // Modal de decisão de saldo
+  const BalanceDecisionModal = () => {
+    if (!showBalanceDecisionModal || !balanceDecisionData) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-md w-full p-8 shadow-2xl">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">💰</span>
+            </div>
+            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              Você quer usar seu saldo existente?
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 text-sm">
+              Você tem saldo disponível para criar este pedido instantaneamente
+            </p>
+          </div>
+
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-2 border-green-200 dark:border-green-700 rounded-lg p-4 mb-6">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-medium text-green-800 dark:text-green-200">Disponível:</span>
+              <span className="text-lg font-bold text-green-900 dark:text-green-100">
+                {balanceDecisionData.available} {crypto}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-green-800 dark:text-green-200">Necessário:</span>
+              <span className="text-lg font-bold text-green-900 dark:text-green-100">
+                {balanceDecisionData.required} {crypto}
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <button
+              onClick={handleUseInternalBalance}
+              disabled={loading}
+              className="w-full py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold rounded-lg disabled:opacity-50 transition-all transform hover:scale-105 shadow-lg flex items-center justify-center gap-2"
+            >
+              <span className="text-xl">✅</span>
+              <span>Sim, use e crie o pedido diretamente</span>
+            </button>
+
+            <button
+              onClick={handleMakeNewDeposit}
+              disabled={loading}
+              className="w-full py-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+            >
+              <span className="text-xl">💳</span>
+              <span>Não, quero fazer um depósito específico</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setShowBalanceDecisionModal(false);
+                setLoading(false);
+              }}
+              className="w-full py-3 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white font-medium transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
+    <>
+      <AppHeader />
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
+        {/* Modal de decisão de saldo */}
+        <BalanceDecisionModal />
+
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Criar Novo Pedido</h1>
@@ -1120,5 +1261,6 @@ export default function CreateOrderPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

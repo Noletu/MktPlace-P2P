@@ -1,10 +1,9 @@
-import { PrismaClient, Transaction } from '@prisma/client';
+import { Transaction } from '@prisma/client';
 import { TransactionStatus, SubmitProofInput, ValidateProofInput, DisputeInput } from '../types/transaction.types';
 import { OrderStatus } from '../types/order.types';
 import { notificationService } from './notification.service';
-import { internalBalanceService } from './internal-balance.service';
-
-const prisma = new PrismaClient();
+import { prisma } from '../utils/prisma';
+import { CollateralTransactionType } from './collateral-transaction.service';
 
 export class TransactionService {
   /**
@@ -62,6 +61,7 @@ export class TransactionService {
 
   /**
    * Validar comprovante (manual ou automático)
+   * REFATORADO: Todas as operações críticas em transação atômica única
    */
   async validateProof(input: ValidateProofInput): Promise<Transaction> {
     const transaction = await prisma.transaction.findUnique({
@@ -78,84 +78,151 @@ export class TransactionService {
     }
 
     if (input.approved) {
-      // Aprovar transação
-      const updatedTransaction = await prisma.transaction.update({
-        where: { id: input.transactionId },
-        data: {
-          status: TransactionStatus.APPROVED,
-          validationScore: input.validationScore || 100,
-          validatedBy: input.validatedBy,
-          validatedAt: new Date(),
-        },
-      });
-
-      // Atualizar status do pedido para COMPLETED
-      await prisma.order.update({
+      // IDEMPOTÊNCIA: Verificar se já foi processado
+      const orderCheck = await prisma.order.findUnique({
         where: { id: transaction.orderId },
-        data: {
-          status: OrderStatus.COMPLETED,
-          completedAt: new Date(),
-        },
+        select: { status: true, collateralLocked: true },
       });
 
-      // Atualizar reputação dos usuários
-      await this.updateUserReputation(transaction.payerId, true);
-      await this.updateUserReputation(transaction.order.userId, true);
-
-      // TODO: Criar Fee records e transferir crypto
-
-      // Processar saldo interno do vendedor (CORREÇÃO v3.0.7)
-      if (transaction.order.collateralSource === 'INTERNAL_BALANCE' &&
-          transaction.order.collateralLocked &&
-          transaction.order.collateralLockedAmount) {
-
-        try {
-          // 1. Desbloquear o saldo
-          await internalBalanceService.unlockBalance(
-            transaction.order.userId,
-            transaction.order.cryptoType,
-            transaction.order.cryptoNetwork,
-            transaction.order.collateralLockedAmount,
-            transaction.orderId
-          );
-
-          console.log(`🔓 Saldo desbloqueado após conclusão: ${transaction.order.collateralLockedAmount} ${transaction.order.cryptoType}`);
-
-          // 2. Debitar do saldo total (consumir o colateral)
-          await internalBalanceService.deductBalance(
-            transaction.order.userId,
-            transaction.order.cryptoType,
-            transaction.order.cryptoNetwork,
-            transaction.order.collateralLockedAmount
-          );
-
-          console.log(`💸 Saldo debitado (gasto): ${transaction.order.collateralLockedAmount} ${transaction.order.cryptoType}`);
-        } catch (error: any) {
-          console.error(`❌ Erro ao processar saldo interno após conclusão:`, error);
-          // Não falhar a validação se houver erro no processamento de saldo
-          // Mas registrar para correção manual
-        }
+      if (orderCheck?.status === OrderStatus.COMPLETED && !orderCheck.collateralLocked) {
+        console.log(`⚠️ Pedido ${transaction.orderId} já foi completado anteriormente (idempotência)`);
+        // Retornar transação existente sem reprocessar
+        return transaction;
       }
 
-      // Enviar notificações de pagamento validado
+      // TRANSAÇÃO ATÔMICA: Incluir TODAS as operações críticas
+      const updatedTransaction = await prisma.$transaction(async (tx) => {
+        // 1. Aprovar transação
+        const approved = await tx.transaction.update({
+          where: { id: input.transactionId },
+          data: {
+            status: TransactionStatus.APPROVED,
+            validationScore: input.validationScore || 100,
+            validatedBy: input.validatedBy,
+            validatedAt: new Date(),
+          },
+        });
+
+        // 2. Atualizar status do pedido para COMPLETED
+        await tx.order.update({
+          where: { id: transaction.orderId },
+          data: {
+            status: OrderStatus.COMPLETED,
+            completedAt: new Date(),
+            collateralLocked: false,
+            collateralUnlockedAt: new Date(),
+          },
+        });
+
+        console.log(`✅ Transação aprovada e pedido completado: ${transaction.orderId}`);
+
+        // 3. Processar saldo interno DENTRO da mesma transação atômica
+        if (transaction.order.collateralSource === 'INTERNAL_BALANCE' &&
+            transaction.order.collateralLockedAmount) {
+
+          const userId = transaction.order.userId;
+          const cryptoType = transaction.order.cryptoType;
+          const network = transaction.order.cryptoNetwork;
+          const amountStr = transaction.order.collateralLockedAmount;
+          const amountNum = parseFloat(amountStr);
+
+          // Buscar saldo interno
+          const balance = await tx.internalBalance.findUnique({
+            where: {
+              userId_cryptoType_network: {
+                userId,
+                cryptoType,
+                network,
+              },
+            },
+          });
+
+          if (!balance) {
+            throw new Error(`Saldo interno não encontrado para ${cryptoType} na rede ${network}`);
+          }
+
+          // Calcular novos valores
+          const total = parseFloat(balance.balance);
+          const locked = parseFloat(balance.lockedAmount);
+          const totalUsed = parseFloat(balance.totalUsed);
+
+          const newTotal = total - amountNum;
+          const newLocked = Math.max(0, locked - amountNum);
+          const newAvailable = newTotal - newLocked;
+          const newTotalUsed = totalUsed + amountNum;
+
+          // 4. Atualizar InternalBalance (deduct + unlock)
+          await tx.internalBalance.update({
+            where: { id: balance.id },
+            data: {
+              balance: newTotal.toFixed(8),
+              lockedAmount: newLocked.toFixed(8),
+              availableAmount: newAvailable.toFixed(8),
+              totalUsed: newTotalUsed.toFixed(8),
+            },
+          });
+
+          console.log(`💸 Colateral deduzido atomicamente: ${amountStr} ${cryptoType}`);
+          console.log(`   Saldo total: ${newTotal.toFixed(8)} ${cryptoType}`);
+          console.log(`   Disponível: ${newAvailable.toFixed(8)} ${cryptoType}`);
+          console.log(`   Bloqueado: ${newLocked.toFixed(8)} ${cryptoType}`);
+          console.log(`   Total usado: ${newTotalUsed.toFixed(8)} ${cryptoType}`);
+
+          // 5. Criar registro de auditoria (CollateralTransaction)
+          await tx.collateralTransaction.create({
+            data: {
+              userId,
+              balanceId: balance.id,
+              type: CollateralTransactionType.DEDUCT,
+              amount: amountStr,
+              balanceBefore: balance.balance,
+              balanceAfter: newTotal.toFixed(8),
+              orderId: transaction.orderId,
+              network,
+              description: `Colateral deduzido após conclusão do pedido ${transaction.orderId}`,
+            },
+          });
+
+          console.log(`📝 Transação de colateral registrada para auditoria`);
+        }
+
+        return approved;
+      }, {
+        timeout: 60000, // 60 segundos (aumentado para operações complexas)
+        maxWait: 20000, // máximo 20s esperando lock
+      });
+
+      console.log(`✅ TRANSAÇÃO ATÔMICA COMPLETA com sucesso!`);
+
+      // Atualizar reputação dos usuários (fora da transação crítica)
+      setImmediate(async () => {
+        try {
+          await this.updateUserReputation(transaction.payerId, true);
+          await this.updateUserReputation(transaction.order.userId, true);
+        } catch (error) {
+          console.error('Failed to update user reputation:', error);
+        }
+      });
+
+      // Enviar notificações de pagamento validado (fora da transação crítica)
       setImmediate(async () => {
         try {
           await notificationService.notifyPaymentValidated(
             transaction.orderId,
-            transaction.payerId, // buyer
+            transaction.payerId,
             transaction.order.cryptoAmount,
             transaction.order.cryptoType
           );
 
           await notificationService.notifyOrderCompleted(
             transaction.orderId,
-            transaction.order.userId, // seller
+            transaction.order.userId,
             true
           );
 
           await notificationService.notifyOrderCompleted(
             transaction.orderId,
-            transaction.payerId, // buyer
+            transaction.payerId,
             true
           );
         } catch (error) {

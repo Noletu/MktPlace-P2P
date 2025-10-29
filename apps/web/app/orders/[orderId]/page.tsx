@@ -6,6 +6,8 @@ import ChatWindow from '@/components/chat/ChatWindow';
 import CountdownTimer from '@/components/CountdownTimer';
 import { formatBRL } from '@/utils/formatters';
 import ThemeToggle from '@/components/ThemeToggle';
+import AppHeader from '@/components/AppHeader';
+import ReviewModal, { ReviewData } from '@/components/modals/ReviewModal';
 
 interface Order {
   id: string;
@@ -66,6 +68,13 @@ export default function OrderDetailsPage() {
   const [showDisputeModal, setShowDisputeModal] = useState(false);
   const [disputeId, setDisputeId] = useState<string | null>(null);
 
+  // Review system states
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [canReviewOrder, setCanReviewOrder] = useState(false);
+  const [reviewedUserId, setReviewedUserId] = useState<string | null>(null);
+  const [reviewedUserName, setReviewedUserName] = useState<string>('');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
   useEffect(() => {
     fetchOrder();
     fetchChatUnreadCount();
@@ -75,6 +84,19 @@ export default function OrderDetailsPage() {
     }, 5000); // Atualizar a cada 5s
     return () => clearInterval(interval);
   }, [orderId]);
+
+  // Load current user ID from localStorage
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        setCurrentUserId(user.id);
+      } catch (error) {
+        console.error('Error parsing user from localStorage:', error);
+      }
+    }
+  }, []);
 
   const fetchOrder = async () => {
     try {
@@ -154,6 +176,51 @@ export default function OrderDetailsPage() {
       console.error('Erro ao buscar disputa:', error);
     }
   };
+
+  // Check if user can review when order is completed
+  useEffect(() => {
+    const checkCanReview = async () => {
+      if (order?.status !== 'COMPLETED' || !currentUserId) return;
+
+      // Check localStorage to avoid showing modal repeatedly (SPECIFIC PER USER)
+      const hasReviewed = localStorage.getItem(`order-${orderId}-reviewed-${currentUserId}`);
+      if (hasReviewed === 'true') return;
+
+      try {
+        const token = localStorage.getItem('accessToken');
+        if (!token) return;
+
+        const response = await fetch(`http://localhost:3001/api/v1/reviews/can-review/${orderId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (data.success && data.data.canReview) {
+          setCanReviewOrder(true);
+          setReviewedUserId(data.data.reviewedId);
+
+          // Get reviewed user name from order data
+          const reviewedUser = order.user.id === data.data.reviewedId
+            ? order.user
+            : order.transactions[0]?.payer;
+
+          if (reviewedUser) {
+            setReviewedUserName(reviewedUser.name || reviewedUser.email);
+            // Show modal automatically
+            setShowReviewModal(true);
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao verificar se pode avaliar:', error);
+      }
+    };
+
+    checkCanReview();
+  }, [order, orderId, currentUserId]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -398,6 +465,50 @@ export default function OrderDetailsPage() {
     }
   };
 
+  const handleSubmitReview = async (reviewData: ReviewData) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) throw new Error('Não autorizado');
+
+      // Calculate overall rating as average of 3 categories
+      const rating = Math.round(
+        (reviewData.reliabilityRating + reviewData.communicationRating + reviewData.speedRating) / 3
+      );
+
+      const response = await fetch('http://localhost:3001/api/v1/reviews', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          reviewedId: reviewedUserId,
+          orderId: orderId,
+          rating,
+          ...reviewData,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Erro ao enviar avaliação');
+      }
+
+      // Mark as reviewed in localStorage (SPECIFIC PER USER for bilateral reviews)
+      if (currentUserId) {
+        localStorage.setItem(`order-${orderId}-reviewed-${currentUserId}`, 'true');
+      }
+
+      // Close modal
+      setShowReviewModal(false);
+
+      // Show success message
+      alert('✨ Avaliação enviada com sucesso! Obrigado pelo feedback.');
+    } catch (error: any) {
+      throw error; // Let modal handle error display
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
@@ -420,10 +531,7 @@ export default function OrderDetailsPage() {
   // Detectar método de pagamento a partir do orderData
   const paymentMethod = orderData.pixKey ? 'PIX' : 'BOLETO';
 
-  // Obter userId do objeto user armazenado no localStorage
-  const userStr = localStorage.getItem('user');
-  const currentUserId = userStr ? JSON.parse(userStr).id : null;
-
+  // currentUserId now comes from useState (loaded in useEffect)
   const isCreator = order.user.id === currentUserId;
   const isPayer = transaction?.payer?.id === currentUserId;
 
@@ -474,9 +582,11 @@ export default function OrderDetailsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
-      {/* Modal de Cancelamento */}
-      {showCancelModal && (
+    <>
+      <AppHeader />
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
+        {/* Modal de Cancelamento */}
+        {showCancelModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full p-6">
             <h3 className="text-xl font-bold mb-4 text-red-600 dark:text-red-400">⚠️ Cancelar Pedido</h3>
@@ -900,6 +1010,16 @@ export default function OrderDetailsPage() {
                     🔍 Ver Disputa
                   </button>
                 )}
+
+                {/* Avaliar Transação - Disponível para pedidos concluídos */}
+                {order.status === 'COMPLETED' && canReviewOrder && currentUserId && !localStorage.getItem(`order-${orderId}-reviewed-${currentUserId}`) && (
+                  <button
+                    onClick={() => setShowReviewModal(true)}
+                    className="w-full px-4 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all"
+                  >
+                    ⭐ Avaliar Transação
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1045,7 +1165,17 @@ export default function OrderDetailsPage() {
           </div>
         </div>
       )}
+
+      {/* Review Modal */}
+      <ReviewModal
+        isOpen={showReviewModal}
+        onClose={() => setShowReviewModal(false)}
+        onSubmit={handleSubmitReview}
+        reviewedUserName={reviewedUserName}
+        orderId={orderId}
+      />
       </div>
     </div>
+    </>
   );
 }
