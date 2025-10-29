@@ -24,6 +24,7 @@ import chatRoutes from './routes/chat.routes';
 import keysRoutes from './routes/keys.routes';
 import presenceRoutes from './routes/presence.routes';
 import negotiationRoutes from './routes/negotiation.routes';
+import statsRoutes from './routes/stats.routes';
 import { apiLimiter } from './middleware/rateLimiter.middleware';
 import { logger } from './utils/logger';
 import { depositMonitorWorker } from './workers/deposit-monitor.worker';
@@ -211,6 +212,9 @@ app.use('/api/v1/presence', presenceRoutes);
 // Negotiation routes (pre-match negotiation)
 app.use('/api/v1/negotiation', negotiationRoutes);
 
+// Stats routes (user activity statistics)
+app.use('/api/v1/stats', statsRoutes);
+
 // 404 handler
 app.use((req: Request, res: Response) => {
   res.status(404).json({ error: 'Route not found' });
@@ -265,8 +269,8 @@ httpServer.listen(port, () => {
   orderExpirationWorker.start();
   negotiationTimeoutWorker.start();
   presenceMonitorWorker.start();
-  collateralReleaseWorker.start();
-  console.log('⚙️  [workers]: All background workers started');
+  // collateralReleaseWorker.start(); // DESABILITADO: processamento agora é feito direto no transaction.service.ts
+  console.log('⚙️  [workers]: All background workers started (collateral release disabled)');
 });
 
 // Exportar para uso em outros módulos

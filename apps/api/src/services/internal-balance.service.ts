@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
 import { collateralTransactionService, CollateralTransactionType } from './collateral-transaction.service';
-
-const prisma = new PrismaClient();
+import { prisma } from '../utils/prisma';
 
 export class InternalBalanceService {
   /**
@@ -208,7 +206,7 @@ export class InternalBalanceService {
         data: {
           lockedAmount: newLocked.toFixed(8),
           availableAmount: newAvailable.toFixed(8),
-          totalUsed: (parseFloat(balance.totalUsed) + amountNum).toFixed(8),
+          // NÃO incrementar totalUsed aqui - só deve ser incrementado quando efetivamente gasto (DEDUCT)
         },
       });
 
@@ -321,6 +319,83 @@ export class InternalBalanceService {
       return updated;
     }, {
       timeout: 15000, // 15 segundos (aumentado de 5s padrão)
+    });
+
+    return result;
+  }
+
+  /**
+   * Deduzir colateral quando pedido é completado (gasto permanente)
+   * CRITICAL: Usado quando o colateral foi efetivamente transferido/gasto
+   */
+  async deductCollateral(
+    userId: string,
+    cryptoType: string,
+    network: string,
+    amount: string,
+    orderId?: string
+  ) {
+    const amountNum = parseFloat(amount);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const balance = await tx.internalBalance.findUnique({
+        where: {
+          userId_cryptoType_network: {
+            userId,
+            cryptoType,
+            network,
+          },
+        },
+      });
+
+      if (!balance) {
+        throw new Error(`Saldo interno não encontrado para ${cryptoType} na rede ${network}`);
+      }
+
+      const total = parseFloat(balance.balance);
+      const locked = parseFloat(balance.lockedAmount);
+      const totalUsed = parseFloat(balance.totalUsed);
+
+      // Deduzir do saldo total e do saldo bloqueado
+      const newTotal = total - amountNum;
+      const newLocked = Math.max(0, locked - amountNum); // Prevenir valores negativos
+      const newAvailable = newTotal - newLocked;
+      const newTotalUsed = totalUsed + amountNum;
+
+      const updated = await tx.internalBalance.update({
+        where: { id: balance.id },
+        data: {
+          balance: newTotal.toFixed(8),
+          lockedAmount: newLocked.toFixed(8),
+          availableAmount: newAvailable.toFixed(8),
+          totalUsed: newTotalUsed.toFixed(8),
+        },
+      });
+
+      console.log(`💸 Colateral deduzido (gasto): ${userId} - ${amount} ${cryptoType}`);
+      console.log(`   Saldo total: ${newTotal.toFixed(8)} ${cryptoType}`);
+      console.log(`   Disponível: ${newAvailable.toFixed(8)} ${cryptoType}`);
+      console.log(`   Bloqueado: ${newLocked.toFixed(8)} ${cryptoType}`);
+      console.log(`   Total usado: ${newTotalUsed.toFixed(8)} ${cryptoType}`);
+
+      // Registrar transação para auditoria
+      await collateralTransactionService.recordTransaction(
+        userId,
+        balance.id,
+        CollateralTransactionType.DEDUCT,
+        amount,
+        balance.balance, // balanceBefore
+        newTotal.toFixed(8), // balanceAfter
+        {
+          orderId,
+          network,
+          description: `Colateral deduzido após conclusão do pedido ${orderId || 'N/A'}`,
+        }
+      );
+
+      return updated;
+    }, {
+      timeout: 15000,
     });
 
     return result;
