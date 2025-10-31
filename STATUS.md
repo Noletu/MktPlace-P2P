@@ -1,8 +1,8 @@
 # 📊 Status do Projeto - Mktplace da Liberdade
 
-**Última atualização**: 26 de Outubro de 2025
-**Versão**: 3.0.8
-**Status**: 🟢 Desenvolvimento Ativo (Banco de Dados Restaurado e 100% Sincronizado)
+**Última atualização**: 30 de Outubro de 2025
+**Versão**: 0.3.10
+**Status**: 🟢 Desenvolvimento Ativo (Versionamento Corrigido - Pronto para v0.4.0)
 
 ---
 
@@ -61,9 +61,9 @@
 - [x] SQLite schema definido e em uso
 - [x] Migrações Prisma configuradas
 - [x] Seed data para testes
-- [x] **v3.0.8**: Banco completamente restaurado e sincronizado
-- [x] **v3.0.8**: 23 tabelas criadas e operacionais
-- [x] **v3.0.8**: 14 carteiras da plataforma configuradas com endereços de teste válidos
+- [x] **v0.3.8**: Banco completamente restaurado e sincronizado
+- [x] **v0.3.8**: 23 tabelas criadas e operacionais
+- [x] **v0.3.8**: 14 carteiras da plataforma configuradas com endereços de teste válidos
 
 ### Shared Package
 - [x] Types compartilhados (3 criptos: BTC, USDC, USDT)

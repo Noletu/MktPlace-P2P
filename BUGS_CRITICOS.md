@@ -1,8 +1,8 @@
 # 🐛 Bugs Críticos - Mktplace da Liberdade
 
-**Última Atualização**: 29/10/2025
-**Versão**: 0.3.9
-**Status**: ✅ TODOS BUGS CRÍTICOS RESOLVIDOS + DARK MODE COMPLETO
+**Última Atualização**: 30/10/2025
+**Versão**: 0.3.10
+**Status**: ✅ TODOS BUGS CRÍTICOS RESOLVIDOS + VERSIONAMENTO CORRIGIDO
 
 ---
 
