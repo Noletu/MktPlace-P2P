@@ -84,131 +84,131 @@ export default function KYCLevel2Page() {
             {/* CPF e Telefone */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-2">CPF</label>
+                <label className="block text-sm font-medium mb-2 text-gray-900 dark:text-white">CPF</label>
                 <input
                   type="text"
                   value={formData.cpf}
                   onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
                   placeholder="000.000.000-00"
                   required
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Telefone</label>
+                <label className="block text-sm font-medium mb-2 text-gray-900 dark:text-white">Telefone</label>
                 <input
                   type="tel"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   placeholder="(11) 98765-4321"
                   required
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 focus:border-transparent"
                 />
               </div>
             </div>
 
             {/* Upload de Selfie */}
             <div>
-              <label className="block text-sm font-medium mb-2">Selfie com Documento</label>
+              <label className="block text-sm font-medium mb-2 text-gray-900 dark:text-white">Selfie com Documento</label>
               <input
                 type="file"
                 accept="image/*"
                 onChange={(e) => setSelfieFile(e.target.files?.[0] || null)}
                 required
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 focus:border-transparent"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Tire uma selfie segurando seu documento de identidade ao lado do rosto
               </p>
             </div>
 
             {/* Upload de Documento */}
             <div>
-              <label className="block text-sm font-medium mb-2">Documento de Identidade</label>
+              <label className="block text-sm font-medium mb-2 text-gray-900 dark:text-white">Documento de Identidade</label>
               <input
                 type="file"
                 accept="image/*"
                 onChange={(e) => setDocumentFile(e.target.files?.[0] || null)}
                 required
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 focus:border-transparent"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Foto do RG ou CNH (frente e verso)
               </p>
             </div>
 
             {/* Endereço */}
             <div className="border-t pt-6">
-              <h3 className="font-semibold mb-4">Endereço</h3>
+              <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">Endereço</h3>
               <div className="space-y-4">
                 <div className="grid grid-cols-3 gap-4">
                   <div className="col-span-1">
-                    <label className="block text-sm font-medium mb-2">CEP</label>
+                    <label className="block text-sm font-medium mb-2 text-gray-900 dark:text-white">CEP</label>
                     <input
                       type="text"
                       value={formData.cep}
                       onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
                       placeholder="00000-000"
                       required
-                      className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 focus:border-transparent"
                     />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium mb-2">Rua</label>
+                    <label className="block text-sm font-medium mb-2 text-gray-900 dark:text-white">Rua</label>
                     <input
                       type="text"
                       value={formData.street}
                       onChange={(e) => setFormData({ ...formData, street: e.target.value })}
                       placeholder="Rua/Avenida"
                       required
-                      className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 focus:border-transparent"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2">Número</label>
+                    <label className="block text-sm font-medium mb-2 text-gray-900 dark:text-white">Número</label>
                     <input
                       type="text"
                       value={formData.number}
                       onChange={(e) => setFormData({ ...formData, number: e.target.value })}
                       placeholder="123"
                       required
-                      className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 focus:border-transparent"
                     />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium mb-2">Complemento</label>
+                    <label className="block text-sm font-medium mb-2 text-gray-900 dark:text-white">Complemento</label>
                     <input
                       type="text"
                       value={formData.complement}
                       onChange={(e) => setFormData({ ...formData, complement: e.target.value })}
                       placeholder="Apto, Bloco, etc (opcional)"
-                      className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 focus:border-transparent"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-4">
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium mb-2">Cidade</label>
+                    <label className="block text-sm font-medium mb-2 text-gray-900 dark:text-white">Cidade</label>
                     <input
                       type="text"
                       value={formData.city}
                       onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                       placeholder="São Paulo"
                       required
-                      className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 focus:border-transparent"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2">Estado</label>
+                    <label className="block text-sm font-medium mb-2 text-gray-900 dark:text-white">Estado</label>
                     <select
                       value={formData.state}
                       onChange={(e) => setFormData({ ...formData, state: e.target.value })}
                       required
-                      className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 focus:border-transparent"
                     >
                       <option value="">UF</option>
                       <option value="SP">SP</option>

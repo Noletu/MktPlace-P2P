@@ -1,8 +1,24 @@
 # 🐛 Bugs Críticos - Mktplace da Liberdade
 
-**Última Atualização**: 26/10/2025
-**Versão**: 3.0.8
-**Status**: ✅ TODOS BUGS CRÍTICOS RESOLVIDOS + BANCO RESTAURADO
+**Última Atualização**: 29/10/2025
+**Versão**: 3.0.9
+**Status**: ✅ TODOS BUGS CRÍTICOS RESOLVIDOS + DARK MODE COMPLETO
+
+---
+
+## 🎯 STATUS ATUAL
+
+### Bugs Críticos Ativos: 0 ✅
+
+Não há bugs críticos conhecidos no momento. Todas as funcionalidades principais estão operacionais:
+- ✅ Sistema de Colateral
+- ✅ Sistema de Saldo Interno
+- ✅ Chat P2P
+- ✅ Sistema de Disputas
+- ✅ Sistema de KYC (incluindo dark mode)
+- ✅ Criação de Pedidos
+- ✅ Match e Negociação
+- ✅ Sistema de Reembolso
 
 ---
 
@@ -543,6 +559,7 @@ O que acontece atualmente?
 
 | Data | Versão | Bug | Status |
 |------|--------|-----|--------|
+| 29/10 | v3.0.9 | Dark mode em formulários KYC | ✅ Resolvido |
 | 26/10 | v3.0.8 | Banco de dados desatualizado | ✅ Resolvido |
 | 25/10 | v3.0.6 | Transaction timeout (saldo interno) | ✅ Resolvido |
 | 21/10 | v0.2.8 | Erro 400 ao resolver disputa | ✅ Resolvido |
@@ -551,8 +568,8 @@ O que acontece atualmente?
 | 19/10 | v0.2.4 | Chat visível para owner | ✅ Resolvido |
 
 ### Total
-- **Bugs Críticos Identificados**: 6
-- **Bugs Críticos Resolvidos**: 6
+- **Bugs Críticos Identificados**: 7
+- **Bugs Críticos Resolvidos**: 7
 - **Taxa de Resolução**: 100% ✅
 
 ---
@@ -665,21 +682,18 @@ Ver `STATUS.md` para lista completa de melhorias.
 
 ---
 
-## 📋 Resumo da Sessão v3.0.8 (26/10/2025)
+## 📋 Resumo da Sessão v3.0.9 (29/10/2025)
 
 **Trabalho Realizado**:
-- ✅ Banco de dados completamente restaurado
-- ✅ 12 tabelas críticas criadas
-- ✅ 15 colunas adicionadas à tabela Order
-- ✅ Schema 100% sincronizado
-- ✅ 14 carteiras da plataforma configuradas
-- ✅ Usuários MASTER e ADMIN recriados
-- ✅ Documentação atualizada (CHANGELOG, STATUS, CREDENCIAIS_ADMIN)
+- ✅ Corrigido dark mode em KYC Level 1 (26 elementos)
+- ✅ Corrigido dark mode em KYC Level 2 (23 elementos)
+- ✅ Padrão de dark mode documentado
+- ✅ Todos os formulários KYC acessíveis em ambos os temas
+- ✅ Documentação atualizada (CHANGELOG, README, BUGS_CRITICOS)
 
 **Bugs Críticos Ativos**: 0 ✅
 
 **Próximos Passos**:
-1. Testes funcionais completos
-2. Validar depósito de colateral
-3. Validar criação de pedidos com saldo interno
-4. Validar sistema de reembolso
+1. Auditar outros formulários (login, registro, criar pedido)
+2. Criar componente de input reutilizável com dark mode
+3. Documentar guia de estilo para dark mode
