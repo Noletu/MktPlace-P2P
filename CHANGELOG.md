@@ -1,5 +1,81 @@
 # Changelog - Mktplace da Liberdade
 
+## [0.3.10] - 2025-10-30
+
+### 🔧 Manutenção: Correção de Versionamento Semântico
+
+#### Problema Identificado
+**Versão incorreta**: O projeto estava usando numeração `3.0.x`, que sugere uma versão de produção madura (3ª versão MAJOR).
+
+**Impacto**:
+- Versionamento não seguia Semantic Versioning (SemVer)
+- Dava impressão errada de maturidade do projeto
+- Poderia causar confusão em releases futuras
+
+#### Correção Aplicada
+
+**De:** `3.0.x` → **Para:** `0.3.x`
+
+**Rationale - Semantic Versioning (SemVer)**:
+- **0.x.x** = Desenvolvimento / Pré-lançamento (atual)
+- **1.0.0** = Primeira release de produção estável
+- **2.0.0+** = Mudanças breaking na API
+
+**Arquivos Corrigidos** (7 arquivos):
+- `package.json`: `3.0.7` → `0.3.9`
+- `CHANGELOG.md`: Todas referências `3.0.x` → `0.3.x` (22 alterações)
+- `BUGS_CRITICOS.md`: Todas referências `3.0.x` → `0.3.x` (24 alterações)
+- `CORRECAO_GESTAO_SALDO_25_10_2025.md`: 18 alterações
+- `CORRECAO_TRANSACTION_TIMEOUT_25_10_2025.md`: 10 alterações
+- `CREDENCIAIS_ADMIN.md`: 8 alterações
+- `ENDPOINTS_AUDITORIA_SALDO_25_10_2025.md`: 2 alterações
+
+**Total de alterações**: 86 correções em 7 arquivos
+
+#### Commits Realizados
+
+**Commit 1**: `521bbc0`
+```
+docs: Update documentation and fix dark mode in KYC forms (v3.0.9)
+```
+- Merge final da branch `v0.3.8/Colateral-automation` para `main`
+- Documentação de correções de dark mode
+- Atualização de status de bugs
+
+**Commit 2**: `5c3e788`
+```
+fix: Correct version numbering from 3.0.x to 0.3.x (pre-release)
+```
+- Correção de versionamento em todos os arquivos
+- Alinhamento com SemVer
+- Push para remote bem-sucedido
+
+#### Histórico de Versões Corrigidas
+
+| Versão Antiga | Versão Correta | Data |
+|---------------|----------------|------|
+| 3.0.9 | 0.3.9 | 29/10/2025 |
+| 3.0.8 | 0.3.8 | 26/10/2025 |
+| 3.0.7 | 0.3.7 | 25/10/2025 |
+| 3.0.6 | 0.3.6 | 25/10/2025 |
+
+#### Próximos Marcos de Versão
+
+- **v0.4.0**: Implementação de funcionalidades de segurança pendentes (JWT blacklist, rate limit por usuário)
+- **v0.5.0**: Preparação de infraestrutura de produção (monitoring, endereços reais)
+- **v1.0.0**: Lançamento oficial em produção
+
+#### Status Atual
+
+- ✅ Versionamento corrigido e consistente
+- ✅ Documentação atualizada
+- ✅ Commits sincronizados com remote
+- ✅ Sistema pronto para continuar desenvolvimento
+
+**Versão Atual**: `0.3.10` (pré-lançamento)
+
+---
+
 ## [0.3.9] - 2025-10-29
 
 ### 🎨 Correções de Interface: Dark Mode em Formulários KYC
