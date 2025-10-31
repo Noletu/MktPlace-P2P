@@ -1,6 +1,6 @@
 # Changelog - Mktplace da Liberdade
 
-## [3.0.9] - 2025-10-29
+## [0.3.9] - 2025-10-29
 
 ### 🎨 Correções de Interface: Dark Mode em Formulários KYC
 
@@ -55,7 +55,7 @@
 
 | Página | Status | Elementos Corrigidos |
 |--------|--------|---------------------|
-| KYC Info | ✅ Já tinha dark mode | 0 (perfeito desde v3.0.8) |
+| KYC Info | ✅ Já tinha dark mode | 0 (perfeito desde v0.3.8) |
 | KYC Level 1 | ✅ Corrigido | 26 elementos |
 | KYC Level 2 | ✅ Corrigido | 23 elementos |
 | KYC Level 3 | ➖ Não existe | N/A |
@@ -117,12 +117,12 @@
 
 #### Impacto no Usuário
 
-**Antes (v3.0.8)**:
+**Antes (v0.3.8)**:
 - ❌ Formulários KYC inutilizáveis em dark mode
 - ❌ Usuários forçados a usar light mode
 - ❌ Experiência ruim em ambientes escuros
 
-**Depois (v3.0.9)**:
+**Depois (v0.3.9)**:
 - ✅ Formulários totalmente funcionais em ambos os temas
 - ✅ Liberdade para escolher tema preferido
 - ✅ Experiência consistente em toda a aplicação
@@ -139,7 +139,7 @@
 
 ---
 
-## [3.0.8] - 2025-10-26
+## [0.3.8] - 2025-10-26
 
 ### 🔧 Manutenção: Restauração Completa do Banco de Dados
 
@@ -306,7 +306,7 @@ Após relatórios de erros em produção, foi necessário realizar uma limpeza c
 
 ---
 
-## [3.0.7] - 2025-10-25
+## [0.3.7] - 2025-10-25
 
 ### 🐛 Correções Críticas: Sistema de Gestão de Saldo Interno
 
@@ -315,7 +315,7 @@ Após relatórios de erros em produção, foi necessário realizar uma limpeza c
 **Status**: ✅ RESOLVIDO
 
 **Problema Identificado:**
-Após correção do bug de transaction timeout (v3.0.6), novos problemas foram descobertos no sistema de gestão de saldo:
+Após correção do bug de transaction timeout (v0.3.6), novos problemas foram descobertos no sistema de gestão de saldo:
 
 1. **Pedidos CANCELLED não desbloqueavam saldo**
    - Usuário cancelava pedido que usou saldo interno
@@ -436,12 +436,12 @@ Após correção do bug de transaction timeout (v3.0.6), novos problemas foram d
 
 **Pedido CANCELLED**:
 ```
-Antes (v3.0.6):
+Antes (v0.3.6):
   Total: 0.10000000 BTC
   Bloqueado: 0.00058461 BTC ❌
   Disponível: 0.09941539 BTC ❌
 
-Depois (v3.0.7):
+Depois (v0.3.7):
   Total: 0.10000000 BTC
   Bloqueado: 0 BTC ✅
   Disponível: 0.10000000 BTC ✅
@@ -449,12 +449,12 @@ Depois (v3.0.7):
 
 **Pedido COMPLETED**:
 ```
-Antes (v3.0.6):
+Antes (v0.3.6):
   Total: 0.10000000 BTC ❌ (incorreto - não debitou)
   Bloqueado: 0.00097001 BTC ❌
   Disponível: 0.09902999 BTC
 
-Depois (v3.0.7):
+Depois (v0.3.7):
   Total: 0.09902999 BTC ✅ (debitado corretamente)
   Bloqueado: 0 BTC ✅
   Disponível: 0.09902999 BTC ✅

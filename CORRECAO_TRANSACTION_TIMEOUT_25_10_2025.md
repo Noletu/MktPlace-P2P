@@ -1,7 +1,7 @@
 # Correção: Transaction Timeout no Sistema de Saldo Interno
 
 **Data**: 25/10/2025
-**Versão**: 3.0.6
+**Versão**: 0.3.6
 **Bug**: #1 - Sistema de Pré-Aprovação de Colateral
 **Status**: ✅ RESOLVIDO
 
@@ -70,7 +70,7 @@ await internalBalanceService.lockBalance(
 
 **Arquivo**: `apps/api/src/services/order.service.ts`
 
-**Versão**: 3.0.6
+**Versão**: 0.3.6
 
 ```typescript
 private async createOrderWithInternalBalance(
@@ -212,7 +212,7 @@ Resultado: Pedido criado ✅, Saldo bloqueado ❌
 - ❌ Usuário pode criar múltiplos pedidos com o mesmo saldo
 - ❌ Saldo disponível incorreto
 
-### Depois (v3.0.6)
+### Depois (v0.3.6)
 
 **Fluxo:**
 ```
@@ -310,14 +310,14 @@ WHERE orderId = 'ORDER_ID';
 **Linha 3**: `"version": "3.0.5"` → `"version": "3.0.6"`
 
 ### 4. `/BUGS_CRITICOS.md`
-**Atualização**: Bug #1 marcado como RESOLVIDO (v3.0.6)
+**Atualização**: Bug #1 marcado como RESOLVIDO (v0.3.6)
 
 ---
 
 ## 🎯 Próximos Passos
 
 1. ✅ **Executar script de correção** para limpar pedidos órfãos
-2. ✅ **Reiniciar servidor** com código v3.0.6
+2. ✅ **Reiniciar servidor** com código v0.3.6
 3. ⏳ **Testar criação de pedido** com saldo interno
 4. ⏳ **Verificar logs** para confirmar sucesso
 5. ⏳ **Monitorar** por 24h para garantir estabilidade
