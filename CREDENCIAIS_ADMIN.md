@@ -7,7 +7,7 @@
 **Role:** `MASTER`
 **KYC Level:** `LEVEL_4` (Ilimitado)
 
-⚠️ **Atualizado em 26/10/2025**: Recriado após restauração completa do banco de dados (v3.0.8)
+⚠️ **Atualizado em 26/10/2025**: Recriado após restauração completa do banco de dados (v0.3.8)
 
 ### Permissões:
 - ✅ Acesso total ao sistema
@@ -32,7 +32,7 @@
 **Role:** `ADMIN`
 **KYC Level:** `LEVEL_4` (Ilimitado)
 
-⚠️ **Atualizado em 26/10/2025**: Recriado após restauração completa do banco de dados (v3.0.8)
+⚠️ **Atualizado em 26/10/2025**: Recriado após restauração completa do banco de dados (v0.3.8)
 
 ### Permissões:
 - ✅ Gerenciar endereços da plataforma
@@ -83,7 +83,7 @@
    - **Label**: Nome identificador (opcional)
 3. Clique em "✅ Criar Endereço"
 
-### Endereços configurados (v3.0.8 - 26/10/2025):
+### Endereços configurados (v0.3.8 - 26/10/2025):
 ⚠️ **Estes são endereços de TESTE VÁLIDOS. Substitua por endereços REAIS antes de produção!**
 
 **Total**: 14 carteiras da plataforma configuradas
@@ -161,7 +161,7 @@ npx prisma db seed
 
 ## 📝 Histórico de Mudanças
 
-### 26/10/2025 (v3.0.8) - Restauração Completa do Banco de Dados
+### 26/10/2025 (v0.3.8) - Restauração Completa do Banco de Dados
 - ✅ Banco de dados deletado e recriado do zero
 - ✅ Usuário MASTER recriado via seed
 - ✅ Usuário ADMIN recriado via seed

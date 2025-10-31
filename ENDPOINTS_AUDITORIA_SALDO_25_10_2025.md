@@ -1,7 +1,7 @@
 # Endpoints de Auditoria de Saldo Admin
 
 **Data**: 25/10/2025
-**Versão**: 3.0.7
+**Versão**: 0.3.7
 **Componente**: Camada 3 - Diagnóstico Manual Admin
 
 ---

@@ -1,7 +1,7 @@
 # 🐛 Bugs Críticos - Mktplace da Liberdade
 
 **Última Atualização**: 29/10/2025
-**Versão**: 3.0.9
+**Versão**: 0.3.9
 **Status**: ✅ TODOS BUGS CRÍTICOS RESOLVIDOS + DARK MODE COMPLETO
 
 ---
@@ -73,7 +73,7 @@ Sistema apresentava múltiplos erros 500 ao tentar usar funcionalidades crítica
 #### Causa Raiz
 Schema prisma.schema foi evoluindo durante desenvolvimento, mas migrações nunca foram criadas para as novas tabelas e colunas. Banco de dados ficou dessincronizado com o código.
 
-#### Solução Implementada (v3.0.8)
+#### Solução Implementada (v0.3.8)
 
 **1. Limpeza Completa do Banco**:
 ```bash
@@ -144,7 +144,7 @@ npx prisma db seed
 - ⏳ Testes funcionais pendentes (aguardando validação do usuário)
 
 #### Documentação
-- Changelog: v3.0.8 em `CHANGELOG.md`
+- Changelog: v0.3.8 em `CHANGELOG.md`
 - Status: Atualizado em `STATUS.md`
 - Credenciais: Atualizadas em `CREDENCIAIS_ADMIN.md`
 
@@ -232,7 +232,7 @@ The database failed to respond to a query within the configured timeout
 6. Banco de dados dá timeout por conflito de transações
 7. **Resultado**: Pedido criado MAS saldo NÃO bloqueado (INCONSISTÊNCIA!)
 
-#### Solução Implementada (v3.0.6)
+#### Solução Implementada (v0.3.6)
 
 **Arquivo**: `apps/api/src/services/order.service.ts` (linhas 242-350)
 
@@ -248,7 +248,7 @@ const result = await prisma.$transaction(async (tx) => {
 await internalBalanceService.lockBalance(...);
 ```
 
-**Depois (v3.0.6 - correto):**
+**Depois (v0.3.6 - correto):**
 ```typescript
 const result = await prisma.$transaction(async (tx) => {
   // 1. Criar pedido
@@ -287,11 +287,11 @@ npx tsx scripts/fix-orphan-orders.ts
 - ❌ Pedido criado mas saldo não bloqueado
 - ❌ Inconsistência no banco de dados
 
-**Após correção (v3.0.6):**
+**Após correção (v0.3.6):**
 - Aguardando teste do usuário
 
 #### Documentação
-- Correção v3.0.6: `apps/api/src/services/order.service.ts`
+- Correção v0.3.6: `apps/api/src/services/order.service.ts`
 - Script de correção: `apps/api/scripts/fix-orphan-orders.ts`
 - Histórico: Tentativas v0.3.2 a v0.3.5 documentadas no changelog
 
@@ -306,7 +306,7 @@ O sistema está funcionando corretamente em:
 - ✅ Criação de pedidos (via depósito externo)
 - ✅ Endereços da plataforma (14 configuradas)
 - ✅ Módulo de simulação de depósito (testes)
-- ✅ Sistema de saldo interno (banco restaurado em v3.0.8)
+- ✅ Sistema de saldo interno (banco restaurado em v0.3.8)
 - ✅ Sistema de depósito de colateral
 - ✅ Sistema de reembolso
 - ✅ Sistema de disputas
@@ -559,9 +559,9 @@ O que acontece atualmente?
 
 | Data | Versão | Bug | Status |
 |------|--------|-----|--------|
-| 29/10 | v3.0.9 | Dark mode em formulários KYC | ✅ Resolvido |
-| 26/10 | v3.0.8 | Banco de dados desatualizado | ✅ Resolvido |
-| 25/10 | v3.0.6 | Transaction timeout (saldo interno) | ✅ Resolvido |
+| 29/10 | v0.3.9 | Dark mode em formulários KYC | ✅ Resolvido |
+| 26/10 | v0.3.8 | Banco de dados desatualizado | ✅ Resolvido |
+| 25/10 | v0.3.6 | Transaction timeout (saldo interno) | ✅ Resolvido |
 | 21/10 | v0.2.8 | Erro 400 ao resolver disputa | ✅ Resolvido |
 | 21/10 | v0.2.8 | Pedido permanece "Em Disputa" | ✅ Resolvido |
 | 20/10 | v0.2.6 | Match durante negociação | ✅ Resolvido |
@@ -682,7 +682,7 @@ Ver `STATUS.md` para lista completa de melhorias.
 
 ---
 
-## 📋 Resumo da Sessão v3.0.9 (29/10/2025)
+## 📋 Resumo da Sessão v0.3.9 (29/10/2025)
 
 **Trabalho Realizado**:
 - ✅ Corrigido dark mode em KYC Level 1 (26 elementos)

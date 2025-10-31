@@ -1,7 +1,7 @@
 # Correção: Gestão de Saldo em Pedidos Cancelados e Concluídos
 
 **Data**: 25/10/2025
-**Versão**: 3.0.7
+**Versão**: 0.3.7
 **Bug**: #2 - Saldo Bloqueado em Pedidos Finalizados
 **Status**: ✅ RESOLVIDO
 
@@ -59,7 +59,7 @@ Status atual: Bloqueado (não debitado) ❌
 
 **Código adicionado**:
 ```typescript
-// Desbloquear saldo interno se foi usado (CORREÇÃO v3.0.7)
+// Desbloquear saldo interno se foi usado (CORREÇÃO v0.3.7)
 if (order.collateralSource === 'INTERNAL_BALANCE' &&
     order.collateralLocked &&
     order.collateralLockedAmount) {
@@ -96,7 +96,7 @@ if (order.collateralSource === 'INTERNAL_BALANCE' &&
 
 **Código adicionado**:
 ```typescript
-// Processar saldo interno do vendedor (CORREÇÃO v3.0.7)
+// Processar saldo interno do vendedor (CORREÇÃO v0.3.7)
 if (transaction.order.collateralSource === 'INTERNAL_BALANCE' &&
     transaction.order.collateralLocked &&
     transaction.order.collateralLockedAmount) {
@@ -154,7 +154,7 @@ import { internalBalanceService } from './internal-balance.service';
 
 ### Funcionalidade
 
-Corrige pedidos órfãos criados ANTES da correção (v3.0.6 e anteriores):
+Corrige pedidos órfãos criados ANTES da correção (v0.3.6 e anteriores):
 
 **Pedidos CANCELLED**:
 1. Busca pedidos com status `CANCELLED` e saldo bloqueado
@@ -215,14 +215,14 @@ npx tsx scripts/fix-locked-balances.ts
 
 ### Pedido CANCELLED
 
-**Antes (v3.0.6):**
+**Antes (v0.3.6):**
 ```
 Saldo Total: 0.10000000 BTC
 Saldo Bloqueado: 0.00058461 BTC
 Saldo Disponível: 0.09941539 BTC ❌
 ```
 
-**Depois (v3.0.7):**
+**Depois (v0.3.7):**
 ```
 Saldo Total: 0.10000000 BTC
 Saldo Bloqueado: 0 BTC
@@ -231,14 +231,14 @@ Saldo Disponível: 0.10000000 BTC ✅
 
 ### Pedido COMPLETED
 
-**Antes (v3.0.6):**
+**Antes (v0.3.6):**
 ```
 Saldo Total: 0.10000000 BTC (incorreto!)
 Saldo Bloqueado: 0.00097001 BTC
 Saldo Disponível: 0.09902999 BTC ❌
 ```
 
-**Depois (v3.0.7):**
+**Depois (v0.3.7):**
 ```
 Saldo Total: 0.09902999 BTC (correto!)
 Saldo Bloqueado: 0 BTC
@@ -386,7 +386,7 @@ INICIAR-SIMPLES.bat
 ## 🚀 Próximos Passos
 
 1. ✅ **Executar script de correção** para limpar pedidos órfãos
-2. ✅ **Reiniciar servidor** com código v3.0.7
+2. ✅ **Reiniciar servidor** com código v0.3.7
 3. ⏳ **Testar fluxo completo** (criar, cancelar, completar)
 4. ⏳ **Monitorar logs** para confirmar desbloqueios/débitos
 5. ⏳ **Validar saldo** no frontend `/collateral-balance`
