@@ -2,7 +2,7 @@
 
 > Marketplace P2P para pagamento de boletos e PIX com criptomoedas. Mais barato, mais livre.
 
-**Versão:** 2.0 | **Status:** ✅ Sistema de Colateral Funcional | **Data:** 07/10/2025
+**Versão:** 3.0.9 | **Status:** ✅ Dark Mode Completo em KYC | **Data:** 29/10/2025
 
 ## 🚀 Início Rápido
 
