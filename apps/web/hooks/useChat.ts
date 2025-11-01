@@ -310,6 +310,34 @@ export function useChat(chatId?: string) {
     socket.emit('messages:read', { chatId });
   }, [socket, chatId]);
 
+  const loadChatHistory = useCallback(async () => {
+    if (!chatId) return;
+
+    try {
+      const token = localStorage.getItem('accessToken');
+
+      const response = await fetch(`http://localhost:3001/api/v1/chat/${chatId}/history`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setChat(data.data.chat);
+
+        // Descriptografar mensagens (incluindo arquivadas)
+        const allMessages = data.data.messages || [];
+        const decryptedMessages = await Promise.all(
+          allMessages.map((msg: ChatMessage) => decryptMessageContent(msg))
+        );
+        setMessages(decryptedMessages);
+
+        return data.data;
+      }
+    } catch (error) {
+      console.error('Failed to load chat history:', error);
+    }
+  }, [chatId, decryptMessageContent]);
+
   return {
     socket,
     messages,
@@ -322,5 +350,6 @@ export function useChat(chatId?: string) {
     stopTyping,
     markAsRead,
     loadChatMessages,
+    loadChatHistory,
   };
 }

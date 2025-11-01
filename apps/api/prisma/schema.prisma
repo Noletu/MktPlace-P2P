@@ -192,6 +192,7 @@ model Order {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   completedAt DateTime?
+  cancelledAt DateTime?
 
   transactions           Transaction[]
   disputes               Dispute[]
@@ -649,6 +650,7 @@ model Chat {
   updatedAt DateTime @updatedAt
 
   messages ChatMessage[]
+  archives ChatArchive[]
 
   @@index([orderId])
   @@index([participant1Id])
@@ -694,6 +696,40 @@ model ChatMessage {
   @@index([senderId])
   @@index([createdAt])
   @@index([isRead])
+}
+
+// Sistema de Arquivamento de Chat (Retenção de 1 ano)
+model ChatArchive {
+  id String @id @default(cuid())
+
+  // Referência ao chat original
+  originalChatId String
+  originalChat   Chat   @relation(fields: [originalChatId], references: [id], onDelete: Cascade)
+
+  // Razão do arquivamento
+  reason String // ORDER_COMPLETED, ORDER_CANCELLED, ORDER_EXPIRED, MANUAL_ARCHIVE
+
+  // Snapshot das mensagens arquivadas (JSON)
+  messagesSnapshot String // JSON array de todas as mensagens no momento do arquivamento
+
+  // Metadados do arquivamento
+  archivedBy String? // userId do admin que arquivou (null se automático)
+  archivedAt DateTime @default(now())
+
+  // Política de retenção (1 ano)
+  expiresAt DateTime // archivedAt + 1 ano
+
+  // Se já foi limpo
+  isDeleted Boolean @default(false)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([originalChatId])
+  @@index([reason])
+  @@index([expiresAt])
+  @@index([isDeleted])
+  @@index([archivedAt])
 }
 
 // Sistema completo de KYC Verification (Progressive Disclosure)

@@ -57,6 +57,20 @@ router.post('/:chatId/messages', chatController.sendMessage.bind(chatController)
  */
 router.post('/:chatId/read', chatController.markAsRead.bind(chatController));
 
+/**
+ * @route   GET /api/v1/chat/:chatId/history
+ * @desc    Buscar histórico completo (mensagens ativas + arquivadas)
+ * @access  Private
+ */
+router.get('/:chatId/history', chatController.getChatHistory.bind(chatController));
+
+/**
+ * @route   GET /api/v1/chat/:chatId/archive-status
+ * @desc    Verificar status de arquivamento do chat
+ * @access  Private
+ */
+router.get('/:chatId/archive-status', chatController.getArchiveStatus.bind(chatController));
+
 // ============================================
 // ADMIN ROUTES
 // ============================================

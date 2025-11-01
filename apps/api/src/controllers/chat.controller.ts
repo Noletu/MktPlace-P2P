@@ -266,6 +266,49 @@ export class ChatController {
       });
     }
   }
+
+  /**
+   * Buscar histórico completo do chat (ativas + arquivadas)
+   */
+  async getChatHistory(req: Request, res: Response) {
+    try {
+      const userId = req.userId!;
+      const { chatId } = req.params;
+
+      const history = await chatService.getChatHistory(chatId, userId);
+
+      res.json({
+        success: true,
+        data: history,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao buscar histórico',
+      });
+    }
+  }
+
+  /**
+   * Verificar status de arquivamento do chat
+   */
+  async getArchiveStatus(req: Request, res: Response) {
+    try {
+      const { chatId } = req.params;
+
+      const status = await chatService.getArchiveStatus(chatId);
+
+      res.json({
+        success: true,
+        data: status,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao buscar status de arquivamento',
+      });
+    }
+  }
 }
 
 export const chatController = new ChatController();

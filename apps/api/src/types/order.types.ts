@@ -42,6 +42,8 @@ export interface CreateOrderInput {
   cryptoAmount: string;
   brlAmount: string;
   orderData: BoletoData | PixData;
+  customExpirationHours?: number; // Custom expiration time (1-720 hours)
+  manualCancelOnly?: boolean; // If true, expires after 6 months instead of custom/default
 }
 
 export interface FeeCalculation {
