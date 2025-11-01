@@ -32,6 +32,7 @@ import { orderExpirationWorker } from './workers/order-expiration.worker';
 import { negotiationTimeoutWorker } from './workers/negotiation-timeout.worker';
 import { presenceMonitorWorker } from './workers/presence-monitor.worker';
 import { collateralReleaseWorker } from './workers/collateral-release.worker';
+import { chatArchiveWorker } from './workers/chat-archive.worker';
 import { initializeChatSocket } from './socket/chat.socket';
 
 dotenv.config();
@@ -269,8 +270,9 @@ httpServer.listen(port, () => {
   orderExpirationWorker.start();
   negotiationTimeoutWorker.start();
   presenceMonitorWorker.start();
+  chatArchiveWorker.start();
   // collateralReleaseWorker.start(); // DESABILITADO: processamento agora é feito direto no transaction.service.ts
-  console.log('⚙️  [workers]: All background workers started (collateral release disabled)');
+  console.log('⚙️  [workers]: All background workers started (collateral release disabled, chat archive enabled)');
 });
 
 // Exportar para uso em outros módulos

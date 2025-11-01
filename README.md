@@ -2,7 +2,19 @@
 
 > Marketplace P2P para pagamento de boletos e PIX com criptomoedas. Mais barato, mais livre.
 
-**Versão:** 3.0.9 | **Status:** ✅ Dark Mode Completo em KYC | **Data:** 29/10/2025
+**Versão:** 0.3.12 | **Status:** ✅ Tempo de Expiração Editável + Bugs Corrigidos | **Data:** 01/11/2025
+
+## 🆕 Novidades na v0.3.12 (01/11/2025)
+
+### ⏰ Tempo de Expiração Editável
+Agora vendedores podem escolher por quanto tempo suas ofertas ficam ativas:
+- **6h, 12h, 24h (padrão), 48h, 72h, 7 dias** ou **Indefinido (até 6 meses)**
+
+### 🐛 Bugs Corrigidos
+- ✅ **Avaliações funcionando**: Corrigido erro 400 ao enviar ratings
+- ✅ **Cancelamento de pedidos**: Adicionado campo `cancelledAt` ausente
+
+📋 **Ver detalhes**: [CHANGELOG.md](CHANGELOG.md) | **Bugs conhecidos**: [BUGS.md](BUGS.md)
 
 ## 🚀 Início Rápido
 

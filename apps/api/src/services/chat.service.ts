@@ -89,14 +89,8 @@ export class ChatService {
     });
 
     if (chat) {
-      // NOVO: Limpar mensagens antigas se pedido voltou para PENDING (negociação cancelada/expirada)
-      if (order.status === 'PENDING') {
-        const oldMessageCount = await prisma.chatMessage.count({ where: { chatId: chat.id } });
-        if (oldMessageCount > 0) {
-          await prisma.chatMessage.deleteMany({ where: { chatId: chat.id } });
-          console.log(`🗑️ Cleared ${oldMessageCount} old messages - order is PENDING again`);
-        }
-      }
+      // RASTREABILIDADE: Mensagens nunca são deletadas, apenas arquivadas
+      // Sistema de arquivamento com retenção de 1 ano implementado em ChatArchive
 
       // Adicionar contador de não lidas para o usuário
       const unreadCount = chat.participant1Id === userId ? chat.unreadCount1 : chat.unreadCount2;
@@ -106,7 +100,7 @@ export class ChatService {
         ...chat,
         unreadCount,
         otherParticipant,
-        messages: order.status === 'PENDING' ? [] : chat.messages, // Chat vazio se PENDING
+        messages: chat.messages, // Histórico sempre visível para rastreabilidade
       };
     }
 
@@ -513,6 +507,214 @@ export class ChatService {
     });
 
     return { success: true };
+  }
+
+  /**
+   * Arquivar mensagens do chat (retenção de 1 ano)
+   * Chamado automaticamente quando pedido é concluído ou cancelado
+   */
+  async archiveChat(chatId: string, reason: string, userId?: string) {
+    // Buscar chat com mensagens
+    const chat = await prisma.chat.findUnique({
+      where: { id: chatId },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            sender: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+        },
+        order: {
+          select: { id: true, status: true },
+        },
+      },
+    });
+
+    if (!chat) {
+      throw new Error('Chat não encontrado');
+    }
+
+    // Criar snapshot das mensagens (JSON)
+    const messagesSnapshot = JSON.stringify(chat.messages);
+
+    // Data de expiração: 1 ano a partir de agora
+    const expiresAt = new Date();
+    expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+    // Criar arquivo
+    const archive = await prisma.chatArchive.create({
+      data: {
+        originalChatId: chatId,
+        reason,
+        messagesSnapshot,
+        archivedBy: userId || null,
+        expiresAt,
+      },
+    });
+
+    logger.info('[CHAT ARCHIVE] Chat archived', {
+      chatId,
+      archiveId: archive.id,
+      reason,
+      messageCount: chat.messages.length,
+      expiresAt,
+    });
+
+    return archive;
+  }
+
+  /**
+   * Buscar mensagens arquivadas de um chat
+   */
+  async getArchivedMessages(chatId: string) {
+    const archives = await prisma.chatArchive.findMany({
+      where: {
+        originalChatId: chatId,
+        isDeleted: false,
+      },
+      orderBy: { archivedAt: 'desc' },
+    });
+
+    // Parsear mensagens do snapshot
+    const allArchivedMessages = archives.flatMap((archive) => {
+      try {
+        const messages = JSON.parse(archive.messagesSnapshot);
+        return messages.map((msg: any) => ({
+          ...msg,
+          isArchived: true,
+          archiveReason: archive.reason,
+          archivedAt: archive.archivedAt,
+          expiresAt: archive.expiresAt,
+        }));
+      } catch (error) {
+        logger.error('[CHAT ARCHIVE] Failed to parse snapshot', { archiveId: archive.id, error });
+        return [];
+      }
+    });
+
+    return allArchivedMessages;
+  }
+
+  /**
+   * Buscar histórico completo (mensagens ativas + arquivadas)
+   */
+  async getChatHistory(chatId: string, userId: string) {
+    // Verificar permissão
+    const chat = await prisma.chat.findUnique({
+      where: { id: chatId },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            sender: {
+              select: { id: true, name: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!chat) {
+      throw new Error('Chat não encontrado');
+    }
+
+    if (chat.participant1Id !== userId && chat.participant2Id !== userId) {
+      throw new Error('Você não tem permissão para acessar este chat');
+    }
+
+    // Buscar mensagens arquivadas
+    const archivedMessages = await this.getArchivedMessages(chatId);
+
+    // Combinar mensagens ativas + arquivadas
+    const allMessages = [
+      ...archivedMessages,
+      ...chat.messages.map((msg) => ({ ...msg, isArchived: false })),
+    ];
+
+    // Ordenar por data
+    allMessages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    return {
+      chat,
+      messages: allMessages,
+      hasArchived: archivedMessages.length > 0,
+    };
+  }
+
+  /**
+   * Limpar arquivos expirados (executado pelo worker)
+   * Remove arquivos com mais de 1 ano
+   */
+  async cleanupExpiredArchives() {
+    const now = new Date();
+
+    // Buscar arquivos expirados
+    const expiredArchives = await prisma.chatArchive.findMany({
+      where: {
+        expiresAt: { lte: now },
+        isDeleted: false,
+      },
+    });
+
+    if (expiredArchives.length === 0) {
+      logger.info('[CHAT ARCHIVE CLEANUP] No expired archives found');
+      return { deleted: 0 };
+    }
+
+    // Marcar como deletados (soft delete)
+    const result = await prisma.chatArchive.updateMany({
+      where: {
+        expiresAt: { lte: now },
+        isDeleted: false,
+      },
+      data: {
+        isDeleted: true,
+        deletedAt: now,
+      },
+    });
+
+    logger.info('[CHAT ARCHIVE CLEANUP] Expired archives deleted', {
+      count: result.count,
+      expiredArchives: expiredArchives.map((a) => ({
+        id: a.id,
+        chatId: a.originalChatId,
+        expiresAt: a.expiresAt,
+      })),
+    });
+
+    return { deleted: result.count };
+  }
+
+  /**
+   * Verificar status de arquivamento de um chat
+   */
+  async getArchiveStatus(chatId: string) {
+    const archives = await prisma.chatArchive.findMany({
+      where: {
+        originalChatId: chatId,
+        isDeleted: false,
+      },
+      orderBy: { archivedAt: 'desc' },
+    });
+
+    return {
+      isArchived: archives.length > 0,
+      archives: archives.map((archive) => ({
+        id: archive.id,
+        reason: archive.reason,
+        archivedAt: archive.archivedAt,
+        expiresAt: archive.expiresAt,
+        messageCount: (() => {
+          try {
+            return JSON.parse(archive.messagesSnapshot).length;
+          } catch {
+            return 0;
+          }
+        })(),
+      })),
+    };
   }
 }
 

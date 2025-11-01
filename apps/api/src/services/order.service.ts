@@ -47,6 +47,32 @@ export class OrderService {
   }
 
   /**
+   * Calcular timeout baseado nas preferências do usuário
+   * - Se manualCancelOnly = true: 6 meses
+   * - Se customExpirationHours fornecido: usar valor customizado (1-720h)
+   * - Caso contrário: 24 horas (padrão)
+   */
+  calculateTimeoutAt(customExpirationHours?: number, manualCancelOnly?: boolean): Date {
+    const timeoutAt = new Date();
+
+    if (manualCancelOnly) {
+      // Indefinido = 6 meses máximo
+      timeoutAt.setMonth(timeoutAt.getMonth() + 6);
+      console.log(`⏰ Timeout configurado: INDEFINIDO (6 meses)`);
+    } else if (customExpirationHours) {
+      // Usar tempo customizado (1-720 horas)
+      timeoutAt.setHours(timeoutAt.getHours() + customExpirationHours);
+      console.log(`⏰ Timeout configurado: ${customExpirationHours} horas`);
+    } else {
+      // Padrão: 24 horas
+      timeoutAt.setHours(timeoutAt.getHours() + FEE_CONFIG.TIMEOUT_HOURS);
+      console.log(`⏰ Timeout configurado: ${FEE_CONFIG.TIMEOUT_HOURS} horas (padrão)`);
+    }
+
+    return timeoutAt;
+  }
+
+  /**
    * Validar dados do pedido
    */
   async validateOrderCreation(input: CreateOrderInput): Promise<void> {
@@ -135,9 +161,8 @@ export class OrderService {
     // Calcular colateral necessário
     const requiredCollateral = this.calculateRequiredCollateral(input.cryptoAmount);
 
-    // Calcular timeout (24 horas)
-    const timeoutAt = new Date();
-    timeoutAt.setHours(timeoutAt.getHours() + FEE_CONFIG.TIMEOUT_HOURS);
+    // Calcular timeout baseado nas preferências do usuário
+    const timeoutAt = this.calculateTimeoutAt(input.customExpirationHours, input.manualCancelOnly);
 
     // ========== LÓGICA HÍBRIDA ==========
 
@@ -220,6 +245,8 @@ export class OrderService {
         totalFee: fees.totalFee,
         orderData: JSON.stringify(input.orderData),
         timeoutAt,
+        customExpirationHours: input.customExpirationHours,
+        manualCancelOnly: input.manualCancelOnly || false,
         paidByPlatform: false,
         // SECURITY: Só marca como confirmado se o colateral foi verificado
         collateralConfirmed,
@@ -292,6 +319,8 @@ export class OrderService {
           totalFee: fees.totalFee,
           orderData: JSON.stringify(input.orderData),
           timeoutAt,
+          customExpirationHours: input.customExpirationHours,
+          manualCancelOnly: input.manualCancelOnly || false,
           paidByPlatform: false,
           // CRITICAL: Pedido criado com colateral JÁ CONFIRMADO
           collateralConfirmed: true,

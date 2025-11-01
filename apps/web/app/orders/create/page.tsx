@@ -20,6 +20,7 @@ export default function CreateOrderPage() {
   const [brlAmount, setBrlAmount] = useState('');
   const [crypto, setCrypto] = useState('BTC');
   const [network, setNetwork] = useState('BITCOIN');
+  const [expirationTime, setExpirationTime] = useState<number | 'indefinite'>(24); // Padrão: 24 horas
 
   // PIX fields
   const [pixKey, setPixKey] = useState('');
@@ -409,6 +410,11 @@ export default function CreateOrderPage() {
       }
 
       // Salvar dados do pedido para usar após confirmação do depósito
+      // Converter expirationTime para os campos da API
+      const expirationFields = expirationTime === 'indefinite'
+        ? { manualCancelOnly: true }
+        : { customExpirationHours: expirationTime };
+
       sessionStorage.setItem('pendingOrder', JSON.stringify({
         type: 'SELL',
         paymentMethod: orderType,
@@ -426,6 +432,7 @@ export default function CreateOrderPage() {
           recipientName: boletoRecipientName,
           recipientDocument: boletoRecipientDocument,
         },
+        ...expirationFields,
         collateralAddressId: data.data.id,
       }));
 
@@ -566,6 +573,11 @@ export default function CreateOrderPage() {
 
       const token = localStorage.getItem('accessToken');
 
+      // Converter expirationTime para os campos da API
+      const expirationFields = expirationTime === 'indefinite'
+        ? { manualCancelOnly: true }
+        : { customExpirationHours: expirationTime };
+
       const createOrderResponse = await fetch('http://localhost:3001/api/v1/orders', {
         method: 'POST',
         headers: {
@@ -589,6 +601,7 @@ export default function CreateOrderPage() {
             recipientName: boletoRecipientName,
             recipientDocument: boletoRecipientDocument,
           },
+          ...expirationFields,
           useInternalBalance: true,
         }),
       });
@@ -643,6 +656,11 @@ export default function CreateOrderPage() {
       }
 
       // Salvar dados do pedido
+      // Converter expirationTime para os campos da API
+      const expirationFields = expirationTime === 'indefinite'
+        ? { manualCancelOnly: true }
+        : { customExpirationHours: expirationTime };
+
       sessionStorage.setItem('pendingOrder', JSON.stringify({
         type: 'SELL',
         paymentMethod: orderType,
@@ -660,6 +678,7 @@ export default function CreateOrderPage() {
           recipientName: boletoRecipientName,
           recipientDocument: boletoRecipientDocument,
         },
+        ...expirationFields,
         collateralAddressId: data.data.id,
       }));
 
@@ -1011,6 +1030,31 @@ export default function CreateOrderPage() {
                     orderType === 'BOLETO' && barcodeValid === true ? 'bg-gray-100 dark:bg-gray-700' : 'bg-white dark:bg-gray-700'
                   }`}
                 />
+              </div>
+
+              {/* Tempo de Expiração */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Tempo de Expiração da Oferta
+                </label>
+                <select
+                  value={expirationTime}
+                  onChange={(e) => setExpirationTime(e.target.value === 'indefinite' ? 'indefinite' : parseInt(e.target.value))}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value={6}>6 horas</option>
+                  <option value={12}>12 horas</option>
+                  <option value={24}>24 horas (padrão)</option>
+                  <option value={48}>48 horas (2 dias)</option>
+                  <option value={72}>72 horas (3 dias)</option>
+                  <option value={168}>7 dias</option>
+                  <option value="indefinite">Indefinido (até 6 meses)</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {expirationTime === 'indefinite'
+                    ? '⏰ Sua oferta ficará ativa por até 6 meses ou até você cancelar manualmente'
+                    : `⏰ Sua oferta ficará disponível por ${expirationTime} horas`}
+                </p>
               </div>
 
               {/* Criptomoeda e Rede */}

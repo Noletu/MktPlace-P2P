@@ -32,6 +32,8 @@ const CreateOrderSchema = z.object({
   orderData: z.union([BoletoDataSchema, PixDataSchema]),
   collateralAddressId: z.string().optional(), // ID do colateral confirmado
   useInternalBalance: z.boolean().optional(), // Flag para usar saldo interno
+  customExpirationHours: z.number().int().min(1).max(720).optional(), // Tempo de expiração customizado (1-720 horas = 1-30 dias)
+  manualCancelOnly: z.boolean().optional(), // Se true, expira após 6 meses ao invés de prazo padrão/customizado
 });
 
 export class OrderController {
