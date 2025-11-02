@@ -265,6 +265,36 @@ export class OrderController {
       });
     }
   }
+
+  async cancelOrderByPayer(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { orderId } = req.params;
+
+      await orderService.cancelOrderByPayer(orderId, userId);
+
+      // SECURITY: Audit log - order cancelled by payer
+      auditLogService.logFromRequest(
+        req,
+        'ORDER_CANCEL_BY_PAYER',
+        AUDIT_RESOURCES.ORDER,
+        orderId
+      );
+
+      res.json({
+        success: true,
+        message: 'Pedido cancelado com sucesso. O pedido voltou ao marketplace.',
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Erro ao cancelar pedido',
+      });
+    }
+  }
 }
 
 export const orderController = new OrderController();

@@ -33,7 +33,9 @@ import { negotiationTimeoutWorker } from './workers/negotiation-timeout.worker';
 import { presenceMonitorWorker } from './workers/presence-monitor.worker';
 import { collateralReleaseWorker } from './workers/collateral-release.worker';
 import { chatArchiveWorker } from './workers/chat-archive.worker';
+import { initializeSocketServer } from './socket/socket.server';
 import { initializeChatSocket } from './socket/chat.socket';
+import { initializeNotificationSocket } from './socket/notification.socket';
 
 dotenv.config();
 
@@ -256,14 +258,19 @@ app.use((err: Error, req: Request, res: Response, next: any) => {
 // Criar servidor HTTP (necessário para Socket.io)
 const httpServer = createServer(app);
 
-// Inicializar Socket.io para chat em tempo real
-const chatSocket = initializeChatSocket(httpServer);
+// Inicializar Socket.io centralizado (único servidor para todos os namespaces)
+const io = initializeSocketServer(httpServer);
+
+// Inicializar namespaces de chat e notificações
+const chatSocket = initializeChatSocket(io);
+const notificationSocket = initializeNotificationSocket(io);
 
 httpServer.listen(port, () => {
   logger.info(`Server started on port ${port}`);
   console.log(`⚡️ [server]: Server is running at http://localhost:${port}`);
   console.log(`🚀 [server]: Mktplace da Liberdade API v0.1.0`);
-  console.log(`💬 [socket]: Chat WebSocket enabled at ws://localhost:${port}`);
+  console.log(`💬 [socket]: Chat WebSocket enabled at ws://localhost:${port}/chat`);
+  console.log(`🔔 [socket]: Notification WebSocket enabled at ws://localhost:${port}/notifications`);
 
   // Iniciar workers
   depositMonitorWorker.start();
@@ -276,4 +283,4 @@ httpServer.listen(port, () => {
 });
 
 // Exportar para uso em outros módulos
-export { chatSocket };
+export { chatSocket, notificationSocket };

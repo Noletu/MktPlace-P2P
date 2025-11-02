@@ -665,6 +665,86 @@ export class OrderService {
       }
     });
   }
+
+  /**
+   * Cancelar pedido pelo PAGADOR (comprador)
+   * O pedido VOLTA para o marketplace (status PENDING) ao invés de ser cancelado
+   * Colateral permanece bloqueado pois o vendedor continua querendo vender
+   */
+  async cancelOrderByPayer(orderId: string, payerId: string): Promise<void> {
+    const order = await this.getOrderById(orderId);
+
+    if (!order) {
+      throw new Error('Pedido não encontrado');
+    }
+
+    // Verificar se existe transação e se o usuário é o pagador
+    if (!order.transactions || order.transactions.length === 0) {
+      throw new Error('Este pedido não tem um pagador associado');
+    }
+
+    const transaction = order.transactions[0];
+    if (transaction.payerId !== payerId) {
+      throw new Error('Você não tem permissão para cancelar este pedido');
+    }
+
+    // Só permite cancelamento em status MATCHED (após aceitar, antes de pagar)
+    if (order.status !== OrderStatus.MATCHED) {
+      throw new Error('Este pedido não pode ser cancelado no status atual');
+    }
+
+    // Voltar pedido para PENDING (volta ao marketplace)
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: OrderStatus.PENDING,
+      },
+    });
+
+    // Deletar/cancelar a transaction (desvincula o pagador)
+    await prisma.transaction.delete({
+      where: { id: transaction.id },
+    });
+
+    console.log(`🔄 Pedido ${orderId} voltou ao marketplace após cancelamento do pagador`);
+
+    // NÃO desbloqueia colateral - ele permanece bloqueado pois o pedido continua ativo
+
+    // Enviar notificações
+    setImmediate(async () => {
+      try {
+        // Notificar o pagador (comprador)
+        await notificationService.createNotification({
+          userId: payerId,
+          type: 'ORDER_STATUS_CHANGE',
+          category: 'ORDER',
+          title: '✅ Cancelamento Confirmado',
+          message: 'Você cancelou o aceite do pedido. O pedido voltou ao marketplace.',
+          actionUrl: `/orders/${orderId}`,
+          actionLabel: 'Ver Pedido',
+          relatedId: orderId,
+          relatedType: 'ORDER',
+          priority: 'NORMAL',
+        });
+
+        // Notificar o vendedor (criador do pedido)
+        await notificationService.createNotification({
+          userId: order.userId,
+          type: 'ORDER_STATUS_CHANGE',
+          category: 'ORDER',
+          title: '🔄 Comprador Cancelou',
+          message: 'O comprador cancelou o aceite. Seu pedido voltou ao marketplace e está disponível para outros compradores.',
+          actionUrl: `/orders/${orderId}`,
+          actionLabel: 'Ver Pedido',
+          relatedId: orderId,
+          relatedType: 'ORDER',
+          priority: 'NORMAL',
+        });
+      } catch (error) {
+        console.error('Failed to send payer cancellation notifications:', error);
+      }
+    });
+  }
 }
 
 export const orderService = new OrderService();

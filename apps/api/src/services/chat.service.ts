@@ -270,7 +270,7 @@ export class ChatService {
             category: 'ORDER',
             title: '💬 Nova mensagem',
             message: notificationMessage,
-            actionUrl: `/orders/${chat.orderId}/chat`,
+            actionUrl: `/orders/${chat.orderId}?tab=chat`,
             actionLabel: 'Ver Chat',
             relatedId: chat.orderId,
             relatedType: 'ORDER',

@@ -26,4 +26,7 @@ router.post('/:orderId/match', orderController.matchOrder.bind(orderController))
 // Cancelar pedido
 router.post('/:orderId/cancel', orderController.cancelOrder.bind(orderController));
 
+// Cancelar pedido pelo pagador (comprador) - pedido volta ao marketplace
+router.post('/:orderId/cancel-by-payer', orderController.cancelOrderByPayer.bind(orderController));
+
 export default router;

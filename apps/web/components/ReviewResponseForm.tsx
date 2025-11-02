@@ -1,0 +1,126 @@
+import { useState } from 'react';
+import { Send, Loader2 } from 'lucide-react';
+
+interface ReviewResponseFormProps {
+  reviewId: string;
+  onSuccess?: () => void;
+  onCancel?: () => void;
+}
+
+export function ReviewResponseForm({ reviewId, onSuccess, onCancel }: ReviewResponseFormProps) {
+  const [response, setResponse] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const maxLength = 500;
+  const remainingChars = maxLength - response.length;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!response.trim()) {
+      setError('Por favor, escreva uma resposta');
+      return;
+    }
+
+    if (response.length > maxLength) {
+      setError(`A resposta não pode ter mais de ${maxLength} caracteres`);
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('Você precisa estar logado');
+      }
+
+      const res = await fetch(`http://localhost:3001/api/v1/reviews/${reviewId}/respond`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ response: response.trim() }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Erro ao enviar resposta');
+      }
+
+      setResponse('');
+      if (onSuccess) onSuccess();
+    } catch (err: any) {
+      setError(err.message || 'Erro ao enviar resposta');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label htmlFor="response" className="block text-sm font-medium text-gray-700 mb-2">
+          Sua Resposta
+        </label>
+        <textarea
+          id="response"
+          value={response}
+          onChange={(e) => setResponse(e.target.value)}
+          rows={4}
+          maxLength={maxLength}
+          placeholder="Escreva sua resposta à avaliação..."
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+          disabled={loading}
+        />
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-sm text-gray-500">
+            Máximo {maxLength} caracteres
+          </p>
+          <p className={`text-sm ${remainingChars < 50 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+            {remainingChars} restantes
+          </p>
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
+          {error}
+        </div>
+      )}
+
+      <div className="flex gap-3 justify-end">
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            disabled={loading}
+          >
+            Cancelar
+          </button>
+        )}
+        <button
+          type="submit"
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={loading || !response.trim()}
+        >
+          {loading ? (
+            <>
+              <Loader2 className="animate-spin" size={18} />
+              Enviando...
+            </>
+          ) : (
+            <>
+              <Send size={18} />
+              Enviar Resposta
+            </>
+          )}
+        </button>
+      </div>
+    </form>
+  );
+}
