@@ -1,5 +1,82 @@
 # Implementações Concluídas - MktPlace P2P
 
+## 🆕 Implementações Mais Recentes (02/11/2025)
+
+### 23. ✅ Sistema de Cancelamento pelo Pagador
+
+**Data**: 02/11/2025
+
+**Arquivos modificados**:
+- `/apps/api/src/services/order.service.ts` (linhas 669-748)
+- `/apps/api/src/controllers/order.controller.ts` (linhas 269-297)
+- `/apps/api/src/routes/order.routes.ts` (linha 30)
+- `/apps/web/app/orders/[orderId]/page.tsx` (linhas 69-70, 502-536, 915-927, 1190-1251)
+
+**Funcionalidades**:
+- **Botão "Cancelar Aceite"** para pagadores em status MATCHED
+- Pedido volta automaticamente ao marketplace (status PENDING)
+- Colateral do vendedor permanece bloqueado
+- Sem penalidade para o comprador
+- Modal explicativo com todas as informações
+- Notificações automáticas para ambas as partes
+- Nova rota API: `POST /api/v1/orders/:orderId/cancel-by-payer`
+
+**Diferença do cancelamento do vendedor**:
+| Aspecto | Vendedor Cancela | Pagador Cancela |
+|---------|------------------|-----------------|
+| Status Final | CANCELLED | PENDING (volta ao marketplace) |
+| Colateral | Devolvido (com taxa) | Permanece bloqueado |
+| Pedido no Marketplace | Removido | Volta a aparecer |
+| Penalidade | Taxa de rede | Nenhuma |
+
+**Status**: Totalmente funcional ✅
+
+---
+
+### 24. ✅ Correções Críticas de Notificações e Chat
+
+**Data**: 02/11/2025
+
+**Problemas resolvidos**:
+
+1. **URLs de Notificação de Chat** (404 Error)
+   - **Problema**: URLs antigas `/orders/{id}/chat` resultavam em 404
+   - **Solução**:
+     - Backend atualizado para gerar `/orders/{id}?tab=chat`
+     - Frontend com função `normalizeNotificationUrl()` para compatibilidade
+     - Script de migração criado: `fix-chat-notification-urls.ts` (8 notificações atualizadas)
+   - **Arquivos**:
+     - `apps/api/src/services/chat.service.ts` (linha 273)
+     - `apps/web/utils/notificationUtils.ts` (arquivo novo)
+     - `apps/web/components/NotificationBell.tsx`
+     - `apps/web/app/notifications/page.tsx`
+     - `apps/api/scripts/fix-chat-notification-urls.ts` (arquivo novo)
+
+2. **Chat Tab para Pedidos PENDING** (Página em branco)
+   - **Problema**: Clicar em notificação de chat para pedido PENDING resultava em página vazia
+   - **Causa**: Função `shouldShowChat()` não incluía status PENDING
+   - **Solução**:
+     - Adicionado PENDING aos statuses permitidos
+     - Priorizada verificação `chatId !== null`
+     - Adicionado useEffect de fallback defensivo
+   - **Arquivo**: `apps/web/app/orders/[orderId]/page.tsx` (linhas 597-611, 118-129)
+
+3. **Botão "Marcar todas como lidas"** (Não funcionava)
+   - **Problema**: Botão não fazia nada ao clicar
+   - **Causa**: HTTP method errado (PATCH ao invés de POST) e endpoint incorreto
+   - **Solução**: Corrigido method e endpoint em `NotificationBell.tsx`
+   - **Arquivo**: `apps/web/components/NotificationBell.tsx` (linhas 42, 60-62)
+
+4. **Erro Prisma no Cancelamento pelo Pagador**
+   - **Problema**: `Invalid prisma.order.update() - Field 'matchedAt' not found`
+   - **Causa**: Tentativa de atualizar campo inexistente no schema
+   - **Solução**: Removida linha `matchedAt: null` do update
+   - **Arquivo**: `apps/api/src/services/order.service.ts` (linha 697-702)
+
+**Status**: Todos os bugs críticos resolvidos ✅
+
+---
+
 ## ✅ Resumo das Mudanças
 
 Todas as implementações solicitadas foram concluídas com sucesso. Abaixo está o detalhamento de cada feature:

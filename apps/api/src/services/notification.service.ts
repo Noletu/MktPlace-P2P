@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger';
+import { getNotificationSocket } from '../socket/notification.socket';
 
 const prisma = new PrismaClient();
 
@@ -53,6 +54,32 @@ export class NotificationService {
         type: input.type,
         category: input.category,
       });
+
+      // Emitir evento WebSocket para usuário conectado
+      try {
+        const notificationSocket = getNotificationSocket();
+        notificationSocket.sendNotificationToUser(input.userId, {
+          id: notification.id,
+          title: notification.title,
+          message: notification.message,
+          category: notification.category,
+          priority: notification.priority,
+          actionUrl: notification.actionUrl || undefined,
+          isRead: notification.isRead,
+          createdAt: notification.createdAt.toISOString(),
+        });
+
+        // Atualizar contagem não lidas
+        const unreadCount = await this.getUnreadCount(input.userId);
+        const total = await prisma.notification.count({ where: { userId: input.userId } });
+        notificationSocket.updateUnreadCount(input.userId, { unreadCount, total });
+      } catch (socketError: any) {
+        // Socket não inicializado ainda ou usuário offline - não é erro crítico
+        logger.warn('[NOTIFICATION] WebSocket emission failed', {
+          error: socketError.message,
+          notificationId: notification.id,
+        });
+      }
 
       return notification;
     } catch (error: any) {
@@ -111,13 +138,30 @@ export class NotificationService {
       return notification; // Já está lida
     }
 
-    return await prisma.notification.update({
+    const updated = await prisma.notification.update({
       where: { id: notificationId },
       data: {
         isRead: true,
         readAt: new Date(),
       },
     });
+
+    // Emitir evento WebSocket
+    try {
+      const notificationSocket = getNotificationSocket();
+      notificationSocket.notifyNotificationRead(userId, notificationId);
+
+      // Atualizar contagem não lidas
+      const unreadCount = await this.getUnreadCount(userId);
+      const total = await prisma.notification.count({ where: { userId } });
+      notificationSocket.updateUnreadCount(userId, { unreadCount, total });
+    } catch (socketError: any) {
+      logger.warn('[NOTIFICATION] WebSocket emission failed (markAsRead)', {
+        error: socketError.message,
+      });
+    }
+
+    return updated;
   }
 
   /**
@@ -131,6 +175,20 @@ export class NotificationService {
         readAt: new Date(),
       },
     });
+
+    // Emitir evento WebSocket
+    try {
+      const notificationSocket = getNotificationSocket();
+      notificationSocket.notifyAllRead(userId);
+
+      // Atualizar contagem (deve ser 0 agora)
+      const total = await prisma.notification.count({ where: { userId } });
+      notificationSocket.updateUnreadCount(userId, { unreadCount: 0, total });
+    } catch (socketError: any) {
+      logger.warn('[NOTIFICATION] WebSocket emission failed (markAllAsRead)', {
+        error: socketError.message,
+      });
+    }
 
     return { success: true };
   }
@@ -151,9 +209,28 @@ export class NotificationService {
       throw new Error('Você não tem permissão para deletar esta notificação');
     }
 
+    const wasUnread = !notification.isRead;
+
     await prisma.notification.delete({
       where: { id: notificationId },
     });
+
+    // Emitir evento WebSocket
+    try {
+      const notificationSocket = getNotificationSocket();
+      notificationSocket.notifyNotificationDeleted(userId, notificationId);
+
+      // Atualizar contagem se era não lida
+      if (wasUnread) {
+        const unreadCount = await this.getUnreadCount(userId);
+        const total = await prisma.notification.count({ where: { userId } });
+        notificationSocket.updateUnreadCount(userId, { unreadCount, total });
+      }
+    } catch (socketError: any) {
+      logger.warn('[NOTIFICATION] WebSocket emission failed (deleteNotification)', {
+        error: socketError.message,
+      });
+    }
 
     return { success: true };
   }
@@ -165,6 +242,18 @@ export class NotificationService {
     await prisma.notification.deleteMany({
       where: { userId, isRead: true },
     });
+
+    // Emitir evento WebSocket para atualizar contagem total
+    try {
+      const notificationSocket = getNotificationSocket();
+      const unreadCount = await this.getUnreadCount(userId);
+      const total = await prisma.notification.count({ where: { userId } });
+      notificationSocket.updateUnreadCount(userId, { unreadCount, total });
+    } catch (socketError: any) {
+      logger.warn('[NOTIFICATION] WebSocket emission failed (deleteAllRead)', {
+        error: socketError.message,
+      });
+    }
 
     return { success: true };
   }
@@ -426,7 +515,7 @@ export class NotificationService {
       category: 'WALLET',
       title: '💎 Depósito Confirmado',
       message: `Seu depósito de ${amount} ${cryptoType} foi confirmado!`,
-      actionUrl: `/wallet`,
+      actionUrl: `/wallets`,
       actionLabel: 'Ver Carteira',
       relatedId: txHash,
       relatedType: 'DEPOSIT',
@@ -445,7 +534,7 @@ export class NotificationService {
       category: 'WALLET',
       title: '💸 Saque Processado',
       message: `Seu saque de ${amount} ${cryptoType} foi processado!`,
-      actionUrl: `/wallet`,
+      actionUrl: `/wallets`,
       actionLabel: 'Ver Transação',
       relatedId: txHash,
       relatedType: 'WITHDRAWAL',
@@ -468,7 +557,7 @@ export class NotificationService {
       category: 'KYC',
       title: '✅ KYC Aprovado!',
       message: `Seu KYC nível ${level} foi aprovado! Você agora tem acesso a novos recursos.`,
-      actionUrl: `/profile/kyc`,
+      actionUrl: `/kyc/info`,
       actionLabel: 'Ver Perfil',
       relatedId: userId,
       relatedType: 'KYC',
@@ -488,7 +577,7 @@ export class NotificationService {
       message: reason
         ? `Seu KYC nível ${level} foi rejeitado: ${reason}`
         : `Seu KYC nível ${level} foi rejeitado. Tente novamente.`,
-      actionUrl: `/profile/kyc`,
+      actionUrl: `/kyc/info`,
       actionLabel: 'Tentar Novamente',
       relatedId: userId,
       relatedType: 'KYC',

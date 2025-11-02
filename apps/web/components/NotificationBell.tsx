@@ -1,20 +1,70 @@
 'use client';
 
-import { useState } from 'react';
-import { useNotifications } from '../hooks/useNotifications';
+import { useState, useEffect } from 'react';
+import { useNotificationContext } from '@/providers/NotificationProvider';
 import { useRouter } from 'next/navigation';
+import { normalizeNotificationUrl } from '@/utils/notificationUtils';
 
 export function NotificationBell() {
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+  const { notifications, unreadCount, setNotifications, setUnreadCount } = useNotificationContext();
   const [isOpen, setIsOpen] = useState(false);
   const router = useRouter();
 
+  // Carregar notificações iniciais (apenas uma vez)
+  useEffect(() => {
+    const fetchInitialNotifications = async () => {
+      try {
+        const token = localStorage.getItem('accessToken');
+        if (!token) return;
+
+        const response = await fetch('http://localhost:3001/api/v1/notifications?limit=10', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setNotifications(data.data.notifications || []);
+          setUnreadCount(data.data.unreadCount || 0);
+        }
+      } catch (error) {
+        console.error('Failed to fetch initial notifications:', error);
+      }
+    };
+
+    fetchInitialNotifications();
+  }, [setNotifications, setUnreadCount]);
+
   const handleNotificationClick = async (notification: any) => {
-    await markAsRead(notification.id);
+    // Marcar como lida via API (vai emitir WebSocket event que atualiza o context)
+    if (!notification.isRead) {
+      try {
+        const token = localStorage.getItem('accessToken');
+        await fetch(`http://localhost:3001/api/v1/notifications/${notification.id}/read`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch (error) {
+        console.error('Failed to mark notification as read:', error);
+      }
+    }
+
     setIsOpen(false);
 
     if (notification.actionUrl) {
-      router.push(notification.actionUrl);
+      const normalizedUrl = normalizeNotificationUrl(notification.actionUrl);
+      router.push(normalizedUrl);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      await fetch('http://localhost:3001/api/v1/notifications/mark-all-read', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (error) {
+      console.error('Failed to mark all as read:', error);
     }
   };
 
@@ -48,7 +98,7 @@ export function NotificationBell() {
             <h3 className="font-semibold text-gray-900">Notificações</h3>
             {unreadCount > 0 && (
               <button
-                onClick={() => markAllAsRead()}
+                onClick={handleMarkAllAsRead}
                 className="text-sm text-blue-600 hover:text-blue-800"
               >
                 Marcar todas como lidas

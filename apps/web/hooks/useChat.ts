@@ -151,7 +151,7 @@ export function useChat(chatId?: string) {
     const token = localStorage.getItem('accessToken');
     if (!token) return;
 
-    const newSocket = io('http://localhost:3001', {
+    const newSocket = io('http://localhost:3001/chat', {
       auth: { token },
       path: '/socket.io/',
     });

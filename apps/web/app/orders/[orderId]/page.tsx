@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import ChatWindow from '@/components/chat/ChatWindow';
 import ChatHistoryViewer from '@/components/chat/ChatHistoryViewer';
 import Tabs from '@/components/Tabs';
@@ -51,6 +51,7 @@ interface Transaction {
 export default function OrderDetailsPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const orderId = params.orderId as string;
 
   const [order, setOrder] = useState<Order | null>(null);
@@ -65,11 +66,17 @@ export default function OrderDetailsPage() {
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [modalProofImage, setModalProofImage] = useState<string>('');
   const [chatUnreadCount, setChatUnreadCount] = useState<number>(0);
+  const [showPayerCancelModal, setShowPayerCancelModal] = useState(false);
+  const [cancellingAsPayer, setCancellingAsPayer] = useState(false);
   const [showDisputeModal, setShowDisputeModal] = useState(false);
   const [disputeId, setDisputeId] = useState<string | null>(null);
 
-  // Sistema de Abas
-  const [activeTab, setActiveTab] = useState<string>('details');
+  // Sistema de Abas - Detecta tab da URL
+  const initialTab = searchParams.get('tab') || 'details';
+  const validTabs = ['details', 'payment', 'timeline', 'chat', 'history'];
+  const [activeTab, setActiveTab] = useState<string>(
+    validTabs.includes(initialTab) ? initialTab : 'details'
+  );
   const [chatId, setChatId] = useState<string | null>(null);
 
   // Review system states
@@ -101,6 +108,27 @@ export default function OrderDetailsPage() {
       }
     }
   }, []);
+
+  // Detectar mudanças no parâmetro 'tab' da URL
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && validTabs.includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  // Garantir que activeTab sempre corresponde a uma aba existente (fallback defensivo)
+  useEffect(() => {
+    if (!order) return;
+
+    const tabs = buildTabs();
+    const tabExists = tabs.some(t => t.id === activeTab);
+
+    if (!tabExists && activeTab !== 'details') {
+      console.warn(`Tab '${activeTab}' não existe, voltando para 'details'`);
+      setActiveTab('details');
+    }
+  }, [order, chatId, activeTab]);
 
   const fetchOrder = async () => {
     try {
@@ -471,6 +499,42 @@ export default function OrderDetailsPage() {
     }
   };
 
+  const handlePayerCancelOrder = async () => {
+    setCancellingAsPayer(true);
+    setError('');
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('Você precisa estar logado');
+      }
+
+      const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}/cancel-by-payer`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao cancelar pedido');
+      }
+
+      alert('✅ Cancelamento confirmado! O pedido voltou ao marketplace.');
+      setShowPayerCancelModal(false);
+      await fetchOrder();
+      router.push('/marketplace');
+    } catch (err: any) {
+      setError(err.message);
+      alert(err.message);
+    } finally {
+      setCancellingAsPayer(false);
+    }
+  };
+
   const handleSubmitReview = async (reviewData: ReviewData) => {
     try {
       const token = localStorage.getItem('accessToken');
@@ -570,13 +634,18 @@ export default function OrderDetailsPage() {
   // Funções auxiliares para o sistema de abas
   const shouldShowChat = () => {
     if (!order) return false;
+
+    // Se chat existe, SEMPRE mostrar (prioridade máxima)
+    if (chatId !== null) return true;
+
+    // Caso contrário, verificar status do pedido
     return (
+      order.status === 'PENDING' ||
       order.status === 'IN_NEGOTIATION' ||
       order.status === 'MATCHED' ||
       order.status === 'PAYMENT_SENT' ||
       order.status === 'VALIDATING' ||
-      order.status === 'COMPLETED' ||
-      chatId !== null
+      order.status === 'COMPLETED'
     );
   };
 
@@ -880,6 +949,21 @@ export default function OrderDetailsPage() {
                     </button>
                   )}
 
+                  {/* Cancelar Aceite - Pagador no status MATCHED (antes do pagamento) */}
+                  {isPayer && order.status === 'MATCHED' && (
+                    <div>
+                      <button
+                        onClick={() => setShowPayerCancelModal(true)}
+                        className="w-full px-4 py-2 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg"
+                      >
+                        ❌ Cancelar Aceite
+                      </button>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                        Desistir deste pedido (sem penalidade)
+                      </p>
+                    </div>
+                  )}
+
                   {/* Confirmar Pagamento Recebido - Vendedor após comprovante enviado */}
                   {isCreator && (order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
                     <button
@@ -1097,6 +1181,69 @@ export default function OrderDetailsPage() {
                 className="flex-1 px-4 py-3 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg disabled:opacity-50"
               >
                 {cancelling ? 'Cancelando...' : 'Confirmar e Pagar Taxas'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Cancelamento do Pagador */}
+      {showPayerCancelModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full p-6">
+            <h3 className="text-xl font-bold mb-4 text-orange-600 dark:text-orange-400">⚠️ Cancelar Aceite</h3>
+
+            <div className="space-y-4 mb-6">
+              <p className="text-gray-700 dark:text-gray-300 font-semibold">
+                Você tem certeza que deseja cancelar este pedido?
+              </p>
+
+              <div className="bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-300 dark:border-blue-700 rounded-lg p-4">
+                <h4 className="font-bold text-blue-800 dark:text-blue-200 mb-3 flex items-center gap-2">
+                  <span className="text-2xl">ℹ️</span>
+                  O que acontece ao cancelar
+                </h4>
+                <ul className="text-sm text-blue-900 dark:text-blue-300 space-y-2">
+                  <li className="flex gap-2">
+                    <span>•</span>
+                    <span>Você <strong>NÃO depositou colateral</strong>, então não há taxas para você.</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span>•</span>
+                    <span>O pedido <strong>voltará ao marketplace</strong> para outros compradores.</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span>•</span>
+                    <span>O vendedor será notificado do cancelamento.</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span>•</span>
+                    <span>O colateral do vendedor <strong>permanecerá bloqueado</strong> (pedido continua ativo).</span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="bg-green-50 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded-lg p-3">
+                <p className="text-sm text-green-900 dark:text-green-200">
+                  <strong>✅ Sem Penalidade:</strong> Você pode cancelar sem custo enquanto o pagamento não foi feito.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowPayerCancelModal(false)}
+                disabled={cancellingAsPayer}
+                className="flex-1 px-4 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg disabled:opacity-50"
+              >
+                ← Voltar
+              </button>
+              <button
+                onClick={handlePayerCancelOrder}
+                disabled={cancellingAsPayer}
+                className="flex-1 px-4 py-3 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg disabled:opacity-50"
+              >
+                {cancellingAsPayer ? 'Cancelando...' : 'Confirmar Cancelamento'}
               </button>
             </div>
           </div>
