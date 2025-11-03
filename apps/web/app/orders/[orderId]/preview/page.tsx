@@ -8,6 +8,7 @@ import { formatBRL } from '@/utils/formatters';
 import ThemeToggle from '@/components/ThemeToggle';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import { CryptoType } from '@mktplace/shared';
+import AppHeader from '@/components/AppHeader';
 
 interface Order {
   id: string;
@@ -186,8 +187,10 @@ export default function OrderPreviewPage() {
   const isInNegotiationWithOther = order.status === 'IN_NEGOTIATION' && order.negotiatingUserId !== currentUserId;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
-      <div className="max-w-6xl mx-auto">
+    <>
+      <AppHeader />
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
+        <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Preview do Pedido</h1>
           <div className="flex gap-4">
@@ -435,5 +438,6 @@ export default function OrderPreviewPage() {
         )}
       </div>
     </div>
+    </>
   );
 }

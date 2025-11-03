@@ -284,7 +284,6 @@ export default function CollateralBalancePage() {
                 💰 Meu Saldo de Colateral
               </h1>
             </div>
-            <ThemeToggle />
           </div>
         </div>
       </header>
