@@ -24,7 +24,7 @@ import chatRoutes from './routes/chat.routes';
 import keysRoutes from './routes/keys.routes';
 import presenceRoutes from './routes/presence.routes';
 import negotiationRoutes from './routes/negotiation.routes';
-// import statsRoutes from './routes/stats.routes';
+import statsRoutes from './routes/stats.routes';
 import { apiLimiter } from './middleware/rateLimiter.middleware';
 import { logger } from './utils/logger';
 import { depositMonitorWorker } from './workers/deposit-monitor.worker';
@@ -216,7 +216,7 @@ app.use('/api/v1/presence', presenceRoutes);
 app.use('/api/v1/negotiation', negotiationRoutes);
 
 // Stats routes (user activity statistics)
-// app.use('/api/v1/stats', statsRoutes);
+app.use('/api/v1/stats', statsRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
