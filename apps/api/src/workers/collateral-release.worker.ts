@@ -106,14 +106,28 @@ class CollateralReleaseWorker {
     logger.info(`   Status: ${order.status}`);
     logger.info(`   Valor bloqueado: ${order.collateralLockedAmount} ${order.cryptoType}`);
 
-    // Desbloquear saldo
-    await internalBalanceService.unlockBalance(
-      order.userId,
-      order.cryptoType,
-      order.cryptoNetwork,
-      order.collateralLockedAmount,
-      order.id
-    );
+    // Decidir ação baseado no status do pedido
+    if (order.status === 'COMPLETED') {
+      // Pedido completado: deduzir colateral (gasto permanente)
+      logger.info(`💸 Pedido completado - deduzindo colateral do saldo total`);
+      await internalBalanceService.deductCollateral(
+        order.userId,
+        order.cryptoType,
+        order.cryptoNetwork,
+        order.collateralLockedAmount,
+        order.id
+      );
+    } else {
+      // Pedido cancelado/timeout/expired: apenas desbloquear (devolver ao disponível)
+      logger.info(`↩️ Pedido ${order.status} - desbloqueando colateral (devolvendo ao disponível)`);
+      await internalBalanceService.unlockBalance(
+        order.userId,
+        order.cryptoType,
+        order.cryptoNetwork,
+        order.collateralLockedAmount,
+        order.id
+      );
+    }
 
     // Atualizar pedido para marcar que colateral foi liberado
     await prisma.order.update({
@@ -124,7 +138,7 @@ class CollateralReleaseWorker {
       },
     });
 
-    logger.info(`✅ Colateral liberado com sucesso para pedido ${order.id}`);
+    logger.info(`✅ Colateral processado com sucesso para pedido ${order.id}`);
 
     // Registrar no audit log
     await prisma.auditLog.create({
@@ -207,12 +221,5 @@ class CollateralReleaseWorker {
 
 export const collateralReleaseWorker = new CollateralReleaseWorker();
 
-// Auto-start do worker quando o módulo é importado
-if (process.env.NODE_ENV !== 'test') {
-  collateralReleaseWorker.start();
-
-  // Verificar pedidos órfãos a cada 6 horas
-  setInterval(() => {
-    collateralReleaseWorker.checkOrphanedCollateral();
-  }, 6 * 60 * 60 * 1000);
-}
+// NÃO fazer auto-start aqui - o worker é iniciado manualmente no index.ts
+// para evitar inicializações duplas que causam deadlock no SQLite

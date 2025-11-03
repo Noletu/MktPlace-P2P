@@ -16,4 +16,10 @@ router.get('/:id/status', collateralController.checkPaymentStatus.bind(collatera
 // Simular pagamento (desenvolvimento apenas)
 router.post('/:id/simulate-payment', collateralController.simulatePayment.bind(collateralController));
 
+// Requisitar saque
+router.post('/withdraw', collateralController.requestWithdrawal.bind(collateralController));
+
+// Simular conclusão de saque (desenvolvimento apenas)
+router.post('/withdraw/:id/simulate-complete', collateralController.simulateWithdrawalComplete.bind(collateralController));
+
 export default router;
