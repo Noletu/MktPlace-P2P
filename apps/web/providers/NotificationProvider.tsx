@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { useNotificationSocket } from '@/hooks/useNotificationSocket';
 import { useToast } from '@/hooks/useToast';
+import { playNotificationSound } from '@/utils/sound.utils';
 
 interface Notification {
   id: string;
@@ -52,6 +53,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       type: toastType,
       duration: notification.priority === 'URGENT' ? 10000 : 5000,
     });
+
+    // Play notification sound based on priority
+    const soundPriority = notification.priority as 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+    playNotificationSound(soundPriority);
   }, [showToast]);
 
   // Callback quando notificação é marcada como lida via WebSocket
