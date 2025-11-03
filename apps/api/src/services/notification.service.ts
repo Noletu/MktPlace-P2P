@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger';
+import { getChatSocket } from '../socket/chat.socket';
 
 const prisma = new PrismaClient();
 
@@ -53,6 +54,22 @@ export class NotificationService {
         type: input.type,
         category: input.category,
       });
+
+      // Emit WebSocket event for real-time notification
+      try {
+        const chatSocket = getChatSocket();
+        chatSocket.sendToUser(input.userId, 'notification:new', notification);
+        logger.info('[NOTIFICATION] WebSocket event emitted', {
+          userId: input.userId,
+          notificationId: notification.id,
+        });
+      } catch (error: any) {
+        // Socket may not be initialized yet or user may not be connected
+        logger.debug('[NOTIFICATION] Could not emit WebSocket event', {
+          error: error.message,
+          userId: input.userId,
+        });
+      }
 
       return notification;
     } catch (error: any) {

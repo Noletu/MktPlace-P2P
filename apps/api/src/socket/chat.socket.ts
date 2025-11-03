@@ -248,7 +248,9 @@ export class ChatSocketServer {
     if (socketId) {
       this.io.to(socketId).emit(event, data);
       logger.info('[SOCKET] Sent event to user', { userId, event });
+      return true;
     }
+    return false;
   }
 
   /**
