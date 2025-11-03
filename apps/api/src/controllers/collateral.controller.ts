@@ -98,6 +98,80 @@ export class CollateralController {
       });
     }
   }
+
+  /**
+   * Requisita saque de colateral
+   */
+  async requestWithdrawal(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Não autenticado',
+        });
+      }
+
+      const { cryptoType, cryptoNetwork, amount, destinationAddress } = req.body;
+
+      if (!cryptoType || !cryptoNetwork || !amount || !destinationAddress) {
+        return res.status(400).json({
+          success: false,
+          error: 'cryptoType, cryptoNetwork, amount e destinationAddress são obrigatórios',
+        });
+      }
+
+      const withdrawal = await collateralService.requestWithdrawal(
+        userId,
+        cryptoType,
+        cryptoNetwork,
+        amount,
+        destinationAddress
+      );
+
+      res.json({
+        success: true,
+        data: withdrawal,
+        message: 'Saque solicitado com sucesso',
+      });
+    } catch (error: any) {
+      console.error('Erro ao solicitar saque:', error);
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao solicitar saque',
+      });
+    }
+  }
+
+  /**
+   * Simula conclusão de saque (DESENVOLVIMENTO APENAS)
+   */
+  async simulateWithdrawalComplete(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(403).json({
+          success: false,
+          error: 'Endpoint disponível apenas em desenvolvimento',
+        });
+      }
+
+      const withdrawal = await collateralService.simulateWithdrawalComplete(id);
+
+      res.json({
+        success: true,
+        data: withdrawal,
+        message: '⚠️ Saque simulado com sucesso (desenvolvimento)',
+      });
+    } catch (error: any) {
+      console.error('Erro ao simular saque:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao simular saque',
+      });
+    }
+  }
 }
 
 export const collateralController = new CollateralController();
