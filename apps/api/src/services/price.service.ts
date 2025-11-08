@@ -77,9 +77,27 @@ export class PriceService {
 
   async getAllPrices(): Promise<PriceQuote[]> {
     const cryptos = Object.values(CryptoType);
-    const prices = await Promise.all(
+
+    // Use Promise.allSettled to handle individual failures gracefully
+    const results = await Promise.allSettled(
       cryptos.map((crypto) => this.getPrice(crypto))
     );
+
+    // Filter successful results and log failures
+    const prices: PriceQuote[] = [];
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        prices.push(result.value);
+      } else {
+        console.error(`Failed to fetch price for ${cryptos[index]}:`, result.reason?.message || result.reason);
+      }
+    });
+
+    // If no prices were successfully fetched, throw error
+    if (prices.length === 0) {
+      throw new Error('Não foi possível obter nenhuma cotação');
+    }
+
     return prices;
   }
 

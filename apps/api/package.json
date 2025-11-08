@@ -11,10 +11,22 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "tsx prisma/seed.ts",
+    "db:clean": "tsx scripts/clean-database-full.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:verbose": "jest --verbose"
+    "test:verbose": "jest --verbose",
+    "test:e2e:1": "tsx tests/e2e/test-1-registration-kyc.ts",
+    "test:e2e:2": "tsx tests/e2e/test-2-create-order-collateral.ts",
+    "test:e2e:3": "tsx tests/e2e/test-3-matching-chat.ts",
+    "test:e2e:4": "tsx tests/e2e/test-4-payment-flow.ts",
+    "test:e2e:5": "tsx tests/e2e/test-5-disputes.ts",
+    "test:e2e:6": "tsx tests/e2e/test-6-reviews.ts",
+    "test:e2e:7": "tsx tests/e2e/test-7-notifications.ts",
+    "test:e2e:8": "tsx tests/e2e/test-8-admin.ts",
+    "test:e2e:9": "tsx tests/e2e/test-9-multiuser.ts",
+    "test:e2e:10": "tsx tests/e2e/test-10-security.ts",
+    "test:e2e:2users": "tsx tests/e2e/test-11-complete-2users-flow.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -89,10 +89,24 @@ export class OrderService {
       );
     }
 
-    // NOTA: Não validamos se o usuário tem carteira aqui porque:
-    // - O colateral é depositado na carteira DA PLATAFORMA (não do usuário)
-    // - A carteira do usuário só é necessária para RECEBER as cripto após vender o PIX/Boleto
-    // - Essa validação será feita no momento do saque/recebimento
+    // Validar carteira para pedidos SELL
+    // Para pedidos de venda (SELL), o usuário DEVE ter uma carteira cadastrada
+    // porque após vender PIX/Boleto, ele precisa RECEBER a cripto
+    if (input.type === 'SELL') {
+      const userWallet = await prisma.wallet.findFirst({
+        where: {
+          userId: input.userId,
+          crypto: input.cryptoType,
+          network: input.cryptoNetwork,
+        },
+      });
+
+      if (!userWallet) {
+        throw new Error(
+          `Você precisa cadastrar uma carteira ${input.cryptoType} (${input.cryptoNetwork}) antes de criar um pedido de venda`
+        );
+      }
+    }
 
     // Validar valores mínimos
     const minBRL = 10;

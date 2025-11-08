@@ -1,6 +1,6 @@
 # Status do Projeto - MktPlace P2P
 
-**Última atualização**: 02/11/2025
+**Última atualização**: 08/11/2025
 
 ---
 
@@ -8,7 +8,7 @@
 
 O **MktPlace P2P** é uma plataforma de marketplace peer-to-peer para compra e venda de criptomoedas com pagamento em BRL (PIX/Boleto). O projeto está em fase de desenvolvimento ativo com funcionalidades core implementadas e em fase de testes.
 
-**Versão Atual**: 0.4.1+  
+**Versão Atual**: 0.4.2+ (Unreleased)
 **Status Geral**: 🟢 **ESTÁVEL**
 
 ---
@@ -41,6 +41,24 @@ O **MktPlace P2P** é uma plataforma de marketplace peer-to-peer para compra e v
 - ✅ Bitcoin (BTC) - Network: Bitcoin
 - ✅ USD Coin (USDC) - Networks: Ethereum, TRC20, Base, Arbitrum
 - ✅ Tether (USDT) - Networks: Ethereum, TRC20, Base, Arbitrum
+
+### Ferramentas de Desenvolvimento
+
+#### 🗑️ Sistema de Limpeza do Banco (08/11/2025)
+- ✅ **Script de Limpeza Completa**: `clean-database-full.ts`
+  - Limpa TODOS os dados preservando apenas MASTER e ADMIN
+  - Backup automático com timestamp
+  - Transação atômica em 7 níveis (28 tabelas)
+  - Logs coloridos e verificação de consistência
+
+- ✅ **Scripts Executáveis**:
+  - `LIMPAR-BANCO.bat` (Windows) - 3.7 KB
+  - `limpar-banco.sh` (Linux/Mac) - 6.0 KB
+  - Detecção de servidor rodando
+  - Confirmação obrigatória
+  - Output profissional com cores
+
+- ✅ **Comando NPM**: `npm run db:clean`
 
 ### Funcionalidade Recente (02/11/2025)
 - ✅ **Cancelamento pelo Pagador**: Compradores podem cancelar pedidos após aceitar, mas antes de pagar

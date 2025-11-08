@@ -12,7 +12,102 @@ Este arquivo lista todos os bugs críticos conhecidos que estão sendo trabalhad
 
 ## ✅ Bugs Resolvidos Recentemente
 
-### 1. ❌ Erro Prisma ao Cancelar Pedido pelo Pagador
+### 1. ❌ Erro 500 em `/api/v1/prices` Bloqueando Criação de Pedidos
+**Status**: ✅ RESOLVIDO
+**Data Resolução**: 08/11/2025
+**Prioridade**: 🔴 CRÍTICA
+
+**Descrição**: Endpoint `/api/v1/prices` retornava 500 Internal Server Error, impedindo completamente a criação de pedidos.
+
+**Sintomas**:
+- Frontend recebia erro: "Não foi possível calcular o valor em criptomoeda. Aguarde o carregamento dos preços."
+- Console mostrava: `price=undefined` na calculação de BRL → Crypto
+- Requisição GET para `/api/v1/prices` retornava 500
+
+**Causa**:
+- `Promise.all()` em `getAllPrices()` falhava completamente se UMA única criptomoeda não conseguisse cotação
+- CoinGecko API pode falhar por rate limiting, network, ou coin ID inválido
+- Falha de uma crypto derrubava todas as outras
+
+**Solução**:
+1. Substituído `Promise.all()` por `Promise.allSettled()` em `price.service.ts:78-102`
+2. Sistema agora retorna preços parciais mesmo com falhas individuais
+3. Adicionado logging detalhado para identificar qual crypto falhou
+4. API retorna flag `partial: true` quando alguns preços não foram obtidos
+5. Apenas lança erro se TODAS as cryptos falharem (não apenas uma)
+
+**Arquivos Modificados**:
+- `apps/api/src/services/price.service.ts` (linhas 78-102)
+- `apps/api/src/controllers/price.controller.ts` (linhas 34-53)
+
+**Teste**:
+```bash
+curl -s http://localhost:3001/api/v1/prices
+# Retorna 200 OK com array de preços disponíveis
+# Campo "partial" indica se alguma crypto falhou
+```
+
+**Resultado**: Frontend pode criar pedidos mesmo se uma crypto estiver com problemas de cotação.
+
+**Commit**: Ver CHANGELOG.md [Unreleased]
+
+---
+
+### 2. ❌ Usuários Não Encontravam Como Depositar Colateral
+**Status**: ✅ RESOLVIDO
+**Data Resolução**: 08/11/2025
+**Prioridade**: 🟠 ALTA (UX)
+
+**Descrição**: Usuários não conseguiam encontrar onde depositar colateral, causando confusão e bloqueando uso do sistema.
+
+**Problema**:
+- Página de "Saldo Interno" (`/collateral-balance`) não tinha link no menu principal
+- Usuários acessavam "Carteiras" (`/wallets`) mas não encontravam botão de depósito
+- Funcionalidade estava "escondida" sem navegação clara
+
+**Solução**: Adicionado botão "💰 Depositar Colateral" em cada card de carteira na página `/wallets`
+- Botão redireciona para `/collateral-balance` com crypto/network pré-selecionados
+- Query params: `/collateral-balance?crypto=BTC&network=BITCOIN`
+- UX significativamente melhorada
+
+**Arquivos Modificados**:
+- `apps/web/app/wallets/page.tsx` (linhas 314-321)
+
+**Teste**:
+1. Acessar `/wallets`
+2. Criar carteira BTC
+3. Ver botão azul "💰 Depositar Colateral" no card
+4. Clicar → redireciona para página de colateral com BTC selecionado
+
+**Commit**: Ver CHANGELOG.md [Unreleased]
+
+---
+
+### 3. ❌ Erro no Script de Limpeza do Banco (clean-database-full.ts)
+**Status**: ✅ RESOLVIDO
+**Data Resolução**: 08/11/2025
+**Prioridade**: 🟠 ALTA
+
+**Descrição**: Ao executar o script de limpeza do banco (`npm run db:clean`), ocorria erro na linha 166:
+```
+TypeError: Cannot read properties of undefined (reading 'deleteMany')
+Invalid model name: kycVerification
+```
+
+**Causa**: Nome incorreto do modelo Prisma usado no script. O código usava `tx.kycVerification.deleteMany()` mas o modelo correto no Prisma é `KYCVerification` (com maiúsculas).
+
+**Solução**: Corrigido nome do modelo de `kycVerification` para `kYCVerification` em `apps/api/scripts/clean-database-full.ts:166`
+
+**Arquivos Modificados**:
+- `apps/api/scripts/clean-database-full.ts` (linha 166)
+
+**Teste**: Script executado com sucesso, limpando banco completo e preservando apenas MASTER e ADMIN.
+
+**Commit**: Ver CHANGELOG.md [Unreleased]
+
+---
+
+### 4. ❌ Erro Prisma ao Cancelar Pedido pelo Pagador
 **Status**: ✅ RESOLVIDO  
 **Data Resolução**: 02/11/2025  
 **Prioridade**: 🔴 CRÍTICA
@@ -34,7 +129,7 @@ Field 'matchedAt' not found in Order model
 
 ---
 
-### 2. ❌ Notificações de Chat Gerando Erro 404
+### 5. ❌ Notificações de Chat Gerando Erro 404
 **Status**: ✅ RESOLVIDO  
 **Data Resolução**: 02/11/2025  
 **Prioridade**: 🔴 ALTA
@@ -61,7 +156,7 @@ Field 'matchedAt' not found in Order model
 
 ---
 
-### 3. ❌ Página em Branco ao Clicar em Notificação de Chat (Pedidos PENDING)
+### 6. ❌ Página em Branco ao Clicar em Notificação de Chat (Pedidos PENDING)
 **Status**: ✅ RESOLVIDO  
 **Data Resolução**: 02/11/2025  
 **Prioridade**: 🔴 ALTA
@@ -86,7 +181,7 @@ Field 'matchedAt' not found in Order model
 
 ---
 
-### 4. ❌ Botão "Marcar todas como lidas" Não Funcionava
+### 7. ❌ Botão "Marcar todas como lidas" Não Funcionava
 **Status**: ✅ RESOLVIDO  
 **Data Resolução**: 02/11/2025  
 **Prioridade**: 🟡 MÉDIA
@@ -129,4 +224,4 @@ Field 'matchedAt' not found in Order model
 
 ---
 
-**Última atualização**: 02/11/2025
+**Última atualização**: 08/11/2025
