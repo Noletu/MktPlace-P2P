@@ -310,6 +310,15 @@ export default function WalletsPage() {
                     {parseFloat(wallet.balance).toFixed(8)} {wallet.crypto}
                   </p>
                 </div>
+
+                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <button
+                    onClick={() => router.push(`/collateral-balance?crypto=${wallet.crypto}&network=${wallet.network}`)}
+                    className="w-full py-2 px-4 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    💰 Depositar Colateral
+                  </button>
+                </div>
               </div>
             ))}
           </div>

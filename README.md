@@ -2,31 +2,73 @@
 
 > Marketplace P2P para pagamento de boletos e PIX com criptomoedas. Mais barato, mais livre.
 
-**Versão:** 0.3.12 | **Status:** ✅ Tempo de Expiração Editável + Bugs Corrigidos | **Data:** 01/11/2025
+**Versão:** 0.4.2+ (Unreleased) | **Status:** 🟢 Estável + Sistema de Limpeza | **Data:** 08/11/2025
 
-## 🆕 Novidades na v0.3.12 (01/11/2025)
+## 🆕 Novidades Recentes
 
-### ⏰ Tempo de Expiração Editável
-Agora vendedores podem escolher por quanto tempo suas ofertas ficam ativas:
+### 🗑️ Sistema de Limpeza do Banco (08/11/2025)
+Nova ferramenta completa para resetar banco de dados em ambiente de desenvolvimento:
+- **Scripts executáveis**: `LIMPAR-BANCO.bat` (Windows) e `limpar-banco.sh` (Linux/Mac)
+- **Backup automático** com timestamp antes de qualquer operação
+- **Preserva apenas** usuários MASTER e ADMIN
+- **Comando NPM**: `npm run db:clean`
+- Detecção de servidor rodando + parada automática opcional
+- Output profissional com cores e progresso detalhado
+
+### ⏰ Tempo de Expiração Editável (01/11/2025)
+Vendedores podem escolher por quanto tempo suas ofertas ficam ativas:
 - **6h, 12h, 24h (padrão), 48h, 72h, 7 dias** ou **Indefinido (até 6 meses)**
 
-### 🐛 Bugs Corrigidos
+### 🐛 Correções Recentes
+- ✅ **Script de limpeza**: Corrigido erro no modelo KYCVerification
 - ✅ **Avaliações funcionando**: Corrigido erro 400 ao enviar ratings
 - ✅ **Cancelamento de pedidos**: Adicionado campo `cancelledAt` ausente
 
-📋 **Ver detalhes**: [CHANGELOG.md](CHANGELOG.md) | **Bugs conhecidos**: [BUGS.md](BUGS.md)
+📋 **Ver detalhes**: [CHANGELOG.md](CHANGELOG.md) | **Status**: [STATUS.md](STATUS.md) | **Bugs**: [BUGS_CRITICOS.md](BUGS_CRITICOS.md)
 
 ## 🚀 Início Rápido
 
-### Windows (CMD/PowerShell)
+### Iniciar Servidor
+
+#### Windows (CMD/PowerShell)
 ```cmd
 INICIAR-SIMPLES.bat
 ```
 
-### Linux / Mac / Git Bash
+#### Linux / Mac / Git Bash
 ```bash
 bash start.sh
 ```
+
+### Parar Servidor
+
+#### Windows
+```cmd
+PARAR-SIMPLES.bat
+```
+
+#### Linux / Mac / Git Bash
+```bash
+bash stop.sh
+```
+
+### 🗑️ Limpar Banco de Dados
+
+**ATENÇÃO**: Deleta TODOS os dados preservando apenas MASTER e ADMIN!
+
+#### Windows
+```cmd
+LIMPAR-BANCO.bat
+```
+
+#### Linux / Mac / Git Bash
+```bash
+bash limpar-banco.sh
+```
+
+**Credenciais após limpeza:**
+- Master: `master@mktplace.com` / `Master@2025!`
+- Admin: `admin@mktplace.com` / `Admin@123`
 
 **📖 Documentação completa:** Veja [COMO_INICIAR.md](COMO_INICIAR.md)
 

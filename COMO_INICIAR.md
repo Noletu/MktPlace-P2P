@@ -186,17 +186,66 @@ Apos iniciar com sucesso:
 
 ---
 
+## Limpeza do Banco de Dados
+
+Se voce precisa resetar o banco de dados para testes do zero:
+
+### Windows (CMD ou PowerShell)
+
+**Opcao 1 - Duplo clique:**
+- Localize o arquivo `LIMPAR-BANCO.bat` na pasta do projeto
+- Clique duas vezes nele
+
+**Opcao 2 - CMD:**
+```cmd
+LIMPAR-BANCO.bat
+```
+
+### Linux / Mac / Git Bash
+
+```bash
+bash limpar-banco.sh
+```
+
+### O que faz?
+
+1. Solicita confirmação (esta operacao e IRREVERSIVEL!)
+2. Verifica se servidor esta rodando e oferece parar
+3. Cria backup automatico do banco (dev.db.backup-YYYYMMDD-HHMMSS)
+4. Deleta TODOS os dados (usuarios comuns, pedidos, transacoes, chats, etc)
+5. Preserva apenas usuarios MASTER e ADMIN
+6. Mostra credenciais dos usuarios preservados
+
+### Credenciais apos limpeza:
+
+```
+Master: master@mktplace.com / Master@2025!
+Admin:  admin@mktplace.com  / Admin@123
+```
+
+### ATENCAO:
+
+- Esta operacao deleta TODOS os dados!
+- Um backup automatico e criado antes da limpeza
+- Para restaurar: `copy backup-YYYYMMDD-HHMMSS dev.db` (na pasta apps/api/prisma)
+- Apenas usuarios MASTER e ADMIN sao preservados
+- Estrutura do banco (schema/migrations) e mantida
+
+---
+
 ## Arquivos Disponiveis
 
 ### Windows (CMD/PowerShell):
 - `INICIAR-SIMPLES.bat` - Inicia aplicacao (RECOMENDADO)
 - `PARAR-SIMPLES.bat` - Para aplicacao
+- `LIMPAR-BANCO.bat` - Limpa banco de dados (NOVO)
 - `INICIAR.bat` - Versao antiga (pode ter problemas)
 - `PARAR.bat` - Versao antiga (pode ter problemas)
 
 ### Linux/Mac/Git Bash:
 - `start.sh` - Inicia aplicacao
 - `stop.sh` - Para aplicacao
+- `limpar-banco.sh` - Limpa banco de dados (NOVO)
 
 ---
 

@@ -38,9 +38,15 @@ export class PriceController {
       res.json({
         success: true,
         data: prices,
+        // Indicate if some prices failed to load
+        partial: prices.length < Object.values(CryptoType).length,
       });
     } catch (error: any) {
+      console.error('❌ [PRICES] Error fetching all prices:', error);
+      console.error('Stack trace:', error.stack);
+
       res.status(500).json({
+        success: false,
         error: error.message || 'Erro ao buscar cotações',
       });
     }
