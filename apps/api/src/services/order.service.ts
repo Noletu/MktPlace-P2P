@@ -89,10 +89,10 @@ export class OrderService {
       );
     }
 
-    // Validar carteira para pedidos SELL
-    // Para pedidos de venda (SELL), o usuário DEVE ter uma carteira cadastrada
-    // porque após vender PIX/Boleto, ele precisa RECEBER a cripto
-    if (input.type === 'SELL') {
+    // Validar carteira para pedidos BUY
+    // Para pedidos de compra (BUY), o usuário DEVE ter uma carteira cadastrada
+    // porque após comprar cripto, ele precisa RECEBER a cripto comprada
+    if (input.type === 'BUY') {
       const userWallet = await prisma.wallet.findFirst({
         where: {
           userId: input.userId,
@@ -103,7 +103,7 @@ export class OrderService {
 
       if (!userWallet) {
         throw new Error(
-          `Você precisa cadastrar uma carteira ${input.cryptoType} (${input.cryptoNetwork}) antes de criar um pedido de venda`
+          `Você precisa cadastrar uma carteira ${input.cryptoType} (${input.cryptoNetwork}) antes de criar um pedido de compra`
         );
       }
     }
@@ -758,6 +758,96 @@ export class OrderService {
         console.error('Failed to send payer cancellation notifications:', error);
       }
     });
+  }
+
+  /**
+   * Obter estatísticas do usuário
+   */
+  async getUserStatistics(userId: string, days: number = 30) {
+    const dateFrom = new Date();
+    dateFrom.setDate(dateFrom.getDate() - days);
+
+    // Buscar todos os pedidos concluídos do usuário (como criador ou pagador) no período
+    const orders = await prisma.order.findMany({
+      where: {
+        OR: [
+          { userId }, // Pedidos que o usuário criou (vendas)
+          { payerId: userId }, // Pedidos que o usuário pagou (compras)
+        ],
+        status: 'COMPLETED',
+        completedAt: {
+          gte: dateFrom,
+        },
+      },
+      orderBy: {
+        completedAt: 'asc',
+      },
+    });
+
+    // Calcular estatísticas
+    let totalBuys = 0;
+    let totalSells = 0;
+    let totalVolumeBRL = 0;
+    let totalVolumeCrypto: { [key: string]: number } = {};
+
+    // Agrupar por dia para o gráfico
+    const dailyData: { [key: string]: { date: string; volumeBRL: number; count: number } } = {};
+
+    orders.forEach((order) => {
+      const isSeller = order.userId === userId;
+      const isBuyer = order.payerId === userId;
+
+      if (isSeller) {
+        totalSells++;
+      }
+      if (isBuyer) {
+        totalBuys++;
+      }
+
+      // Volume em BRL
+      const brlAmount = parseFloat(order.brlAmount);
+      totalVolumeBRL += brlAmount;
+
+      // Volume em Crypto
+      const cryptoAmount = parseFloat(order.cryptoAmount);
+      if (!totalVolumeCrypto[order.cryptoType]) {
+        totalVolumeCrypto[order.cryptoType] = 0;
+      }
+      totalVolumeCrypto[order.cryptoType] += cryptoAmount;
+
+      // Dados diários para o gráfico
+      if (order.completedAt) {
+        const dateKey = order.completedAt.toISOString().split('T')[0];
+        if (!dailyData[dateKey]) {
+          dailyData[dateKey] = {
+            date: dateKey,
+            volumeBRL: 0,
+            count: 0,
+          };
+        }
+        dailyData[dateKey].volumeBRL += brlAmount;
+        dailyData[dateKey].count += 1;
+      }
+    });
+
+    // Converter dados diários para array ordenado
+    const chartData = Object.values(dailyData).sort((a, b) => a.date.localeCompare(b.date));
+
+    return {
+      summary: {
+        totalBuys,
+        totalSells,
+        totalOrders: totalBuys + totalSells,
+        totalVolumeBRL: totalVolumeBRL.toFixed(2),
+        totalVolumeCrypto,
+      },
+      chartData,
+      period: {
+        days,
+        from: dateFrom.toISOString(),
+        to: new Date().toISOString(),
+      },
+    };
   }
 }
 

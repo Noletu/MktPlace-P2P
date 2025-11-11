@@ -17,6 +17,9 @@ router.post('/', orderCreationLimiter, orderController.createOrder.bind(orderCon
 // Listar pedidos do usuário
 router.get('/my-orders', orderController.getUserOrders.bind(orderController));
 
+// Obter estatísticas do usuário
+router.get('/statistics', orderController.getUserStatistics.bind(orderController));
+
 // Obter detalhes do pedido
 router.get('/:orderId', orderController.getOrder.bind(orderController));
 

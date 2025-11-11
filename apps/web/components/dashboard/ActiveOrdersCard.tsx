@@ -48,16 +48,15 @@ export default function ActiveOrdersCard() {
   const fetchActiveOrders = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:3001/api/v1/orders?status=PENDING,MATCHED,IN_NEGOTIATION,PAYMENT_SENT,VALIDATING', {
-        credentials: 'include',
-      });
+      const { apiGet } = await import('@/utils/api');
+      const data = await apiGet('/orders/my-orders');
+      const allOrders = Array.isArray(data.data) ? data.data : [];
 
-      if (!response.ok) {
-        throw new Error('Falha ao carregar pedidos');
-      }
+      // Filtrar apenas pedidos ativos (não concluídos, cancelados ou disputados)
+      const activeStatuses = ['PENDING', 'MATCHED', 'IN_NEGOTIATION', 'PAYMENT_SENT', 'VALIDATING'];
+      const activeOrders = allOrders.filter((order: Order) => activeStatuses.includes(order.status));
 
-      const data = await response.json();
-      setOrders((data.data || []).slice(0, 5)); // Mostrar apenas 5 mais recentes
+      setOrders(activeOrders.slice(0, 5)); // Mostrar apenas 5 mais recentes
     } catch (err) {
       console.error('Erro ao buscar pedidos:', err);
       setError('Erro ao carregar pedidos');

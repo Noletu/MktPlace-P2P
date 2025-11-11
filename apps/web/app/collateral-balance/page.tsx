@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ThemeToggle from '@/components/ThemeToggle';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface CollateralBalance {
   id: string;
@@ -45,11 +46,46 @@ export default function CollateralBalancePage() {
   const [depositLoading, setDepositLoading] = useState(false);
   const [depositAddress, setDepositAddress] = useState<any>(null);
   const [simulatingDeposit, setSimulatingDeposit] = useState(false);
+  const [countdown, setCountdown] = useState<string>('30:00');
+  const [isExpired, setIsExpired] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetchBalances();
     fetchTransactions();
   }, []);
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (!depositAddress?.createdAt) {
+      setCountdown('30:00');
+      setIsExpired(false);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const createdAt = new Date(depositAddress.createdAt);
+      const expiresAt = new Date(createdAt.getTime() + 30 * 60 * 1000); // +30 minutes
+      const now = new Date();
+      const diff = expiresAt.getTime() - now.getTime();
+
+      if (diff <= 0) {
+        setCountdown('00:00');
+        setIsExpired(true);
+        return;
+      }
+
+      const minutes = Math.floor(diff / 60000);
+      const seconds = Math.floor((diff % 60000) / 1000);
+      setCountdown(`${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
+      setIsExpired(false);
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+
+    return () => clearInterval(interval);
+  }, [depositAddress]);
 
   const fetchBalances = async () => {
     try {
@@ -254,6 +290,19 @@ export default function CollateralBalancePage() {
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleString('pt-BR');
+  };
+
+  const handleCopyAddress = async () => {
+    if (!depositAddress?.address) return;
+
+    try {
+      await navigator.clipboard.writeText(depositAddress.address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Erro ao copiar endereço:', err);
+      alert('Erro ao copiar endereço');
+    }
   };
 
   if (loading) {
@@ -525,21 +574,68 @@ export default function CollateralBalancePage() {
                   </p>
                 </div>
 
-                <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Endereço:</p>
-                  <p className="font-mono text-sm text-gray-900 dark:text-white break-all">
-                    {depositAddress.address}
-                  </p>
+                {/* QR Code */}
+                <div className="flex justify-center bg-white dark:bg-gray-900 p-6 rounded-lg">
+                  <QRCodeSVG
+                    value={depositAddress.address}
+                    size={200}
+                    level="H"
+                    includeMargin={true}
+                  />
                 </div>
 
-                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-                  <p className="text-yellow-800 dark:text-yellow-300 text-sm">
-                    ⚠️ Expira em 30 minutos. Após confirmação, o saldo será creditado automaticamente.
-                  </p>
+                {/* Address with Copy Button */}
+                <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Endereço:</p>
+                  <div className="flex items-start gap-2">
+                    <p className="font-mono text-sm text-gray-900 dark:text-white break-all flex-1">
+                      {depositAddress.address}
+                    </p>
+                    <button
+                      onClick={handleCopyAddress}
+                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium whitespace-nowrap transition-colors"
+                    >
+                      {copied ? '✓ Copiado' : '📋 Copiar'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Countdown Timer */}
+                <div className={`${
+                  isExpired
+                    ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                    : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
+                } border rounded-lg p-4`}>
+                  <div className="flex items-center justify-between">
+                    <p className={`${
+                      isExpired
+                        ? 'text-red-800 dark:text-red-300'
+                        : 'text-yellow-800 dark:text-yellow-300'
+                    } text-sm`}>
+                      {isExpired ? '❌ Endereço expirado' : '⏱️ Tempo restante:'}
+                    </p>
+                    <p className={`${
+                      isExpired
+                        ? 'text-red-800 dark:text-red-300'
+                        : 'text-yellow-800 dark:text-yellow-300'
+                    } text-lg font-bold font-mono`}>
+                      {countdown}
+                    </p>
+                  </div>
+                  {!isExpired && (
+                    <p className="text-yellow-700 dark:text-yellow-400 text-xs mt-2">
+                      Após confirmação, o saldo será creditado automaticamente.
+                    </p>
+                  )}
+                  {isExpired && (
+                    <p className="text-red-700 dark:text-red-400 text-xs mt-2">
+                      Por favor, gere um novo endereço para fazer o depósito.
+                    </p>
+                  )}
                 </div>
 
                 {/* Botão de Simulação (APENAS DESENVOLVIMENTO) */}
-                {process.env.NODE_ENV !== 'production' && (
+                {process.env.NODE_ENV !== 'production' && !isExpired && (
                   <button
                     onClick={handleSimulateDeposit}
                     disabled={simulatingDeposit}
@@ -557,6 +653,10 @@ export default function CollateralBalancePage() {
                   onClick={() => {
                     setShowAddModal(false);
                     setDepositAddress(null);
+                    setDepositAmount('');
+                    setSelectedCrypto('');
+                    setSelectedNetwork('');
+                    setCopied(false);
                     fetchBalances();
                   }}
                   className="w-full bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-lg font-medium"

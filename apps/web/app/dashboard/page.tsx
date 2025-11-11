@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/AppHeader';
 import CollateralWidget from '@/components/dashboard/CollateralWidget';
 import ActiveOrdersCard from '@/components/dashboard/ActiveOrdersCard';
-import RecentActivityCard from '@/components/dashboard/RecentActivityCard';
+import StatisticsCard from '@/components/dashboard/StatisticsCard';
 import SecurityBanner from '@/components/dashboard/SecurityBanner';
 import FloatingActionButton from '@/components/dashboard/FloatingActionButton';
 import { useChats } from '@/hooks/useChats';
@@ -133,12 +133,12 @@ export default function DashboardPage() {
         {/* Grid 2 Colunas - Métricas */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <ActiveOrdersCard />
-          <RecentActivityCard />
+          <StatisticsCard />
         </div>
 
         {/* Security Banner */}
         <div className="mb-8">
-          <SecurityBanner kycLevel={user.kycLevel} reputationScore={user.reputationScore} />
+          <SecurityBanner />
         </div>
 
         {/* Quick Links (opcional, para mobile) */}
