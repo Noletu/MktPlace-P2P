@@ -393,17 +393,15 @@ export class OrderService {
 
   /**
    * Listar pedidos disponíveis para matching (marketplace)
-   * IMPORTANTE: Só mostra pedidos com colateral CONFIRMADO na blockchain
+   * IMPORTANTE: Só mostra pedidos com colateral CONFIRMADO
    * NOTA: Mostra TODOS os pedidos, incluindo do próprio usuário
    * A validação de não aceitar próprio pedido é feita no matchOrder()
    */
   async getAvailableOrders(excludeUserId?: string): Promise<Order[]> {
     const orders = await prisma.order.findMany({
       where: {
-        status: {
-          in: [OrderStatus.PENDING, OrderStatus.IN_NEGOTIATION], // Incluir negociações
-        },
-        // SECURITY: Só mostrar pedidos com colateral confirmado na blockchain
+        status: OrderStatus.PENDING, // Apenas pedidos pendentes
+        // SECURITY: Só mostrar pedidos com colateral confirmado
         collateralConfirmed: true,
         // REMOVIDO: não excluir pedidos do próprio usuário do marketplace
         // userId: excludeUserId ? { not: excludeUserId } : undefined,
@@ -411,7 +409,6 @@ export class OrderService {
       },
       orderBy: [
         { ownerOnline: 'desc' }, // Online primeiro
-        { status: 'asc' }, // PENDING antes de IN_NEGOTIATION
         { ownerLastSeenAt: 'desc' }, // Mais recente primeiro
         { createdAt: 'desc' }, // Mais novo primeiro
       ],
@@ -534,17 +531,9 @@ export class OrderService {
       }
 
       // SECURITY: Validação atômica de status
-      // Permitir match de pedidos em PENDING ou IN_NEGOTIATION
-      if (order.status !== OrderStatus.PENDING && order.status !== OrderStatus.IN_NEGOTIATION) {
+      // Apenas pedidos PENDING podem ser aceitos
+      if (order.status !== OrderStatus.PENDING) {
         throw new Error('Este pedido não está mais disponível');
-      }
-
-      // Se está em negociação, validar que é o usuário correto
-      if (order.status === OrderStatus.IN_NEGOTIATION) {
-        if (order.negotiatingUserId && order.negotiatingUserId !== payerId) {
-          throw new Error('Este pedido está em negociação com outro usuário');
-        }
-        console.log(`✅ Match allowed - user ${payerId} is negotiating order ${orderId}`);
       }
 
       if (order.timeoutAt && order.timeoutAt < new Date()) {
