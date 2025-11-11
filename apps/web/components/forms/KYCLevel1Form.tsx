@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function KYCLevel1Form() {
   const [fullName, setFullName] = useState('');
@@ -9,6 +9,44 @@ export default function KYCLevel1Form() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [loadingUserData, setLoadingUserData] = useState(true);
+
+  useEffect(() => {
+    fetchUserData();
+  }, []);
+
+  const fetchUserData = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) return;
+
+      const response = await fetch('http://localhost:3001/api/v1/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const user = data.data;
+
+        // Pré-preencher campos se já existirem
+        if (user.name) {
+          setFullName(user.name);
+        }
+        if (user.cpf) {
+          setCpf(formatCPF(user.cpf));
+        }
+        if (user.phone) {
+          setPhone(formatPhone(user.phone));
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao buscar dados do usuário:', err);
+    } finally {
+      setLoadingUserData(false);
+    }
+  };
 
   const formatCPF = (value: string) => {
     const numbers = value.replace(/\D/g, '');
@@ -87,6 +125,17 @@ export default function KYCLevel1Form() {
       setLoading(false);
     }
   };
+
+  if (loadingUserData) {
+    return (
+      <div className="max-w-2xl mx-auto p-8 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Carregando seus dados...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (success) {
     return (

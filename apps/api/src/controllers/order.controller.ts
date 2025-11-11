@@ -295,6 +295,29 @@ export class OrderController {
       });
     }
   }
+
+  async getUserStatistics(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { days = '30' } = req.query;
+      const daysNum = parseInt(days as string);
+
+      const stats = await orderService.getUserStatistics(userId, daysNum);
+
+      res.json({
+        success: true,
+        data: stats,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Erro ao buscar estatísticas',
+      });
+    }
+  }
 }
 
 export const orderController = new OrderController();

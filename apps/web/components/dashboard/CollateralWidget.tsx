@@ -25,16 +25,10 @@ export default function CollateralWidget() {
   const fetchBalances = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:3001/api/v1/collateral-balance', {
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        throw new Error('Falha ao carregar saldos');
-      }
-
-      const data = await response.json();
-      setBalances(data.data || []);
+      const { apiGet } = await import('@/utils/api');
+      const data = await apiGet('/collateral-balance');
+      const balancesArray = data.data?.balances || data.data || [];
+      setBalances(Array.isArray(balancesArray) ? balancesArray : []);
     } catch (err) {
       console.error('Erro ao buscar saldos:', err);
       setError('Erro ao carregar saldos');
