@@ -761,11 +761,18 @@ export class OrderService {
       where: {
         OR: [
           { userId }, // Pedidos que o usuário criou (vendas)
-          { payerId: userId }, // Pedidos que o usuário pagou (compras)
+          { transactions: { some: { payerId: userId } } }, // Pedidos que o usuário pagou (compras)
         ],
         status: 'COMPLETED',
         completedAt: {
           gte: dateFrom,
+        },
+      },
+      include: {
+        transactions: {
+          select: {
+            payerId: true,
+          },
         },
       },
       orderBy: {
@@ -784,7 +791,7 @@ export class OrderService {
 
     orders.forEach((order) => {
       const isSeller = order.userId === userId;
-      const isBuyer = order.payerId === userId;
+      const isBuyer = order.transactions[0]?.payerId === userId;
 
       if (isSeller) {
         totalSells++;
@@ -797,12 +804,21 @@ export class OrderService {
       const brlAmount = parseFloat(order.brlAmount);
       totalVolumeBRL += brlAmount;
 
-      // Volume em Crypto
+      // Volume em Crypto (diferente para vendedor e comprador)
       const cryptoAmount = parseFloat(order.cryptoAmount);
+      const payerReward = parseFloat(order.payerReward);
+
       if (!totalVolumeCrypto[order.cryptoType]) {
         totalVolumeCrypto[order.cryptoType] = 0;
       }
-      totalVolumeCrypto[order.cryptoType] += cryptoAmount;
+
+      if (isSeller) {
+        // Vendedor: soma o que vendeu (cryptoAmount que ele pagou de colateral)
+        totalVolumeCrypto[order.cryptoType] += cryptoAmount;
+      } else if (isBuyer) {
+        // Comprador: soma o que recebeu (cryptoAmount + cashback de 1%)
+        totalVolumeCrypto[order.cryptoType] += (cryptoAmount + payerReward);
+      }
 
       // Dados diários para o gráfico
       if (order.completedAt) {
