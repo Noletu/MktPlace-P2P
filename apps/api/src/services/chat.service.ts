@@ -52,17 +52,15 @@ export class ChatService {
     const isOrderOwner = order.userId === userId;
     const transaction = order.transactions[0];
     const isPayer = transaction?.payerId === userId;
-    const isMarketplaceOrder = ['PENDING', 'IN_NEGOTIATION'].includes(order.status);
 
-    // Permitir acesso se:
-    // 1. É owner/payer (sempre)
-    // 2. Pedido está no marketplace (PENDING/IN_NEGOTIATION) - comprador pode iniciar negociação
-    if (!isOrderOwner && !isPayer && !isMarketplaceOrder) {
-      throw new Error('Você não tem permissão para acessar este chat');
+    // Permitir acesso apenas se é owner ou payer de um pedido já aceito (MATCHED)
+    // Chat só deve estar disponível APÓS aceitar o pedido
+    if (!isOrderOwner && !isPayer) {
+      throw new Error('Chat disponível apenas após aceitar o pedido');
     }
 
-    // Impedir owner de criar chat com ele mesmo (EXCETO se já há mensagens/negociação)
-    if (isOrderOwner && !isPayer && !transaction && order.status !== 'IN_NEGOTIATION') {
+    // Impedir owner de criar chat com ele mesmo
+    if (isOrderOwner && !isPayer && !transaction) {
       throw new Error('Chat não disponível para seu próprio pedido');
     }
 
@@ -105,10 +103,10 @@ export class ChatService {
     }
 
     // Criar novo chat
-    // Para pedidos no marketplace (PENDING/IN_NEGOTIATION), criar chat entre owner e comprador interessado
-    // Para pedidos já aceitos (MATCHED+), usar transaction.payerId
-    const participant1Id = order.userId; // Owner
-    const participant2Id = transaction ? transaction.payerId : userId; // Payer (se existe) ou comprador interessado
+    // Chat só é criado após pedido ser aceito (MATCHED+)
+    // Usa transaction.payerId para identificar o comprador
+    const participant1Id = order.userId; // Owner (vendedor)
+    const participant2Id = transaction ? transaction.payerId : userId; // Payer (comprador)
 
     // Garantir que não está criando chat consigo mesmo
     if (participant1Id === participant2Id) {
@@ -181,30 +179,6 @@ export class ChatService {
       input.type !== 'SYSTEM'
     ) {
       throw new Error('Você não tem permissão para enviar mensagens neste chat');
-    }
-
-    // NOVO: Verificar se é a primeira mensagem e iniciar negociação
-    if (input.type !== 'SYSTEM') {
-      const messageCount = await prisma.chatMessage.count({
-        where: { chatId: input.chatId },
-      });
-
-      console.log(`📨 Message check - chatId: ${input.chatId}, messageCount: ${messageCount}, senderId: ${input.senderId}, orderId: ${chat.order.id}, orderOwnerId: ${chat.order.userId}`);
-
-      // Se for a primeira mensagem E o sender NÃO é o owner do pedido
-      if (messageCount === 0 && chat.order.userId !== input.senderId) {
-        console.log(`✅ First message conditions met - starting negotiation`);
-        const negotiationService = require('./negotiation.service').default;
-        try {
-          await negotiationService.startNegotiation(chat.order.id, input.senderId);
-          console.log(`💬 First message sent - negotiation started for order ${chat.order.id}`);
-        } catch (error) {
-          console.error('❌ Failed to start negotiation:', error);
-          // Continuar mesmo se falhar (não bloquear o envio da mensagem)
-        }
-      } else {
-        console.log(`⏭️ Not first message or sender is owner - skipping negotiation start`);
-      }
     }
 
     // Criar mensagem (suporta formato híbrido)

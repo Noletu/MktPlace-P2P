@@ -23,13 +23,13 @@ import notificationRoutes from './routes/notification.routes';
 import chatRoutes from './routes/chat.routes';
 import keysRoutes from './routes/keys.routes';
 import presenceRoutes from './routes/presence.routes';
-import negotiationRoutes from './routes/negotiation.routes';
+// import negotiationRoutes from './routes/negotiation.routes'; // DESABILITADO: Chat disponível apenas após aceitar pedido
 // import statsRoutes from './routes/stats.routes';
 import { apiLimiter } from './middleware/rateLimiter.middleware';
 import { logger } from './utils/logger';
 import { depositMonitorWorker } from './workers/deposit-monitor.worker';
 import { orderExpirationWorker } from './workers/order-expiration.worker';
-import { negotiationTimeoutWorker } from './workers/negotiation-timeout.worker';
+// import { negotiationTimeoutWorker } from './workers/negotiation-timeout.worker'; // DESABILITADO: Chat disponível apenas após aceitar pedido
 import { presenceMonitorWorker } from './workers/presence-monitor.worker';
 import { collateralReleaseWorker } from './workers/collateral-release.worker';
 import { chatArchiveWorker } from './workers/chat-archive.worker';
@@ -212,8 +212,8 @@ app.use('/api/v1/keys', keysRoutes);
 // Presence routes (online/offline status)
 app.use('/api/v1/presence', presenceRoutes);
 
-// Negotiation routes (pre-match negotiation)
-app.use('/api/v1/negotiation', negotiationRoutes);
+// Negotiation routes (pre-match negotiation) - DESABILITADO: Chat disponível apenas após aceitar pedido
+// app.use('/api/v1/negotiation', negotiationRoutes);
 
 // Stats routes (user activity statistics)
 // app.use('/api/v1/stats', statsRoutes);
@@ -275,11 +275,11 @@ httpServer.listen(port, () => {
   // Iniciar workers
   depositMonitorWorker.start();
   orderExpirationWorker.start();
-  negotiationTimeoutWorker.start();
+  // negotiationTimeoutWorker.start(); // DESABILITADO: Chat disponível apenas após aceitar pedido
   presenceMonitorWorker.start();
   chatArchiveWorker.start();
   // collateralReleaseWorker.start(); // DESABILITADO: processamento agora é feito direto no transaction.service.ts
-  console.log('⚙️  [workers]: All background workers started (collateral release disabled, chat archive enabled)');
+  console.log('⚙️  [workers]: Background workers started (negotiation timeout, collateral release disabled)');
 });
 
 // Exportar para uso em outros módulos

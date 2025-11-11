@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import ChatWindow from '@/components/chat/ChatWindow';
 import PresenceBadge from '@/components/PresenceBadge';
 import { formatBRL } from '@/utils/formatters';
 import ThemeToggle from '@/components/ThemeToggle';
@@ -25,8 +24,6 @@ interface Order {
   timeoutAt: string;
   ownerOnline: boolean;
   ownerLastSeenAt: string;
-  negotiatingUserId?: string;
-  negotiationStartedAt?: string;
   user: {
     id: string;
     name: string;
@@ -45,11 +42,8 @@ export default function OrderPreviewPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showChat, setShowChat] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [isChatMinimized, setIsChatMinimized] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState<number>(0);
 
   useEffect(() => {
     fetchCurrentUser();
@@ -57,34 +51,6 @@ export default function OrderPreviewPage() {
     const interval = setInterval(fetchOrder, 5000); // Atualizar a cada 5s
     return () => clearInterval(interval);
   }, [orderId]);
-
-  // Timer de negociação (10 minutos)
-  useEffect(() => {
-    console.log('Timer effect - order:', order);
-    console.log('Timer effect - status:', order?.status);
-    console.log('Timer effect - negotiationStartedAt:', order?.negotiationStartedAt);
-
-    if (!order || order.status !== 'IN_NEGOTIATION' || !order.negotiationStartedAt) {
-      console.log('Timer: conditions not met, setting to 0');
-      setTimeRemaining(0);
-      return;
-    }
-
-    const updateTimer = () => {
-      const startTime = new Date(order.negotiationStartedAt!).getTime();
-      const now = Date.now();
-      const elapsed = Math.floor((now - startTime) / 1000); // segundos
-      const total = 10 * 60; // 10 minutos em segundos
-      const remaining = Math.max(0, total - elapsed);
-      console.log('Timer update:', { startTime, now, elapsed, remaining });
-      setTimeRemaining(remaining);
-    };
-
-    updateTimer();
-    const timer = setInterval(updateTimer, 1000);
-
-    return () => clearInterval(timer);
-  }, [order]);
 
   const fetchCurrentUser = async () => {
     try {
@@ -183,7 +149,6 @@ export default function OrderPreviewPage() {
   const orderData = JSON.parse(order.orderData);
   const paymentMethod = orderData.pixKey ? 'PIX' : 'BOLETO';
   const isOwnOrder = order.user.id === currentUserId;
-  const isInNegotiationWithOther = order.status === 'IN_NEGOTIATION' && order.negotiatingUserId !== currentUserId;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
@@ -213,44 +178,6 @@ export default function OrderPreviewPage() {
             <p className="text-yellow-800 dark:text-yellow-200 font-semibold">
               ⚠️ Este é seu próprio pedido. Você não pode aceitar.
             </p>
-          </div>
-        )}
-
-        {/* Warning: In Negotiation */}
-        {isInNegotiationWithOther && (
-          <div className="mb-6 p-4 bg-orange-50 dark:bg-orange-900/30 border-2 border-orange-300 dark:border-orange-700 rounded-lg">
-            <p className="text-orange-800 dark:text-orange-200 font-semibold">
-              🔒 Este pedido está em negociação com outro usuário. Aguarde até ficar disponível novamente.
-            </p>
-          </div>
-        )}
-
-        {/* Timer de Negociação */}
-        {order.status === 'IN_NEGOTIATION' && timeRemaining > 0 && (
-          <div className="mb-6 p-6 bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-300 dark:border-blue-700 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-blue-800 dark:text-blue-200 font-semibold text-lg mb-1">
-                  ⏱️ Negociação em Andamento
-                </p>
-                <p className="text-blue-700 dark:text-blue-300 text-sm">
-                  Você tem tempo limitado para negociar e aceitar este pedido
-                </p>
-              </div>
-              <div className="text-center ml-6">
-                <div className="text-4xl font-bold text-blue-600 dark:text-blue-400 font-mono">
-                  {Math.floor(timeRemaining / 60)}:{String(timeRemaining % 60).padStart(2, '0')}
-                </div>
-                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">minutos restantes</p>
-              </div>
-            </div>
-            {timeRemaining < 120 && (
-              <div className="mt-3 p-2 bg-red-100 dark:bg-red-900/40 border border-red-300 dark:border-red-700 rounded text-center">
-                <p className="text-red-700 dark:text-red-300 text-sm font-semibold">
-                  ⚠️ Atenção! Menos de 2 minutos restantes
-                </p>
-              </div>
-            )}
           </div>
         )}
 
@@ -315,25 +242,6 @@ export default function OrderPreviewPage() {
                 </div>
               </div>
             </div>
-
-            {/* Chat Section */}
-            {!isOwnOrder && !isInNegotiationWithOther && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">💬 Conversar com o Vendedor</h3>
-                  <button
-                    onClick={() => setShowChat(!showChat)}
-                    className="px-4 py-2 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg"
-                  >
-                    {showChat ? 'Fechar Chat' : 'Abrir Chat'}
-                  </button>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  Negocie e confirme que ambos estão online antes de aceitar o pedido.
-                  <strong className="text-orange-600 dark:text-orange-400"> Ao enviar a primeira mensagem, o pedido ficará reservado por 10 minutos.</strong>
-                </p>
-              </div>
-            )}
           </div>
 
           {/* Sidebar */}
@@ -380,13 +288,6 @@ export default function OrderPreviewPage() {
                 >
                   Seu Pedido - Não pode aceitar
                 </button>
-              ) : isInNegotiationWithOther ? (
-                <button
-                  disabled
-                  className="w-full py-3 px-4 bg-gray-400 dark:bg-gray-600 text-white font-semibold rounded-lg cursor-not-allowed"
-                >
-                  🔒 Em Negociação com Outro Usuário
-                </button>
               ) : (
                 <>
                   <button
@@ -404,35 +305,6 @@ export default function OrderPreviewPage() {
             </div>
           </div>
         </div>
-
-        {/* Chat Modal */}
-        {showChat && !isChatMinimized && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="w-full max-w-2xl h-[600px]">
-              <ChatWindow
-                orderId={orderId}
-                onClose={() => setShowChat(false)}
-                onMinimize={() => setIsChatMinimized(true)}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Chat Minimized */}
-        {showChat && isChatMinimized && (
-          <div className="fixed bottom-4 right-4 z-50">
-            <button
-              onClick={() => setIsChatMinimized(false)}
-              className="bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3 transition-all hover:scale-105"
-            >
-              <span className="text-2xl">💬</span>
-              <div className="text-left">
-                <p className="font-bold text-sm">Chat</p>
-                <p className="text-xs">Clique para expandir</p>
-              </div>
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
