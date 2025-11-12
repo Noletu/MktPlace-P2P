@@ -7,6 +7,7 @@ import { formatBRL } from '@/utils/formatters';
 import ThemeToggle from '@/components/ThemeToggle';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import { CryptoType } from '@mktplace/shared';
+import { Star, ExternalLink } from 'lucide-react';
 
 interface Order {
   id: string;
@@ -227,15 +228,45 @@ export default function OrderPreviewPage() {
                 </div>
 
                 <div>
-                  <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Vendedor</h3>
-                  <div className="flex items-center justify-between">
-                    <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {order.user.name}</p>
-                    <div className="text-right">
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Reputação: {order.user.reputationScore}/100
+                  <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Informações do Vendedor</h3>
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="font-semibold text-lg text-gray-900 dark:text-white">{order.user.name}</p>
+                        <div className="flex items-center gap-1 mt-1">
+                          <Star className="fill-yellow-400 text-yellow-400" size={16} />
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            {order.user.reputationScore}/100
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => router.push(`/user/${order.user.id}`)}
+                        className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+                      >
+                        Ver Perfil
+                        <ExternalLink size={16} />
+                      </button>
+                    </div>
+                    <div className="space-y-1 text-sm">
+                      <p className="text-gray-600 dark:text-gray-400">
+                        <strong>Transações:</strong> {order.user.totalTransactions}
                       </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {order.user.successfulTransactions}/{order.user.totalTransactions} transações bem-sucedidas
+                      <p className="text-gray-600 dark:text-gray-400">
+                        <strong>Bem-sucedidas:</strong> {order.user.successfulTransactions}
+                      </p>
+                      {order.user.totalTransactions > 0 && (
+                        <p className="text-gray-600 dark:text-gray-400">
+                          <strong>Taxa de sucesso:</strong>{' '}
+                          <span className="font-semibold text-green-600 dark:text-green-400">
+                            {Math.round((order.user.successfulTransactions / order.user.totalTransactions) * 100)}%
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+                        💡 Clique em "Ver Perfil" para visualizar avaliações e histórico completo
                       </p>
                     </div>
                   </div>

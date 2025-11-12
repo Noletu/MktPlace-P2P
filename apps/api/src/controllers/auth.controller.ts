@@ -310,6 +310,118 @@ export class AuthController {
       });
     }
   }
+
+  // Atualizar perfil do usuário
+  async updateProfile(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          error: 'Não autenticado',
+        });
+        return;
+      }
+
+      const { name, email } = req.body;
+
+      // Validar que pelo menos um campo foi enviado
+      if (!name && !email) {
+        res.status(400).json({
+          success: false,
+          error: 'Nenhum dado para atualizar',
+        });
+        return;
+      }
+
+      // Atualizar perfil
+      const updatedUser = await authService.updateProfile(req.user.userId, {
+        name,
+        email,
+      });
+
+      // SECURITY: Audit log
+      auditLogService.logFromRequest(
+        req,
+        AUDIT_ACTIONS.UPDATE,
+        AUDIT_RESOURCES.USER,
+        req.user.userId,
+        { name, email }
+      );
+
+      res.status(200).json({
+        success: true,
+        data: updatedUser,
+        message: 'Perfil atualizado com sucesso',
+      });
+    } catch (error: any) {
+      console.error('Update profile error:', error);
+
+      // SECURITY: Audit log do erro
+      if (req.user) {
+        auditLogService.logFromRequest(
+          req,
+          AUDIT_ACTIONS.UPDATE,
+          AUDIT_RESOURCES.USER,
+          req.user.userId,
+          { error: error.message },
+          false,
+          error.message
+        );
+      }
+
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao atualizar perfil',
+      });
+    }
+  }
+
+  // Obter perfil público de um usuário (sem dados sensíveis)
+  async getPublicProfile(req: Request, res: Response): Promise<void> {
+    try {
+      const { userId } = req.params;
+
+      if (!userId) {
+        res.status(400).json({
+          success: false,
+          error: 'ID do usuário é obrigatório',
+        });
+        return;
+      }
+
+      const user = await authService.getUserById(userId);
+
+      if (!user) {
+        res.status(404).json({
+          success: false,
+          error: 'Usuário não encontrado',
+        });
+        return;
+      }
+
+      // Retornar apenas dados públicos (sem email, CPF, telefone, etc)
+      const publicProfile = {
+        id: user.id,
+        name: user.name,
+        reputationScore: user.reputationScore,
+        totalTransactions: user.totalTransactions,
+        successfulTransactions: user.successfulTransactions,
+        kycLevel: user.kycLevel,
+        createdAt: user.createdAt,
+      };
+
+      res.json({
+        success: true,
+        data: publicProfile,
+      });
+    } catch (error: any) {
+      console.error('Get public profile error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar perfil público',
+      });
+    }
+  }
 }
 
 export const authController = new AuthController();

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/AppHeader';
+import { ReviewStats } from '@/components/ReviewStats';
 
 interface KYCStatus {
   kycLevel: string;
@@ -39,6 +40,11 @@ export default function ProfilePage() {
   const [kycStatus, setKycStatus] = useState<KYCStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', email: '' });
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [reviewStats, setReviewStats] = useState<any>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -80,6 +86,31 @@ export default function ProfilePage() {
 
         const kycData = await kycRes.json();
         setKycStatus(kycData);
+
+        // Buscar estatísticas de avaliações
+        try {
+          console.log('[DEBUG] Buscando reviews para userId:', userData.id);
+          const reviewRes = await fetch(`http://localhost:3001/api/v1/reviews/user/${userData.id}/stats`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          console.log('[DEBUG] Review response status:', reviewRes.status);
+
+          if (reviewRes.ok) {
+            const reviewData = await reviewRes.json();
+            console.log('[DEBUG] Review data recebida:', reviewData);
+            // API retorna { success: true, data: {...} }, extrair apenas data
+            setReviewStats(reviewData.data || reviewData);
+          } else {
+            const errorData = await reviewRes.json();
+            console.error('[DEBUG] Review response error:', errorData);
+          }
+        } catch (reviewErr) {
+          // Silently fail - reviews são opcionais
+          console.log('[DEBUG] Erro ao buscar reviews:', reviewErr);
+        }
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -89,6 +120,46 @@ export default function ProfilePage() {
 
     fetchData();
   }, [router]);
+
+  const handleOpenEditModal = () => {
+    setEditForm({
+      name: profile?.name || '',
+      email: profile?.email || '',
+    });
+    setEditError('');
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      setEditLoading(true);
+      setEditError('');
+
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://localhost:3001/api/v1/auth/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editForm),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Erro ao atualizar perfil');
+      }
+
+      const data = await response.json();
+      setProfile(data.data);
+      setIsEditModalOpen(false);
+      alert('Perfil atualizado com sucesso!');
+    } catch (err: any) {
+      setEditError(err.message);
+    } finally {
+      setEditLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -203,7 +274,15 @@ export default function ProfilePage() {
 
         {/* Informações Básicas */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 mb-6">
-          <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Informações Básicas</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Informações Básicas</h2>
+            <button
+              onClick={handleOpenEditModal}
+              className="px-4 py-2 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg transition-colors"
+            >
+              Editar Perfil
+            </button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Nome</p>
@@ -215,7 +294,7 @@ export default function ProfilePage() {
             </div>
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">CPF</p>
-              <p className="font-semibold text-gray-900 dark:text-white">{profile?.cpf}</p>
+              <p className="font-semibold text-gray-900 dark:text-white">{profile?.cpf || 'Não informado'}</p>
             </div>
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Telefone</p>
@@ -337,8 +416,10 @@ export default function ProfilePage() {
 
         {/* Reputação */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 mb-6">
-          <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Reputação</h2>
-          <div className="grid grid-cols-3 gap-4">
+          <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Reputação</h2>
+
+          {/* Métricas Gerais */}
+          <div className="grid grid-cols-3 gap-4 mb-6">
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Score</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white">{profile?.reputationScore || 0}</p>
@@ -353,6 +434,39 @@ export default function ProfilePage() {
                 {profile?.successfulTransactions || 0}
               </p>
             </div>
+          </div>
+
+          {/* Divisor */}
+          <div className="border-t border-gray-200 dark:border-gray-700 my-6"></div>
+
+          {/* Avaliações Recebidas */}
+          <div>
+            <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">📊 Avaliações Recebidas</h3>
+
+            {reviewStats && reviewStats.totalReviews > 0 ? (
+              <>
+                <ReviewStats stats={reviewStats} compact={true} />
+
+                {/* Botão para ver todas as avaliações */}
+                <div className="mt-4">
+                  <button
+                    onClick={() => router.push('/reviews')}
+                    className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm font-medium"
+                  >
+                    Ver Todas as Avaliações →
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-8 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                <p className="text-gray-500 dark:text-gray-400 mb-2">
+                  Nenhuma avaliação recebida ainda
+                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Complete transações para começar a receber avaliações
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -371,6 +485,72 @@ export default function ProfilePage() {
         </div>
       </div>
     </div>
+
+    {/* Modal de Edição */}
+    {isEditModalOpen && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+          <h3 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Editar Perfil</h3>
+
+          {editError && (
+            <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg">
+              <p className="text-red-700 dark:text-red-300 text-sm">{editError}</p>
+            </div>
+          )}
+
+          <div className="space-y-4 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Nome
+              </label>
+              <input
+                type="text"
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                placeholder="Digite seu nome"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Email
+              </label>
+              <input
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                placeholder="Digite seu email"
+              />
+            </div>
+
+            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg">
+              <p className="text-xs text-yellow-800 dark:text-yellow-200">
+                💡 <strong>Nota:</strong> CPF e telefone só podem ser alterados através do processo de KYC.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => setIsEditModalOpen(false)}
+              disabled={editLoading}
+              className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-semibold rounded-lg transition-colors disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSaveProfile}
+              disabled={editLoading}
+              className="flex-1 px-4 py-2 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg transition-colors disabled:opacity-50"
+            >
+              {editLoading ? 'Salvando...' : 'Salvar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 }
