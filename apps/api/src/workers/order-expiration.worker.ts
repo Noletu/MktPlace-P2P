@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { notificationService } from '../services/notification.service';
 
 const prisma = new PrismaClient();
 
@@ -102,6 +103,38 @@ class OrderExpirationWorker {
         }
 
         console.log(`✅ Order ${order.id} returned to PENDING - Available in marketplace again`);
+
+        // Notificar VENDEDOR que o pedido expirou e voltou ao marketplace
+        setImmediate(async () => {
+          try {
+            await notificationService.notifyOrderExpired(
+              order.id,
+              order.userId,
+              'O pedido expirou após 30 minutos sem pagamento e retornou ao marketplace'
+            );
+            console.log(`📬 Notification sent to seller: ${order.userId}`);
+          } catch (error) {
+            console.error(`❌ Error sending notification to seller:`, error);
+          }
+        });
+
+        // Notificar COMPRADOR (payer) que não completou o pagamento a tempo
+        if (order.transactions && order.transactions.length > 0) {
+          const payerId = order.transactions[0].payerId;
+          setImmediate(async () => {
+            try {
+              await notificationService.notifyOrderExpired(
+                order.id,
+                payerId,
+                'Você não completou o pagamento a tempo e o pedido retornou ao marketplace'
+              );
+              console.log(`📬 Notification sent to payer: ${payerId}`);
+            } catch (error) {
+              console.error(`❌ Error sending notification to payer:`, error);
+            }
+          });
+        }
+
         return;
       }
 
@@ -129,6 +162,24 @@ class OrderExpirationWorker {
       });
 
       console.log(`✅ Order ${order.id} auto-cancelled and marked for refund`);
+
+      // Notificar VENDEDOR que o pedido PENDING expirou e foi cancelado
+      setImmediate(async () => {
+        try {
+          const message = order.type === 'BOLETO'
+            ? `Seu pedido expirou pois a data de vencimento do boleto passou. O colateral será devolvido.`
+            : `Seu pedido expirou após ${order.customExpirationHours || 24} horas sem match. O colateral será devolvido.`;
+
+          await notificationService.notifyOrderExpired(
+            order.id,
+            order.userId,
+            message
+          );
+          console.log(`📬 Notification sent to seller: ${order.userId}`);
+        } catch (error) {
+          console.error(`❌ Error sending notification to seller:`, error);
+        }
+      });
     } catch (error) {
       console.error(`❌ Error processing expired order ${order.id}:`, error);
     }
@@ -172,6 +223,20 @@ class OrderExpirationWorker {
 
             console.log(`📅 Boleto ${order.id} expired - Due: ${dueDate.toISOString()}`);
             expiredCount++;
+
+            // Notificar vendedor sobre expiração do boleto
+            setImmediate(async () => {
+              try {
+                await notificationService.notifyOrderExpired(
+                  order.id,
+                  order.userId,
+                  `Seu boleto expirou. Data de vencimento: ${dueDate.toLocaleDateString()}. O colateral será devolvido.`
+                );
+                console.log(`📬 Notification sent for boleto: ${order.id}`);
+              } catch (error) {
+                console.error(`❌ Error sending notification for boleto ${order.id}:`, error);
+              }
+            });
           }
         } catch (error) {
           console.error(`Error processing boleto ${order.id}:`, error);
