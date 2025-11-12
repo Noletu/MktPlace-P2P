@@ -7,7 +7,8 @@ import { formatBRL } from '@/utils/formatters';
 import ThemeToggle from '@/components/ThemeToggle';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import { CryptoType } from '@mktplace/shared';
-import { Star, ExternalLink } from 'lucide-react';
+import { Star, ExternalLink, AlertTriangle } from 'lucide-react';
+import CancellationBadge from '@/components/CancellationBadge';
 
 interface Order {
   id: string;
@@ -32,6 +33,8 @@ interface Order {
     reputationScore: number;
     totalTransactions: number;
     successfulTransactions: number;
+    totalCancellations: number;
+    recentCancellations: number;
   };
 }
 
@@ -264,6 +267,30 @@ export default function OrderPreviewPage() {
                         </p>
                       )}
                     </div>
+
+                    {/* Badge de Cancelamentos (se houver) */}
+                    {order.user.recentCancellations > 0 && (
+                      <div className="mt-3">
+                        <CancellationBadge
+                          recentCancellations={order.user.recentCancellations}
+                          totalCancellations={order.user.totalCancellations}
+                          className="w-full justify-center"
+                        />
+                      </div>
+                    )}
+
+                    {/* Warning adicional para muitos cancelamentos */}
+                    {order.user.recentCancellations >= 3 && (
+                      <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-lg">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" size={18} />
+                          <p className="text-xs text-yellow-800 dark:text-yellow-200">
+                            <strong>Atenção:</strong> Este vendedor tem histórico de cancelamentos recentes. Recomendamos verificar o perfil completo antes de aceitar.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
                       <p className="text-xs text-gray-500 dark:text-gray-400 italic">
                         💡 Clique em "Ver Perfil" para visualizar avaliações e histórico completo

@@ -472,6 +472,52 @@ export class DisputeService {
       data: { status: newOrderStatus },
     });
 
+    // NOVO: Aplicar penalidades baseadas na resolução
+    const order = await prisma.order.findUnique({
+      where: { id: dispute.orderId },
+      include: { transactions: true, user: true },
+    });
+
+    if (order) {
+      // Determinar quem é vendedor e quem é comprador
+      const sellerId = order.userId;
+      const buyerId = order.transactions[0]?.payerId;
+
+      // Aplicar penalidade conforme resolução
+      if (input.resolutionType === 'PENALTY_SELLER' && sellerId) {
+        // Penalidade para vendedor (30 pontos por disputa perdida)
+        const currentReputation = order.user.reputationScore;
+        const penaltyPoints = DISPUTE_REPUTATION.LOSE_PENALTY; // -20
+        const newReputation = Math.max(0, currentReputation + penaltyPoints);
+
+        await prisma.user.update({
+          where: { id: sellerId },
+          data: { reputationScore: newReputation },
+        });
+
+        console.log(`[DISPUTE PENALTY] Seller ${sellerId}: ${currentReputation} → ${newReputation} (${penaltyPoints} pts)`);
+      } else if (input.resolutionType === 'PENALTY_BUYER' && buyerId) {
+        // Penalidade para comprador (30 pontos por disputa perdida)
+        const buyer = await prisma.user.findUnique({
+          where: { id: buyerId },
+          select: { reputationScore: true },
+        });
+
+        if (buyer) {
+          const currentReputation = buyer.reputationScore;
+          const penaltyPoints = DISPUTE_REPUTATION.LOSE_PENALTY; // -20
+          const newReputation = Math.max(0, currentReputation + penaltyPoints);
+
+          await prisma.user.update({
+            where: { id: buyerId },
+            data: { reputationScore: newReputation },
+          });
+
+          console.log(`[DISPUTE PENALTY] Buyer ${buyerId}: ${currentReputation} → ${newReputation} (${penaltyPoints} pts)`);
+        }
+      }
+    }
+
     // Adicionar mensagem de resolução
     await prisma.disputeMessage.create({
       data: {
