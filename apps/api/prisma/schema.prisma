@@ -26,6 +26,11 @@ model User {
   totalTransactions      Int @default(0)
   successfulTransactions Int @default(0)
 
+  // Cancellation tracking
+  totalCancellations  Int       @default(0) // Total histórico de cancelamentos
+  recentCancellations Int       @default(0) // Cancelamentos nos últimos 30 dias
+  lastCancellationAt  DateTime? // Data do último cancelamento
+
   // Role - USER, ADMIN, SUPPORT
   role String @default("USER")
 
@@ -64,6 +69,9 @@ model User {
 
   // Encryption Keys (1:1 relationship)
   userKeys UserKeys?
+
+  // Cancellation history
+  cancellationHistory CancellationHistory[]
 }
 
 model Wallet {
@@ -180,6 +188,11 @@ model Order {
   refundedAt          DateTime?
   cancelReason        String? // AUTO_EXPIRED_BOLETO, AUTO_EXPIRED_PIX, USER_CANCELLED
 
+  // Cancellation details
+  cancelledBy         String? // userId de quem cancelou
+  cancellationReason  String? // Motivo categorizado (USER_CHANGED_MIND, FOUND_BETTER_PRICE, etc)
+  cancellationNote    String? // Observação adicional do usuário
+
   // Negotiation system
   negotiatingUserId    String? // Quem está negociando agora (reserva por 10min)
   negotiationStartedAt DateTime? // Quando negociação iniciou
@@ -199,6 +212,7 @@ model Order {
   reviews                Review[]
   chat                   Chat?
   collateralTransactions CollateralTransaction[] @relation("CollateralTransactionOrder")
+  cancellationHistory    CancellationHistory[]
 
   @@index([negotiatingUserId])
   @@index([negotiationStartedAt])
@@ -838,4 +852,42 @@ model UserKeys {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+}
+
+// Sistema de Histórico de Cancelamentos e Penalidades
+model CancellationHistory {
+  id String @id @default(cuid())
+
+  // Quem cancelou
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Pedido cancelado
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Papel do usuário no pedido
+  role String // SELLER (criador) ou BUYER (pagador)
+
+  // Motivo do cancelamento
+  reason String // USER_CHANGED_MIND, FOUND_BETTER_PRICE, PAYMENT_ISSUE, etc
+  note   String? // Observação adicional do usuário
+
+  // Penalidade aplicada
+  penaltyApplied   Boolean @default(false) // Se houve penalidade
+  penaltyPoints    Int     @default(0) // Pontos de penalidade aplicados
+  reputationBefore Int? // Reputação antes da penalidade
+  reputationAfter  Int? // Reputação após a penalidade
+
+  // Contexto do cancelamento
+  orderStatus String // Status do pedido no momento do cancelamento
+  orderValue  String // Valor do pedido (para análise)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([orderId])
+  @@index([role])
+  @@index([createdAt])
+  @@index([penaltyApplied])
 }

@@ -10,6 +10,8 @@ import { formatBRL } from '@/utils/formatters';
 import ThemeToggle from '@/components/ThemeToggle';
 import AppHeader from '@/components/AppHeader';
 import ReviewModal, { ReviewData } from '@/components/modals/ReviewModal';
+import CancellationModal from '@/components/CancellationModal';
+import { CancellationReason } from '@/types/cancellation';
 
 interface Order {
   id: string;
@@ -463,7 +465,7 @@ export default function OrderDetailsPage() {
     }
   };
 
-  const handleCancelOrder = async () => {
+  const handleCancelOrder = async (reason: CancellationReason, note: string) => {
     setCancelling(true);
     setError('');
 
@@ -479,6 +481,7 @@ export default function OrderDetailsPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
+        body: JSON.stringify({ reason, note }),
       });
 
       const data = await response.json();
@@ -487,19 +490,25 @@ export default function OrderDetailsPage() {
         throw new Error(data.error || 'Erro ao cancelar pedido');
       }
 
-      alert('Pedido cancelado com sucesso!');
+      // Mostrar mensagem com informação de penalidade
+      const message = data.penaltyApplied
+        ? `Pedido cancelado! Penalidade: -${data.penaltyPoints} pontos de reputação.`
+        : 'Pedido cancelado com sucesso!';
+
+      alert(message);
       setShowCancelModal(false);
       await fetchOrder();
       router.push('/orders/my-orders');
     } catch (err: any) {
       setError(err.message);
       alert(err.message);
+      throw err; // Re-throw para o modal saber que houve erro
     } finally {
       setCancelling(false);
     }
   };
 
-  const handlePayerCancelOrder = async () => {
+  const handlePayerCancelOrder = async (reason: CancellationReason, note: string) => {
     setCancellingAsPayer(true);
     setError('');
 
@@ -515,6 +524,7 @@ export default function OrderDetailsPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
+        body: JSON.stringify({ reason, note }),
       });
 
       const data = await response.json();
@@ -523,13 +533,19 @@ export default function OrderDetailsPage() {
         throw new Error(data.error || 'Erro ao cancelar pedido');
       }
 
-      alert('✅ Cancelamento confirmado! O pedido voltou ao marketplace.');
+      // Mostrar mensagem com informação de penalidade
+      const message = data.penaltyApplied
+        ? `✅ Cancelamento confirmado! O pedido voltou ao marketplace.\n⚠️ Penalidade: -${data.penaltyPoints} pontos de reputação.`
+        : '✅ Cancelamento confirmado! O pedido voltou ao marketplace.';
+
+      alert(message);
       setShowPayerCancelModal(false);
       await fetchOrder();
       router.push('/marketplace');
     } catch (err: any) {
       setError(err.message);
       alert(err.message);
+      throw err; // Re-throw para o modal saber que houve erro
     } finally {
       setCancellingAsPayer(false);
     }
@@ -1111,144 +1127,23 @@ export default function OrderDetailsPage() {
 
       {/* Todos os modais ficam aqui (fora das abas) */}
 
-      {/* Modal de Cancelamento */}
-      {showCancelModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full p-6">
-            <h3 className="text-xl font-bold mb-4 text-red-600 dark:text-red-400">⚠️ Cancelar Pedido</h3>
-
-            <div className="space-y-4 mb-6">
-              <p className="text-gray-700 dark:text-gray-300 font-semibold">
-                Você tem certeza que deseja cancelar este pedido?
-              </p>
-
-              <div className="bg-red-50 dark:bg-red-900/30 border-2 border-red-300 dark:border-red-700 rounded-lg p-4">
-                <h4 className="font-bold text-red-800 dark:text-red-200 mb-3 flex items-center gap-2">
-                  <span className="text-2xl">💰</span>
-                  IMPORTANTE - Devolução do Colateral
-                </h4>
-                <ul className="text-sm text-red-900 dark:text-red-300 space-y-3">
-                  <li className="flex gap-2">
-                    <span className="font-bold">•</span>
-                    <span>
-                      <strong>O colateral JÁ FOI DEPOSITADO</strong> na blockchain para garantir este pedido.
-                    </span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold">•</span>
-                    <span>
-                      Para receber o colateral de volta, você <strong>DEVERÁ PAGAR as taxas de rede (gas fees)</strong> da blockchain.
-                    </span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold">•</span>
-                    <span>
-                      A devolução será enviada para o endereço cadastrado em <strong>"Meus Endereços"</strong> (carteiras).
-                    </span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold">•</span>
-                    <span>
-                      O valor do colateral MENOS as taxas de rede chegará em alguns minutos, dependendo da confirmação da blockchain.
-                    </span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded-lg p-3">
-                <p className="text-sm text-yellow-900 dark:text-yellow-200">
-                  <strong>⚠️ Atenção:</strong> As taxas de rede podem variar de acordo com a blockchain escolhida.
-                  Redes como Base e Arbitrum têm taxas menores (~$0.01-0.10). Bitcoin e Ethereum podem ter taxas maiores ($2-50).
-                </p>
-              </div>
-
-              <p className="text-sm text-gray-600 dark:text-gray-400 font-semibold">
-                ❌ Esta ação não pode ser desfeita.
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowCancelModal(false)}
-                disabled={cancelling}
-                className="flex-1 px-4 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg disabled:opacity-50"
-              >
-                ← Voltar
-              </button>
-              <button
-                onClick={handleCancelOrder}
-                disabled={cancelling}
-                className="flex-1 px-4 py-3 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg disabled:opacity-50"
-              >
-                {cancelling ? 'Cancelando...' : 'Confirmar e Pagar Taxas'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal de Cancelamento Unificado */}
+      <CancellationModal
+        isOpen={showCancelModal}
+        onClose={() => setShowCancelModal(false)}
+        onConfirm={handleCancelOrder}
+        isSeller={true}
+        orderId={orderId as string}
+      />
 
       {/* Modal de Cancelamento do Pagador */}
-      {showPayerCancelModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full p-6">
-            <h3 className="text-xl font-bold mb-4 text-orange-600 dark:text-orange-400">⚠️ Cancelar Aceite</h3>
-
-            <div className="space-y-4 mb-6">
-              <p className="text-gray-700 dark:text-gray-300 font-semibold">
-                Você tem certeza que deseja cancelar este pedido?
-              </p>
-
-              <div className="bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-300 dark:border-blue-700 rounded-lg p-4">
-                <h4 className="font-bold text-blue-800 dark:text-blue-200 mb-3 flex items-center gap-2">
-                  <span className="text-2xl">ℹ️</span>
-                  O que acontece ao cancelar
-                </h4>
-                <ul className="text-sm text-blue-900 dark:text-blue-300 space-y-2">
-                  <li className="flex gap-2">
-                    <span>•</span>
-                    <span>Você <strong>NÃO depositou colateral</strong>, então não há taxas para você.</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span>•</span>
-                    <span>O pedido <strong>voltará ao marketplace</strong> para outros compradores.</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span>•</span>
-                    <span>O vendedor será notificado do cancelamento.</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span>•</span>
-                    <span>O colateral do vendedor <strong>permanecerá bloqueado</strong> (pedido continua ativo).</span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="bg-green-50 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded-lg p-3">
-                <p className="text-sm text-green-900 dark:text-green-200">
-                  <strong>✅ Sem Penalidade:</strong> Você pode cancelar sem custo enquanto o pagamento não foi feito.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowPayerCancelModal(false)}
-                disabled={cancellingAsPayer}
-                className="flex-1 px-4 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg disabled:opacity-50"
-              >
-                ← Voltar
-              </button>
-              <button
-                onClick={handlePayerCancelOrder}
-                disabled={cancellingAsPayer}
-                className="flex-1 px-4 py-3 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg disabled:opacity-50"
-              >
-                {cancellingAsPayer ? 'Cancelando...' : 'Confirmar Cancelamento'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CancellationModal
+        isOpen={showPayerCancelModal}
+        onClose={() => setShowPayerCancelModal(false)}
+        onConfirm={handlePayerCancelOrder}
+        isSeller={false}
+        orderId={orderId as string}
+      />
 
       {/* Modal de Confirmação de Pagamento */}
       {showPaymentConfirmModal && (

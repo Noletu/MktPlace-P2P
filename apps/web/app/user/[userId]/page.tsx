@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { ReviewStats } from '@/components/ReviewStats';
 import { Star, ArrowLeft, Shield, Clock, CheckCircle } from 'lucide-react';
 import AppHeader from '@/components/AppHeader';
+import CancellationBadge from '@/components/CancellationBadge';
 
 interface PublicProfile {
   id: string;
@@ -12,6 +13,8 @@ interface PublicProfile {
   reputationScore: number;
   totalTransactions: number;
   successfulTransactions: number;
+  totalCancellations: number;
+  recentCancellations: number;
   kycLevel: number;
   createdAt: string;
 }
@@ -187,6 +190,16 @@ export default function PublicUserProfilePage() {
                 </div>
               </div>
             </div>
+
+            {/* Badge de Cancelamentos (se houver) */}
+            {profile.recentCancellations > 0 && (
+              <div className="mt-6">
+                <CancellationBadge
+                  recentCancellations={profile.recentCancellations}
+                  totalCancellations={profile.totalCancellations}
+                />
+              </div>
+            )}
 
             {/* Estatísticas de Reputação */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">

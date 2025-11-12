@@ -406,6 +406,8 @@ export class AuthController {
         reputationScore: user.reputationScore,
         totalTransactions: user.totalTransactions,
         successfulTransactions: user.successfulTransactions,
+        totalCancellations: user.totalCancellations,
+        recentCancellations: user.recentCancellations,
         kycLevel: user.kycLevel,
         createdAt: user.createdAt,
       };

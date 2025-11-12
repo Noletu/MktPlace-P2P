@@ -244,20 +244,36 @@ export class OrderController {
       }
 
       const { orderId } = req.params;
+      const { reason, note } = req.body;
 
-      await orderService.cancelOrder(orderId, userId);
+      // Validar inputs obrigatórios
+      if (!reason || typeof reason !== 'string') {
+        return res.status(400).json({ error: 'Motivo do cancelamento é obrigatório' });
+      }
+
+      if (!note || typeof note !== 'string' || note.trim().length < 20) {
+        return res.status(400).json({
+          error: 'Por favor, forneça uma justificativa com pelo menos 20 caracteres',
+        });
+      }
+
+      const result = await orderService.cancelOrder(orderId, userId, reason, note);
 
       // SECURITY: Audit log - order cancelled
       auditLogService.logFromRequest(
         req,
         AUDIT_ACTIONS.ORDER_CANCEL,
         AUDIT_RESOURCES.ORDER,
-        orderId
+        orderId,
+        undefined,
+        JSON.stringify({ reason, penaltyApplied: result.penaltyApplied })
       );
 
       res.json({
         success: true,
-        message: 'Pedido cancelado com sucesso',
+        message: result.message,
+        penaltyApplied: result.penaltyApplied,
+        penaltyPoints: result.penaltyPoints,
       });
     } catch (error: any) {
       res.status(400).json({
@@ -274,24 +290,108 @@ export class OrderController {
       }
 
       const { orderId } = req.params;
+      const { reason, note } = req.body;
 
-      await orderService.cancelOrderByPayer(orderId, userId);
+      // Validar inputs obrigatórios
+      if (!reason || typeof reason !== 'string') {
+        return res.status(400).json({ error: 'Motivo do cancelamento é obrigatório' });
+      }
+
+      if (!note || typeof note !== 'string' || note.trim().length < 20) {
+        return res.status(400).json({
+          error: 'Por favor, forneça uma justificativa com pelo menos 20 caracteres',
+        });
+      }
+
+      const result = await orderService.cancelOrderByPayer(orderId, userId, reason, note);
 
       // SECURITY: Audit log - order cancelled by payer
       auditLogService.logFromRequest(
         req,
         'ORDER_CANCEL_BY_PAYER',
         AUDIT_RESOURCES.ORDER,
-        orderId
+        orderId,
+        undefined,
+        JSON.stringify({ reason, penaltyApplied: result.penaltyApplied })
       );
 
       res.json({
         success: true,
-        message: 'Pedido cancelado com sucesso. O pedido voltou ao marketplace.',
+        message: result.message,
+        penaltyApplied: result.penaltyApplied,
+        penaltyPoints: result.penaltyPoints,
       });
     } catch (error: any) {
       res.status(400).json({
         error: error.message || 'Erro ao cancelar pedido',
+      });
+    }
+  }
+
+  async getCancellationWarning(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { penaltyService } = await import('../services/penalty.service');
+      const warning = await penaltyService.shouldWarnBeforeCancellation(userId);
+
+      res.json({
+        success: true,
+        data: warning,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Erro ao verificar advertência',
+      });
+    }
+  }
+
+  async getCancellationStats(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { penaltyService } = await import('../services/penalty.service');
+      const stats = await penaltyService.getCancellationStats(userId);
+
+      res.json({
+        success: true,
+        data: stats,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Erro ao buscar estatísticas de cancelamento',
+      });
+    }
+  }
+
+  async getCancellationHistory(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { limit = '20', offset = '0' } = req.query;
+      const { cancellationHistoryService } = await import('../services/cancellationHistory.service');
+
+      const history = await cancellationHistoryService.getUserHistory(userId, {
+        limit: parseInt(limit as string),
+        offset: parseInt(offset as string),
+      });
+
+      res.json({
+        success: true,
+        data: history,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Erro ao buscar histórico de cancelamentos',
       });
     }
   }
@@ -315,6 +415,28 @@ export class OrderController {
     } catch (error: any) {
       res.status(400).json({
         error: error.message || 'Erro ao buscar estatísticas',
+      });
+    }
+  }
+
+  // ANTI-SPAM: Obter estatísticas de cancelamento para proteção anti-spam
+  async getAntiSpamStats(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { antiSpamService } = await import('../services/antiSpam.service');
+      const stats = await antiSpamService.getUserCancellationStats(userId);
+
+      res.json({
+        success: true,
+        data: stats,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message || 'Erro ao buscar estatísticas anti-spam',
       });
     }
   }

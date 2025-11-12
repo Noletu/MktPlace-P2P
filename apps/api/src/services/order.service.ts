@@ -601,9 +601,14 @@ export class OrderService {
   }
 
   /**
-   * Cancelar pedido
+   * Cancelar pedido (por vendedor/criador)
    */
-  async cancelOrder(orderId: string, userId: string): Promise<void> {
+  async cancelOrder(
+    orderId: string,
+    userId: string,
+    reason: string,
+    note: string
+  ): Promise<{ message: string; penaltyApplied: boolean; penaltyPoints: number }> {
     const order = await this.getOrderById(orderId);
 
     if (!order) {
@@ -618,12 +623,81 @@ export class OrderService {
       throw new Error('Este pedido não pode ser cancelado no status atual');
     }
 
+    // ANTI-SPAM: Verificar se usuário pode cancelar pedido PENDING
+    if (order.status === OrderStatus.PENDING) {
+      const { antiSpamService } = await import('./antiSpam.service');
+      const antiSpamCheck = await antiSpamService.canCancelPendingOrder(userId, orderId);
+
+      if (!antiSpamCheck.allowed) {
+        throw new Error(antiSpamCheck.reason || 'Cancelamento bloqueado por medidas anti-spam');
+      }
+
+      // Se houver warning, vamos retornar ele depois
+      if (antiSpamCheck.warningMessage) {
+        console.log(`⚠️ [ANTI-SPAM WARNING] userId=${userId}, message=${antiSpamCheck.warningMessage}`);
+      }
+    }
+
+    // NOVO: Calcular penalidade antes de cancelar
+    const { penaltyService } = await import('./penalty.service');
+    const { cancellationHistoryService } = await import('./cancellationHistory.service');
+    const { UserRole } = await import('../types/cancellation.types');
+
+    // REGRA: Só aplicar penalidade se alguém já aceitou o pedido (status MATCHED)
+    // Se está PENDING, ninguém foi prejudicado, então não há penalidade
+    const shouldCalculatePenalty = order.status === OrderStatus.MATCHED;
+
+    let penalty;
+    if (shouldCalculatePenalty) {
+      penalty = await penaltyService.calculateCancellationPenalty(userId, UserRole.SELLER);
+    } else {
+      // Cancelamento sem penalidade (pedido ainda não foi aceito)
+      penalty = {
+        shouldApplyPenalty: false,
+        penaltyPoints: 0,
+        message: 'Pedido cancelado sem penalidade (nenhum comprador foi prejudicado)',
+      };
+    }
+
+    // Aplicar penalidade na reputação se necessário
+    let reputationBefore: number | undefined;
+    let reputationAfter: number | undefined;
+
+    if (penalty.shouldApplyPenalty) {
+      const result = await penaltyService.applyReputationPenalty(
+        userId,
+        penalty.penaltyPoints,
+        `Cancelamento de pedido como vendedor: ${reason}`
+      );
+      reputationBefore = result.oldReputation;
+      reputationAfter = result.newReputation;
+    }
+
+    // Atualizar pedido com informações de cancelamento
     await prisma.order.update({
       where: { id: orderId },
       data: {
         status: OrderStatus.CANCELLED,
         cancelledAt: new Date(),
+        cancelledBy: userId,
+        cancellationReason: reason,
+        cancellationNote: note,
       },
+    });
+
+    // Criar registro no histórico
+    await cancellationHistoryService.create({
+      userId,
+      orderId,
+      role: UserRole.SELLER,
+      reason: reason as any,
+      note,
+      penaltyApplied: penalty.shouldApplyPenalty,
+      penaltyPoints: penalty.penaltyPoints,
+      reputationBefore,
+      reputationAfter,
+      orderStatus: order.status,
+      orderValue: order.brlAmount,
     });
 
     // Desbloquear saldo interno se foi usado (CORREÇÃO v3.0.7)
@@ -647,14 +721,14 @@ export class OrderService {
       }
     }
 
-    // Enviar notificação de cancelamento
+    // Enviar notificação de cancelamento (com informação de penalidade)
     setImmediate(async () => {
       try {
-        await notificationService.notifyOrderCancelled(
-          orderId,
-          userId,
-          'Pedido cancelado pelo usuário'
-        );
+        const notificationMessage = penalty.shouldApplyPenalty
+          ? `Pedido cancelado. Penalidade: -${penalty.penaltyPoints} pontos de reputação.`
+          : 'Pedido cancelado pelo usuário';
+
+        await notificationService.notifyOrderCancelled(orderId, userId, notificationMessage);
 
         // Se tem transação matched, notificar o comprador também
         if (order.transactions && order.transactions.length > 0) {
@@ -669,6 +743,12 @@ export class OrderService {
         console.error('Failed to send order cancelled notifications:', error);
       }
     });
+
+    return {
+      message: penalty.message,
+      penaltyApplied: penalty.shouldApplyPenalty,
+      penaltyPoints: penalty.penaltyPoints,
+    };
   }
 
   /**
@@ -676,7 +756,12 @@ export class OrderService {
    * O pedido VOLTA para o marketplace (status PENDING) ao invés de ser cancelado
    * Colateral permanece bloqueado pois o vendedor continua querendo vender
    */
-  async cancelOrderByPayer(orderId: string, payerId: string): Promise<void> {
+  async cancelOrderByPayer(
+    orderId: string,
+    payerId: string,
+    reason: string,
+    note: string
+  ): Promise<{ message: string; penaltyApplied: boolean; penaltyPoints: number }> {
     const order = await this.getOrderById(orderId);
 
     if (!order) {
@@ -698,12 +783,51 @@ export class OrderService {
       throw new Error('Este pedido não pode ser cancelado no status atual');
     }
 
+    // NOVO: Calcular penalidade antes de cancelar
+    const { penaltyService } = await import('./penalty.service');
+    const { cancellationHistoryService } = await import('./cancellationHistory.service');
+    const { UserRole } = await import('../types/cancellation.types');
+
+    const penalty = await penaltyService.calculateCancellationPenalty(payerId, UserRole.BUYER);
+
+    // Aplicar penalidade na reputação se necessário
+    let reputationBefore: number | undefined;
+    let reputationAfter: number | undefined;
+
+    if (penalty.shouldApplyPenalty) {
+      const result = await penaltyService.applyReputationPenalty(
+        payerId,
+        penalty.penaltyPoints,
+        `Cancelamento de pedido como comprador: ${reason}`
+      );
+      reputationBefore = result.oldReputation;
+      reputationAfter = result.newReputation;
+    }
+
     // Voltar pedido para PENDING (volta ao marketplace)
     await prisma.order.update({
       where: { id: orderId },
       data: {
         status: OrderStatus.PENDING,
+        cancelledBy: payerId,
+        cancellationReason: reason,
+        cancellationNote: note,
       },
+    });
+
+    // Criar registro no histórico
+    await cancellationHistoryService.create({
+      userId: payerId,
+      orderId,
+      role: UserRole.BUYER,
+      reason: reason as any,
+      note,
+      penaltyApplied: penalty.shouldApplyPenalty,
+      penaltyPoints: penalty.penaltyPoints,
+      reputationBefore,
+      reputationAfter,
+      orderStatus: order.status,
+      orderValue: order.brlAmount,
     });
 
     // Deletar/cancelar a transaction (desvincula o pagador)
@@ -715,21 +839,25 @@ export class OrderService {
 
     // NÃO desbloqueia colateral - ele permanece bloqueado pois o pedido continua ativo
 
-    // Enviar notificações
+    // Enviar notificações (com informação de penalidade)
     setImmediate(async () => {
       try {
         // Notificar o pagador (comprador)
+        const payerMessage = penalty.shouldApplyPenalty
+          ? `Você cancelou o aceite do pedido. Penalidade: -${penalty.penaltyPoints} pontos de reputação.`
+          : 'Você cancelou o aceite do pedido. O pedido voltou ao marketplace.';
+
         await notificationService.createNotification({
           userId: payerId,
           type: 'ORDER_STATUS_CHANGE',
           category: 'ORDER',
-          title: '✅ Cancelamento Confirmado',
-          message: 'Você cancelou o aceite do pedido. O pedido voltou ao marketplace.',
+          title: penalty.shouldApplyPenalty ? '⚠️ Cancelamento com Penalidade' : '✅ Cancelamento Confirmado',
+          message: payerMessage,
           actionUrl: `/orders/${orderId}`,
           actionLabel: 'Ver Pedido',
           relatedId: orderId,
           relatedType: 'ORDER',
-          priority: 'NORMAL',
+          priority: penalty.shouldApplyPenalty ? 'HIGH' : 'NORMAL',
         });
 
         // Notificar o vendedor (criador do pedido)
@@ -749,6 +877,12 @@ export class OrderService {
         console.error('Failed to send payer cancellation notifications:', error);
       }
     });
+
+    return {
+      message: penalty.message,
+      penaltyApplied: penalty.shouldApplyPenalty,
+      penaltyPoints: penalty.penaltyPoints,
+    };
   }
 
   /**
