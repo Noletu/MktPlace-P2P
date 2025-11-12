@@ -261,14 +261,23 @@ export default function MarketplacePage() {
                   <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Vendedor</p>
                   <div className="flex items-center justify-between">
                     <p className="font-semibold dark:text-gray-200">{order.user.name || 'Anônimo'}</p>
-                    <div className="text-right">
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Score: {order.user.reputationScore}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/user/${order.user.id}`);
+                      }}
+                      className="text-right hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg p-2 -m-2 transition-colors group"
+                    >
+                      <p className="text-sm text-gray-600 dark:text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                        Score: {order.user.reputationScore} ⭐
                       </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400">
                         {order.user.successfulTransactions}/{order.user.totalTransactions} sucesso
                       </p>
-                    </div>
+                      <p className="text-xs text-blue-600 dark:text-blue-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                        Ver perfil →
+                      </p>
+                    </button>
                   </div>
                 </div>
 

@@ -482,6 +482,8 @@ export class OrderService {
             name: true,
             email: true,
             reputationScore: true,
+            totalTransactions: true,
+            successfulTransactions: true,
           },
         },
         transactions: {

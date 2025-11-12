@@ -35,6 +35,13 @@ router.post('/refresh', (req, res) => authController.refresh(req, res));
 router.get('/me', authMiddleware, (req, res) => authController.me(req, res));
 
 /**
+ * @route   PUT /api/v1/auth/profile
+ * @desc    Atualizar perfil do usuário autenticado
+ * @access  Private
+ */
+router.put('/profile', authMiddleware, (req, res) => authController.updateProfile(req, res));
+
+/**
  * @route   POST /api/v1/auth/logout
  * @desc    Logout de usuário (revogar refresh token)
  * @access  Private
@@ -54,5 +61,12 @@ router.get('/check-email', (req, res) => authController.checkEmail(req, res));
  * @access  Public
  */
 router.get('/check-cpf', (req, res) => authController.checkCpf(req, res));
+
+/**
+ * @route   GET /api/v1/auth/public-profile/:userId
+ * @desc    Obter perfil público de um usuário
+ * @access  Public
+ */
+router.get('/public-profile/:userId', (req, res) => authController.getPublicProfile(req, res));
 
 export default router;

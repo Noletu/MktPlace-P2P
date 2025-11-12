@@ -63,7 +63,7 @@ export function ReviewResponseForm({ reviewId, onSuccess, onCancel }: ReviewResp
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="response" className="block text-sm font-medium text-gray-700 mb-2">
+        <label htmlFor="response" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Sua Resposta
         </label>
         <textarea
@@ -73,21 +73,21 @@ export function ReviewResponseForm({ reviewId, onSuccess, onCancel }: ReviewResp
           rows={4}
           maxLength={maxLength}
           placeholder="Escreva sua resposta à avaliação..."
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
           disabled={loading}
         />
         <div className="flex items-center justify-between mt-2">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Máximo {maxLength} caracteres
           </p>
-          <p className={`text-sm ${remainingChars < 50 ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+          <p className={`text-sm ${remainingChars < 50 ? 'text-orange-600 dark:text-orange-400 font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
             {remainingChars} restantes
           </p>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 px-4 py-3 rounded-lg text-sm">
           {error}
         </div>
       )}
@@ -97,7 +97,7 @@ export function ReviewResponseForm({ reviewId, onSuccess, onCancel }: ReviewResp
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
             disabled={loading}
           >
             Cancelar
