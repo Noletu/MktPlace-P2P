@@ -52,6 +52,7 @@ const strongPasswordSchema = z
 export const loginSchema = z.object({
   email: z.string().email('Email inválido'),
   password: z.string().min(8, 'Senha deve ter no mínimo 8 caracteres'),
+  twoFactorToken: z.string().optional(), // SECURITY: Token 2FA opcional (quando habilitado)
 });
 
 export const registerSchema = z.object({

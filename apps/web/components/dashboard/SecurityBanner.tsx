@@ -28,15 +28,8 @@ export default function SecurityBanner() {
   const fetchUserData = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:3001/api/v1/auth/me', {
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        throw new Error('Falha ao carregar dados do usuário');
-      }
-
-      const data = await response.json();
+      const { apiGet } = await import('@/utils/api');
+      const data = await apiGet('/auth/me');
       setUser(data.data);
     } catch (err) {
       console.error('Erro ao buscar dados do usuário:', err);
@@ -85,33 +78,35 @@ export default function SecurityBanner() {
       {/* KYC Alert */}
       {needsKYC && (
         <div className="bg-yellow-50 dark:bg-yellow-900 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <span className="text-3xl">⚠️</span>
-            <div className="flex-1">
-              <p className="font-semibold text-yellow-800 dark:text-yellow-200 mb-1">
-                Aumente seu Limite Diário
-              </p>
-              <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-3">
-                Seu nível atual: <span className={`px-2 py-0.5 rounded text-xs font-semibold ${currentKyc.color}`}>
-                  {currentKyc.label}
-                </span> (Limite: {currentKyc.limit})
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => router.push('/kyc/info')}
-                  className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors text-sm font-medium"
-                >
-                  Ver Níveis KYC
-                </button>
-                {user.kycLevel === 'NONE' && (
-                  <button
-                    onClick={() => router.push('/kyc/level1')}
-                    className="px-4 py-2 bg-yellow-700 text-white rounded-lg hover:bg-yellow-800 transition-colors text-sm font-medium"
-                  >
-                    Fazer KYC Nível 1
-                  </button>
-                )}
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 flex-1">
+              <span className="text-2xl">⚠️</span>
+              <div>
+                <p className="font-semibold text-yellow-800 dark:text-yellow-200">
+                  Aumente seu Limite Diário
+                </p>
+                <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                  Seu nível atual: <span className={`px-2 py-0.5 rounded text-xs font-semibold ${currentKyc.color}`}>
+                    {currentKyc.label}
+                  </span> (Limite: {currentKyc.limit})
+                </p>
               </div>
+            </div>
+            <div className="flex gap-2 flex-shrink-0">
+              <button
+                onClick={() => router.push('/kyc/info')}
+                className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors text-sm font-medium whitespace-nowrap"
+              >
+                Ver Níveis KYC
+              </button>
+              {user.kycLevel === 'NONE' && (
+                <button
+                  onClick={() => router.push('/kyc/level1')}
+                  className="px-4 py-2 bg-yellow-700 text-white rounded-lg hover:bg-yellow-800 transition-colors text-sm font-medium whitespace-nowrap"
+                >
+                  Fazer KYC Nível 1
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -120,22 +115,24 @@ export default function SecurityBanner() {
       {/* 2FA Alert */}
       {needs2FA && (
         <div className="bg-orange-50 dark:bg-orange-900 border border-orange-200 dark:border-orange-700 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <span className="text-3xl">🔐</span>
-            <div className="flex-1">
-              <p className="font-semibold text-orange-800 dark:text-orange-200 mb-1">
-                Ative a Autenticação de Dois Fatores (2FA)
-              </p>
-              <p className="text-sm text-orange-700 dark:text-orange-300 mb-3">
-                Proteja sua conta com uma camada extra de segurança
-              </p>
-              <button
-                onClick={() => router.push('/2fa/setup')}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium"
-              >
-                Ativar 2FA Agora
-              </button>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 flex-1">
+              <span className="text-2xl">🔐</span>
+              <div>
+                <p className="font-semibold text-orange-800 dark:text-orange-200">
+                  Ative a Autenticação de Dois Fatores (2FA)
+                </p>
+                <p className="text-sm text-orange-700 dark:text-orange-300">
+                  Proteja sua conta com uma camada extra de segurança
+                </p>
+              </div>
             </div>
+            <button
+              onClick={() => router.push('/2fa/setup')}
+              className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium whitespace-nowrap flex-shrink-0"
+            >
+              Ativar 2FA Agora
+            </button>
           </div>
         </div>
       )}

@@ -38,4 +38,12 @@ router.post('/enable', twoFactorLimiter, twoFactorController.enable.bind(twoFact
 // SECURITY: Rate limiting para prevenir brute force de códigos 2FA
 router.post('/disable', twoFactorLimiter, twoFactorController.disable.bind(twoFactorController));
 
+/**
+ * @route   POST /api/v1/2fa/regenerate-backup-codes
+ * @desc    Regenerar backup codes (requer token 2FA)
+ * @access  Private
+ */
+// SECURITY: Rate limiting para prevenir brute force de códigos 2FA
+router.post('/regenerate-backup-codes', twoFactorLimiter, twoFactorController.regenerateBackupCodes.bind(twoFactorController));
+
 export default router;
