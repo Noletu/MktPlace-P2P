@@ -125,6 +125,11 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Security Banner */}
+        <div className="mb-8">
+          <SecurityBanner />
+        </div>
+
         {/* Collateral Widget (destaque principal) */}
         <div className="mb-8">
           <CollateralWidget />
@@ -134,11 +139,6 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <ActiveOrdersCard />
           <StatisticsCard />
-        </div>
-
-        {/* Security Banner */}
-        <div className="mb-8">
-          <SecurityBanner />
         </div>
 
         {/* Quick Links (opcional, para mobile) */}

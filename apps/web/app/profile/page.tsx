@@ -22,6 +22,8 @@ interface UserProfile {
   totalTransactions: number;
   successfulTransactions: number;
   createdAt: string;
+  twoFactorEnabled?: boolean;
+  has2FA?: boolean;
 }
 
 interface KYCLevelData {
@@ -300,6 +302,73 @@ export default function ProfilePage() {
               <p className="text-sm text-gray-600 dark:text-gray-400">Telefone</p>
               <p className="font-semibold text-gray-900 dark:text-white">{profile?.phone || 'Não informado'}</p>
             </div>
+          </div>
+        </div>
+
+        {/* Segurança */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 mb-6">
+          <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">🔐 Segurança</h2>
+
+          {/* Status 2FA */}
+          <div className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 rounded-lg border border-blue-200 dark:border-blue-700 mb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex-shrink-0">
+                  {profile?.has2FA || profile?.twoFactorEnabled ? (
+                    <div className="w-16 h-16 bg-green-500 dark:bg-green-600 rounded-full flex items-center justify-center">
+                      <span className="text-white text-3xl">✓</span>
+                    </div>
+                  ) : (
+                    <div className="w-16 h-16 bg-orange-500 dark:bg-orange-600 rounded-full flex items-center justify-center">
+                      <span className="text-white text-3xl">!</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
+                    Autenticação de Dois Fatores (2FA)
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    {profile?.has2FA || profile?.twoFactorEnabled
+                      ? '✅ Ativo - Sua conta está protegida com 2FA'
+                      : '⚠️ Inativo - Recomendamos ativar para maior segurança'
+                    }
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <button
+                  onClick={() => router.push('/2fa/setup')}
+                  className={`px-6 py-3 font-semibold rounded-lg transition-colors shadow-md hover:shadow-lg ${
+                    profile?.has2FA || profile?.twoFactorEnabled
+                      ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      : 'bg-blue-600 dark:bg-blue-700 text-white hover:bg-blue-700 dark:hover:bg-blue-800'
+                  }`}
+                >
+                  {profile?.has2FA || profile?.twoFactorEnabled ? 'Gerenciar 2FA' : 'Ativar 2FA'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Informações sobre 2FA */}
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <h4 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">
+              📱 O que é 2FA?
+            </h4>
+            <p className="text-sm text-blue-800 dark:text-blue-300 mb-3">
+              A autenticação de dois fatores adiciona uma camada extra de segurança. Além da sua senha, você precisará de um código gerado por um app autenticador no seu celular.
+            </p>
+            <p className="text-sm text-blue-800 dark:text-blue-300 font-semibold mb-1">
+              Apps recomendados:
+            </p>
+            <ul className="text-sm text-blue-700 dark:text-blue-400 list-disc list-inside">
+              <li>Google Authenticator</li>
+              <li>Microsoft Authenticator</li>
+              <li>Authy</li>
+            </ul>
           </div>
         </div>
 

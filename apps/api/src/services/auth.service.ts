@@ -148,9 +148,27 @@ export class AuthService {
     return await refreshTokenService.revokeRefreshToken(refreshToken);
   }
 
-  async getUserById(userId: string): Promise<Omit<User, 'password'> | null> {
+  async getUserById(userId: string): Promise<any> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
+      include: {
+        kycVerification: {
+          select: {
+            fullName: true,
+            cpf: true,
+            phone: true,
+            phoneVerified: true,
+            dateOfBirth: true,
+            addressStreet: true,
+            addressNumber: true,
+            addressComplement: true,
+            addressNeighborhood: true,
+            addressCity: true,
+            addressState: true,
+            addressZipCode: true,
+          },
+        },
+      },
     });
 
     if (!user) {
@@ -158,13 +176,87 @@ export class AuthService {
     }
 
     const { password, ...userWithoutPassword } = user;
-    return userWithoutPassword;
+
+    // Adicionar CPF e telefone diretamente no objeto user (compatibilidade com frontend)
+    return {
+      ...userWithoutPassword,
+      cpf: user.kycVerification?.cpf || null,
+      phone: user.kycVerification?.phone || null,
+      kycVerification: user.kycVerification,
+      has2FA: user.twoFactorEnabled, // Mapear para compatibilidade com SecurityBanner
+    };
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
     return await prisma.user.findUnique({
       where: { email },
     });
+  }
+
+  async getUserByCpf(cpf: string): Promise<User | null> {
+    // CPF está em KYCVerification, não em User
+    const kycRecord = await prisma.kYCVerification.findUnique({
+      where: { cpf },
+      include: { user: true },
+    });
+
+    return kycRecord?.user || null;
+  }
+
+  async updateProfile(userId: string, data: {
+    name?: string;
+    email?: string;
+  }): Promise<any> {
+    // Verificar se email já está em uso por outro usuário
+    if (data.email) {
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          email: data.email,
+          NOT: { id: userId },
+        },
+      });
+
+      if (existingUser) {
+        throw new Error('Email já está em uso');
+      }
+    }
+
+    // Atualizar usuário
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(data.name && { name: data.name }),
+        ...(data.email && { email: data.email }),
+      },
+      include: {
+        kycVerification: {
+          select: {
+            fullName: true,
+            cpf: true,
+            phone: true,
+            phoneVerified: true,
+            dateOfBirth: true,
+            addressStreet: true,
+            addressNumber: true,
+            addressComplement: true,
+            addressNeighborhood: true,
+            addressCity: true,
+            addressState: true,
+            addressZipCode: true,
+          },
+        },
+      },
+    });
+
+    const { password, ...userWithoutPassword } = updatedUser;
+
+    // Adicionar CPF e telefone diretamente no objeto user (compatibilidade com frontend)
+    return {
+      ...userWithoutPassword,
+      cpf: updatedUser.kycVerification?.cpf || null,
+      phone: updatedUser.kycVerification?.phone || null,
+      kycVerification: updatedUser.kycVerification,
+    };
   }
 }
 
