@@ -236,6 +236,63 @@ export class OrderController {
     }
   }
 
+  async updateOrder(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { orderId } = req.params;
+      const { customExpirationHours, orderData } = req.body;
+
+      // Validar que pelo menos um campo foi enviado
+      if (customExpirationHours === undefined && !orderData) {
+        return res.status(400).json({
+          error: 'Nenhum dado para atualizar. Forneça customExpirationHours ou orderData.',
+        });
+      }
+
+      // Atualizar pedido
+      const updatedOrder = await orderService.updateOrder(orderId, userId, {
+        customExpirationHours,
+        orderData,
+      });
+
+      // SECURITY: Audit log - order updated
+      auditLogService.logFromRequest(
+        req,
+        AUDIT_ACTIONS.UPDATE,
+        AUDIT_RESOURCES.ORDER,
+        orderId,
+        { customExpirationHours, orderData }
+      );
+
+      res.json({
+        success: true,
+        data: updatedOrder,
+        message: 'Pedido atualizado com sucesso',
+      });
+    } catch (error: any) {
+      // SECURITY: Audit log do erro
+      if (req.user) {
+        auditLogService.logFromRequest(
+          req,
+          AUDIT_ACTIONS.UPDATE,
+          AUDIT_RESOURCES.ORDER,
+          req.params.orderId,
+          { error: error.message },
+          false,
+          error.message
+        );
+      }
+
+      res.status(400).json({
+        error: error.message || 'Erro ao atualizar pedido',
+      });
+    }
+  }
+
   async cancelOrder(req: Request, res: Response) {
     try {
       const userId = req.user?.userId;
