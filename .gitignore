@@ -41,8 +41,15 @@ yarn-error.log*
 # Database
 *.db
 *.sqlite
+*.db.backup*
+*.backup-*
+apps/api/prisma/*.backup*
 
 # Prisma
 # prisma/migrations - MUST be versioned in Git
 logs/
 tsconfig.tsbuildinfo
+
+# Temporary scripts and files
+apps/api/delete-*.ts
+SESSION_SUMMARY_*.md
