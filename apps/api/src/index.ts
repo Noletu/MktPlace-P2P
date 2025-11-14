@@ -23,6 +23,7 @@ import notificationRoutes from './routes/notification.routes';
 import chatRoutes from './routes/chat.routes';
 import keysRoutes from './routes/keys.routes';
 import presenceRoutes from './routes/presence.routes';
+import workersRoutes from './routes/workers.routes';
 // import negotiationRoutes from './routes/negotiation.routes'; // DESABILITADO: Chat disponível apenas após aceitar pedido
 // import statsRoutes from './routes/stats.routes';
 import { apiLimiter } from './middleware/rateLimiter.middleware';
@@ -211,6 +212,9 @@ app.use('/api/v1/keys', keysRoutes);
 
 // Presence routes (online/offline status)
 app.use('/api/v1/presence', presenceRoutes);
+
+// Workers routes (monitoring and management)
+app.use('/api/v1/workers', workersRoutes);
 
 // Negotiation routes (pre-match negotiation) - DESABILITADO: Chat disponível apenas após aceitar pedido
 // app.use('/api/v1/negotiation', negotiationRoutes);
