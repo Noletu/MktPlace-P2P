@@ -21,6 +21,7 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "packageManager": "npm@11.6.1",
   "dependencies": {
     "@types/socket.io": "^3.0.2",
     "sharp": "^0.34.4",
