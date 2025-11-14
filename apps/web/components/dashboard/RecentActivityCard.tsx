@@ -27,16 +27,9 @@ export default function RecentActivityCard() {
   const fetchRecentActivity = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:3001/api/v1/transactions/timeline?limit=10', {
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        throw new Error('Falha ao carregar atividades');
-      }
-
-      const data = await response.json();
-      setActivities(data.data || []);
+      const { apiGet } = await import('@/utils/api');
+      const data = await apiGet('/transactions/timeline?limit=10');
+      setActivities(Array.isArray(data.data) ? data.data : []);
     } catch (err) {
       console.error('Erro ao buscar atividades:', err);
       setError('Erro ao carregar atividades');

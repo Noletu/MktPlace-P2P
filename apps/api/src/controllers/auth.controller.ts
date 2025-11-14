@@ -105,6 +105,16 @@ export class AuthController {
         message: 'Login realizado com sucesso',
       });
     } catch (error: any) {
+      // SECURITY: Tratamento especial para 2FA requerido
+      if (error.message === '2FA_REQUIRED') {
+        res.status(200).json({
+          success: false,
+          requiresTwoFactor: true,
+          message: 'Código 2FA necessário',
+        });
+        return;
+      }
+
       // SECURITY: Log login falho
       securityLogger.login('unknown', false, req.ip, {
         email: req.body.email,
