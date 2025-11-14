@@ -11,6 +11,7 @@ import ThemeToggle from '@/components/ThemeToggle';
 import AppHeader from '@/components/AppHeader';
 import ReviewModal, { ReviewData } from '@/components/modals/ReviewModal';
 import CancellationModal from '@/components/CancellationModal';
+import EditOrderModal from '@/components/EditOrderModal';
 import { CancellationReason } from '@/types/cancellation';
 
 interface Order {
@@ -87,6 +88,9 @@ export default function OrderDetailsPage() {
   const [reviewedUserId, setReviewedUserId] = useState<string | null>(null);
   const [reviewedUserName, setReviewedUserName] = useState<string>('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // Edit order state
+  const [showEditModal, setShowEditModal] = useState(false);
 
   useEffect(() => {
     fetchOrder();
@@ -465,6 +469,42 @@ export default function OrderDetailsPage() {
     }
   };
 
+  const handleEditOrder = async (updates: {
+    customExpirationHours?: number;
+    orderData?: any;
+  }) => {
+    setError('');
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('Você precisa estar logado');
+      }
+
+      const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(updates),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao atualizar pedido');
+      }
+
+      alert('✅ Pedido atualizado com sucesso!');
+      setShowEditModal(false);
+      await fetchOrder(); // Recarregar dados
+    } catch (err: any) {
+      setError(err.message);
+      throw err; // Re-throw para o modal tratar
+    }
+  };
+
   const handleCancelOrder = async (reason: CancellationReason, note: string) => {
     setCancelling(true);
     setError('');
@@ -734,8 +774,8 @@ export default function OrderDetailsPage() {
                       <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(order.status)}`}>
                         {translateStatus(order.status)}
                       </span>
-                      {/* Countdown Timer - Mostrar apenas para status MATCHED */}
-                      {order.status === 'MATCHED' && order.timeoutAt && (
+                      {/* Countdown Timer - Mostrar para PENDING e MATCHED */}
+                      {(order.status === 'PENDING' || order.status === 'MATCHED') && order.timeoutAt && (
                         <CountdownTimer
                           timeoutAt={order.timeoutAt}
                           onExpire={() => {
@@ -988,6 +1028,16 @@ export default function OrderDetailsPage() {
                       className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
                     >
                       {confirmingReceived ? 'Confirmando...' : '✅ Confirmar Pagamento Recebido'}
+                    </button>
+                  )}
+
+                  {/* Editar Pedido - Disponível para criador em status PENDING */}
+                  {isCreator && order.status === 'PENDING' && (
+                    <button
+                      onClick={() => setShowEditModal(true)}
+                      className="w-full px-4 py-2 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg"
+                    >
+                      ✏️ Editar Pedido
                     </button>
                   )}
 
@@ -1262,6 +1312,27 @@ export default function OrderDetailsPage() {
         onSubmit={handleSubmitReview}
         reviewedUserName={reviewedUserName}
         orderId={orderId}
+      />
+
+      {/* Edit Order Modal */}
+      <EditOrderModal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        onConfirm={handleEditOrder}
+        orderType={paymentMethod as 'PIX' | 'BOLETO'}
+        currentData={{
+          customExpirationHours: order.customExpirationHours,
+          ...(paymentMethod === 'PIX' ? {
+            pixKey: orderData.pixKey,
+            pixKeyType: orderData.pixKeyType,
+            recipientName: orderData.recipientName,
+          } : {
+            barcode: orderData.barcode,
+            dueDate: orderData.dueDate,
+            recipientName: orderData.recipientName,
+            recipientDocument: orderData.recipientDocument,
+          }),
+        }}
       />
     </>
   );

@@ -134,6 +134,22 @@ export default function MyOrdersPage() {
     return `${days}d`;
   };
 
+  const getTimeRemaining = (timeoutAt: string) => {
+    const now = new Date().getTime();
+    const timeout = new Date(timeoutAt).getTime();
+    const diff = timeout - now;
+
+    if (diff <= 0) return 'Expirado';
+
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) return `${days}d ${hours % 24}h`;
+    if (hours > 0) return `${hours}h ${minutes % 60}min`;
+    return `${minutes}min`;
+  };
+
   const filteredOrders = orders.filter((order) => {
     if (filter === 'ALL') return true;
     if (filter === 'ACTIVE')
@@ -305,7 +321,7 @@ export default function MyOrdersPage() {
                         )}
                       </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
                       <div>
                         <p className="text-sm text-gray-600 dark:text-gray-400">Valor em BRL</p>
                         <p className="text-lg font-bold dark:text-gray-200">{formatBRL(order.brlAmount)}</p>
@@ -330,6 +346,16 @@ export default function MyOrdersPage() {
                           {new Date(order.createdAt).toLocaleTimeString()}
                         </p>
                       </div>
+
+                      {/* Mostrar tempo de expiração para pedidos ativos */}
+                      {['PENDING', 'MATCHED'].includes(order.status) && order.timeoutAt && (
+                        <div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">Expira em</p>
+                          <p className="text-sm font-semibold text-orange-600 dark:text-orange-400">
+                            ⏱️ {getTimeRemaining(order.timeoutAt)}
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     {/* Toggle de Presença - Apenas para pedidos PENDING ou IN_NEGOTIATION */}

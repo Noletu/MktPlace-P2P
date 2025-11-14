@@ -886,6 +886,165 @@ export class OrderService {
   }
 
   /**
+   * Atualizar pedido PENDING (antes de ser aceito)
+   * Permite editar: dados de pagamento, tempo de expiração
+   * NÃO permite: valores, tipo de cripto, após MATCHED
+   */
+  async updateOrder(
+    orderId: string,
+    userId: string,
+    updates: {
+      customExpirationHours?: number;
+      orderData?: {
+        pixKey?: string;
+        pixKeyType?: string;
+        recipientName?: string;
+        barcode?: string;
+        dueDate?: string;
+        recipientDocument?: string;
+      };
+    }
+  ): Promise<Order> {
+    // Buscar pedido
+    const order = await this.getOrderById(orderId);
+
+    if (!order) {
+      throw new Error('Pedido não encontrado');
+    }
+
+    // SECURITY: Verificar se usuário é o dono
+    if (order.userId !== userId) {
+      throw new Error('Você não tem permissão para editar este pedido');
+    }
+
+    // SECURITY: Só permite editar se status PENDING (ninguém aceitou ainda)
+    if (order.status !== OrderStatus.PENDING) {
+      throw new Error('Só é possível editar pedidos que ainda não foram aceitos (status PENDING)');
+    }
+
+    // Preparar dados de atualização
+    const updateData: any = {};
+
+    // Atualizar tempo de expiração
+    if (updates.customExpirationHours !== undefined) {
+      // Validar range (1 a 720 horas = 1 a 30 dias)
+      if (updates.customExpirationHours < 1 || updates.customExpirationHours > 720) {
+        throw new Error('Tempo de expiração deve estar entre 1 e 720 horas (30 dias)');
+      }
+
+      // Recalcular timeoutAt
+      const newTimeout = new Date();
+      newTimeout.setHours(newTimeout.getHours() + updates.customExpirationHours);
+
+      updateData.customExpirationHours = updates.customExpirationHours;
+      updateData.timeoutAt = newTimeout;
+    }
+
+    // Atualizar dados de pagamento
+    if (updates.orderData) {
+      const currentOrderData = JSON.parse(order.orderData);
+      const newOrderData = { ...currentOrderData };
+
+      // Validar tipo de pedido antes de permitir edição
+      if (order.type === 'PIX') {
+        // Atualizar campos PIX
+        if (updates.orderData.pixKey !== undefined) {
+          if (updates.orderData.pixKey.trim().length < 3) {
+            throw new Error('Chave PIX deve ter pelo menos 3 caracteres');
+          }
+          newOrderData.pixKey = updates.orderData.pixKey;
+        }
+
+        if (updates.orderData.pixKeyType !== undefined) {
+          const validTypes = ['CPF', 'CNPJ', 'EMAIL', 'PHONE', 'RANDOM'];
+          if (!validTypes.includes(updates.orderData.pixKeyType)) {
+            throw new Error('Tipo de chave PIX inválido');
+          }
+          newOrderData.pixKeyType = updates.orderData.pixKeyType;
+        }
+
+        if (updates.orderData.recipientName !== undefined) {
+          if (updates.orderData.recipientName.trim().length < 3) {
+            throw new Error('Nome do beneficiário deve ter pelo menos 3 caracteres');
+          }
+          newOrderData.recipientName = updates.orderData.recipientName;
+        }
+      } else if (order.type === 'BOLETO') {
+        // Atualizar campos BOLETO
+        if (updates.orderData.barcode !== undefined) {
+          if (updates.orderData.barcode.length < 44) {
+            throw new Error('Código de barras deve ter no mínimo 44 caracteres');
+          }
+          newOrderData.barcode = updates.orderData.barcode;
+        }
+
+        if (updates.orderData.dueDate !== undefined) {
+          // Validar formato YYYY-MM-DD
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(updates.orderData.dueDate)) {
+            throw new Error('Data de vencimento inválida (use formato YYYY-MM-DD)');
+          }
+          const dueDate = new Date(updates.orderData.dueDate);
+          if (dueDate < new Date()) {
+            throw new Error('Data de vencimento não pode estar no passado');
+          }
+          newOrderData.dueDate = updates.orderData.dueDate;
+        }
+
+        if (updates.orderData.recipientName !== undefined) {
+          if (updates.orderData.recipientName.trim().length < 3) {
+            throw new Error('Nome do beneficiário deve ter pelo menos 3 caracteres');
+          }
+          newOrderData.recipientName = updates.orderData.recipientName;
+        }
+
+        if (updates.orderData.recipientDocument !== undefined) {
+          if (updates.orderData.recipientDocument.trim().length < 11) {
+            throw new Error('CPF/CNPJ do beneficiário inválido');
+          }
+          newOrderData.recipientDocument = updates.orderData.recipientDocument;
+        }
+      }
+
+      updateData.orderData = JSON.stringify(newOrderData);
+    }
+
+    // Se não há nada para atualizar
+    if (Object.keys(updateData).length === 0) {
+      throw new Error('Nenhuma alteração foi fornecida');
+    }
+
+    // Atualizar pedido
+    const updatedOrder = await prisma.order.update({
+      where: { id: orderId },
+      data: updateData,
+    });
+
+    console.log(`✏️ Order ${orderId} updated by user ${userId}`);
+
+    // Notificar usuário sobre atualização bem-sucedida
+    setImmediate(async () => {
+      try {
+        await notificationService.createNotification({
+          userId,
+          type: 'ORDER_STATUS_CHANGE',
+          category: 'ORDER',
+          title: '✏️ Pedido Atualizado',
+          message: 'Seu pedido foi atualizado com sucesso e continua disponível no marketplace.',
+          actionUrl: `/orders/${orderId}`,
+          actionLabel: 'Ver Pedido',
+          relatedId: orderId,
+          relatedType: 'ORDER',
+          priority: 'LOW',
+        });
+      } catch (error) {
+        console.error('Failed to send order update notification:', error);
+      }
+    });
+
+    return updatedOrder;
+  }
+
+  /**
    * Obter estatísticas do usuário
    */
   async getUserStatistics(userId: string, days: number = 30) {

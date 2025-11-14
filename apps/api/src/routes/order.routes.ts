@@ -35,6 +35,9 @@ router.get('/cancellation/warning', orderController.getCancellationWarning.bind(
 // Obter detalhes do pedido
 router.get('/:orderId', orderController.getOrder.bind(orderController));
 
+// Atualizar pedido (somente se PENDING)
+router.patch('/:orderId', orderController.updateOrder.bind(orderController));
+
 // Fazer match (aceitar pedido)
 router.post('/:orderId/match', orderController.matchOrder.bind(orderController));
 
