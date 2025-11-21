@@ -700,7 +700,7 @@ export class OrderService {
       orderValue: order.brlAmount,
     });
 
-    // Desbloquear saldo interno se foi usado (CORREÇÃO v3.0.7)
+    // Desbloquear saldo interno se foi usado (CORREÇÃO v3.0.8)
     if (order.collateralSource === 'INTERNAL_BALANCE' &&
         order.collateralLocked &&
         order.collateralLockedAmount) {
@@ -713,6 +713,15 @@ export class OrderService {
           order.collateralLockedAmount,
           orderId
         );
+
+        // CORREÇÃO: Atualizar a ordem para marcar colateral como desbloqueado
+        await prisma.order.update({
+          where: { id: orderId },
+          data: {
+            collateralLocked: false,
+            collateralUnlockedAt: new Date(),
+          },
+        });
 
         console.log(`🔓 Saldo desbloqueado após cancelamento: ${order.collateralLockedAmount} ${order.cryptoType}`);
       } catch (error: any) {
