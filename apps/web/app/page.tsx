@@ -17,6 +17,15 @@ export default function HomePage() {
     avgMatchTime: 15,
     successRate: 98.5,
   });
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    // Verificar se o usuário está logado
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      setIsLoggedIn(true);
+    }
+  }, []);
 
   return (
     <>
@@ -37,18 +46,37 @@ export default function HomePage() {
           </p>
 
           <div className="mt-10 flex gap-4 justify-center">
-            <a
-              href="/register"
-              className="px-8 py-4 bg-blue-600 dark:bg-blue-700 text-white text-lg font-semibold rounded-lg hover:bg-blue-700 dark:hover:bg-blue-800 transition shadow-lg"
-            >
-              Começar Agora
-            </a>
-            <a
-              href="/login"
-              className="px-8 py-4 bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 text-lg font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition shadow-lg border-2 border-blue-600 dark:border-blue-500"
-            >
-              Entrar
-            </a>
+            {isLoggedIn ? (
+              <>
+                <a
+                  href="/dashboard"
+                  className="px-8 py-4 bg-blue-600 dark:bg-blue-700 text-white text-lg font-semibold rounded-lg hover:bg-blue-700 dark:hover:bg-blue-800 transition shadow-lg"
+                >
+                  Ir para Dashboard
+                </a>
+                <a
+                  href="/marketplace"
+                  className="px-8 py-4 bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 text-lg font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition shadow-lg border-2 border-blue-600 dark:border-blue-500"
+                >
+                  Ver Marketplace
+                </a>
+              </>
+            ) : (
+              <>
+                <a
+                  href="/register"
+                  className="px-8 py-4 bg-blue-600 dark:bg-blue-700 text-white text-lg font-semibold rounded-lg hover:bg-blue-700 dark:hover:bg-blue-800 transition shadow-lg"
+                >
+                  Começar Agora
+                </a>
+                <a
+                  href="/login"
+                  className="px-8 py-4 bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 text-lg font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition shadow-lg border-2 border-blue-600 dark:border-blue-500"
+                >
+                  Entrar
+                </a>
+              </>
+            )}
           </div>
         </div>
 
@@ -214,13 +242,17 @@ export default function HomePage() {
 
         {/* CTA Final */}
         <div className="text-center bg-blue-600 dark:bg-blue-700 text-white rounded-xl shadow-lg p-12">
-          <h2 className="text-4xl font-bold mb-4">Pronto para começar?</h2>
-          <p className="text-xl mb-8">Junte-se ao futuro dos pagamentos descentralizados</p>
+          <h2 className="text-4xl font-bold mb-4">
+            {isLoggedIn ? 'Continue negociando!' : 'Pronto para começar?'}
+          </h2>
+          <p className="text-xl mb-8">
+            {isLoggedIn ? 'Acesse o marketplace e encontre as melhores ofertas' : 'Junte-se ao futuro dos pagamentos descentralizados'}
+          </p>
           <a
-            href="/register"
+            href={isLoggedIn ? '/marketplace' : '/register'}
             className="inline-block px-10 py-4 bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 text-lg font-bold rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition shadow-lg"
           >
-            Criar Conta Grátis
+            {isLoggedIn ? 'Ver Marketplace' : 'Criar Conta Grátis'}
           </a>
         </div>
 
