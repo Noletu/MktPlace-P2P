@@ -103,13 +103,6 @@ async function main() {
       address: BITCOIN_ADDRESS,
       label: 'Carteira Principal Bitcoin',
     },
-    // Ethereum
-    {
-      cryptoType: 'ETH',
-      network: 'ETHEREUM',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal Ethereum',
-    },
     // USDT - Múltiplas redes
     {
       cryptoType: 'USDT',
@@ -137,15 +130,9 @@ async function main() {
     },
     {
       cryptoType: 'USDT',
-      network: 'POLYGON',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDT Polygon',
-    },
-    {
-      cryptoType: 'USDT',
-      network: 'BSC',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDT BSC',
+      network: 'SOLANA',
+      address: SOLANA_ADDRESS,
+      label: 'Carteira Principal USDT Solana',
     },
     // USDC - Múltiplas redes
     {
@@ -168,15 +155,9 @@ async function main() {
     },
     {
       cryptoType: 'USDC',
-      network: 'POLYGON',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDC Polygon',
-    },
-    {
-      cryptoType: 'USDC',
-      network: 'BSC',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDC BSC',
+      network: 'TRC20',
+      address: TRON_ADDRESS,
+      label: 'Carteira Principal USDC TRC20',
     },
     {
       cryptoType: 'USDC',

@@ -77,7 +77,7 @@ async function countRecords() {
 
   const counts = {
     users: await prisma.user.count(),
-    wallets: await prisma.wallet.count(),
+    wallets: await prisma.userWallet.count(),
     orders: await prisma.order.count(),
     transactions: await prisma.transaction.count(),
     chats: await prisma.chat.count(),
@@ -123,13 +123,11 @@ async function cleanDatabase() {
       log.success('Nível 6 limpo');
 
       // NÍVEL 5: Dependem de Order/Transaction/Dispute
-      log.info('Limpando nível 5 (Notification, Chat, Review, Dispute, CollateralTransaction)...');
+      log.info('Limpando nível 5 (Notification, Chat, Review, Dispute)...');
       await tx.notification.deleteMany({});
       await tx.chat.deleteMany({});
       await tx.review.deleteMany({});
-      await tx.dispute.deleteMany({});
-      await tx.collateralTransaction.deleteMany({});
-      log.success('Nível 5 limpo');
+      await tx.dispute.deleteMany({});      log.success('Nível 5 limpo');
 
       // NÍVEL 4: Transações
       log.info('Limpando nível 4 (Transaction)...');
@@ -141,16 +139,15 @@ async function cleanDatabase() {
       await tx.order.deleteMany({});
       log.success('Nível 3 limpo');
 
-      // NÍVEL 2: Carteiras e Saldos
-      log.info('Limpando nível 2 (Withdrawal, Deposit, Wallet, InternalBalance)...');
+      // NÍVEL 2: Carteiras e Transações
+      log.info('Limpando nível 2 (WalletTransaction, Withdrawal, UserWallet)...');
+      await tx.walletTransaction.deleteMany({});
       await tx.withdrawal.deleteMany({});
-      await tx.deposit.deleteMany({});
-      await tx.wallet.deleteMany({});
-      await tx.internalBalance.deleteMany({});
+      await tx.userWallet.deleteMany({});
       log.success('Nível 2 limpo');
 
       // NÍVEL 1: Dados de Usuário
-      log.info('Limpando nível 1 (KYCVerification, UserKeys, RefreshToken, AdminAction)...');
+      log.info('Limpando nível 1 (KYCVerification, UserKeys, RefreshToken, AdminAction, CancellationHistory)...');
 
       // Primeiro buscar IDs dos usuários que NÃO são admin
       const nonAdminUsers = await tx.user.findMany({
@@ -174,15 +171,20 @@ async function cleanDatabase() {
         });
       }
 
+      // CancellationHistory tem FK para User, então deletar apenas de usuários não-admin
+      if (nonAdminUserIds.length > 0) {
+        await tx.cancellationHistory.deleteMany({
+          where: { userId: { in: nonAdminUserIds } }
+        });
+      }
+
       // AdminAction pode ser totalmente limpo (conforme escolha do usuário)
       await tx.adminAction.deleteMany({});
 
       log.success('Nível 1 limpo');
 
       // NÍVEL 0: Sistema e Independentes
-      log.info('Limpando nível 0 (CollateralAddress, PlatformWallet, PriceQuote, PhoneVerificationCode, AuditLog)...');
-      await tx.collateralAddress.deleteMany({});
-      await tx.platformWallet.deleteMany({});
+      log.info('Limpando nível 0 (PlatformWallet, PriceQuote, PhoneVerificationCode, AuditLog)...');      await tx.platformWallet.deleteMany({});
       await tx.priceQuote.deleteMany({});
       await tx.phoneVerificationCode.deleteMany({});
       await tx.auditLog.deleteMany({});

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { collateralReleaseWorker } from '../workers/collateral-release.worker';
 import { orderExpirationWorker } from '../workers/order-expiration.worker';
-import { depositMonitorWorker } from '../workers/deposit-monitor.worker';
+// import { DepositMonitorWorker } from '../workers/deposit-monitor.worker'; // Now uses static class
 import { presenceMonitorWorker } from '../workers/presence-monitor.worker';
 import { chatArchiveWorker } from '../workers/chat-archive.worker';
 

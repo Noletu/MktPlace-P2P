@@ -28,7 +28,8 @@ import workersRoutes from './routes/workers.routes';
 // import statsRoutes from './routes/stats.routes';
 import { apiLimiter } from './middleware/rateLimiter.middleware';
 import { logger } from './utils/logger';
-import { depositMonitorWorker } from './workers/deposit-monitor.worker';
+import { DepositMonitorWorker } from './workers/deposit-monitor.worker';
+import { BalanceSyncWorker } from './workers/balance-sync.worker';
 import { orderExpirationWorker } from './workers/order-expiration.worker';
 // import { negotiationTimeoutWorker } from './workers/negotiation-timeout.worker'; // DESABILITADO: Chat disponível apenas após aceitar pedido
 import { presenceMonitorWorker } from './workers/presence-monitor.worker';
@@ -277,13 +278,14 @@ httpServer.listen(port, () => {
   console.log(`🔔 [socket]: Notification WebSocket enabled at ws://localhost:${port}/notifications`);
 
   // Iniciar workers
-  depositMonitorWorker.start();
+  DepositMonitorWorker.start(); // HD Wallet deposit monitor
+  BalanceSyncWorker.start(); // HD Wallet balance sync
   orderExpirationWorker.start();
   // negotiationTimeoutWorker.start(); // DESABILITADO: Chat disponível apenas após aceitar pedido
   presenceMonitorWorker.start();
   chatArchiveWorker.start();
   // collateralReleaseWorker.start(); // DESABILITADO: processamento agora é feito direto no transaction.service.ts
-  console.log('⚙️  [workers]: Background workers started (negotiation timeout, collateral release disabled)');
+  console.log('⚙️  [workers]: Background workers started (HD wallet monitoring, order expiration, presence, chat archive)');
 });
 
 // Exportar para uso em outros módulos

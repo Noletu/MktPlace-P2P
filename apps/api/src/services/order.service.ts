@@ -9,12 +9,11 @@ import {
   PixData
 } from '../types/order.types';
 import { kycService } from './kyc.service';
-import { walletService } from './wallet.service';
+import { WalletService } from './wallet.service';
 import { priceService } from './price.service';
 import { boletoOCRService } from './boleto-ocr.service';
 import { CryptoType } from '../types/crypto.types';
 import { notificationService } from './notification.service';
-import { internalBalanceService } from './internal-balance.service';
 import { prisma } from '../utils/prisma';
 
 export class OrderService {
@@ -93,11 +92,13 @@ export class OrderService {
     // Para pedidos de compra (BUY), o usuário DEVE ter uma carteira cadastrada
     // porque após comprar cripto, ele precisa RECEBER a cripto comprada
     if (input.type === 'BUY') {
-      const userWallet = await prisma.wallet.findFirst({
+      const userWallet = await prisma.userWallet.findUnique({
         where: {
-          userId: input.userId,
-          crypto: input.cryptoType,
-          network: input.cryptoNetwork,
+          userId_cryptoType_network: {
+            userId: input.userId,
+            cryptoType: input.cryptoType,
+            network: input.cryptoNetwork,
+          },
         },
       });
 
@@ -180,119 +181,10 @@ export class OrderService {
 
     // ========== LÓGICA HÍBRIDA ==========
 
-    // CASO 1: Verificar se deve usar saldo interno
-    if (input.useInternalBalance !== false) { // Default: tentar usar saldo interno
-      const availableBalance = await internalBalanceService.getAvailableBalance(
-        input.userId,
-        input.cryptoType,
-        input.cryptoNetwork
-      );
-
-      console.log(`💰 Saldo disponível: ${availableBalance.toFixed(8)} ${input.cryptoType}`);
-      console.log(`🎯 Colateral necessário: ${requiredCollateral} ${input.cryptoType}`);
-
-      const hasEnough = availableBalance >= parseFloat(requiredCollateral);
-
-      if (hasEnough) {
-        // TEM SALDO SUFICIENTE → Criar pedido INSTANTÂNEO usando saldo interno
-        console.log(`✅ Usando saldo interno - Pedido instantâneo!`);
-        return await this.createOrderWithInternalBalance(input, fees, timeoutAt, requiredCollateral);
-      } else if (!input.collateralAddressId) {
-        // NÃO TEM SALDO SUFICIENTE → Retornar info para depósito
-        const missingAmount = (parseFloat(requiredCollateral) - availableBalance).toFixed(8);
-
-        console.log(`⚠️ Saldo insuficiente. Falta: ${missingAmount} ${input.cryptoType}`);
-
-        return {
-          requiresDeposit: true,
-          missingAmount,
-          availableBalance,
-          requiredCollateral,
-        };
-      }
-    }
-
-    // CASO 2: Depósito externo (fluxo antigo)
-    let collateralConfirmed = false;
-    let collateralTxHash = null;
-    let collateralDepositId = null;
-
-    if (input.collateralAddressId) {
-      // Buscar registro de colateral
-      const collateralAddress = await prisma.collateralAddress.findUnique({
-        where: { id: input.collateralAddressId },
-      });
-
-      if (!collateralAddress) {
-        throw new Error('Endereço de colateral não encontrado');
-      }
-
-      if (collateralAddress.userId !== input.userId) {
-        throw new Error('Endereço de colateral não pertence ao usuário');
-      }
-
-      if (collateralAddress.status !== 'CONFIRMED') {
-        throw new Error('Colateral ainda não foi confirmado na blockchain. Aguarde a confirmação do depósito.');
-      }
-
-      // Colateral confirmado! Criar pedido já liberado para marketplace
-      collateralConfirmed = true;
-      collateralTxHash = collateralAddress.txHash;
-
-      console.log(`✅ Colateral externo confirmado! TxHash: ${collateralTxHash}`);
-    } else {
-      console.log(`⚠️ Pedido criado SEM collateralAddressId - não aparecerá no marketplace`);
-    }
-
-    // Criar pedido com depósito externo
-    const order = await prisma.order.create({
-      data: {
-        userId: input.userId,
-        type: input.type,
-        status: OrderStatus.PENDING,
-        cryptoType: input.cryptoType,
-        cryptoNetwork: input.cryptoNetwork,
-        cryptoAmount: input.cryptoAmount,
-        brlAmount: input.brlAmount,
-        platformFee: fees.platformFee,
-        payerReward: fees.payerReward,
-        totalFee: fees.totalFee,
-        orderData: JSON.stringify(input.orderData),
-        timeoutAt,
-        customExpirationHours: input.customExpirationHours,
-        manualCancelOnly: input.manualCancelOnly || false,
-        paidByPlatform: false,
-        // SECURITY: Só marca como confirmado se o colateral foi verificado
-        collateralConfirmed,
-        collateralTxHash,
-        collateralDepositId,
-        collateralSource: 'EXTERNAL_DEPOSIT',
-      },
-    });
-
-    if (collateralConfirmed) {
-      console.log(`📝 Order ${order.id} created with CONFIRMED external collateral - Will appear in marketplace ✅`);
-    } else {
-      console.log(`📝 Order ${order.id} created - Awaiting collateral confirmation to appear in marketplace`);
-    }
-
-    return order;
-  }
-
-  /**
-   * Criar pedido usando saldo interno (INSTANTÂNEO)
-   * CORRIGIDO v0.3.6: Bloqueio de saldo DENTRO da transaction para evitar timeout
-   */
-  private async createOrderWithInternalBalance(
-    input: CreateOrderInput,
-    fees: FeeCalculation,
-    timeoutAt: Date,
-    collateralAmount: string
-  ): Promise<Order> {
-    // Transaction atômica ÚNICA: criar pedido + bloquear saldo + registrar auditoria
-    const result = await prisma.$transaction(async (tx) => {
-      // 1. Buscar saldo interno
-      let balance = await tx.internalBalance.findUnique({
+    // CASO 1: Verificar se deve usar HD Wallet balance
+    if (input.useInternalBalance !== false) { // Default: tentar usar saldo da carteira
+      // Buscar UserWallet do usuário
+      const wallet = await prisma.userWallet.findUnique({
         where: {
           userId_cryptoType_network: {
             userId: input.userId,
@@ -302,23 +194,81 @@ export class OrderService {
         },
       });
 
-      if (!balance) {
-        throw new Error('Saldo interno não encontrado');
-      }
+      if (wallet) {
+        const availableBalance = parseFloat(wallet.availableBalance);
 
-      // 2. Verificar saldo disponível (proteção contra race condition)
-      const currentTotal = parseFloat(balance.balance);
-      const currentLocked = parseFloat(balance.lockedAmount);
-      const available = currentTotal - currentLocked;
-      const requiredAmount = parseFloat(collateralAmount);
+        console.log(`💰 Saldo disponível: ${availableBalance.toFixed(8)} ${input.cryptoType}`);
+        console.log(`🎯 Colateral necessário: ${requiredCollateral} ${input.cryptoType}`);
 
-      if (available < requiredAmount) {
-        throw new Error(
-          `Saldo insuficiente. Disponível: ${available.toFixed(8)}, Necessário: ${collateralAmount}`
+        const hasEnough = availableBalance >= parseFloat(requiredCollateral);
+
+        if (hasEnough) {
+          // TEM SALDO SUFICIENTE → Criar pedido INSTANTÂNEO usando saldo da carteira
+          console.log(`✅ Usando saldo da carteira HD - Pedido instantâneo!`);
+          return await this.createOrderWithWalletBalance(input, fees, timeoutAt, requiredCollateral, wallet.id);
+        } else if (!input.collateralAddressId) {
+          // NÃO TEM SALDO SUFICIENTE → Retornar info para depósito
+          const missingAmount = (parseFloat(requiredCollateral) - availableBalance).toFixed(8);
+
+          console.log(`⚠️ Saldo insuficiente. Falta: ${missingAmount} ${input.cryptoType}`);
+
+          return {
+            requiresDeposit: true,
+            missingAmount,
+            availableBalance,
+            requiredCollateral,
+            walletAddress: wallet.address, // Incluir endereço para depósito
+          };
+        }
+      } else {
+        // Usuário não tem carteira - precisa criar uma primeiro
+        console.log(`⚠️ Usuário não possui carteira ${input.cryptoType}/${input.cryptoNetwork}`);
+
+        // Criar carteira HD automaticamente
+        const newWallet = await WalletService.createWallet(
+          input.userId,
+          input.cryptoType,
+          input.cryptoNetwork
         );
-      }
 
-      // 3. Criar pedido
+        console.log(`✅ Carteira HD criada: ${newWallet.address}`);
+
+        // Retornar info para depósito
+        return {
+          requiresDeposit: true,
+          missingAmount: requiredCollateral,
+          availableBalance: 0,
+          requiredCollateral,
+          walletAddress: newWallet.address,
+        };
+      }
+    }
+
+    // CASO 2: collateralAddressId fornecido (deprecated - manter para compatibilidade temporária)
+    if (input.collateralAddressId) {
+      console.log(`⚠️ collateralAddressId está deprecated. Use saldo da carteira HD.`);
+      throw new Error('Depósito via collateralAddress não é mais suportado. Use a carteira HD do usuário.');
+    }
+
+    // Se chegou aqui, não tem saldo e não foi fornecido collateralAddressId
+    // Retornar erro genérico
+    throw new Error('Saldo insuficiente. Deposite crypto na sua carteira antes de criar o pedido.');
+  }
+
+  /**
+   * Criar pedido usando saldo da carteira HD (INSTANTÂNEO)
+   * Usa WalletService para bloquear saldo durante criação do pedido
+   */
+  private async createOrderWithWalletBalance(
+    input: CreateOrderInput,
+    fees: FeeCalculation,
+    timeoutAt: Date,
+    collateralAmount: string,
+    walletId: string
+  ): Promise<Order> {
+    // Transaction atômica: criar pedido + bloquear saldo
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Criar pedido primeiro
       const order = await tx.order.create({
         data: {
           userId: input.userId,
@@ -338,55 +288,40 @@ export class OrderService {
           paidByPlatform: false,
           // CRITICAL: Pedido criado com colateral JÁ CONFIRMADO
           collateralConfirmed: true,
-          collateralSource: 'INTERNAL_BALANCE',
-          internalBalanceId: balance.id,
+          collateralSource: 'HD_WALLET',
+          walletId: walletId,
           collateralLocked: true,
           collateralLockedAmount: collateralAmount,
         },
       });
 
-      console.log(`🚀 Pedido ${order.id} criado usando saldo interno!`);
-
-      // 4. Bloquear saldo (DENTRO DA MESMA TRANSACTION!)
-      const newLocked = currentLocked + requiredAmount;
-      const newAvailable = currentTotal - newLocked;
-
-      await tx.internalBalance.update({
-        where: { id: balance.id },
-        data: {
-          lockedAmount: newLocked.toFixed(8),
-          availableAmount: newAvailable.toFixed(8),
-          totalUsed: (parseFloat(balance.totalUsed) + requiredAmount).toFixed(8),
-        },
-      });
-
-      console.log(`🔒 Saldo bloqueado: ${collateralAmount} ${input.cryptoType}`);
-      console.log(`   Disponível: ${newAvailable.toFixed(8)} ${input.cryptoType}`);
-      console.log(`   Bloqueado: ${newLocked.toFixed(8)} ${input.cryptoType}`);
-
-      // 5. Registrar transação de colateral para auditoria (DENTRO DA MESMA TRANSACTION!)
-      await tx.collateralTransaction.create({
-        data: {
-          userId: input.userId,
-          balanceId: balance.id,
-          orderId: order.id,
-          type: 'LOCK',
-          amount: collateralAmount,
-          balanceBefore: currentLocked.toFixed(8),
-          balanceAfter: newLocked.toFixed(8),
-          network: input.cryptoNetwork,
-          description: `Colateral bloqueado para pedido ${order.id}`,
-        },
-      });
-
-      console.log(`📝 Transação de colateral registrada: LOCK - ${collateralAmount}`);
+      console.log(`🚀 Pedido ${order.id} criado usando carteira HD!`);
 
       return order;
-    }, {
-      timeout: 15000, // 15 segundos
     });
 
-    console.log(`✅ Order ${result.id} created with INTERNAL BALANCE - Will appear in marketplace IMMEDIATELY!`);
+    // 2. Bloquear saldo usando WalletService (FORA da transaction para evitar deadlock)
+    try {
+      await WalletService.lockBalance(
+        walletId,
+        collateralAmount,
+        result.id,
+        `Colateral bloqueado para pedido ${result.id}`
+      );
+
+      console.log(`🔒 Saldo bloqueado: ${collateralAmount} ${input.cryptoType}`);
+    } catch (error) {
+      // Se falhar ao bloquear saldo, cancelar o pedido
+      console.error(`❌ Erro ao bloquear saldo:`, (error as Error).message);
+
+      await prisma.order.delete({
+        where: {id: result.id},
+      });
+
+      throw new Error(`Falha ao bloquear saldo: ${(error as Error).message}`);
+    }
+
+    console.log(`✅ Order ${result.id} created with HD WALLET BALANCE - Will appear in marketplace IMMEDIATELY!`);
 
     return result;
   }
@@ -700,21 +635,21 @@ export class OrderService {
       orderValue: order.brlAmount,
     });
 
-    // Desbloquear saldo interno se foi usado (CORREÇÃO v3.0.8)
-    if (order.collateralSource === 'INTERNAL_BALANCE' &&
+    // Desbloquear saldo da carteira HD se foi usado
+    if (order.collateralSource === 'HD_WALLET' &&
         order.collateralLocked &&
-        order.collateralLockedAmount) {
+        order.collateralLockedAmount &&
+        order.walletId) {
 
       try {
-        await internalBalanceService.unlockBalance(
-          order.userId,
-          order.cryptoType,
-          order.cryptoNetwork,
+        await WalletService.unlockBalance(
+          order.walletId,
           order.collateralLockedAmount,
-          orderId
+          orderId,
+          `Colateral desbloqueado - pedido cancelado`
         );
 
-        // CORREÇÃO: Atualizar a ordem para marcar colateral como desbloqueado
+        // Atualizar a ordem para marcar colateral como desbloqueado
         await prisma.order.update({
           where: { id: orderId },
           data: {
