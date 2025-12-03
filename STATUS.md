@@ -1,6 +1,6 @@
 # Status do Projeto - MktPlace P2P
 
-**Última atualização**: 08/11/2025
+**Última atualização**: 23/11/2025
 
 ---
 
@@ -8,8 +8,17 @@
 
 O **MktPlace P2P** é uma plataforma de marketplace peer-to-peer para compra e venda de criptomoedas com pagamento em BRL (PIX/Boleto). O projeto está em fase de desenvolvimento ativo com funcionalidades core implementadas e em fase de testes.
 
-**Versão Atual**: 0.4.2+ (Unreleased)
+**Versão Atual**: 0.4.3+ (Unreleased)
+**Branch Ativa**: `feature/2fa-and-order-edit-complete`
+**Commit Atual**: `52a132e` (sincronizado com GitHub)
 **Status Geral**: 🟢 **ESTÁVEL**
+
+**Trabalho Recente (23/11/2025)**:
+- ✅ Repositório 100% sincronizado com GitHub
+- ✅ 11 carteiras da plataforma configuradas e testadas
+- ✅ Schema do banco de dados corrigido (constraint única composta)
+- ✅ Bug crítico de liberação de colateral resolvido
+- ✅ Documentação atualizada (CHANGELOG, BUGS_CRITICOS, STATUS)
 
 ---
 
@@ -37,10 +46,16 @@ O **MktPlace P2P** é uma plataforma de marketplace peer-to-peer para compra e v
 - ✅ Sistema de avaliações (reviews)
 - ✅ Painel administrativo de disputas
 
-### Criptomoedas Suportadas
-- ✅ Bitcoin (BTC) - Network: Bitcoin
-- ✅ USD Coin (USDC) - Networks: Ethereum, TRC20, Base, Arbitrum
-- ✅ Tether (USDT) - Networks: Ethereum, TRC20, Base, Arbitrum
+### Criptomoedas Suportadas (11 Carteiras Configuradas)
+- ✅ Bitcoin (BTC) - Network: Bitcoin (1 carteira)
+- ✅ USD Coin (USDC) - Networks: Ethereum, TRC20, Base, Arbitrum, Solana (5 carteiras)
+- ✅ Tether (USDT) - Networks: Ethereum, TRC20, Base, Arbitrum, Solana (5 carteiras)
+
+**Atualização 23/11/2025**:
+- ✅ Todas as 11 carteiras criadas e ativas no banco de dados
+- ✅ Endereços de exemplo configurados para desenvolvimento
+- ✅ Schema corrigido para permitir reutilização de endereços EVM
+- ✅ Seed.ts alinhado com types.ts (removidas redes não suportadas)
 
 ### Ferramentas de Desenvolvimento
 
@@ -89,13 +104,17 @@ O **MktPlace P2P** é uma plataforma de marketplace peer-to-peer para compra e v
 
 **Status**: ✅ **NENHUM BUG CRÍTICO ATIVO**
 
-Todos os bugs críticos recentes foram resolvidos. Para histórico completo, ver [`BUGS_CRITICOS.md`](./BUGS_CRITICOS.md).
+**Última verificação**: 23/11/2025
 
-### Últimas Correções (02/11/2025)
-1. ✅ Erro Prisma ao cancelar pedido pelo pagador
-2. ✅ Notificações de chat gerando 404
-3. ✅ Página em branco para chat em pedidos PENDING
-4. ✅ Botão "marcar todas como lidas" não funcionava
+Todos os bugs críticos foram resolvidos. Para histórico completo, ver [`BUGS_CRITICOS.md`](./BUGS_CRITICOS.md).
+
+### Últimas Correções
+1. ✅ **21/11/2025**: Colateral não era desbloqueado após cancelamento (commit 52a132e)
+2. ✅ **17/11/2025**: Erro de migrações pendentes - colunas faltando no banco
+3. ✅ **08/11/2025**: Erro 500 em `/api/v1/prices` - graceful degradation
+4. ✅ **02/11/2025**: Erro Prisma ao cancelar pedido pelo pagador
+5. ✅ **02/11/2025**: Notificações de chat gerando 404
+6. ✅ **02/11/2025**: Página em branco para chat em pedidos PENDING
 
 ---
 

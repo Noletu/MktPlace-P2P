@@ -42,15 +42,15 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  wallets               Wallet[]
+  // Relações atualizadas para HD Wallet
+  userWallets           UserWallet[]
   orders                Order[]
   transactions          Transaction[]          @relation("payer")
   reviews               Review[]               @relation("reviewer")
   reviewsReceived       Review[]               @relation("reviewed")
   refreshTokens         RefreshToken[]
   adminActions          AdminAction[]
-  internalBalances      InternalBalance[]
-  collateralTransactions CollateralTransaction[]
+  walletTransactions    WalletTransaction[]
 
   // Disputas
   disputesCreated  Dispute[]        @relation("DisputeCreator")
@@ -75,61 +75,132 @@ model User {
   cancellationHistory CancellationHistory[]
 }
 
-model Wallet {
+// ============================================
+// HD WALLET SYSTEM - Nova Implementação
+// ============================================
+
+// Carteiras HD gerenciadas pela plataforma (BIP32/BIP44)
+model UserWallet {
   id     String @id @default(cuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Crypto - BTC, ETH, XMR, ZEC, USDC, USDT
-  crypto  String
-  // Network - BITCOIN, ETHEREUM, POLYGON, BSC, SOLANA, TRC20, MONERO, ZCASH
-  network String
-  address String
-  balance String @default("0")
+  // Tipo de cripto e rede
+  cryptoType String // BTC, USDC, USDT
+  network    String // BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA, TRC20
 
+  // Endereço derivado (HD Wallet)
+  address        String // Endereço público derivado
+  derivationPath String // Ex: m/44'/60'/0'/0/0 (BIP44)
+
+  // SECURITY: Private key criptografada com AES-256-GCM
+  encryptedPrivateKey String // Private key criptografada (nunca em plain text!)
+
+  // Controle de saldo (consultado on-chain + bloqueios locais)
+  balance          String @default("0") // Saldo total on-chain
+  lockedBalance    String @default("0") // Bloqueado em pedidos ativos
+  availableBalance String @default("0") // Disponível = balance - locked
+
+  // Estatísticas
+  totalDeposited String @default("0") // Total depositado historicamente
+  totalWithdrawn String @default("0") // Total sacado
+  totalUsed      String @default("0") // Total usado como colateral
+
+  // Sincronização blockchain
+  lastSyncedAt    DateTime? // Última vez que saldo foi sincronizado
+  lastBlockHeight Int?      // Último bloco verificado
+
+  // Estado
   isActive Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  deposits    Deposit[]
-  withdrawals Withdrawal[]
+  // Relações
+  ordersAsCollateral Order[]             @relation("WalletCollateral")
+  transactions       WalletTransaction[]
+  withdrawals        Withdrawal[]
 
-  @@unique([userId, address])
+  @@unique([userId, cryptoType, network])
+  @@index([userId])
+  @@index([address])
+  @@index([cryptoType, network])
+  @@index([isActive])
 }
 
-model Deposit {
-  id       String @id @default(cuid())
+// Histórico completo de transações de carteira (auditoria)
+model WalletTransaction {
+  id String @id @default(cuid())
+
+  // Carteira e usuário
   walletId String
-  wallet   Wallet @relation(fields: [walletId], references: [id])
+  wallet   UserWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
-  txHash String @unique
-  amount String
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  confirmed     Boolean @default(false)
-  confirmations Int     @default(0)
+  // Pedido relacionado (opcional)
+  orderId String?
+  order   Order?  @relation("WalletTransactionOrder", fields: [orderId], references: [id])
 
-  createdAt   DateTime  @default(now())
-  confirmedAt DateTime?
+  // Tipo de transação
+  type String // DEPOSIT, LOCK, UNLOCK, DEDUCT, WITHDRAWAL, FEE, REFUND
 
-  // Relation for collateral
-  collateralOrders Order[]
+  // Valores
+  amount        String // Valor da transação
+  balanceBefore String // Saldo total antes
+  balanceAfter  String // Saldo total depois
+  lockedBefore  String? // Saldo bloqueado antes (para LOCK/UNLOCK)
+  lockedAfter   String? // Saldo bloqueado depois
+
+  // Blockchain (se aplicável)
+  txHash        String? // Hash da transação blockchain
+  blockHeight   Int? // Altura do bloco
+  confirmations Int? // Número de confirmações
+
+  // Metadados
+  description String? // Descrição legível
+  metadata    String? // JSON com dados adicionais
+
+  createdAt DateTime @default(now())
+
+  @@index([walletId])
+  @@index([userId])
+  @@index([orderId])
+  @@index([type])
+  @@index([txHash])
+  @@index([createdAt])
 }
 
+// Saques de carteira
 model Withdrawal {
   id       String @id @default(cuid())
   walletId String
-  wallet   Wallet @relation(fields: [walletId], references: [id])
+  wallet   UserWallet @relation(fields: [walletId], references: [id])
 
   toAddress String
   amount    String
 
+  // Blockchain
   txHash String? @unique
-  status String  @default("pending")
+  status String  @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+
+  // Taxas
+  networkFee String? // Taxa de rede
+  platformFee String? // Taxa da plataforma
 
   createdAt   DateTime  @default(now())
   processedAt DateTime?
+  completedAt DateTime?
+
+  @@index([walletId])
+  @@index([status])
+  @@index([createdAt])
 }
+
+// ============================================
+// ORDERS - Atualizado para HD Wallet
+// ============================================
 
 model Order {
   id     String @id @default(cuid())
@@ -138,7 +209,7 @@ model Order {
 
   // Type - BOLETO, PIX
   type   String
-  // Status - PENDING, MATCHED, PAYMENT_SENT, VALIDATING, COMPLETED, DISPUTED, CANCELLED, TIMEOUT
+  // Status - PENDING, MATCHED, IN_NEGOTIATION, PAYMENT_SENT, VALIDATING, COMPLETED, DISPUTED, CANCELLED, TIMEOUT, EXPIRED
   status String @default("PENDING")
 
   // Crypto side
@@ -157,19 +228,19 @@ model Order {
   // Order specific data (JSON string)
   orderData String
 
-  // Collateral system
-  collateralTxHash    String?
-  collateralConfirmed Boolean  @default(false)
-  collateralDepositId String?
-  collateralDeposit   Deposit? @relation(fields: [collateralDepositId], references: [id])
-
-  // NEW: Internal balance collateral system
-  collateralSource       String? // "EXTERNAL_DEPOSIT" ou "INTERNAL_BALANCE"
-  internalBalanceId      String? // ID do saldo interno usado
-  internalBalance        InternalBalance? @relation("OrderInternalBalance", fields: [internalBalanceId], references: [id])
+  // HD WALLET COLLATERAL SYSTEM (Novo)
+  walletId               String? // ID da carteira HD usada para colateral
+  wallet                 UserWallet? @relation("WalletCollateral", fields: [walletId], references: [id])
+  collateralSource       String? // Fonte do colateral: HD_WALLET, EXTERNAL_DEPOSIT (legacy)
+  collateralConfirmed    Boolean @default(false) // Se o colateral foi confirmado
   collateralLocked       Boolean @default(false) // Se o colateral está bloqueado
-  collateralLockedAmount String? // Valor bloqueado do saldo interno
+  collateralLockedAmount String? // Valor bloqueado
   collateralUnlockedAt   DateTime? // Quando foi desbloqueado
+
+  // Just-in-time deposit (híbrido)
+  awaitingDeposit       Boolean @default(false) // Se está aguardando depósito inicial
+  depositDeadline       DateTime? // Prazo para depositar
+  depositConfirmedAt    DateTime? // Quando depósito foi confirmado
 
   // Timeout handling
   timeoutAt      DateTime?
@@ -212,15 +283,17 @@ model Order {
   disputes               Dispute[]
   reviews                Review[]
   chat                   Chat?
-  collateralTransactions CollateralTransaction[] @relation("CollateralTransactionOrder")
+  walletTransactions     WalletTransaction[] @relation("WalletTransactionOrder")
   cancellationHistory    CancellationHistory[]
 
+  @@index([userId])
+  @@index([status])
+  @@index([walletId])
   @@index([negotiatingUserId])
   @@index([negotiationStartedAt])
   @@index([ownerOnline])
   @@index([ownerLastSeenAt])
-  @@index([collateralSource])
-  @@index([internalBalanceId])
+  @@index([awaitingDeposit])
 }
 
 model Transaction {
@@ -267,6 +340,36 @@ model Fee {
 
   createdAt DateTime @default(now())
 }
+
+// ============================================
+// PLATFORM WALLETS - Mantido
+// ============================================
+
+// Carteiras da plataforma para receber depósitos iniciais (opcional)
+model PlatformWallet {
+  id String @id @default(cuid())
+
+  cryptoType String // BTC, USDT, USDC, etc
+  network    String // ETHEREUM, BASE, ARBITRUM, TRC20, etc
+  address    String
+
+  label    String? // Nome/descrição do endereço (ex: "Carteira Principal USDT Base")
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String? // ID do admin que criou
+
+  @@unique([cryptoType, network])
+  @@index([cryptoType])
+  @@index([network])
+  @@index([isActive])
+  @@index([address])
+}
+
+// ============================================
+// REVIEWS, DISPUTES, NOTIFICATIONS - Mantidos
+// ============================================
 
 // Sistema completo de Avaliações/Reviews
 model Review {
@@ -342,7 +445,6 @@ model RefreshToken {
   @@index([token])
 }
 
-// SECURITY: Audit log para operações críticas
 // SECURITY: Audit Log completo para rastreabilidade de todas as ações críticas
 model AuditLog {
   id String @id @default(cuid())
@@ -379,54 +481,6 @@ model AuditLog {
   @@index([ipAddress])
 }
 
-// Endereços de depósito temporários para colateral
-model CollateralAddress {
-  id String @id @default(cuid())
-
-  userId  String
-  orderId String? // Null até pedido ser criado
-
-  cryptoType    String
-  cryptoNetwork String
-  address       String // REMOVIDO @unique - mesmo endereço da plataforma pode ter múltiplos depósitos
-
-  expectedAmount String
-  status         String @default("AWAITING_PAYMENT") // AWAITING_PAYMENT, PAYMENT_RECEIVED, CONFIRMED, EXPIRED, USED
-
-  // Dados da transação blockchain
-  txHash       String? // Hash da transação que fez o pagamento
-  actualAmount String? // Valor real recebido
-  confirmedAt  DateTime? // Timestamp da confirmação na blockchain
-
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([address]) // Índice para buscar por endereço rapidamente
-  @@index([status])
-}
-
-// Carteiras da plataforma para receber colaterais
-model PlatformWallet {
-  id String @id @default(cuid())
-
-  cryptoType String // BTC, USDT, USDC, etc
-  network    String // ETHEREUM, BASE, ARBITRUM, TRC20, etc
-  address    String @unique
-
-  label    String? // Nome/descrição do endereço (ex: "Carteira Principal USDT Base")
-  isActive Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  createdBy String? // ID do admin que criou
-
-  @@index([cryptoType])
-  @@index([network])
-  @@index([isActive])
-}
-
 // Audit log de ações administrativas
 model AdminAction {
   id String @id @default(cuid())
@@ -445,77 +499,6 @@ model AdminAction {
 
   @@index([adminId])
   @@index([resource])
-  @@index([createdAt])
-}
-
-// Saldo interno de usuários (crédito de devoluções + colateral pré-depositado)
-model InternalBalance {
-  id String @id @default(cuid())
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  cryptoType String // BTC, USDT, USDC, etc
-  network    String // ETHEREUM, BASE, ARBITRUM, TRC20, BITCOIN, etc
-
-  // Controle de saldo
-  balance         String @default("0") // Saldo total (disponível + bloqueado)
-  lockedAmount    String @default("0") // Bloqueado em pedidos ativos
-  availableAmount String @default("0") // Disponível para usar (computed: balance - lockedAmount)
-
-  // Estatísticas
-  totalDeposited String @default("0") // Total depositado historicamente
-  totalUsed      String @default("0") // Total usado em pedidos
-  totalWithdrawn String @default("0") // Total sacado
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relações
-  orders                Order[]                 @relation("OrderInternalBalance")
-  collateralTransactions CollateralTransaction[] @relation("BalanceTransactions")
-
-  @@unique([userId, cryptoType, network])
-  @@index([userId])
-  @@index([cryptoType, network])
-}
-
-// Histórico de transações de colateral (auditoria completa)
-model CollateralTransaction {
-  id String @id @default(cuid())
-
-  // Usuário e saldo
-  userId    String
-  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  balanceId String
-  balance   InternalBalance @relation("BalanceTransactions", fields: [balanceId], references: [id], onDelete: Cascade)
-
-  // Pedido relacionado (opcional)
-  orderId String?
-  order   Order?  @relation("CollateralTransactionOrder", fields: [orderId], references: [id])
-
-  // Tipo de transação
-  type String // DEPOSIT, LOCK, UNLOCK, REFUND, WITHDRAWAL, TRANSFER
-
-  // Valores
-  amount        String // Valor da transação
-  balanceBefore String // Saldo antes da transação
-  balanceAfter  String // Saldo após a transação
-
-  // Blockchain (se aplicável)
-  txHash  String? // Hash da transação blockchain (para DEPOSIT/WITHDRAWAL)
-  network String? // Rede blockchain
-
-  // Metadados
-  description String? // Descrição legível
-  metadata    String? // JSON com dados adicionais
-
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-  @@index([balanceId])
-  @@index([orderId])
-  @@index([type])
   @@index([createdAt])
 }
 

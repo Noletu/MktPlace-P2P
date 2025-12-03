@@ -2,9 +2,23 @@
 
 > Marketplace P2P para pagamento de boletos e PIX com criptomoedas. Mais barato, mais livre.
 
-**Versão:** 0.4.2+ (Unreleased) | **Status:** 🟢 Estável + Sistema de Limpeza | **Data:** 08/11/2025
+**Versão:** 1.0.0+ (Unreleased) | **Status:** 🟢 Estável | **Data:** 02/12/2025
 
 ## 🆕 Novidades Recentes
+
+### 🏦 Carteiras da Plataforma Configuradas (23/11/2025)
+Sistema completo de carteiras multi-rede pronto para uso:
+- **11 carteiras configuradas**: BTC (1), USDC (5), USDT (5)
+- **Redes suportadas**: Bitcoin, Ethereum, TRC20, Base, Arbitrum, Solana
+- **Schema corrigido**: Permite reutilizar endereços EVM para múltiplas redes
+- **Seed atualizado**: Alinhado 100% com tipos suportados
+- Endereços de exemplo para desenvolvimento (⚠️ não usar em produção)
+
+### 📥 Sincronização com GitHub (23/11/2025)
+Repositório local atualizado com últimas correções:
+- ✅ **Bug crítico resolvido**: Colateral não era desbloqueado após cancelamento
+- ✅ **Home page melhorada**: Botões diferentes para usuários logados/deslogados
+- ✅ **100% sincronizado** com branch `feature/2fa-and-order-edit-complete`
 
 ### 🗑️ Sistema de Limpeza do Banco (08/11/2025)
 Nova ferramenta completa para resetar banco de dados em ambiente de desenvolvimento:
@@ -12,17 +26,11 @@ Nova ferramenta completa para resetar banco de dados em ambiente de desenvolvime
 - **Backup automático** com timestamp antes de qualquer operação
 - **Preserva apenas** usuários MASTER e ADMIN
 - **Comando NPM**: `npm run db:clean`
-- Detecção de servidor rodando + parada automática opcional
-- Output profissional com cores e progresso detalhado
-
-### ⏰ Tempo de Expiração Editável (01/11/2025)
-Vendedores podem escolher por quanto tempo suas ofertas ficam ativas:
-- **6h, 12h, 24h (padrão), 48h, 72h, 7 dias** ou **Indefinido (até 6 meses)**
 
 ### 🐛 Correções Recentes
-- ✅ **Script de limpeza**: Corrigido erro no modelo KYCVerification
-- ✅ **Avaliações funcionando**: Corrigido erro 400 ao enviar ratings
-- ✅ **Cancelamento de pedidos**: Adicionado campo `cancelledAt` ausente
+- ✅ **21/11/2025**: Colateral não era desbloqueado após cancelamento (commit 52a132e)
+- ✅ **17/11/2025**: Migrações pendentes aplicadas (2FA + penalidades)
+- ✅ **08/11/2025**: Erro 500 em `/api/v1/prices` - graceful degradation
 
 📋 **Ver detalhes**: [CHANGELOG.md](CHANGELOG.md) | **Status**: [STATUS.md](STATUS.md) | **Bugs**: [BUGS_CRITICOS.md](BUGS_CRITICOS.md)
 
@@ -87,7 +95,7 @@ O **Mktplace da Liberdade** é um marketplace descentralizado onde pessoas com c
 - ✅ **17% mais barato**: Fee total 2.5% vs ~3% dos concorrentes
 - ✅ **Cashback 1%**: Pagadores recebem recompensa em cripto
 - ✅ **P2P + Garantia**: Liquidez descentralizada com fallback centralizado
-- ✅ **Multi-chain**: 6 criptos × 10 networks (Solana, Polygon, BSC, TRC20, etc)
+- ✅ **Multi-chain**: BTC (Bitcoin), USDC/USDT (Base, Solana)
 - ✅ **Privacy coins**: Monero (XMR) e Zcash (ZEC) para máxima privacidade
 - ✅ **Crypto-only flow**: Plataforma nunca toca em BRL (otimização fiscal)
 

@@ -150,8 +150,8 @@ export interface NetworkInfo {
 // Mapeamento de quais redes cada cripto suporta
 export const CRYPTO_SUPPORTED_NETWORKS: Record<CryptoType, NetworkType[]> = {
   [CryptoType.BTC]: [NetworkType.BITCOIN],
-  [CryptoType.USDC]: [NetworkType.ETHEREUM, NetworkType.TRC20, NetworkType.BASE, NetworkType.ARBITRUM, NetworkType.SOLANA],
-  [CryptoType.USDT]: [NetworkType.ETHEREUM, NetworkType.TRC20, NetworkType.BASE, NetworkType.ARBITRUM, NetworkType.SOLANA],
+  [CryptoType.USDC]: [NetworkType.BASE, NetworkType.SOLANA],
+  [CryptoType.USDT]: [NetworkType.BASE, NetworkType.SOLANA],
 };
 
 export const NETWORK_INFO: Record<NetworkType, NetworkInfo> = {
