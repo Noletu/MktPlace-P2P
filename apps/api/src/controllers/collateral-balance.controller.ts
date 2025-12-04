@@ -1,10 +1,15 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { internalBalanceService } from '../services/internal-balance.service';
-import { collateralTransactionService } from '../services/collateral-transaction.service';
+import { WalletService } from '../services/wallet.service';
 
 const prisma = new PrismaClient();
 
+/**
+ * Collateral Balance Controller (Migrado para HD Wallet System)
+ *
+ * MIGRAÇÃO COMPLETA: Agora usa WalletService em vez de InternalBalanceService
+ * Mantém compatibilidade com API existente do frontend
+ */
 export class CollateralBalanceController {
   /**
    * GET /api/v1/collateral-balance
@@ -21,27 +26,27 @@ export class CollateralBalanceController {
         });
       }
 
-      const balances = await internalBalanceService.getAllBalances(userId);
+      // Buscar todas as carteiras do usuário
+      const wallets = await WalletService.getUserWallets(userId);
 
-      // Enriquecer com saldo disponível calculado
-      const enrichedBalances = await Promise.all(
-        balances.map(async (balance) => {
-          const available = await internalBalanceService.getAvailableBalance(
-            userId,
-            balance.cryptoType,
-            balance.network
-          );
-
-          return {
-            ...balance,
-            availableBalance: available.toFixed(8),
-          };
-        })
-      );
+      // Transformar para formato compatível com frontend
+      const balances = wallets.map((wallet) => ({
+        id: wallet.id,
+        cryptoType: wallet.cryptoType,
+        network: wallet.network,
+        balance: wallet.balance,
+        lockedAmount: wallet.lockedBalance,
+        availableBalance: wallet.availableBalance,
+        totalDeposited: wallet.totalDeposited,
+        totalWithdrawn: wallet.totalWithdrawn,
+        address: wallet.address,
+        isActive: wallet.isActive,
+        createdAt: wallet.createdAt,
+      }));
 
       return res.json({
         success: true,
-        data: { balances: enrichedBalances },
+        data: { balances },
       });
     } catch (error: any) {
       console.error('❌ Error getting collateral balances:', error);
@@ -68,9 +73,15 @@ export class CollateralBalanceController {
         });
       }
 
-      const balance = await internalBalanceService.getBalance(userId, cryptoType, network);
+      // Buscar carteira específica
+      const wallet = await WalletService.getWalletByUserAndCrypto(
+        userId,
+        cryptoType,
+        network
+      );
 
-      if (!balance) {
+      if (!wallet) {
+        // Retornar saldo zerado se não existe
         return res.json({
           success: true,
           data: {
@@ -79,24 +90,24 @@ export class CollateralBalanceController {
               network,
               balance: '0',
               lockedAmount: '0',
-              availableAmount: '0',
+              availableBalance: '0',
             },
           },
         });
       }
 
-      const available = await internalBalanceService.getAvailableBalance(
-        userId,
-        cryptoType,
-        network
-      );
-
+      // Formato compatível com frontend
       return res.json({
         success: true,
         data: {
           balance: {
-            ...balance,
-            availableBalance: available.toFixed(8),
+            id: wallet.id,
+            cryptoType: wallet.cryptoType,
+            network: wallet.network,
+            balance: wallet.balance,
+            lockedAmount: wallet.lockedBalance,
+            availableBalance: wallet.availableBalance,
+            address: wallet.address,
           },
         },
       });
@@ -116,7 +127,7 @@ export class CollateralBalanceController {
   async getHistory(req: Request, res: Response) {
     try {
       const userId = req.user?.userId;
-      const { cryptoType, network, type, limit, offset } = req.query;
+      const { cryptoType, network, limit, offset } = req.query;
 
       if (!userId) {
         return res.status(401).json({
@@ -125,17 +136,70 @@ export class CollateralBalanceController {
         });
       }
 
-      const transactions = await collateralTransactionService.getTransactionHistory(userId, {
-        cryptoType: cryptoType as string,
-        network: network as string,
-        type: type as any,
-        limit: limit ? parseInt(limit as string) : undefined,
-        offset: offset ? parseInt(offset as string) : undefined,
+      // Se especificou crypto/network, buscar carteira específica
+      let walletIds: string[] = [];
+
+      if (cryptoType && network) {
+        const wallet = await WalletService.getWalletByUserAndCrypto(
+          userId,
+          cryptoType as string,
+          network as string
+        );
+        if (wallet) {
+          walletIds = [wallet.id];
+        }
+      } else {
+        // Buscar todas as carteiras do usuário
+        const wallets = await WalletService.getUserWallets(userId);
+        walletIds = wallets.map((w) => w.id);
+      }
+
+      if (walletIds.length === 0) {
+        return res.json({
+          success: true,
+          data: { transactions: [] },
+        });
+      }
+
+      // Buscar transações de todas as carteiras relevantes
+      const transactions = await prisma.walletTransaction.findMany({
+        where: {
+          walletId: { in: walletIds },
+          userId,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit ? parseInt(limit as string) : 50,
+        skip: offset ? parseInt(offset as string) : 0,
+        include: {
+          wallet: {
+            select: {
+              cryptoType: true,
+              network: true,
+              address: true,
+            },
+          },
+        },
       });
+
+      // Transformar para formato compatível
+      const formattedTransactions = transactions.map((tx) => ({
+        id: tx.id,
+        type: tx.type,
+        amount: tx.amount,
+        cryptoType: tx.wallet.cryptoType,
+        network: tx.wallet.network,
+        address: tx.wallet.address,
+        balanceBefore: tx.balanceBefore,
+        balanceAfter: tx.balanceAfter,
+        description: tx.description,
+        txHash: tx.txHash,
+        metadata: tx.metadata,
+        createdAt: tx.createdAt,
+      }));
 
       return res.json({
         success: true,
-        data: { transactions },
+        data: { transactions: formattedTransactions },
       });
     } catch (error: any) {
       console.error('❌ Error getting collateral history:', error);
@@ -162,11 +226,28 @@ export class CollateralBalanceController {
         });
       }
 
-      const stats = await collateralTransactionService.getUserCollateralStats(
-        userId,
-        cryptoType as string,
-        network as string
-      );
+      // Buscar carteiras
+      let wallets;
+      if (cryptoType && network) {
+        const wallet = await WalletService.getWalletByUserAndCrypto(
+          userId,
+          cryptoType as string,
+          network as string
+        );
+        wallets = wallet ? [wallet] : [];
+      } else {
+        wallets = await WalletService.getUserWallets(userId);
+      }
+
+      // Calcular estatísticas
+      const stats = {
+        totalBalance: wallets.reduce((sum, w) => sum + parseFloat(w.balance), 0).toString(),
+        totalAvailable: wallets.reduce((sum, w) => sum + parseFloat(w.availableBalance), 0).toString(),
+        totalLocked: wallets.reduce((sum, w) => sum + parseFloat(w.lockedBalance), 0).toString(),
+        totalDeposited: wallets.reduce((sum, w) => sum + parseFloat(w.totalDeposited), 0).toString(),
+        totalWithdrawn: wallets.reduce((sum, w) => sum + parseFloat(w.totalWithdrawn), 0).toString(),
+        walletsCount: wallets.length,
+      };
 
       return res.json({
         success: true,
@@ -183,12 +264,12 @@ export class CollateralBalanceController {
 
   /**
    * POST /api/v1/collateral-balance/deposit
-   * Iniciar depósito para saldo interno (gerar endereço)
+   * Iniciar depósito para saldo interno (retorna endereço da carteira existente)
    */
   async initiateDeposit(req: Request, res: Response) {
     try {
       const userId = req.user?.userId;
-      const { cryptoType, network, amount } = req.body;
+      const { cryptoType, network } = req.body;
 
       if (!userId) {
         return res.status(401).json({
@@ -197,26 +278,38 @@ export class CollateralBalanceController {
         });
       }
 
-      if (!cryptoType || !network || !amount) {
+      if (!cryptoType || !network) {
         return res.status(400).json({
           success: false,
-          message: 'cryptoType, network e amount são obrigatórios',
+          message: 'cryptoType e network são obrigatórios',
         });
       }
 
-      // Usar o serviço de collateral existente para gerar endereço
-      const { collateralService } = require('../services/collateral.service');
-      const collateralAddress = await collateralService.generateCollateralAddress(
+      // Buscar ou criar carteira HD
+      let wallet = await WalletService.getWalletByUserAndCrypto(
         userId,
         cryptoType,
-        network,
-        amount
+        network
       );
 
+      if (!wallet) {
+        // Criar nova carteira HD
+        wallet = await WalletService.createWallet(userId, cryptoType, network);
+      }
+
+      // Retornar endereço para depósito
       return res.json({
         success: true,
-        data: { collateralAddress },
-        message: 'Endereço de depósito gerado. Envie o pagamento para creditá-lo em seu saldo interno.',
+        data: {
+          depositAddress: {
+            id: wallet.id,
+            address: wallet.address,
+            cryptoType: wallet.cryptoType,
+            network: wallet.network,
+            qrCode: `${wallet.network}:${wallet.address}`, // Formato para QR code
+          },
+        },
+        message: `Envie ${cryptoType} para o endereço abaixo. O saldo será creditado automaticamente após confirmação on-chain.`,
       });
     } catch (error: any) {
       console.error('❌ Error initiating deposit:', error);
@@ -243,12 +336,13 @@ export class CollateralBalanceController {
         });
       }
 
-      const available = await internalBalanceService.getAvailableBalance(
+      const wallet = await WalletService.getWalletByUserAndCrypto(
         userId,
         cryptoType,
         network
       );
 
+      const available = wallet ? parseFloat(wallet.availableBalance) : 0;
       const required = parseFloat(amount);
       const hasSufficient = available >= required;
 
@@ -272,7 +366,7 @@ export class CollateralBalanceController {
 
   /**
    * POST /api/v1/collateral-balance/simulate-deposit/:addressId
-   * APENAS DESENVOLVIMENTO: Simula o recebimento de depósito
+   * APENAS DESENVOLVIMENTO: Simula adição de saldo de teste
    */
   async simulateDeposit(req: Request, res: Response) {
     try {
@@ -286,6 +380,7 @@ export class CollateralBalanceController {
 
       const userId = req.user?.userId;
       const { addressId } = req.params;
+      const { amount } = req.body;
 
       if (!userId) {
         return res.status(401).json({
@@ -294,72 +389,47 @@ export class CollateralBalanceController {
         });
       }
 
-      // Buscar endereço de colateral
-      const collateralAddress = await prisma.collateralAddress.findUnique({
+      // Buscar carteira (usando addressId como walletId)
+      const wallet = await prisma.userWallet.findUnique({
         where: { id: addressId },
       });
 
-      if (!collateralAddress) {
+      if (!wallet) {
         return res.status(404).json({
           success: false,
-          message: 'Endereço de colateral não encontrado',
+          message: 'Carteira não encontrada',
         });
       }
 
       // Verificar propriedade
-      if (collateralAddress.userId !== userId) {
+      if (wallet.userId !== userId) {
         return res.status(403).json({
           success: false,
-          message: 'Este endereço não pertence a você',
+          message: 'Esta carteira não pertence a você',
         });
       }
 
-      // Verificar status
-      if (collateralAddress.status !== 'AWAITING_PAYMENT') {
-        return res.status(400).json({
-          success: false,
-          message: `Endereço já processado (status: ${collateralAddress.status})`,
-        });
-      }
+      // Adicionar saldo de teste
+      const testAmount = amount || wallet.balance || '0.1';
+      await WalletService.addTestBalance(wallet.id, testAmount);
 
-      // Simular recebimento do depósito
-      const simulatedTxHash = `0xSIMULATED${Date.now()}${Math.random().toString(36).substring(7)}`;
-      const actualAmount = collateralAddress.expectedAmount;
+      const simulatedTxHash = `0xTEST${Date.now()}${Math.random().toString(36).substring(7)}`;
 
-      // Atualizar endereço
-      await prisma.collateralAddress.update({
-        where: { id: addressId },
-        data: {
-          status: 'CONFIRMED',
-          txHash: simulatedTxHash,
-          actualAmount: actualAmount,
-          confirmedAt: new Date(),
-        },
-      });
-
-      // Creditar saldo interno
-      await internalBalanceService.creditDeposit(
-        userId,
-        collateralAddress.cryptoType,
-        collateralAddress.cryptoNetwork,
-        actualAmount,
-        simulatedTxHash
-      );
-
-      console.log(`🧪 [SIMULAÇÃO] Depósito simulado com sucesso:`);
+      console.log(`🧪 [SIMULAÇÃO] Saldo de teste adicionado:`);
       console.log(`   Usuário: ${userId}`);
-      console.log(`   Valor: ${actualAmount} ${collateralAddress.cryptoType}`);
+      console.log(`   Carteira: ${wallet.id}`);
+      console.log(`   Valor: ${testAmount} ${wallet.cryptoType}`);
       console.log(`   TxHash: ${simulatedTxHash}`);
 
       return res.json({
         success: true,
-        message: 'Depósito simulado com sucesso!',
+        message: 'Saldo de teste adicionado com sucesso!',
         data: {
-          addressId,
+          walletId: wallet.id,
           txHash: simulatedTxHash,
-          amount: actualAmount,
-          cryptoType: collateralAddress.cryptoType,
-          network: collateralAddress.cryptoNetwork,
+          amount: testAmount,
+          cryptoType: wallet.cryptoType,
+          network: wallet.network,
         },
       });
     } catch (error: any) {

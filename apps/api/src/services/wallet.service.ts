@@ -22,7 +22,7 @@ export class WalletService {
    *
    * @param userId ID do usuário
    * @param cryptoType BTC, USDC, USDT
-   * @param network BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA, TRC20
+   * @param network BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA
    * @returns Carteira criada (sem expor private key!)
    */
   static async createWallet(
@@ -608,11 +608,8 @@ export class WalletService {
     const withdrawal = await prisma.withdrawal.create({
       data: {
         walletId,
-        userId: wallet.userId,
         toAddress,
         amount,
-        cryptoType: wallet.cryptoType,
-        network: wallet.network,
         status: 'PENDING',
       },
     });
@@ -630,6 +627,26 @@ export class WalletService {
     );
 
     return withdrawal;
+  }
+
+  /**
+   * Atualizar saldos da carteira manualmente (uso interno)
+   */
+  static async updateBalance(
+    walletId: string,
+    data: {
+      balance?: string;
+      availableBalance?: string;
+      lockedBalance?: string;
+    }
+  ) {
+    return await prisma.userWallet.update({
+      where: {id: walletId},
+      data: {
+        ...data,
+        lastSyncedAt: new Date(),
+      },
+    });
   }
 
   /**

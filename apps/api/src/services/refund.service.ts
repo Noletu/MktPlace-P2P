@@ -11,9 +11,9 @@ export const REFUND_CONFIG = {
 
   // Estimativas de taxa de rede (em USDT equivalente)
   NETWORK_FEES: {
-    TRC20: '1.5', // USDT TRC20
     BASE: '0.50', // BASE L2
     ARBITRUM: '0.30', // Arbitrum L2
+    SOLANA: '0.01', // Solana (muito barata)
     ETHEREUM: '10.00', // Ethereum mainnet (mais cara)
     BITCOIN: '5.00', // Bitcoin
   },

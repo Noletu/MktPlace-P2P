@@ -58,9 +58,14 @@ export class AdminService {
     },
     adminId: string
   ) {
-    // Verificar se endereço já existe
+    // Verificar se endereço já existe para essa combinação crypto/network
     const existing = await prisma.platformWallet.findUnique({
-      where: { address: data.address },
+      where: {
+        cryptoType_network: {
+          cryptoType: data.cryptoType,
+          network: data.network,
+        },
+      },
     });
 
     if (existing) {
@@ -294,7 +299,6 @@ export class AdminService {
           ? [
               { email: { contains: filters.search } },
               { name: { contains: filters.search } },
-              { cpf: { contains: filters.search } },
             ]
           : undefined,
       },
@@ -305,7 +309,6 @@ export class AdminService {
         id: true,
         email: true,
         name: true,
-        cpf: true,
         kycLevel: true,
         role: true,
         reputationScore: true,

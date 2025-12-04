@@ -272,7 +272,7 @@ export class ChatController {
    */
   async getChatHistory(req: Request, res: Response) {
     try {
-      const userId = req.userId!;
+      const userId = req.user?.userId!;
       const { chatId } = req.params;
 
       const history = await chatService.getChatHistory(chatId, userId);

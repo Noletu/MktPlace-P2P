@@ -25,7 +25,7 @@ export class PriceService {
         throw new Error('Erro ao buscar cotação');
       }
 
-      const data = await response.json();
+      const data = await response.json() as Record<string, { brl?: number; usd?: number }>;
       const brlPrice = data[coinId]?.brl;
       const usdPrice = data[coinId]?.usd;
 

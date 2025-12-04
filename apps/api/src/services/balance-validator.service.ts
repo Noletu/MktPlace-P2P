@@ -1,323 +1,227 @@
 /**
- * Serviço de Validação Automática de Saldo
+ * Balance Validator Service (ADAPTER)
  *
- * FINALIDADE:
- * - Validar consistência entre saldo bloqueado e pedidos ativos
- * - Detectar inconsistências automaticamente
- * - Auto-corrigir pequenas inconsistências
- * - Alertar sobre inconsistências graves
- *
- * CHAMADO EM:
- * - Após criar pedido
- * - Após cancelar pedido
- * - Após completar pedido
- * - Periodicamente (worker)
- *
- * VERSÃO: 3.0.7
- * DATA: 25/10/2025
+ * MIGRADO: Agora usa WalletService em vez de InternalBalance deprecado
  */
 
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
-// Estados de pedidos que DEVEM ter saldo bloqueado
-const ACTIVE_ORDER_STATUSES = ['PENDING', 'IN_NEGOTIATION', 'MATCHED', 'PAYMENT_SENT', 'VALIDATING'];
-
-export interface BalanceValidationResult {
-  isValid: boolean;
-  userId: string;
-  cryptoType: string;
-  network: string;
-  currentLocked: number;
-  expectedLocked: number;
-  difference: number;
-  activeOrdersCount: number;
-  inconsistencies: string[];
-  autoFixed: boolean;
-}
+import { WalletService } from './wallet.service';
+import { internalBalanceService } from './internal-balance.service';
 
 export class BalanceValidatorService {
   /**
-   * Validar saldo de um usuário específico
+   * Validar se usuário tem saldo suficiente
    */
-  async validateUserBalance(
+  async validateSufficientBalance(
     userId: string,
     cryptoType: string,
     network: string,
-    autoFix: boolean = false
-  ): Promise<BalanceValidationResult> {
-    // 1. Buscar saldo atual
-    const balance = await prisma.internalBalance.findUnique({
-      where: {
-        userId_cryptoType_network: {
-          userId,
-          cryptoType,
-          network,
-        },
-      },
-    });
-
-    if (!balance) {
-      return {
-        isValid: true, // Não tem saldo = válido
-        userId,
-        cryptoType,
-        network,
-        currentLocked: 0,
-        expectedLocked: 0,
-        difference: 0,
-        activeOrdersCount: 0,
-        inconsistencies: [],
-        autoFixed: false,
-      };
-    }
-
-    // 2. Buscar pedidos ativos com saldo bloqueado
-    const activeOrders = await prisma.order.findMany({
-      where: {
-        userId,
-        cryptoType,
-        cryptoNetwork: network,
-        collateralSource: 'INTERNAL_BALANCE',
-        collateralLocked: true,
-        status: {
-          in: ACTIVE_ORDER_STATUSES,
-        },
-      },
-    });
-
-    // 3. Calcular lockedAmount esperado
-    let expectedLocked = 0;
-    for (const order of activeOrders) {
-      expectedLocked += parseFloat(order.collateralLockedAmount || '0');
-    }
-
-    const currentLocked = parseFloat(balance.lockedAmount);
-    const difference = currentLocked - expectedLocked;
-    const tolerance = 0.00000001; // Tolerância para arredondamento
-    const isValid = Math.abs(difference) < tolerance;
-
-    const inconsistencies: string[] = [];
-
-    // 4. Detectar inconsistências
-    if (!isValid) {
-      if (difference > 0) {
-        inconsistencies.push(
-          `Saldo bloqueado MAIOR que esperado: ${currentLocked.toFixed(8)} > ${expectedLocked.toFixed(8)}`
-        );
-        inconsistencies.push(
-          `Possível causa: Pedido finalizado mas saldo não foi desbloqueado`
-        );
-      } else {
-        inconsistencies.push(
-          `Saldo bloqueado MENOR que esperado: ${currentLocked.toFixed(8)} < ${expectedLocked.toFixed(8)}`
-        );
-        inconsistencies.push(
-          `Possível causa: Pedido ativo mas saldo não foi bloqueado corretamente`
-        );
-      }
-    }
-
-    // 5. Auto-corrigir se solicitado e a diferença for pequena (<= 10%)
-    let autoFixed = false;
-    if (autoFix && !isValid && Math.abs(difference / expectedLocked) <= 0.1) {
-      try {
-        const newTotal = parseFloat(balance.balance);
-        const newLocked = expectedLocked;
-        const newAvailable = newTotal - newLocked;
-
-        await prisma.internalBalance.update({
-          where: { id: balance.id },
-          data: {
-            lockedAmount: newLocked.toFixed(8),
-            availableAmount: newAvailable.toFixed(8),
-          },
-        });
-
-        console.log(`🔧 [BALANCE VALIDATOR] Auto-corrigido saldo de ${userId}:`);
-        console.log(`   ${cryptoType}/${network}`);
-        console.log(`   Bloqueado: ${currentLocked.toFixed(8)} → ${newLocked.toFixed(8)}`);
-
-        autoFixed = true;
-      } catch (error: any) {
-        console.error(`❌ [BALANCE VALIDATOR] Erro ao auto-corrigir:`, error.message);
-        inconsistencies.push(`Falha na auto-correção: ${error.message}`);
-      }
-    }
-
-    return {
-      isValid: isValid || autoFixed,
+    requiredAmount: string
+  ): Promise<{ valid: boolean; message?: string }> {
+    const available = await internalBalanceService.getAvailableBalance(
       userId,
       cryptoType,
-      network,
-      currentLocked,
-      expectedLocked,
-      difference,
-      activeOrdersCount: activeOrders.length,
-      inconsistencies,
-      autoFixed,
-    };
-  }
+      network
+    );
 
-  /**
-   * Validar todos os saldos de um usuário
-   */
-  async validateAllUserBalances(
-    userId: string,
-    autoFix: boolean = false
-  ): Promise<BalanceValidationResult[]> {
-    const balances = await prisma.internalBalance.findMany({
-      where: { userId },
-    });
+    const required = parseFloat(requiredAmount);
 
-    const results: BalanceValidationResult[] = [];
-
-    for (const balance of balances) {
-      const result = await this.validateUserBalance(
-        userId,
-        balance.cryptoType,
-        balance.network,
-        autoFix
-      );
-      results.push(result);
+    if (available < required) {
+      return {
+        valid: false,
+        message: `Saldo insuficiente. Disponível: ${available.toFixed(8)} ${cryptoType}, Necessário: ${required.toFixed(8)} ${cryptoType}`,
+      };
     }
 
-    return results;
+    return { valid: true };
   }
 
   /**
-   * Validar TODOS os saldos do sistema
-   * (Usado em worker periódico)
+   * Validar integridade dos saldos
    */
-  async validateAllBalances(autoFix: boolean = false): Promise<{
-    total: number;
-    valid: number;
-    invalid: number;
-    autoFixed: number;
-    results: BalanceValidationResult[];
+  async validateBalanceIntegrity(userId: string): Promise<{
+    valid: boolean;
+    issues?: Array<{
+      walletId: string;
+      cryptoType: string;
+      network: string;
+      issue: string;
+    }>;
   }> {
-    const balances = await prisma.internalBalance.findMany();
+    const wallets = await WalletService.getUserWallets(userId);
+    const issues: Array<any> = [];
 
-    const results: BalanceValidationResult[] = [];
-    let valid = 0;
-    let invalid = 0;
-    let autoFixed = 0;
+    for (const wallet of wallets) {
+      const balance = parseFloat(wallet.balance);
+      const available = parseFloat(wallet.availableBalance);
+      const locked = parseFloat(wallet.lockedBalance);
 
-    for (const balance of balances) {
-      const result = await this.validateUserBalance(
-        balance.userId,
-        balance.cryptoType,
-        balance.network,
-        autoFix
-      );
-
-      results.push(result);
-
-      if (result.isValid) {
-        valid++;
-      } else {
-        invalid++;
+      // Validar: balance = available + locked
+      const expected = available + locked;
+      if (Math.abs(balance - expected) > 0.00000001) {
+        issues.push({
+          walletId: wallet.id,
+          cryptoType: wallet.cryptoType,
+          network: wallet.network,
+          issue: `Balance mismatch: total=${balance}, available=${available}, locked=${locked}`,
+        });
       }
 
-      if (result.autoFixed) {
-        autoFixed++;
+      // Validar valores não negativos
+      if (balance < 0 || available < 0 || locked < 0) {
+        issues.push({
+          walletId: wallet.id,
+          cryptoType: wallet.cryptoType,
+          network: wallet.network,
+          issue: `Negative balance detected`,
+        });
       }
     }
 
     return {
-      total: balances.length,
-      valid,
-      invalid,
-      autoFixed,
-      results: results.filter(r => !r.isValid), // Retornar apenas inválidos
+      valid: issues.length === 0,
+      issues: issues.length > 0 ? issues : undefined,
     };
   }
 
   /**
-   * Recalcular lockedAmount baseado em pedidos ativos
-   * (Usa como fonte de verdade os pedidos, não o saldo atual)
+   * Recalcular saldos disponíveis
    */
-  async recalculateLockedAmount(
-    userId: string,
-    cryptoType: string,
-    network: string
-  ): Promise<{
-    oldLocked: string;
-    newLocked: string;
-    updated: boolean;
+  async recalculateAvailableBalances(userId: string): Promise<{
+    success: boolean;
+    walletsUpdated: number;
   }> {
-    // 1. Buscar saldo
-    const balance = await prisma.internalBalance.findUnique({
-      where: {
-        userId_cryptoType_network: {
+    const wallets = await WalletService.getUserWallets(userId);
+    let updated = 0;
+
+    for (const wallet of wallets) {
+      const balance = parseFloat(wallet.balance);
+      const locked = parseFloat(wallet.lockedBalance);
+      const expectedAvailable = balance - locked;
+
+      // Se available está incorreto, corrigir
+      if (Math.abs(parseFloat(wallet.availableBalance) - expectedAvailable) > 0.00000001) {
+        await WalletService.updateBalance(wallet.id, {
+          availableBalance: expectedAvailable.toFixed(8),
+        });
+        updated++;
+      }
+    }
+
+    return {
+      success: true,
+      walletsUpdated: updated,
+    };
+  }
+
+  /**
+   * Obter resumo de saldos do usuário
+   */
+  async getUserBalanceSummary(userId: string) {
+    const wallets = await WalletService.getUserWallets(userId);
+
+    const summary = wallets.map(w => ({
+      walletId: w.id,
+      cryptoType: w.cryptoType,
+      network: w.network,
+      address: w.address,
+      balance: w.balance,
+      availableBalance: w.availableBalance,
+      lockedBalance: w.lockedBalance,
+      totalDeposited: w.totalDeposited,
+      totalWithdrawn: w.totalWithdrawn,
+    }));
+
+    const totals = {
+      totalBalance: wallets.reduce((sum, w) => sum + parseFloat(w.balance), 0).toFixed(8),
+      totalAvailable: wallets.reduce((sum, w) => sum + parseFloat(w.availableBalance), 0).toFixed(8),
+      totalLocked: wallets.reduce((sum, w) => sum + parseFloat(w.lockedBalance), 0).toFixed(8),
+    };
+
+    return {
+      wallets: summary,
+      totals,
+    };
+  }
+
+  /**
+   * Validar saldo de um usuário específico (adapter)
+   */
+  async validateUserBalance(userId: string) {
+    return await this.validateBalanceIntegrity(userId);
+  }
+
+  /**
+   * Validar saldos de todos os usuários (adapter)
+   */
+  async validateAllUserBalances() {
+    const { prisma } = await import('../utils/prisma');
+    const users = await prisma.user.findMany({ select: { id: true } });
+
+    const results = await Promise.all(
+      users.map(async (user) => ({
+        userId: user.id,
+        validation: await this.validateBalanceIntegrity(user.id),
+      }))
+    );
+
+    const invalid = results.filter(r => !r.validation.valid);
+
+    return {
+      total: results.length,
+      valid: results.length - invalid.length,
+      invalid: invalid.length,
+      issues: invalid,
+    };
+  }
+
+  /**
+   * Recalcular valores bloqueados (adapter)
+   */
+  async recalculateLockedAmount(userId: string) {
+    const { prisma } = await import('../utils/prisma');
+    const wallets = await WalletService.getUserWallets(userId);
+    let updated = 0;
+
+    for (const wallet of wallets) {
+      // Recalcular locked amount baseado em ordens ativas
+      const activeOrders = await prisma.order.findMany({
+        where: {
           userId,
-          cryptoType,
-          network,
-        },
-      },
-    });
-
-    if (!balance) {
-      return {
-        oldLocked: '0',
-        newLocked: '0',
-        updated: false,
-      };
-    }
-
-    // 2. Buscar pedidos ativos
-    const activeOrders = await prisma.order.findMany({
-      where: {
-        userId,
-        cryptoType,
-        cryptoNetwork: network,
-        collateralSource: 'INTERNAL_BALANCE',
-        collateralLocked: true,
-        status: {
-          in: ACTIVE_ORDER_STATUSES,
-        },
-      },
-    });
-
-    // 3. Calcular novo lockedAmount
-    let newLocked = 0;
-    for (const order of activeOrders) {
-      newLocked += parseFloat(order.collateralLockedAmount || '0');
-    }
-
-    const oldLocked = parseFloat(balance.lockedAmount);
-    const tolerance = 0.00000001;
-
-    // 4. Atualizar se diferente
-    if (Math.abs(oldLocked - newLocked) > tolerance) {
-      const newTotal = parseFloat(balance.balance);
-      const newAvailable = newTotal - newLocked;
-
-      await prisma.internalBalance.update({
-        where: { id: balance.id },
-        data: {
-          lockedAmount: newLocked.toFixed(8),
-          availableAmount: newAvailable.toFixed(8),
+          cryptoType: wallet.cryptoType,
+          cryptoNetwork: wallet.network,
+          status: {
+            in: ['PENDING_PAYMENT', 'PAYMENT_RECEIVED', 'IN_DISPUTE'],
+          },
         },
       });
 
-      console.log(`✅ [BALANCE VALIDATOR] Recalculado lockedAmount:`);
-      console.log(`   ${userId} - ${cryptoType}/${network}`);
-      console.log(`   ${oldLocked.toFixed(8)} → ${newLocked.toFixed(8)}`);
+      const totalLocked = activeOrders.reduce(
+        (sum, order) => sum + parseFloat(order.cryptoAmount),
+        0
+      );
 
-      return {
-        oldLocked: oldLocked.toFixed(8),
-        newLocked: newLocked.toFixed(8),
-        updated: true,
-      };
+      // Atualizar se diferente
+      if (Math.abs(parseFloat(wallet.lockedBalance) - totalLocked) > 0.00000001) {
+        const newAvailable = parseFloat(wallet.balance) - totalLocked;
+        await WalletService.updateBalance(wallet.id, {
+          lockedBalance: totalLocked.toFixed(8),
+          availableBalance: newAvailable.toFixed(8),
+        });
+        updated++;
+      }
     }
 
     return {
-      oldLocked: oldLocked.toFixed(8),
-      newLocked: newLocked.toFixed(8),
-      updated: false,
+      success: true,
+      walletsUpdated: updated,
     };
+  }
+
+  /**
+   * Validar todos os saldos do sistema (adapter)
+   */
+  async validateAllBalances() {
+    return await this.validateAllUserBalances();
   }
 }
 

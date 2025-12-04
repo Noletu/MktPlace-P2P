@@ -452,16 +452,10 @@ export class DisputeService {
       case 'RELEASE_SELLER':
         newOrderStatus = 'COMPLETED';
         break;
-      case 'REFUND_BUYER_FULL':
-      case 'REFUND_BUYER_PARTIAL':
-      case 'PENALTY_SELLER':
+      case 'REFUND_BUYER':
+      case 'PARTIAL_REFUND':
+      case 'CANCELLED':
         newOrderStatus = 'CANCELLED';
-        break;
-      case 'CANCEL_NO_PENALTY':
-        newOrderStatus = 'CANCELLED';
-        break;
-      case 'PENALTY_BUYER':
-        newOrderStatus = 'COMPLETED'; // Favor vendedor
         break;
       default:
         newOrderStatus = 'CANCELLED';
@@ -484,8 +478,8 @@ export class DisputeService {
       const buyerId = order.transactions[0]?.payerId;
 
       // Aplicar penalidade conforme resolução
-      if (input.resolutionType === 'PENALTY_SELLER' && sellerId) {
-        // Penalidade para vendedor (30 pontos por disputa perdida)
+      if (input.resolutionType === 'REFUND_BUYER' && sellerId) {
+        // Penalidade para vendedor (disputa perdida - má-fé)
         const currentReputation = order.user.reputationScore;
         const penaltyPoints = DISPUTE_REPUTATION.LOSE_PENALTY; // -20
         const newReputation = Math.max(0, currentReputation + penaltyPoints);
@@ -496,7 +490,7 @@ export class DisputeService {
         });
 
         console.log(`[DISPUTE PENALTY] Seller ${sellerId}: ${currentReputation} → ${newReputation} (${penaltyPoints} pts)`);
-      } else if (input.resolutionType === 'PENALTY_BUYER' && buyerId) {
+      } else if (input.resolutionType === 'RELEASE_SELLER' && buyerId) {
         // Penalidade para comprador (30 pontos por disputa perdida)
         const buyer = await prisma.user.findUnique({
           where: { id: buyerId },

@@ -163,7 +163,7 @@ export class OrderService {
   async createOrder(input: CreateOrderInput & {
     collateralAddressId?: string;
     useInternalBalance?: boolean; // Flag para forçar uso de saldo interno
-  }): Promise<Order | { requiresDeposit: true; missingAmount: string; availableBalance: number; requiredCollateral: string }> {
+  }): Promise<Order | { requiresDeposit: true; missingAmount: string; availableBalance: number; requiredCollateral: string; walletAddress: string }> {
     // Log de entrada para debug
     console.log(`📝 [ORDER] Creating order - userId: ${input.userId}, type: ${input.type}, crypto: ${input.cryptoType}/${input.cryptoNetwork}, amount: ${input.brlAmount} BRL, useInternalBalance: ${input.useInternalBalance}`);
 
@@ -439,6 +439,16 @@ export class OrderService {
   }
 
   /**
+   * Buscar transações de um pedido
+   */
+  async getOrderTransactions(orderId: string) {
+    return await prisma.transaction.findMany({
+      where: { orderId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
    * Fazer match de um pedido (pagador aceita pagar)
    * SECURITY: Usa transação atômica para prevenir race conditions
    */
@@ -675,8 +685,9 @@ export class OrderService {
         await notificationService.notifyOrderCancelled(orderId, userId, notificationMessage);
 
         // Se tem transação matched, notificar o comprador também
-        if (order.transactions && order.transactions.length > 0) {
-          const transaction = order.transactions[0];
+        const transactions = await this.getOrderTransactions(orderId);
+        if (transactions && transactions.length > 0) {
+          const transaction = transactions[0];
           await notificationService.notifyOrderCancelled(
             orderId,
             transaction.payerId,
@@ -712,12 +723,13 @@ export class OrderService {
       throw new Error('Pedido não encontrado');
     }
 
-    // Verificar se existe transação e se o usuário é o pagador
-    if (!order.transactions || order.transactions.length === 0) {
+    // Buscar transações para verificar se existe transação e se o usuário é o pagador
+    const transactions = await this.getOrderTransactions(orderId);
+    if (!transactions || transactions.length === 0) {
       throw new Error('Este pedido não tem um pagador associado');
     }
 
-    const transaction = order.transactions[0];
+    const transaction = transactions[0];
     if (transaction.payerId !== payerId) {
       throw new Error('Você não tem permissão para cancelar este pedido');
     }
@@ -1028,9 +1040,9 @@ export class OrderService {
     // Agrupar por dia para o gráfico
     const dailyData: { [key: string]: { date: string; volumeBRL: number; count: number } } = {};
 
-    orders.forEach((order) => {
+    orders.forEach((order: any) => {
       const isSeller = order.userId === userId;
-      const isBuyer = order.transactions[0]?.payerId === userId;
+      const isBuyer = order.transactions?.[0]?.payerId === userId;
 
       if (isSeller) {
         totalSells++;

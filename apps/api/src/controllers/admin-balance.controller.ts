@@ -45,11 +45,16 @@ export const auditUserBalance = async (req: Request, res: Response) => {
       });
     }
 
-    // Buscar todos os saldos do usuário
-    const balances = await prisma.internalBalance.findMany({
-      where: { userId },
+    // NOTA: InternalBalance foi deprecado e migrado para HD Wallet system
+    // Este endpoint precisa ser reimplementado usando WalletService
+    return res.status(501).json({
+      success: false,
+      error: 'Este endpoint está temporariamente desabilitado devido à migração para HD Wallet system',
+      message: 'Use os novos endpoints de wallet para consultar saldos',
     });
 
+    /*
+    // CÓDIGO LEGADO COMENTADO - InternalBalance não existe mais
     // Auditar cada saldo
     const auditResults = [];
 
@@ -184,6 +189,7 @@ export const auditUserBalance = async (req: Request, res: Response) => {
         balances: auditResults,
       },
     });
+    */
   } catch (error: any) {
     console.error('❌ [ADMIN BALANCE AUDIT] Erro ao auditar saldo:', error);
     return res.status(500).json({
@@ -222,6 +228,16 @@ export const fixUserBalance = async (req: Request, res: Response) => {
       });
     }
 
+    // NOTA: InternalBalance foi deprecado e migrado para HD Wallet system
+    // Este endpoint precisa ser reimplementado usando WalletService
+    return res.status(501).json({
+      success: false,
+      error: 'Este endpoint está temporariamente desabilitado devido à migração para HD Wallet system',
+      message: 'Use os novos endpoints de wallet para gerenciar saldos',
+    });
+
+    /*
+    // CÓDIGO LEGADO COMENTADO - InternalBalance não existe mais
     let results;
 
     // Corrigir saldo específico ou todos
@@ -287,6 +303,7 @@ export const fixUserBalance = async (req: Request, res: Response) => {
         })),
       },
     });
+    */
   } catch (error: any) {
     console.error('❌ [ADMIN BALANCE FIX] Erro ao corrigir saldo:', error);
     return res.status(500).json({
@@ -306,6 +323,16 @@ export const fixUserBalance = async (req: Request, res: Response) => {
  */
 export const validateAllBalances = async (req: Request, res: Response) => {
   try {
+    // NOTA: InternalBalance foi deprecado e migrado para HD Wallet system
+    // Este endpoint precisa ser reimplementado usando WalletService
+    return res.status(501).json({
+      success: false,
+      error: 'Este endpoint está temporariamente desabilitado devido à migração para HD Wallet system',
+      message: 'Use os novos endpoints de wallet para validar saldos',
+    });
+
+    /*
+    // CÓDIGO LEGADO COMENTADO - InternalBalance não existe mais
     const autoFix = req.query.autoFix === 'true';
 
     console.log(`🔍 [ADMIN BALANCE] Iniciando validação de todos os saldos (autoFix=${autoFix})...`);
@@ -335,6 +362,7 @@ export const validateAllBalances = async (req: Request, res: Response) => {
         })),
       },
     });
+    */
   } catch (error: any) {
     console.error('❌ [ADMIN BALANCE VALIDATE] Erro ao validar saldos:', error);
     return res.status(500).json({

@@ -33,12 +33,10 @@ const RespondDisputeSchema = z.object({
 const ResolveDisputeSchema = z.object({
   resolution: z.string().min(20, 'Resolução deve ter no mínimo 20 caracteres'),
   resolutionType: z.enum([
-    'REFUND_BUYER_FULL',
-    'REFUND_BUYER_PARTIAL',
-    'RELEASE_SELLER',
-    'CANCEL_NO_PENALTY',
-    'PENALTY_BUYER',
-    'PENALTY_SELLER'
+    'REFUND_BUYER',      // Reembolso ao comprador
+    'PARTIAL_REFUND',    // Reembolso parcial
+    'RELEASE_SELLER',    // Liberar crypto para vendedor
+    'CANCELLED'          // Cancelar ordem
   ]),
 });
 

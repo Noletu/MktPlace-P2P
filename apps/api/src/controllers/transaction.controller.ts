@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { transactionService } from '../services/transaction.service';
 import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../utils/prisma';
 
 const SubmitProofSchema = z.object({
   transactionId: z.string(),
@@ -150,9 +150,16 @@ export class TransactionController {
         return res.status(404).json({ error: 'Transação não encontrada' });
       }
 
+      // Buscar order para verificar permissões
+      const { prisma } = await import('../utils/prisma');
+      const order = await prisma.order.findUnique({
+        where: { id: transaction.orderId },
+        select: { userId: true },
+      });
+
       // SECURITY: Verificar se usuário tem permissão para ver esta transação
       const isPayer = transaction.payerId === userId;
-      const isOrderOwner = transaction.order.userId === userId;
+      const isOrderOwner = order?.userId === userId;
       const isAdmin = req.user?.role === 'ADMIN';
 
       if (!isPayer && !isOrderOwner && !isAdmin) {
@@ -316,8 +323,15 @@ export class TransactionController {
         return res.status(404).json({ error: 'Transação não encontrada' });
       }
 
+      // Buscar order para verificar permissões
+      const { prisma } = await import('../utils/prisma');
+      const order = await prisma.order.findUnique({
+        where: { id: transaction.orderId },
+        select: { userId: true },
+      });
+
       // SECURITY: Verificar se usuário é o vendedor (dono do pedido)
-      if (transaction.order.userId !== userId) {
+      if (order?.userId !== userId) {
         return res.status(403).json({
           error: 'Apenas o vendedor pode confirmar o recebimento do pagamento',
         });
@@ -370,6 +384,12 @@ export class TransactionController {
         return res.status(404).json({ error: 'Transação não encontrada' });
       }
 
+      // Buscar order para verificar status
+      const order = await prisma.order.findUnique({
+        where: { id: transaction.orderId },
+        select: { status: true },
+      });
+
       // SECURITY: Verificar se usuário é o pagador
       if (transaction.payerId !== userId) {
         return res.status(403).json({
@@ -385,14 +405,13 @@ export class TransactionController {
       }
 
       // Verificar se o pedido está MATCHED
-      if (transaction.order.status !== 'MATCHED') {
+      if (order?.status !== 'MATCHED') {
         return res.status(400).json({
           error: 'O pedido não está no status correto para confirmar pagamento',
         });
       }
 
       // Atualizar o status do pedido para PAYMENT_SENT
-      const prisma = new PrismaClient();
       await prisma.order.update({
         where: { id: transaction.orderId },
         data: {

@@ -6,12 +6,11 @@ import axios from 'axios';
  * Blockchain Service
  *
  * Serviço unificado para consultar blockchains.
- * Suporta: Bitcoin, Ethereum, Base, Arbitrum, Solana, Tron
+ * Suporta: Bitcoin, Ethereum, Base, Arbitrum, Solana
  *
  * NOTA: Para produção, considere usar bibliotecas específicas como:
  * - ethers.js / web3.js para EVM
  * - @solana/web3.js para Solana
- * - tronweb para Tron
  */
 export class BlockchainService {
   /**
@@ -23,7 +22,6 @@ export class BlockchainService {
     BASE: 10,
     ARBITRUM: 10,
     SOLANA: 15,
-    TRC20: 19,
   };
 
   /**
@@ -45,9 +43,6 @@ export class BlockchainService {
 
       case 'SOLANA':
         return this.getSolanaBalance(address);
-
-      case 'TRC20':
-        return this.getTronBalance(address);
 
       default:
         throw new Error(`Unsupported network: ${network}`);
@@ -79,9 +74,6 @@ export class BlockchainService {
       case 'SOLANA':
         return this.getSolanaTransactions(address);
 
-      case 'TRC20':
-        return this.getTronTransactions(address);
-
       default:
         throw new Error(`Unsupported network: ${network}`);
     }
@@ -109,9 +101,6 @@ export class BlockchainService {
 
       case 'SOLANA':
         return this.getSolanaTxStatus(txHash);
-
-      case 'TRC20':
-        return this.getTronTxStatus(txHash);
 
       default:
         throw new Error(`Unsupported network: ${network}`);
@@ -376,70 +365,6 @@ export class BlockchainService {
       };
     } catch (error) {
       console.error('Error fetching Solana tx status:', error);
-      return {confirmed: false, confirmations: 0};
-    }
-  }
-
-  // ============================================
-  // TRON
-  // ============================================
-
-  private static async getTronBalance(address: string): Promise<string> {
-    try {
-      const response = await axios.get(
-        `https://api.trongrid.io/v1/accounts/${address}`
-      );
-
-      const balance = response.data.data[0]?.balance || 0;
-      const trx = balance / 1e6;
-
-      return trx.toString();
-    } catch (error) {
-      console.error('Error fetching Tron balance:', error);
-      return '0';
-    }
-  }
-
-  private static async getTronTransactions(
-    address: string
-  ): Promise<BlockchainTransaction[]> {
-    try {
-      const response = await axios.get(
-        `https://api.trongrid.io/v1/accounts/${address}/transactions?limit=50`
-      );
-
-      const txs = response.data.data || [];
-
-      return txs.map((tx: any) => ({
-        hash: tx.txID,
-        from: tx.raw_data?.contract[0]?.parameter?.value?.owner_address || '',
-        to: address,
-        value: ((tx.raw_data?.contract[0]?.parameter?.value?.amount || 0) / 1e6).toString(),
-        blockHeight: tx.blockNumber,
-        confirmations: tx.ret[0]?.contractRet === 'SUCCESS' ? 19 : 0,
-        timestamp: new Date(tx.block_timestamp),
-      }));
-    } catch (error) {
-      console.error('Error fetching Tron transactions:', error);
-      return [];
-    }
-  }
-
-  private static async getTronTxStatus(txHash: string): Promise<TransactionStatus> {
-    try {
-      const response = await axios.get(
-        `https://api.trongrid.io/wallet/gettransactionbyid?value=${txHash}`
-      );
-
-      const success = response.data.ret[0]?.contractRet === 'SUCCESS';
-
-      return {
-        confirmed: success,
-        confirmations: success ? 19 : 0,
-        blockHeight: response.data.blockNumber,
-      };
-    } catch (error) {
-      console.error('Error fetching Tron tx status:', error);
       return {confirmed: false, confirmations: 0};
     }
   }

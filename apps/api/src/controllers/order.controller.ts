@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
 import { orderService } from '../services/order.service';
-import { OrderType } from '../types/order.types';
+import { OrderType, PaymentMethod } from '../types/order.types';
 import { z } from 'zod';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from '../services/auditLog.service';
 import { auditLogger } from '../utils/logger';
+import { Transaction } from '@prisma/client';
 
 const BoletoDataSchema = z.object({
   barcode: z.string().min(44, 'Código de barras do boleto deve ter no mínimo 44 caracteres'),
@@ -20,7 +21,7 @@ const PixDataSchema = z.object({
 
 const CreateOrderSchema = z.object({
   type: z.nativeEnum(OrderType),
-  paymentMethod: z.enum(['PIX', 'BOLETO']).optional(), // Método de pagamento (PIX ou Boleto)
+  paymentMethod: z.nativeEnum(PaymentMethod).optional(), // Método de pagamento (PIX ou Boleto)
   cryptoType: z.string().min(1, 'Tipo de criptomoeda é obrigatório'),
   cryptoNetwork: z.string().min(1, 'Rede blockchain é obrigatória'),
   cryptoAmount: z.string()
@@ -31,7 +32,6 @@ const CreateOrderSchema = z.object({
     .refine((val) => parseFloat(val) > 0, 'Valor em BRL deve ser maior que zero'),
   orderData: z.union([BoletoDataSchema, PixDataSchema]),
   collateralAddressId: z.string().optional(), // ID do colateral confirmado
-  useInternalBalance: z.boolean().optional(), // Flag para usar saldo interno
   customExpirationHours: z.number().int().min(1).max(720).optional(), // Tempo de expiração customizado (1-720 horas = 1-30 dias)
   manualCancelOnly: z.boolean().optional(), // Se true, expira após 6 meses ao invés de prazo padrão/customizado
 });
@@ -64,7 +64,10 @@ export class OrderController {
         });
       }
 
-      // Pedido criado com sucesso
+      // Pedido criado com sucesso - garantir que é um Order
+      if (!('id' in result)) {
+        throw new Error('Falha ao criar pedido: ID não retornado');
+      }
       const order = result;
 
       // SECURITY: Audit log - pedido criado
@@ -178,9 +181,12 @@ export class OrderController {
         return res.status(404).json({ error: 'Pedido não encontrado' });
       }
 
+      // Buscar transactions para verificar permissão
+      const transactions = await orderService.getOrderTransactions(orderId);
+
       // SECURITY: Verificar se usuário tem permissão para ver este pedido
       const isOwner = order.userId === userId;
-      const isPayer = order.transactions.some((t: any) => t.payerId === userId);
+      const isPayer = transactions.some((t: Transaction) => t.payerId === userId);
       const isAdmin = req.user?.role === 'ADMIN';
       const isMarketplaceOrder = ['PENDING', 'IN_NEGOTIATION'].includes(order.status);
 
@@ -322,8 +328,8 @@ export class OrderController {
         AUDIT_ACTIONS.ORDER_CANCEL,
         AUDIT_RESOURCES.ORDER,
         orderId,
-        undefined,
-        JSON.stringify({ reason, penaltyApplied: result.penaltyApplied })
+        { reason, penaltyApplied: result.penaltyApplied },
+        true
       );
 
       res.json({
@@ -368,8 +374,8 @@ export class OrderController {
         'ORDER_CANCEL_BY_PAYER',
         AUDIT_RESOURCES.ORDER,
         orderId,
-        undefined,
-        JSON.stringify({ reason, penaltyApplied: result.penaltyApplied })
+        { reason, penaltyApplied: result.penaltyApplied },
+        true
       );
 
       res.json({

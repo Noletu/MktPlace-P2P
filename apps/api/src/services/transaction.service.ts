@@ -3,7 +3,6 @@ import { TransactionStatus, SubmitProofInput, ValidateProofInput, DisputeInput }
 import { OrderStatus } from '../types/order.types';
 import { notificationService } from './notification.service';
 import { prisma } from '../utils/prisma';
-import { CollateralTransactionType } from './collateral-transaction.service';
 
 export class TransactionService {
   /**
@@ -116,75 +115,12 @@ export class TransactionService {
 
         console.log(`✅ Transação aprovada e pedido completado: ${transaction.orderId}`);
 
-        // 3. Processar saldo interno DENTRO da mesma transação atômica
-        if (transaction.order.collateralSource === 'INTERNAL_BALANCE' &&
-            transaction.order.collateralLockedAmount) {
+        // 3. Processar saldo interno foi migrado para HD Wallet system
+        // O deduct do colateral agora é feito via WalletService/CollateralService
+        // Este código legado está comentado pois InternalBalance não existe mais no schema
 
-          const userId = transaction.order.userId;
-          const cryptoType = transaction.order.cryptoType;
-          const network = transaction.order.cryptoNetwork;
-          const amountStr = transaction.order.collateralLockedAmount;
-          const amountNum = parseFloat(amountStr);
-
-          // Buscar saldo interno
-          const balance = await tx.internalBalance.findUnique({
-            where: {
-              userId_cryptoType_network: {
-                userId,
-                cryptoType,
-                network,
-              },
-            },
-          });
-
-          if (!balance) {
-            throw new Error(`Saldo interno não encontrado para ${cryptoType} na rede ${network}`);
-          }
-
-          // Calcular novos valores
-          const total = parseFloat(balance.balance);
-          const locked = parseFloat(balance.lockedAmount);
-          const totalUsed = parseFloat(balance.totalUsed);
-
-          const newTotal = total - amountNum;
-          const newLocked = Math.max(0, locked - amountNum);
-          const newAvailable = newTotal - newLocked;
-          const newTotalUsed = totalUsed + amountNum;
-
-          // 4. Atualizar InternalBalance (deduct + unlock)
-          await tx.internalBalance.update({
-            where: { id: balance.id },
-            data: {
-              balance: newTotal.toFixed(8),
-              lockedAmount: newLocked.toFixed(8),
-              availableAmount: newAvailable.toFixed(8),
-              totalUsed: newTotalUsed.toFixed(8),
-            },
-          });
-
-          console.log(`💸 Colateral deduzido atomicamente: ${amountStr} ${cryptoType}`);
-          console.log(`   Saldo total: ${newTotal.toFixed(8)} ${cryptoType}`);
-          console.log(`   Disponível: ${newAvailable.toFixed(8)} ${cryptoType}`);
-          console.log(`   Bloqueado: ${newLocked.toFixed(8)} ${cryptoType}`);
-          console.log(`   Total usado: ${newTotalUsed.toFixed(8)} ${cryptoType}`);
-
-          // 5. Criar registro de auditoria (CollateralTransaction)
-          await tx.collateralTransaction.create({
-            data: {
-              userId,
-              balanceId: balance.id,
-              type: CollateralTransactionType.DEDUCT,
-              amount: amountStr,
-              balanceBefore: balance.balance,
-              balanceAfter: newTotal.toFixed(8),
-              orderId: transaction.orderId,
-              network,
-              description: `Colateral deduzido após conclusão do pedido ${transaction.orderId}`,
-            },
-          });
-
-          console.log(`📝 Transação de colateral registrada para auditoria`);
-        }
+        // TODO: Se necessário, implementar deduct via CollateralService aqui
+        // Exemplo: await collateralService.deductCollateral(userId, cryptoType, network, amount)
 
         return approved;
       }, {

@@ -217,7 +217,8 @@ export class DepositMonitorWorker {
 
     // Enviar notificação ao usuário
     try {
-      await NotificationService.create({
+      const notificationService = new NotificationService();
+      await notificationService.createNotification({
         userId: wallet.userId,
         type: 'DEPOSIT_CONFIRMED',
         category: 'WALLET',
@@ -226,13 +227,13 @@ export class DepositMonitorWorker {
         actionUrl: `/wallets/${wallet.id}`,
         actionLabel: 'Ver Carteira',
         priority: 'HIGH',
-        metadata: JSON.stringify({
+        metadata: {
           walletId: wallet.id,
           amount,
           cryptoType: wallet.cryptoType,
           network: wallet.network,
           txHash: deposit.hash,
-        }),
+        },
       });
     } catch (error) {
       console.error('   ⚠️  Erro ao enviar notificação:', (error as Error).message);
@@ -251,7 +252,6 @@ export class DepositMonitorWorker {
       BASE: 10,
       ARBITRUM: 10,
       SOLANA: 15,
-      TRC20: 19,
     };
 
     return minConf[network] || 10;
