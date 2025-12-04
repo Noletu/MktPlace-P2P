@@ -66,8 +66,9 @@ class CollateralReleaseWorker {
           },
           collateralUnlockedAt: null, // Ainda não foi desbloqueado
         },
+        // internalBalance foi removido - migrado para HD Wallet system
         include: {
-          internalBalance: true,
+          user: true,
         },
       });
 
@@ -103,14 +104,15 @@ class CollateralReleaseWorker {
    * Liberar colateral de um pedido específico
    */
   private async releaseCollateral(order: any) {
-    if (!order.internalBalanceId || !order.collateralLockedAmount) {
-      logger.warn(`⚠️ Pedido ${order.id} não tem internalBalanceId ou collateralLockedAmount`);
+    // Validar que há colateral para liberar
+    if (!order.collateralLockedAmount) {
+      logger.warn(`⚠️ Pedido ${order.id} não tem collateralLockedAmount`);
       return;
     }
 
-    const balance = order.internalBalance;
-    if (!balance) {
-      logger.warn(`⚠️ InternalBalance não encontrado para pedido ${order.id}`);
+    // Validar que temos os dados necessários para desbloquear
+    if (!order.userId || !order.cryptoType || !order.cryptoNetwork) {
+      logger.warn(`⚠️ Pedido ${order.id} está faltando dados necessários (userId, cryptoType ou cryptoNetwork)`);
       return;
     }
 
@@ -118,7 +120,8 @@ class CollateralReleaseWorker {
     logger.info(`   Status: ${order.status}`);
     logger.info(`   Valor bloqueado: ${order.collateralLockedAmount} ${order.cryptoType}`);
 
-    // Desbloquear saldo
+    // Desbloquear saldo usando o adapter service
+    // O internalBalanceService é um adapter que internamente usa WalletService
     await internalBalanceService.unlockBalance(
       order.userId,
       order.cryptoType,
@@ -181,8 +184,9 @@ class CollateralReleaseWorker {
             in: ['PENDING', 'IN_NEGOTIATION', 'MATCHED'], // Status que não deveriam durar 24h
           },
         },
+        // internalBalance foi removido - migrado para HD Wallet system
         include: {
-          internalBalance: true,
+          user: true,
         },
       });
 

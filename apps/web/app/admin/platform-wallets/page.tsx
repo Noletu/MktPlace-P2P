@@ -16,8 +16,8 @@ interface PlatformWallet {
 const CRYPTO_OPTIONS = ['BTC', 'USDC', 'USDT'];
 const NETWORK_OPTIONS: Record<string, string[]> = {
   BTC: ['BITCOIN'],
-  USDC: ['ETHEREUM', 'TRC20', 'BASE', 'ARBITRUM', 'SOLANA'],
-  USDT: ['ETHEREUM', 'TRC20', 'BASE', 'ARBITRUM', 'SOLANA'],
+  USDC: ['ETHEREUM', 'BASE', 'ARBITRUM', 'SOLANA'],
+  USDT: ['ETHEREUM', 'BASE', 'ARBITRUM', 'SOLANA'],
 };
 
 export default function PlatformWalletsPage() {

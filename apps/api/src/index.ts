@@ -33,13 +33,26 @@ import { BalanceSyncWorker } from './workers/balance-sync.worker';
 import { orderExpirationWorker } from './workers/order-expiration.worker';
 // import { negotiationTimeoutWorker } from './workers/negotiation-timeout.worker'; // DESABILITADO: Chat disponível apenas após aceitar pedido
 import { presenceMonitorWorker } from './workers/presence-monitor.worker';
-import { collateralReleaseWorker } from './workers/collateral-release.worker';
+// import { collateralReleaseWorker } from './workers/collateral-release.worker'; // DESABILITADO: usa código legado
 import { chatArchiveWorker } from './workers/chat-archive.worker';
 import { initializeSocketServer } from './socket/socket.server';
 import { initializeChatSocket } from './socket/chat.socket';
 import { initializeNotificationSocket } from './socket/notification.socket';
+import { MasterSeedService } from './services/hd-wallet/master-seed.service';
+import { KeyManagementService } from './services/hd-wallet/key-management.service';
 
 dotenv.config();
+
+// Inicializar serviços HD Wallet
+try {
+  MasterSeedService.initialize();
+  KeyManagementService.initialize();
+  logger.info('[HD WALLET] Services initialized successfully');
+} catch (error) {
+  logger.error('[HD WALLET] Failed to initialize services:', error);
+  logger.error('[HD WALLET] Ensure MASTER_SEED_ENCRYPTION_KEY and WALLET_ENCRYPTION_KEY are set in .env');
+  process.exit(1);
+}
 
 const app: Express = express();
 const port = process.env.PORT || 3001;

@@ -23,9 +23,9 @@ if (UNSAFE_SECRETS.some(unsafe => process.env.JWT_SECRET?.toLowerCase().includes
   );
 }
 
-const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
-const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '30d';
+const JWT_SECRET: string = process.env.JWT_SECRET!;
+const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN || '7d';
+const JWT_REFRESH_EXPIRES_IN: string = process.env.JWT_REFRESH_EXPIRES_IN || '30d';
 
 export interface JWTPayload {
   userId: string;
@@ -40,6 +40,7 @@ export interface RefreshTokenPayload {
 
 // SECURITY: Access token (curta duração)
 export const generateToken = (payload: JWTPayload): string => {
+  // @ts-expect-error - jsonwebtoken types issue with expiresIn
   return jwt.sign(payload, JWT_SECRET, {
     expiresIn: JWT_EXPIRES_IN,
   });
@@ -52,6 +53,7 @@ export const generateRefreshToken = (userId: string, tokenId: string): string =>
     tokenId,
   };
 
+  // @ts-expect-error - jsonwebtoken types issue with expiresIn
   return jwt.sign(payload, JWT_SECRET, {
     expiresIn: JWT_REFRESH_EXPIRES_IN,
   });

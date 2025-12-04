@@ -126,9 +126,19 @@ export class ChatService {
         participant2: {
           select: { id: true, name: true, email: true, reputationScore: true },
         },
-        messages: true,
+        messages: {
+          include: {
+            sender: {
+              select: { id: true, name: true },
+            },
+          },
+        },
       },
     });
+
+    if (!chat) {
+      throw new Error('Falha ao criar chat');
+    }
 
     // Mensagem de sistema inicial
     await this.sendMessage({

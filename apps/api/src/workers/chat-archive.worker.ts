@@ -1,4 +1,4 @@
-import cron from 'node-cron';
+import cron, { ScheduledTask } from 'node-cron';
 import { chatService } from '../services/chat.service';
 import { logger } from '../utils/logger';
 
@@ -8,7 +8,7 @@ import { logger } from '../utils/logger';
  * Remove arquivos com mais de 1 ano (política de retenção)
  */
 class ChatArchiveWorker {
-  private cronJob: cron.ScheduledTask | null = null;
+  private cronJob: ScheduledTask | null = null;
 
   /**
    * Iniciar worker

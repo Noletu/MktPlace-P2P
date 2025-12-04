@@ -21,13 +21,16 @@ export enum DisputeCategory {
   OTHER = 'OTHER', // Outro motivo
 }
 
+/**
+ * ALINHADO COM PRISMA SCHEMA
+ * Ver: schema.prisma -> model Dispute -> resolutionType
+ * Valores: REFUND_BUYER, RELEASE_SELLER, PARTIAL_REFUND, CANCELLED
+ */
 export enum ResolutionType {
-  REFUND_BUYER_FULL = 'REFUND_BUYER_FULL', // Reembolso total ao comprador
-  REFUND_BUYER_PARTIAL = 'REFUND_BUYER_PARTIAL', // Reembolso parcial ao comprador
+  REFUND_BUYER = 'REFUND_BUYER', // Reembolso ao comprador
+  PARTIAL_REFUND = 'PARTIAL_REFUND', // Reembolso parcial ao comprador
   RELEASE_SELLER = 'RELEASE_SELLER', // Liberar crypto para vendedor
-  CANCEL_NO_PENALTY = 'CANCEL_NO_PENALTY', // Cancelar sem penalidade
-  PENALTY_BUYER = 'PENALTY_BUYER', // Penalizar comprador (fraude)
-  PENALTY_SELLER = 'PENALTY_SELLER', // Penalizar vendedor (má-fé)
+  CANCELLED = 'CANCELLED', // Cancelar ordem sem penalidade
 }
 
 export interface CreateDisputeInput {

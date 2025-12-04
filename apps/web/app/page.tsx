@@ -221,7 +221,7 @@ export default function HomePage() {
               </div>
               <p className="font-bold text-xl text-center mb-2 dark:text-white">USD Coin</p>
               <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-3">USDC</p>
-              <p className="text-xs text-gray-600 dark:text-gray-400 text-center">Redes: Ethereum, TRC20, Base, Arbitrum</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400 text-center">Redes: Ethereum, Base, Arbitrum, Solana</p>
             </div>
             <div className="p-6 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl shadow-md">
               <div className="flex justify-center mb-4">
@@ -232,11 +232,11 @@ export default function HomePage() {
               </div>
               <p className="font-bold text-xl text-center mb-2 dark:text-white">Tether</p>
               <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-3">USDT</p>
-              <p className="text-xs text-gray-600 dark:text-gray-400 text-center">Redes: Ethereum, TRC20, Base, Arbitrum</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400 text-center">Redes: Ethereum, Base, Arbitrum, Solana</p>
             </div>
           </div>
           <p className="text-center text-gray-600 dark:text-gray-300 mt-8 text-sm">
-            💡 <strong>Dica:</strong> Use TRC20 ou Layer 2 (Base/Arbitrum) para taxas mais baixas!
+            💡 <strong>Dica:</strong> Use Layer 2 (Base/Arbitrum) ou Solana para taxas mais baixas!
           </p>
         </div>
 

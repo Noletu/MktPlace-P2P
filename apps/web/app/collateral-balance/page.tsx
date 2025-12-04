@@ -3,91 +3,60 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ThemeToggle from '@/components/ThemeToggle';
-import { QRCodeSVG } from 'qrcode.react';
+import CryptoIcon from '@/components/ui/CryptoIcon';
+import { CryptoType } from '@mktplace/shared';
 
-interface CollateralBalance {
+interface HDWallet {
   id: string;
   cryptoType: string;
   network: string;
+  address: string;
   balance: string;
-  lockedAmount: string;
-  availableAmount: string;
+  availableBalance: string;
+  lockedBalance: string;
   totalDeposited: string;
-  totalUsed: string;
-  availableBalance?: string; // Calculado pelo backend
+  totalWithdrawn: string;
 }
 
-interface CollateralTransaction {
+interface WalletTransaction {
   id: string;
   type: string;
   amount: string;
   balanceBefore: string;
   balanceAfter: string;
   description: string;
+  txHash: string | null;
   createdAt: string;
-  order?: {
-    id: string;
-    type: string;
-    status: string;
-  };
+  metadata?: string;
 }
+
+const CRYPTO_NAMES: Record<string, string> = {
+  BTC: 'Bitcoin',
+  USDC: 'USD Coin',
+  USDT: 'Tether',
+};
 
 export default function CollateralBalancePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [balances, setBalances] = useState<CollateralBalance[]>([]);
-  const [transactions, setTransactions] = useState<CollateralTransaction[]>([]);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedCrypto, setSelectedCrypto] = useState('');
-  const [selectedNetwork, setSelectedNetwork] = useState('');
-
-  // Modal state
-  const [depositAmount, setDepositAmount] = useState('');
-  const [depositLoading, setDepositLoading] = useState(false);
-  const [depositAddress, setDepositAddress] = useState<any>(null);
-  const [simulatingDeposit, setSimulatingDeposit] = useState(false);
-  const [countdown, setCountdown] = useState<string>('30:00');
-  const [isExpired, setIsExpired] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [wallets, setWallets] = useState<HDWallet[]>([]);
+  const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
+  const [testBalanceModal, setTestBalanceModal] = useState<{
+    show: boolean;
+    walletId: string | null;
+    cryptoType: string;
+    network: string;
+  }>({ show: false, walletId: null, cryptoType: '', network: '' });
+  const [testAmount, setTestAmount] = useState('');
+  const [addingBalance, setAddingBalance] = useState(false);
+  const isDevelopment = process.env.NODE_ENV !== 'production';
 
   useEffect(() => {
-    fetchBalances();
+    fetchWallets();
     fetchTransactions();
   }, []);
 
-  // Countdown timer effect
-  useEffect(() => {
-    if (!depositAddress?.createdAt) {
-      setCountdown('30:00');
-      setIsExpired(false);
-      return;
-    }
-
-    const updateCountdown = () => {
-      const createdAt = new Date(depositAddress.createdAt);
-      const expiresAt = new Date(createdAt.getTime() + 30 * 60 * 1000); // +30 minutes
-      const now = new Date();
-      const diff = expiresAt.getTime() - now.getTime();
-
-      if (diff <= 0) {
-        setCountdown('00:00');
-        setIsExpired(true);
-        return;
-      }
-
-      const minutes = Math.floor(diff / 60000);
-      const seconds = Math.floor((diff % 60000) / 1000);
-      setCountdown(`${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
-      setIsExpired(false);
-    };
-
-    updateCountdown();
-    const interval = setInterval(updateCountdown, 1000);
-
-    return () => clearInterval(interval);
-  }, [depositAddress]);
-
-  const fetchBalances = async () => {
+  const fetchWallets = async () => {
     try {
       const token = localStorage.getItem('accessToken');
       if (!token) {
@@ -95,7 +64,7 @@ export default function CollateralBalancePage() {
         return;
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/collateral-balance', {
+      const response = await fetch('http://localhost:3001/api/v1/wallets', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -104,10 +73,10 @@ export default function CollateralBalancePage() {
       const data = await response.json();
 
       if (data.success) {
-        setBalances(data.data.balances || []);
+        setWallets(data.data || []);
       }
     } catch (error) {
-      console.error('Erro ao buscar saldos:', error);
+      console.error('Erro ao buscar carteiras:', error);
     } finally {
       setLoading(false);
     }
@@ -118,172 +87,110 @@ export default function CollateralBalancePage() {
       const token = localStorage.getItem('accessToken');
       if (!token) return;
 
-      const response = await fetch('http://localhost:3001/api/v1/collateral-balance/history?limit=20', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      // Buscar transações de todas as carteiras
+      const allTransactions: WalletTransaction[] = [];
 
-      const data = await response.json();
+      for (const wallet of wallets) {
+        try {
+          const response = await fetch(
+            `http://localhost:3001/api/v1/wallets/${wallet.id}/transactions?limit=50`,
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+              },
+            }
+          );
 
-      if (data.success) {
-        setTransactions(data.data.transactions || []);
+          const data = await response.json();
+          if (data.success && data.data) {
+            allTransactions.push(...data.data);
+          }
+        } catch (err) {
+          console.error(`Erro ao buscar transações da carteira ${wallet.id}:`, err);
+        }
       }
+
+      // Ordenar por data (mais recente primeiro)
+      allTransactions.sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      setTransactions(allTransactions.slice(0, 20));
     } catch (error) {
-      console.error('Erro ao buscar histórico:', error);
+      console.error('Erro ao buscar transações:', error);
     }
   };
 
-  const handleAddCollateral = async () => {
-    if (!selectedCrypto || !selectedNetwork || !depositAmount) {
-      alert('Preencha todos os campos');
-      return;
-    }
+  const handleAddTestBalance = async () => {
+    if (!testBalanceModal.walletId || !testAmount) return;
 
-    setDepositLoading(true);
-
+    setAddingBalance(true);
     try {
       const token = localStorage.getItem('accessToken');
-
-      const response = await fetch('http://localhost:3001/api/v1/collateral-balance/deposit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          cryptoType: selectedCrypto,
-          network: selectedNetwork,
-          amount: depositAmount,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setDepositAddress(data.data.collateralAddress);
-        alert('Endereço de depósito gerado! Envie o pagamento para creditar em seu saldo.');
-      } else {
-        alert(data.message || 'Erro ao gerar endereço de depósito');
+      if (!token) {
+        router.push('/login');
+        return;
       }
-    } catch (error) {
-      console.error('Erro ao iniciar depósito:', error);
-      alert('Erro ao iniciar depósito');
-    } finally {
-      setDepositLoading(false);
-    }
-  };
-
-  const handleSimulateDeposit = async () => {
-    if (!depositAddress?.id) {
-      alert('Nenhum endereço de depósito encontrado');
-      return;
-    }
-
-    if (!confirm('🧪 Simular depósito?\n\nIsso vai creditar o saldo instantaneamente (APENAS TESTE)')) {
-      return;
-    }
-
-    setSimulatingDeposit(true);
-
-    try {
-      const token = localStorage.getItem('accessToken');
 
       const response = await fetch(
-        `http://localhost:3001/api/v1/collateral-balance/simulate-deposit/${depositAddress.id}`,
+        `http://localhost:3001/api/v1/wallets/${testBalanceModal.walletId}/test-balance`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
           },
+          body: JSON.stringify({ amount: testAmount }),
         }
       );
 
       const data = await response.json();
 
-      if (data.success) {
-        alert(`✅ Depósito simulado com sucesso!\n\n${data.data.amount} ${data.data.cryptoType} creditado no seu saldo interno.`);
-
-        // Fechar modal e atualizar dados
-        setShowAddModal(false);
-        setDepositAddress(null);
-        setDepositAmount('');
-        setSelectedCrypto('');
-        setSelectedNetwork('');
-
-        // Recarregar saldos e transações
-        await fetchBalances();
-        await fetchTransactions();
-      } else {
-        alert(data.message || 'Erro ao simular depósito');
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao adicionar saldo de teste');
       }
-    } catch (error) {
-      console.error('Erro ao simular depósito:', error);
-      alert('Erro ao simular depósito');
+
+      setTestBalanceModal({ show: false, walletId: null, cryptoType: '', network: '' });
+      setTestAmount('');
+      await fetchWallets();
+      await fetchTransactions();
+
+      alert(`✅ Saldo de teste adicionado: ${data.data.amountAdded} ${data.data.cryptoType}`);
+    } catch (err: any) {
+      alert(`❌ Erro: ${err.message}`);
     } finally {
-      setSimulatingDeposit(false);
+      setAddingBalance(false);
     }
   };
 
-  const getTransactionLabel = (tx: CollateralTransaction) => {
-    // Se for LOCK e tiver pedido vinculado, mostrar baseado no status do pedido
-    if (tx.type === 'LOCK' && tx.order) {
-      switch (tx.order.status) {
-        case 'COMPLETED':
-          return 'GASTO'; // Colateral foi usado (cripto transferida)
-        case 'CANCELLED':
-          return 'DEVOLVIDO'; // Colateral foi desbloqueado após cancelamento
-        default:
-          return 'LOCK'; // Pedido ainda ativo
-      }
-    }
-
-    return tx.type; // Outros tipos mantêm como estão
-  };
-
-  const getTransactionIcon = (tx: CollateralTransaction) => {
-    const label = getTransactionLabel(tx);
-
-    // Ícones baseados no label (após processar lógica de negócio)
-    if (label === 'GASTO') {
-      return '💸'; // Dinheiro gasto
-    }
-    if (label === 'DEVOLVIDO') {
-      return '↩️'; // Devolução
-    }
-
-    const type = tx.type;
+  const getTransactionIcon = (type: string) => {
     switch (type) {
-      case 'DEPOSIT': return '💰';
-      case 'LOCK': return '🔒';
-      case 'UNLOCK': return '🔓';
-      case 'REFUND': return '💸';
-      case 'WITHDRAWAL': return '🏦';
-      default: return '📝';
+      case 'DEPOSIT':
+        return '📥';
+      case 'WITHDRAWAL':
+        return '📤';
+      case 'LOCK':
+        return '🔒';
+      case 'UNLOCK':
+        return '🔓';
+      case 'DEDUCT':
+        return '💸';
+      default:
+        return '💰';
     }
   };
 
-  const getTransactionColor = (tx: CollateralTransaction) => {
-    const label = getTransactionLabel(tx);
-
-    // Cores baseadas no label (após processar lógica de negócio)
-    if (label === 'GASTO') {
-      return 'text-red-600 dark:text-red-400'; // Vermelho para gasto
-    }
-    if (label === 'DEVOLVIDO') {
-      return 'text-blue-600 dark:text-blue-400'; // Azul para devolução
-    }
-
-    const type = tx.type;
+  const getTransactionColor = (type: string) => {
     switch (type) {
-      case 'DEPOSIT': return 'text-green-600 dark:text-green-400';
-      case 'LOCK': return 'text-yellow-600 dark:text-yellow-400';
-      case 'UNLOCK': return 'text-blue-600 dark:text-blue-400';
-      case 'REFUND': return 'text-purple-600 dark:text-purple-400';
-      case 'WITHDRAWAL': return 'text-red-600 dark:text-red-400';
-      case 'DEDUCT': return 'text-red-600 dark:text-red-400';
-      default: return 'text-gray-600 dark:text-gray-400';
+      case 'DEPOSIT':
+      case 'UNLOCK':
+        return 'text-green-600 dark:text-green-400';
+      case 'WITHDRAWAL':
+      case 'DEDUCT':
+      case 'LOCK':
+        return 'text-red-600 dark:text-red-400';
+      default:
+        return 'text-gray-600 dark:text-gray-400';
     }
   };
 
@@ -292,32 +199,40 @@ export default function CollateralBalancePage() {
     return date.toLocaleString('pt-BR');
   };
 
-  const handleCopyAddress = async () => {
-    if (!depositAddress?.address) return;
-
-    try {
-      await navigator.clipboard.writeText(depositAddress.address);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Erro ao copiar endereço:', err);
-      alert('Erro ao copiar endereço');
-    }
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert('Endereço copiado!');
   };
+
+  // Calcular totais
+  const totals = {
+    totalBalance: wallets.reduce((sum, w) => sum + parseFloat(w.balance), 0).toFixed(8),
+    totalAvailable: wallets.reduce((sum, w) => sum + parseFloat(w.availableBalance), 0).toFixed(8),
+    totalLocked: wallets.reduce((sum, w) => sum + parseFloat(w.lockedBalance), 0).toFixed(8),
+  };
+
+  // Agrupar wallets por crypto
+  const walletsByCrypto: Record<string, HDWallet[]> = {};
+  wallets.forEach(wallet => {
+    if (!walletsByCrypto[wallet.cryptoType]) {
+      walletsByCrypto[wallet.cryptoType] = [];
+    }
+    walletsByCrypto[wallet.cryptoType].push(wallet);
+  });
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white dark:bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Carregando saldos...</p>
+          <p className="text-gray-600 dark:text-gray-400">Carregando carteiras...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -329,9 +244,14 @@ export default function CollateralBalancePage() {
               >
                 ← Voltar
               </button>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                💰 Meu Saldo de Colateral
-              </h1>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  💰 Saldo de Colateral (Carteiras HD)
+                </h1>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Estas são suas carteiras permanentes (BIP32/BIP44). O saldo disponível é usado automaticamente como colateral em pedidos.
+                </p>
+              </div>
             </div>
             <ThemeToggle />
           </div>
@@ -339,96 +259,158 @@ export default function CollateralBalancePage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Saldos */}
+        {/* Resumo de Totais */}
+        {wallets.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Disponível</p>
+              <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                {totals.totalAvailable}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">Pode ser usado em pedidos</p>
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Bloqueado</p>
+              <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+                {totals.totalLocked}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">Em uso em pedidos ativos</p>
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Saldo Total</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {totals.totalBalance}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">Disponível + Bloqueado</p>
+            </div>
+          </div>
+        )}
+
+        {/* Carteiras por Crypto */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-              Saldos Disponíveis
+              Minhas Carteiras HD
             </h2>
             <button
-              onClick={() => setShowAddModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium"
+              onClick={() => router.push('/wallets')}
+              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
             >
-              ➕ Adicionar Colateral
+              📋 Ver Detalhes Completos →
             </button>
           </div>
 
-          {balances.length === 0 ? (
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-8 text-center">
+          {wallets.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-8 text-center border border-gray-200 dark:border-gray-700">
               <p className="text-gray-600 dark:text-gray-400 mb-4">
-                Você ainda não tem saldo de colateral.
+                Você ainda não tem carteiras criadas.
               </p>
               <button
-                onClick={() => setShowAddModal(true)}
+                onClick={() => router.push('/wallets')}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium"
               >
-                Fazer Primeiro Depósito
+                Criar Primeira Carteira
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {balances.map((balance) => (
-                <div
-                  key={balance.id}
-                  className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6"
-                >
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                        {balance.cryptoType}
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {balance.network}
-                      </p>
-                    </div>
-                  </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Object.entries(CRYPTO_NAMES).map(([cryptoKey, cryptoName]) => {
+                const cryptoWallets = walletsByCrypto[cryptoKey] || [];
 
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">Disponível:</span>
-                      <span className="font-mono font-semibold text-green-600 dark:text-green-400">
-                        {balance.availableBalance || balance.availableAmount} {balance.cryptoType}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">Bloqueado:</span>
-                      <span className="font-mono text-yellow-600 dark:text-yellow-400">
-                        {balance.lockedAmount} {balance.cryptoType}
-                      </span>
-                    </div>
-                    <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">Total:</span>
-                      <span className="font-mono font-bold text-gray-900 dark:text-white">
-                        {balance.balance} {balance.cryptoType}
-                      </span>
-                    </div>
-                  </div>
+                if (cryptoWallets.length === 0) return null;
 
-                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <div className="text-xs text-gray-500 dark:text-gray-500">
-                      <p>Total depositado: {balance.totalDeposited} {balance.cryptoType}</p>
-                      <p>Total usado: {balance.totalUsed} {balance.cryptoType}</p>
+                return (
+                  <div key={cryptoKey} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+                    {/* Header */}
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                      <div className="flex items-center gap-3">
+                        <CryptoIcon crypto={cryptoKey as CryptoType} size={32} />
+                        <div>
+                          <h3 className="text-lg font-bold text-gray-900 dark:text-white">{cryptoKey}</h3>
+                          <p className="text-xs text-gray-600 dark:text-gray-400">{cryptoName}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Carteiras */}
+                    <div className="p-4 space-y-3">
+                      {cryptoWallets.map(wallet => (
+                        <div key={wallet.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-900">
+                          {/* Badge da rede */}
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold px-2 py-1 bg-blue-600 text-white rounded">
+                              {wallet.network}
+                            </span>
+                            {isDevelopment && (
+                              <button
+                                onClick={() => setTestBalanceModal({
+                                  show: true,
+                                  walletId: wallet.id,
+                                  cryptoType: wallet.cryptoType,
+                                  network: wallet.network
+                                })}
+                                className="text-xs text-purple-600 dark:text-purple-400 hover:underline"
+                                title="Adicionar saldo de teste"
+                              >
+                                🧪 Add $
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Saldos */}
+                          <div className="space-y-1 text-xs mb-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Disponível:</span>
+                              <span className="font-semibold text-green-600 dark:text-green-400">
+                                {parseFloat(wallet.availableBalance).toFixed(8)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Bloqueado:</span>
+                              <span className="font-semibold text-yellow-600 dark:text-yellow-400">
+                                {parseFloat(wallet.lockedBalance).toFixed(8)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between border-t pt-1 dark:border-gray-700">
+                              <span className="text-gray-700 dark:text-gray-300 font-medium">Total:</span>
+                              <span className="font-bold text-gray-900 dark:text-white">
+                                {parseFloat(wallet.balance).toFixed(8)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Endereço */}
+                          <div className="pt-2 border-t dark:border-gray-700">
+                            <div className="flex items-center gap-1">
+                              <code className="text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded flex-1 overflow-x-auto border border-gray-300 dark:border-gray-600 font-mono">
+                                {wallet.address.slice(0, 12)}...{wallet.address.slice(-12)}
+                              </code>
+                              <button
+                                onClick={() => copyToClipboard(wallet.address)}
+                                className="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
+                                title="Copiar endereço completo"
+                              >
+                                📋
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* Histórico */}
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-            📊 Histórico de Movimentações
-          </h2>
+        {/* Histórico de Transações */}
+        {transactions.length > 0 && (
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+              📊 Histórico Recente
+            </h2>
 
-          {transactions.length === 0 ? (
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-8 text-center">
-              <p className="text-gray-600 dark:text-gray-400">
-                Nenhuma movimentação ainda.
-              </p>
-            </div>
-          ) : (
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -452,22 +434,22 @@ export default function CollateralBalancePage() {
                     {transactions.map((tx) => (
                       <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`text-sm font-medium ${getTransactionColor(tx)}`}>
-                            {getTransactionIcon(tx)} {getTransactionLabel(tx)}
+                          <span className={`text-sm font-medium ${getTransactionColor(tx.type)}`}>
+                            {getTransactionIcon(tx.type)} {tx.type}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="font-mono text-sm text-gray-900 dark:text-white">
-                            {tx.amount}
+                            {parseFloat(tx.amount).toFixed(8)}
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <p className="text-sm text-gray-900 dark:text-white">
+                          <p className="text-sm text-gray-900 dark:text-white truncate max-w-xs">
                             {tx.description}
                           </p>
-                          {tx.order && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              Pedido: {tx.order.id.substring(0, 8)}... ({tx.order.status})
+                          {tx.txHash && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono">
+                              TX: {tx.txHash.slice(0, 10)}...{tx.txHash.slice(-10)}
                             </p>
                           )}
                         </td>
@@ -480,191 +462,92 @@ export default function CollateralBalancePage() {
                 </table>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Aviso sobre criação de carteiras */}
+        {wallets.length < 3 && (
+          <div className="mt-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <p className="text-sm text-blue-800 dark:text-blue-300">
+              💡 <strong>Dica:</strong> Você pode criar carteiras para BTC, USDC e USDT na aba{' '}
+              <button
+                onClick={() => router.push('/wallets')}
+                className="underline font-semibold hover:text-blue-600"
+              >
+                "Carteiras"
+              </button>
+              . O saldo disponível será usado automaticamente como colateral em seus pedidos.
+            </p>
+          </div>
+        )}
       </main>
 
-      {/* Modal Adicionar Colateral */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-                Adicionar Colateral
-              </h3>
-              <button
-                onClick={() => {
-                  setShowAddModal(false);
-                  setDepositAddress(null);
-                }}
-                className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-              >
-                ✕
-              </button>
+      {/* Modal de Adicionar Saldo de Teste */}
+      {testBalanceModal.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                🧪 Adicionar Saldo de Teste
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+                {testBalanceModal.cryptoType} - {testBalanceModal.network}
+              </p>
+              <div className="mt-2 p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded">
+                <p className="text-xs text-yellow-800 dark:text-yellow-300">
+                  ⚠️ Recurso apenas para desenvolvimento. Simula depósito sem transação real.
+                </p>
+              </div>
             </div>
 
-            {!depositAddress ? (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Criptomoeda
-                  </label>
-                  <select
-                    value={selectedCrypto}
-                    onChange={(e) => {
-                      setSelectedCrypto(e.target.value);
-                      if (e.target.value === 'BTC') setSelectedNetwork('BITCOIN');
-                      else setSelectedNetwork('');
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  >
-                    <option value="">Selecione...</option>
-                    <option value="BTC">Bitcoin (BTC)</option>
-                    <option value="USDT">Tether (USDT)</option>
-                    <option value="USDC">USD Coin (USDC)</option>
-                  </select>
-                </div>
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Valor a adicionar:
+              </label>
+              <input
+                type="number"
+                step="0.00000001"
+                min="0"
+                value={testAmount}
+                onChange={(e) => setTestAmount(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
+                placeholder="0.00000000"
+                autoFocus
+              />
 
-                {selectedCrypto && selectedCrypto !== 'BTC' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Rede
-                    </label>
-                    <select
-                      value={selectedNetwork}
-                      onChange={(e) => setSelectedNetwork(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    >
-                      <option value="">Selecione...</option>
-                      <option value="ETHEREUM">Ethereum (ERC20)</option>
-                      <option value="TRC20">Tron (TRC20)</option>
-                      <option value="BASE">Base</option>
-                      <option value="ARBITRUM">Arbitrum</option>
-                      <option value="SOLANA">Solana (SPL)</option>
-                    </select>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Valor
-                  </label>
-                  <input
-                    type="text"
-                    value={depositAmount}
-                    onChange={(e) => setDepositAmount(e.target.value)}
-                    placeholder="0.001"
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  />
-                </div>
-
-                <button
-                  onClick={handleAddCollateral}
-                  disabled={depositLoading || !selectedCrypto || !selectedNetwork || !depositAmount}
-                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white py-3 rounded-lg font-medium"
-                >
-                  {depositLoading ? 'Gerando...' : 'Gerar Endereço de Depósito'}
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                  <p className="text-green-800 dark:text-green-300 text-sm">
-                    ✅ Endereço gerado! Envie {depositAmount} {selectedCrypto} para:
-                  </p>
-                </div>
-
-                {/* QR Code */}
-                <div className="flex justify-center bg-white dark:bg-gray-900 p-6 rounded-lg">
-                  <QRCodeSVG
-                    value={depositAddress.address}
-                    size={200}
-                    level="H"
-                    includeMargin={true}
-                  />
-                </div>
-
-                {/* Address with Copy Button */}
-                <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Endereço:</p>
-                  <div className="flex items-start gap-2">
-                    <p className="font-mono text-sm text-gray-900 dark:text-white break-all flex-1">
-                      {depositAddress.address}
-                    </p>
-                    <button
-                      onClick={handleCopyAddress}
-                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium whitespace-nowrap transition-colors"
-                    >
-                      {copied ? '✓ Copiado' : '📋 Copiar'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Countdown Timer */}
-                <div className={`${
-                  isExpired
-                    ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                    : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
-                } border rounded-lg p-4`}>
-                  <div className="flex items-center justify-between">
-                    <p className={`${
-                      isExpired
-                        ? 'text-red-800 dark:text-red-300'
-                        : 'text-yellow-800 dark:text-yellow-300'
-                    } text-sm`}>
-                      {isExpired ? '❌ Endereço expirado' : '⏱️ Tempo restante:'}
-                    </p>
-                    <p className={`${
-                      isExpired
-                        ? 'text-red-800 dark:text-red-300'
-                        : 'text-yellow-800 dark:text-yellow-300'
-                    } text-lg font-bold font-mono`}>
-                      {countdown}
-                    </p>
-                  </div>
-                  {!isExpired && (
-                    <p className="text-yellow-700 dark:text-yellow-400 text-xs mt-2">
-                      Após confirmação, o saldo será creditado automaticamente.
-                    </p>
-                  )}
-                  {isExpired && (
-                    <p className="text-red-700 dark:text-red-400 text-xs mt-2">
-                      Por favor, gere um novo endereço para fazer o depósito.
-                    </p>
-                  )}
-                </div>
-
-                {/* Botão de Simulação (APENAS DESENVOLVIMENTO) */}
-                {process.env.NODE_ENV !== 'production' && !isExpired && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <p className="w-full text-xs text-gray-600 dark:text-gray-400 mb-1">Valores rápidos:</p>
+                {['0.001', '0.01', '0.1', '1'].map(value => (
                   <button
-                    onClick={handleSimulateDeposit}
-                    disabled={simulatingDeposit}
-                    className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+                    key={value}
+                    onClick={() => setTestAmount(value)}
+                    className="px-3 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded transition-colors"
                   >
-                    {simulatingDeposit ? (
-                      <>⏳ Simulando...</>
-                    ) : (
-                      <>🧪 Simular Depósito (Teste)</>
-                    )}
+                    {value}
                   </button>
-                )}
-
-                <button
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setDepositAddress(null);
-                    setDepositAmount('');
-                    setSelectedCrypto('');
-                    setSelectedNetwork('');
-                    setCopied(false);
-                    fetchBalances();
-                  }}
-                  className="w-full bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-lg font-medium"
-                >
-                  Fechar
-                </button>
+                ))}
               </div>
-            )}
+            </div>
+
+            <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex gap-3">
+              <button
+                onClick={() => {
+                  setTestBalanceModal({ show: false, walletId: null, cryptoType: '', network: '' });
+                  setTestAmount('');
+                }}
+                className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
+                disabled={addingBalance}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAddTestBalance}
+                disabled={addingBalance || !testAmount || parseFloat(testAmount) <= 0}
+                className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 dark:bg-purple-700 dark:hover:bg-purple-800 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {addingBalance ? '⏳ Adicionando...' : '✅ Adicionar'}
+              </button>
+            </div>
           </div>
         </div>
       )}

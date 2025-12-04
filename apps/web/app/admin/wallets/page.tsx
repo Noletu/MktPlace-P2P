@@ -281,7 +281,7 @@ export default function AdminWallets() {
                     <option value="ETHEREUM">ETHEREUM</option>
                     <option value="BASE">BASE</option>
                     <option value="ARBITRUM">ARBITRUM</option>
-                    <option value="TRC20">TRC20 (Tron)</option>
+                    <option value="SOLANA">SOLANA</option>
                   </select>
                 </div>
 
@@ -308,7 +308,7 @@ export default function AdminWallets() {
                     value={formData.label}
                     onChange={(e) => setFormData({ ...formData, label: e.target.value })}
                     className="w-full px-4 py-3 bg-gray-900 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Ex: Carteira Principal USDT TRC20"
+                    placeholder="Ex: Carteira Principal USDT Base"
                   />
                 </div>
 

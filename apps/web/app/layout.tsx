@@ -16,22 +16,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning>
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                const theme = localStorage.getItem('theme') || 'dark';
-                if (theme === 'dark') {
-                  document.documentElement.classList.add('dark');
-                }
-              })();
-            `,
-          }}
-        />
-      </head>
-      <body className={inter.className}>
+    <html lang="pt-BR" suppressHydrationWarning className="dark">
+      <body className={inter.className} suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>

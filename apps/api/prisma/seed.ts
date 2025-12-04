@@ -92,7 +92,6 @@ async function main() {
   // Endereços válidos para TESTE (NÃO enviar fundos reais!)
   const BITCOIN_ADDRESS = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh';
   const EVM_ADDRESS = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb';
-  const TRON_ADDRESS = 'TRX9sW6qJjhPNaPKjUbVKMNqvz4RqDfWjM';
   const SOLANA_ADDRESS = '7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV';
 
   const platformWallets = [
@@ -104,12 +103,6 @@ async function main() {
       label: 'Carteira Principal Bitcoin',
     },
     // USDT - Múltiplas redes
-    {
-      cryptoType: 'USDT',
-      network: 'TRC20',
-      address: TRON_ADDRESS,
-      label: 'Carteira Principal USDT TRC20',
-    },
     {
       cryptoType: 'USDT',
       network: 'ETHEREUM',
@@ -152,12 +145,6 @@ async function main() {
       network: 'ARBITRUM',
       address: EVM_ADDRESS,
       label: 'Carteira Principal USDC Arbitrum',
-    },
-    {
-      cryptoType: 'USDC',
-      network: 'TRC20',
-      address: TRON_ADDRESS,
-      label: 'Carteira Principal USDC TRC20',
     },
     {
       cryptoType: 'USDC',

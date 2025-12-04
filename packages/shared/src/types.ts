@@ -24,7 +24,6 @@ export enum CryptoType {
 export enum NetworkType {
   BITCOIN = 'BITCOIN',
   ETHEREUM = 'ETHEREUM',   // ERC20
-  TRC20 = 'TRC20',         // Tron
   BASE = 'BASE',           // Base (L2 Ethereum)
   ARBITRUM = 'ARBITRUM',   // Arbitrum (L2 Ethereum)
   SOLANA = 'SOLANA',       // Solana (SPL)
@@ -168,13 +167,6 @@ export const NETWORK_INFO: Record<NetworkType, NetworkInfo> = {
     averageFee: '$5-50',
     confirmationTime: '1-3min',
     priority: 3,
-  },
-  [NetworkType.TRC20]: {
-    type: NetworkType.TRC20,
-    name: 'Tron (TRC20)',
-    averageFee: '$1',
-    confirmationTime: '3-5min',
-    priority: 4,
   },
   [NetworkType.BASE]: {
     type: NetworkType.BASE,

@@ -22,7 +22,6 @@ const bip32 = BIP32Factory(ecc);
  * - Bitcoin: 0'
  * - Ethereum: 60'
  * - Solana: 501'
- * - Tron: 195'
  *
  * Account: derivado do userId (hash)
  * Change: 0 (receive)
@@ -36,7 +35,6 @@ export class DerivationService {
     BTC: 0,
     ETH: 60, // Ethereum e todas redes EVM
     SOL: 501,
-    TRX: 195,
   };
 
   /**
@@ -44,7 +42,7 @@ export class DerivationService {
    *
    * @param userId ID do usuário
    * @param cryptoType BTC, USDC, USDT
-   * @param network BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA, TRC20
+   * @param network BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA
    * @returns {address, privateKey, derivationPath}
    */
   static deriveWallet(
@@ -78,9 +76,6 @@ export class DerivationService {
       case 'SOLANA':
         return this.deriveSolana(derivationPath);
 
-      case 'TRC20':
-        return this.deriveTron(derivationPath);
-
       default:
         throw new Error(`Unsupported network: ${network}`);
     }
@@ -112,9 +107,14 @@ export class DerivationService {
       throw new Error('Failed to generate Bitcoin address');
     }
 
+    // Garantir conversão correta para hex
+    const privateKeyHex = Buffer.isBuffer(child.privateKey)
+      ? child.privateKey.toString('hex')
+      : Buffer.from(child.privateKey).toString('hex');
+
     return {
       address,
-      privateKey: child.privateKey.toString('hex'),
+      privateKey: privateKeyHex,
       derivationPath: path,
     };
   }
@@ -138,7 +138,11 @@ export class DerivationService {
     // Criar wallet Ethereum
     const wallet = EthereumWallet.fromPrivateKey(child.privateKey);
     const address = wallet.getAddressString();
-    const privateKey = wallet.getPrivateKeyString().slice(2); // Remove '0x'
+    const privateKeyWithPrefix = wallet.getPrivateKeyString();
+    // Remove '0x' e garante formato hex válido
+    const privateKey = privateKeyWithPrefix.startsWith('0x')
+      ? privateKeyWithPrefix.slice(2)
+      : privateKeyWithPrefix;
 
     return {
       address,
@@ -176,53 +180,6 @@ export class DerivationService {
   }
 
   /**
-   * Deriva carteira Tron (igual Ethereum, mas com encoding diferente)
-   */
-  private static deriveTron(path: string): {
-    address: string;
-    privateKey: string;
-    derivationPath: string;
-  } {
-    const masterSeed = MasterSeedService.getMasterSeed();
-    const root = bip32.fromSeed(masterSeed);
-    const child = root.derivePath(path);
-
-    if (!child.privateKey) {
-      throw new Error('Failed to derive Tron private key');
-    }
-
-    // Tron usa o mesmo algoritmo do Ethereum (secp256k1)
-    // mas com encoding base58 para endereços
-    const wallet = EthereumWallet.fromPrivateKey(child.privateKey);
-    const ethAddress = wallet.getAddressString();
-
-    // Converter endereço Ethereum para Tron (TronWeb faria isso, mas vamos simplificar)
-    // NOTA: Para produção, use TronWeb.address.fromHex(ethAddress)
-    // Por enquanto, vamos retornar um placeholder
-    const tronAddress = this.ethAddressToTron(ethAddress);
-
-    return {
-      address: tronAddress,
-      privateKey: wallet.getPrivateKeyString().slice(2),
-      derivationPath: path,
-    };
-  }
-
-  /**
-   * Converte endereço Ethereum para formato Tron (simplificado)
-   *
-   * NOTA: Para produção, use biblioteca TronWeb
-   */
-  private static ethAddressToTron(ethAddress: string): string {
-    // Remover '0x' e adicionar prefixo Tron (41 em hex)
-    const hex = '41' + ethAddress.slice(2);
-
-    // Converter para base58check (formato Tron)
-    // SIMPLIFICADO: Para produção real, use TronWeb.address.fromHex()
-    return `T${hex.slice(0, 32)}`; // Placeholder
-  }
-
-  /**
    * Determina coin_type BIP44 baseado em crypto e network
    */
   private static getCoinType(cryptoType: string, network: string): number {
@@ -237,9 +194,6 @@ export class DerivationService {
 
       case 'SOLANA':
         return this.COIN_TYPES.SOL;
-
-      case 'TRC20':
-        return this.COIN_TYPES.TRX;
 
       default:
         throw new Error(`Unknown network: ${network}`);
@@ -296,8 +250,6 @@ export class DerivationService {
         return this.deriveEthereum(derivationPath);
       case 'SOLANA':
         return this.deriveSolana(derivationPath);
-      case 'TRC20':
-        return this.deriveTron(derivationPath);
       default:
         throw new Error(`Unsupported network: ${network}`);
     }
