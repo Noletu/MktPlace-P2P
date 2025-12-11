@@ -24,6 +24,8 @@ import chatRoutes from './routes/chat.routes';
 import keysRoutes from './routes/keys.routes';
 import presenceRoutes from './routes/presence.routes';
 import workersRoutes from './routes/workers.routes';
+import masterSeedAdminRoutes from './routes/masterSeedAdmin.routes';
+import adminFundsRoutes from './routes/adminFunds.routes';
 // import negotiationRoutes from './routes/negotiation.routes'; // DESABILITADO: Chat disponível apenas após aceitar pedido
 // import statsRoutes from './routes/stats.routes';
 import { apiLimiter } from './middleware/rateLimiter.middleware';
@@ -206,6 +208,9 @@ app.use('/api/v1/admin', adminRoutes);
 // Admin Balance Audit routes (NEW: v3.0.7 - Balance validation and fixing)
 app.use('/api/v1/admin/balance', adminBalanceRoutes);
 
+// Admin Funds routes (Control TOTAL de fundos - freeze, transfers, adjustments)
+app.use('/api/v1/admin/funds', adminFundsRoutes);
+
 // Refund routes
 app.use('/api/v1/refund', refundRoutes);
 
@@ -229,6 +234,9 @@ app.use('/api/v1/presence', presenceRoutes);
 
 // Workers routes (monitoring and management)
 app.use('/api/v1/workers', workersRoutes);
+
+// Master Seed Admin routes (HD Wallet seed management)
+app.use('/api/v1/admin/master-seed', masterSeedAdminRoutes);
 
 // Negotiation routes (pre-match negotiation) - DESABILITADO: Chat disponível apenas após aceitar pedido
 // app.use('/api/v1/negotiation', negotiationRoutes);

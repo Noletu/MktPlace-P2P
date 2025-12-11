@@ -1,0 +1,257 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+
+interface Balance {
+  cryptoType: string;
+  balance: string;
+  availableAmount: string;
+  lockedAmount: string;
+}
+
+interface Price {
+  crypto: string;
+  brl: number;
+}
+
+export default function CollateralSummaryWidget() {
+  const router = useRouter();
+  const [balances, setBalances] = useState<Balance[]>([]);
+  const [prices, setPrices] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
+  const [expandedAvailable, setExpandedAvailable] = useState(false);
+  const [expandedLocked, setExpandedLocked] = useState(false);
+
+  useEffect(() => {
+    Promise.all([fetchBalances(), fetchPrices()]);
+  }, []);
+
+  const fetchBalances = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://localhost:3001/api/v1/collateral/balance', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (!response.ok) throw new Error('Erro ao buscar saldos');
+
+      const data = await response.json();
+      setBalances(data.data || []);
+    } catch (error) {
+      console.error('Error fetching balances:', error);
+    }
+  };
+
+  const fetchPrices = async () => {
+    try {
+      const response = await fetch('http://localhost:3001/api/v1/prices');
+      if (!response.ok) throw new Error('Erro ao buscar cotações');
+
+      const data = await response.json();
+      const priceMap: Record<string, number> = {};
+
+      data.data.forEach((p: Price) => {
+        priceMap[p.crypto] = p.brl;
+      });
+
+      setPrices(priceMap);
+    } catch (error) {
+      console.error('Error fetching prices:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateTotalUSD = (type: 'available' | 'locked') => {
+    let total = 0;
+
+    balances.forEach(balance => {
+      const amount = type === 'available'
+        ? parseFloat(balance.availableAmount)
+        : parseFloat(balance.lockedAmount);
+
+      const priceInBRL = prices[balance.cryptoType] || 0;
+      total += amount * priceInBRL;
+    });
+
+    return total;
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(value);
+  };
+
+  const formatCrypto = (value: string) => {
+    return parseFloat(value).toFixed(8);
+  };
+
+  const totalAvailable = calculateTotalUSD('available');
+  const totalLocked = calculateTotalUSD('locked');
+
+  if (loading) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/3"></div>
+          <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded"></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Título */}
+      <div className="flex justify-between items-center mb-2">
+        <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+          💰 Saldo de Colateral
+        </h3>
+      </div>
+
+      {/* Card: Saldo Disponível */}
+      <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Saldo Disponível</p>
+            <p className="text-3xl font-bold text-green-700 dark:text-green-400">
+              {formatCurrency(totalAvailable)}
+            </p>
+          </div>
+
+          <button
+            onClick={() => setExpandedAvailable(!expandedAvailable)}
+            className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-green-200 dark:hover:bg-green-700/30 rounded-lg transition-colors flex items-center gap-1"
+          >
+            <svg
+              className={`w-4 h-4 transition-transform ${expandedAvailable ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+            {expandedAvailable ? 'Recolher' : 'Ver Composição'}
+          </button>
+        </div>
+
+        {/* Breakdown expandido */}
+        {expandedAvailable && (
+          <div className="mt-4 pt-4 border-t border-green-200 dark:border-green-700 space-y-2">
+            {balances
+              .filter(b => parseFloat(b.availableAmount) > 0)
+              .map((balance, idx) => {
+                const amount = parseFloat(balance.availableAmount);
+                const valueInBRL = amount * (prices[balance.cryptoType] || 0);
+
+                return (
+                  <div
+                    key={idx}
+                    className="bg-white dark:bg-gray-900/50 rounded-lg p-3 flex justify-between items-center"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        {balance.cryptoType}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {formatCrypto(balance.availableAmount)} {balance.cryptoType}
+                      </p>
+                    </div>
+                    <p className="text-sm font-bold text-green-600 dark:text-green-400">
+                      {formatCurrency(valueInBRL)}
+                    </p>
+                  </div>
+                );
+              })}
+
+            {balances.filter(b => parseFloat(b.availableAmount) > 0).length === 0 && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-2">
+                Nenhum saldo disponível
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Card: Saldo Bloqueado */}
+      <div className="bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Saldo Bloqueado</p>
+            <p className="text-3xl font-bold text-orange-700 dark:text-orange-400">
+              {formatCurrency(totalLocked)}
+            </p>
+          </div>
+
+          {totalLocked > 0 && (
+            <button
+              onClick={() => setExpandedLocked(!expandedLocked)}
+              className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-orange-200 dark:hover:bg-orange-700/30 rounded-lg transition-colors flex items-center gap-1"
+            >
+              <svg
+                className={`w-4 h-4 transition-transform ${expandedLocked ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+              {expandedLocked ? 'Recolher' : 'Ver Detalhes'}
+            </button>
+          )}
+        </div>
+
+        {/* Breakdown expandido */}
+        {expandedLocked && (
+          <div className="mt-4 pt-4 border-t border-orange-200 dark:border-orange-700 space-y-2">
+            {balances
+              .filter(b => parseFloat(b.lockedAmount) > 0)
+              .map((balance, idx) => {
+                const amount = parseFloat(balance.lockedAmount);
+                const valueInBRL = amount * (prices[balance.cryptoType] || 0);
+
+                return (
+                  <div
+                    key={idx}
+                    className="bg-white dark:bg-gray-900/50 rounded-lg p-3 flex justify-between items-center"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        {balance.cryptoType}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        🔒 {formatCrypto(balance.lockedAmount)} {balance.cryptoType}
+                      </p>
+                    </div>
+                    <p className="text-sm font-bold text-orange-600 dark:text-orange-400">
+                      {formatCurrency(valueInBRL)}
+                    </p>
+                  </div>
+                );
+              })}
+          </div>
+        )}
+
+        {totalLocked === 0 && (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Nenhum valor bloqueado
+          </p>
+        )}
+      </div>
+
+      {/* Botão Ver Detalhes */}
+      <button
+        onClick={() => router.push('/collateral-balance')}
+        className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+      >
+        <span>Ver Detalhes Completos</span>
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+    </div>
+  );
+}

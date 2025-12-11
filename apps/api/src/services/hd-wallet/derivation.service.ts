@@ -38,14 +38,64 @@ export class DerivationService {
   };
 
   /**
-   * Deriva uma carteira HD para um usuário
+   * NOVO: Deriva carteira da PLATAFORMA (Account 0 = Sócios MASTER/ADMIN)
+   *
+   * Estas carteiras são usadas para:
+   * 1. Receber fees das transações
+   * 2. Depósitos dos sócios (cold wallet → hot wallet)
+   *
+   * Account 0 é RESERVADO para platform wallets.
+   * User wallets SEMPRE terão Account > 0.
+   *
+   * @param cryptoType BTC, USDC, USDT
+   * @param network BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA
+   * @returns {address, privateKey, derivationPath}
+   */
+  static derivePlatformWallet(
+    cryptoType: string,
+    network: string
+  ): {
+    address: string;
+    privateKey: string;
+    derivationPath: string;
+  } {
+    const coinType = this.getCoinType(cryptoType, network);
+
+    // PLATFORM WALLET: Account 0 (reservado)
+    const PLATFORM_ACCOUNT = 0;
+
+    // BIP44 path: m/44'/coin_type'/0'/0/0
+    const derivationPath = `m/44'/${coinType}'/${PLATFORM_ACCOUNT}'/0'/0'`;
+
+    console.log(`[DERIVATION] Deriving platform wallet: ${network} - ${cryptoType}`);
+    console.log(`[DERIVATION] Path: ${derivationPath}`);
+
+    switch (network) {
+      case 'BITCOIN':
+        return this.deriveBitcoin(derivationPath);
+      case 'ETHEREUM':
+      case 'BASE':
+      case 'ARBITRUM':
+        return this.deriveEthereum(derivationPath);
+      case 'SOLANA':
+        return this.deriveSolana(derivationPath);
+      default:
+        throw new Error(`Unsupported network: ${network}`);
+    }
+  }
+
+  /**
+   * Deriva uma carteira HD para um USUÁRIO
+   *
+   * IMPORTANTE: User wallets NUNCA usam Account 0 (reservado para platform).
+   * Account index é sempre >= 1.
    *
    * @param userId ID do usuário
    * @param cryptoType BTC, USDC, USDT
    * @param network BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA
    * @returns {address, privateKey, derivationPath}
    */
-  static deriveWallet(
+  static deriveUserWallet(
     userId: string,
     cryptoType: string,
     network: string
@@ -58,10 +108,14 @@ export class DerivationService {
     const coinType = this.getCoinType(cryptoType, network);
 
     // Gerar account index a partir do userId (determinístico)
+    // IMPORTANTE: Account sempre >= 1 (0 é reservado para platform)
     const account = this.userIdToAccountIndex(userId);
 
     // Usar hardened derivation em todos os níveis (mais seguro)
    const derivationPath = `m/44'/${coinType}'/${account}'/0'/0'`;
+
+    console.log(`[DERIVATION] Deriving user wallet for ${userId}: ${network} - ${cryptoType}`);
+    console.log(`[DERIVATION] Account: ${account}, Path: ${derivationPath}`);
 
     // Derivar carteira conforme blockchain
     switch (network) {
@@ -79,6 +133,23 @@ export class DerivationService {
       default:
         throw new Error(`Unsupported network: ${network}`);
     }
+  }
+
+  /**
+   * DEPRECATED: Use derivePlatformWallet() ou deriveUserWallet()
+   * Mantido para retrocompatibilidade
+   */
+  static deriveWallet(
+    userId: string,
+    cryptoType: string,
+    network: string
+  ): {
+    address: string;
+    privateKey: string;
+    derivationPath: string;
+  } {
+    console.warn('[DEPRECATION] deriveWallet() is deprecated. Use deriveUserWallet() instead.');
+    return this.deriveUserWallet(userId, cryptoType, network);
   }
 
   /**
@@ -204,6 +275,9 @@ export class DerivationService {
    * Converte userId para account index (determinístico)
    *
    * Garante que o mesmo userId sempre gera o mesmo account.
+   *
+   * IMPORTANTE: NUNCA retorna 0 (reservado para platform wallets).
+   * Account sempre >= 1 para user wallets.
    */
   private static userIdToAccountIndex(userId: string): number {
     // Hash do userId para gerar número determinístico
@@ -214,7 +288,11 @@ export class DerivationService {
     const account = hash.readUInt32BE(0);
 
     // Limitar a 2^31 - 1 para BIP32 (hardened derivation)
-    return account % 0x80000000;
+    const limitedAccount = account % 0x80000000;
+
+    // IMPORTANTE: Garantir que account >= 1 (0 é reservado para platform)
+    // Se for 0, usar 1 (extremamente raro, mas seguro)
+    return limitedAccount === 0 ? 1 : limitedAccount;
   }
 
   /**

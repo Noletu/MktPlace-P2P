@@ -31,13 +31,20 @@ model User {
   recentCancellations Int       @default(0) // Cancelamentos nos últimos 30 dias
   lastCancellationAt  DateTime? // Data do último cancelamento
 
-  // Role - USER, ADMIN, SUPPORT
+  // Role - USER, ADMIN, SUPPORT, MASTER
   role String @default("USER")
 
   // SECURITY: 2FA
   twoFactorEnabled     Boolean @default(false)
   twoFactorSecret      String?
+  twoFactorTempSecret  String? // Secret temporário durante setup
   twoFactorBackupCodes String? // JSON array de códigos hasheados
+
+  // ADMIN CONTROLS: Account Freeze (Congelamento de conta)
+  accountFrozen Boolean  @default(false) // Se conta está congelada
+  frozenReason  String? // Motivo do congelamento
+  frozenAt      DateTime? // Quando foi congelada
+  frozenBy      String? // ID do admin que congelou
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -144,7 +151,9 @@ model WalletTransaction {
   order   Order?  @relation("WalletTransactionOrder", fields: [orderId], references: [id])
 
   // Tipo de transação
-  type String // DEPOSIT, LOCK, UNLOCK, DEDUCT, WITHDRAWAL, FEE, REFUND
+  // DEPOSIT, LOCK, UNLOCK, DEDUCT, WITHDRAWAL, FEE, REFUND
+  // ADMIN_DEBIT, ADMIN_CREDIT, ADMIN_ADJUSTMENT, ADMIN_FREEZE, ADMIN_UNFREEZE
+  type String
 
   // Valores
   amount        String // Valor da transação
@@ -157,6 +166,11 @@ model WalletTransaction {
   txHash        String? // Hash da transação blockchain
   blockHeight   Int? // Altura do bloco
   confirmations Int? // Número de confirmações
+
+  // ADMIN CONTROLS: Operações administrativas
+  adminUserId  String? // ID do admin que executou (para operações admin)
+  adminReason  String? // Motivo da operação administrativa
+  relatedTxId  String? // Link para transação relacionada (debit/credit pair)
 
   // Metadados
   description String? // Descrição legível
@@ -342,29 +356,50 @@ model Fee {
 }
 
 // ============================================
-// PLATFORM WALLETS - Mantido
+// PLATFORM WALLETS - Carteiras dos Sócios (MASTER/ADMIN)
 // ============================================
 
-// Carteiras da plataforma para receber depósitos iniciais (opcional)
+// Carteiras HD da plataforma derivadas da master seed (Account 0)
+// Usadas para: 1) Receber fees das transações, 2) Depósitos dos sócios (cold → hot)
+// Compartilhadas entre MASTER e ADMIN (ambos têm acesso)
 model PlatformWallet {
   id String @id @default(cuid())
 
-  cryptoType String // BTC, USDT, USDC, etc
-  network    String // ETHEREUM, BASE, ARBITRUM, TRC20, etc
-  address    String
+  cryptoType String // BTC, USDT, USDC
+  network    String // BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA
 
-  label    String? // Nome/descrição do endereço (ex: "Carteira Principal USDT Base")
+  // Endereço derivado da master seed (Account 0 = Platform)
+  address        String @unique // Endereço público derivado
+  derivationPath String // Ex: m/84'/0'/0'/0/0 (Account 0 = Platform)
+  accountIndex   Int    @default(0) // Sempre 0 para platform wallets
+
+  // SECURITY: Private key criptografada com AES-256-GCM
+  encryptedPrivateKey String // Private key criptografada
+
+  // Saldo (atualizado via sync blockchain)
+  balance          String @default("0") // Saldo on-chain
+  availableBalance String @default("0") // Disponível (após reservas)
+
+  // Estatísticas (fees acumuladas)
+  totalFeesCollected String @default("0") // Total de fees recebidas
+  totalDeposited     String @default("0") // Total depositado pelos sócios
+  totalWithdrawn     String @default("0") // Total sacado pelos sócios
+
+  // Sincronização blockchain
+  lastSyncedAt    DateTime? // Última sincronização
+  lastBlockHeight Int? // Último bloco verificado
+
+  // Estado
   isActive Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  createdBy String? // ID do admin que criou
 
   @@unique([cryptoType, network])
   @@index([cryptoType])
   @@index([network])
-  @@index([isActive])
   @@index([address])
+  @@index([isActive])
 }
 
 // ============================================

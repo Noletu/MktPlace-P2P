@@ -7,10 +7,23 @@ dotenv.config({ path: path.join(__dirname, '..', '.env') });
 import { PrismaClient } from '@prisma/client';
 import { DerivationService } from '../src/services/hd-wallet/derivation.service';
 import { KeyManagementService } from '../src/services/hd-wallet/key-management.service';
+import { MasterSeedService } from '../src/services/hd-wallet/master-seed.service';
 import { WalletService } from '../src/services/wallet.service';
 import { BlockchainService } from '../src/services/blockchain/blockchain.service';
 
 const prisma = new PrismaClient();
+
+// Inicializar serviços de criptografia
+console.log('⚙️  Inicializando serviços HD Wallet...');
+try {
+  MasterSeedService.initialize();
+  KeyManagementService.initialize();
+  console.log('✅ Serviços inicializados!\n');
+} catch (error) {
+  console.error('❌ Erro ao inicializar serviços:', (error as Error).message);
+  console.error('   Verifique se MASTER_SEED_ENCRYPTION_KEY e WALLET_ENCRYPTION_KEY estão no .env');
+  process.exit(1);
+}
 
 /**
  * Script de Teste do Sistema HD Wallet
@@ -65,14 +78,9 @@ async function runTests() {
     console.log('\n\n📝 TESTE 2: Criptografia de Chaves Privadas');
     console.log('=============================================');
 
-    // Garantir que testPrivateKey é string hex
-    let testPrivateKey = btcWallet.privateKey;
-    if (typeof testPrivateKey !== 'string') {
-      // Se for array ou buffer, converter para hex
-      testPrivateKey = Buffer.isBuffer(testPrivateKey)
-        ? testPrivateKey.toString('hex')
-        : Buffer.from(Object.values(testPrivateKey) as number[]).toString('hex');
-    }
+    // Private key já vem como string hex do DerivationService
+    const testPrivateKey: string = btcWallet.privateKey;
+
     console.log(`   Private key original: ${testPrivateKey.slice(0, 10)}...`);
 
     // Criptografar

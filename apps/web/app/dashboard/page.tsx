@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/AppHeader';
-import CollateralWidget from '@/components/dashboard/CollateralWidget';
+import CollateralSummaryWidget from '@/components/dashboard/CollateralSummaryWidget';
 import ActiveOrdersCard from '@/components/dashboard/ActiveOrdersCard';
 import StatisticsCard from '@/components/dashboard/StatisticsCard';
 import SecurityBanner from '@/components/dashboard/SecurityBanner';
@@ -130,9 +130,9 @@ export default function DashboardPage() {
           <SecurityBanner />
         </div>
 
-        {/* Collateral Widget (destaque principal) */}
+        {/* Collateral Summary Widget (destaque principal) */}
         <div className="mb-8">
-          <CollateralWidget />
+          <CollateralSummaryWidget />
         </div>
 
         {/* Grid 2 Colunas - Métricas */}

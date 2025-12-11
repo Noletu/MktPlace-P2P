@@ -114,16 +114,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               📊 Dashboard
             </Link>
             <Link
-              href="/admin/wallets"
-              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
-                pathname === '/admin/wallets'
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
-              }`}
-            >
-              💼 Endereços da Plataforma
-            </Link>
-            <Link
               href="/admin/users"
               className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
                 pathname === '/admin/users'
@@ -182,6 +172,26 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               }`}
             >
               ⚖️ Disputas
+            </Link>
+            <Link
+              href="/admin/master-seed"
+              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+                pathname === '/admin/master-seed'
+                  ? 'border-blue-500 text-blue-400'
+                  : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
+              }`}
+            >
+              🔐 Master Seed
+            </Link>
+            <Link
+              href="/admin/funds"
+              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+                pathname.startsWith('/admin/funds')
+                  ? 'border-blue-500 text-blue-400'
+                  : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
+              }`}
+            >
+              💰 Controle de Fundos
             </Link>
           </div>
         </div>
