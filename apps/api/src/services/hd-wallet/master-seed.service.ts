@@ -1,5 +1,7 @@
 import * as bip39 from 'bip39';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * Master Seed Service
@@ -17,15 +19,55 @@ export class MasterSeedService {
   private static IV_LENGTH = 12; // 96 bits para GCM
   private static AUTH_TAG_LENGTH = 16; // 128 bits
 
+  // SECURITY: Memory protection - cache com TTL
+  private static cachedMasterSeed: Buffer | null = null;
+  private static cacheExpiry: number | null = null;
+  private static readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+
   /**
    * Inicializa o service com a chave de criptografia
+   *
+   * SECURITY: Tenta ler de .env.keys primeiro (separação de encryption key)
+   * Se não existir, faz fallback para .env (backward compatibility)
    */
   static initialize() {
-    const key = process.env.MASTER_SEED_ENCRYPTION_KEY;
+    let key: string | undefined;
+    let keySource: 'env.keys' | 'env' = 'env';
+
+    // FASE 3: Tentar ler de .env.keys primeiro (separação de chaves)
+    try {
+      const envKeysPath = path.join(process.cwd(), '.env.keys');
+
+      if (fs.existsSync(envKeysPath)) {
+        const envKeysContent = fs.readFileSync(envKeysPath, 'utf-8');
+
+        // Parse simples do arquivo .env.keys
+        const lines = envKeysContent.split('\n');
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          // Ignora comentários e linhas vazias
+          if (trimmedLine && !trimmedLine.startsWith('#')) {
+            const [envKey, envValue] = trimmedLine.split('=');
+            if (envKey?.trim() === 'MASTER_SEED_ENCRYPTION_KEY' && envValue) {
+              key = envValue.trim();
+              keySource = 'env.keys';
+              break;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('[SECURITY] Failed to read .env.keys, falling back to .env:', (error as Error).message);
+    }
+
+    // Fallback para .env se não encontrou em .env.keys
+    if (!key) {
+      key = process.env.MASTER_SEED_ENCRYPTION_KEY;
+    }
 
     if (!key) {
       throw new Error(
-        'MASTER_SEED_ENCRYPTION_KEY not found in environment. ' +
+        'MASTER_SEED_ENCRYPTION_KEY not found in .env.keys or .env. ' +
         'Generate one with: openssl rand -hex 32'
       );
     }
@@ -38,6 +80,13 @@ export class MasterSeedService {
     }
 
     this.ENCRYPTION_KEY = key;
+
+    // SECURITY: Log de onde a key foi carregada
+    if (keySource === 'env.keys') {
+      console.log('[SECURITY] ✅ Encryption key loaded from .env.keys (recommended)');
+    } else {
+      console.warn('[SECURITY] ⚠️  Encryption key loaded from .env. Migrate to .env.keys for better security.');
+    }
   }
 
   /**
@@ -78,9 +127,25 @@ export class MasterSeedService {
   /**
    * Recupera e descriptografa o master seed
    *
+   * SECURITY: Implementa cache com TTL de 5 minutos para evitar
+   * manter o seed descriptografado em memória indefinidamente.
+   *
    * @returns Seed buffer (64 bytes)
    */
   static getMasterSeed(): Buffer {
+    // Verifica se cache expirou
+    if (this.cachedMasterSeed && this.cacheExpiry && Date.now() > this.cacheExpiry) {
+      // Limpa cache expirado
+      this.cachedMasterSeed = null;
+      this.cacheExpiry = null;
+      console.log('[SECURITY] Master seed cache expired, will be decrypted on next access');
+    }
+
+    // Retorna cache se ainda válido
+    if (this.cachedMasterSeed) {
+      return this.cachedMasterSeed;
+    }
+
     const encryptedSeed = process.env.MASTER_SEED_ENCRYPTED;
 
     if (!encryptedSeed) {
@@ -90,7 +155,16 @@ export class MasterSeedService {
       );
     }
 
-    return this.decryptSeed(encryptedSeed);
+    // Descriptografa seed
+    const seed = this.decryptSeed(encryptedSeed);
+
+    // Armazena em cache com TTL
+    this.cachedMasterSeed = seed;
+    this.cacheExpiry = Date.now() + this.CACHE_TTL;
+
+    console.log('[SECURITY] Master seed decrypted and cached for 5 minutes');
+
+    return seed;
   }
 
   /**

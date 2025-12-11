@@ -1,0 +1,260 @@
+import { Request, Response } from 'express';
+import { AdminFundsService } from '../services/adminFunds.service';
+
+/**
+ * Admin Funds Controller
+ *
+ * Endpoints para controle administrativo total de fundos e carteiras
+ */
+export class AdminFundsController {
+  /**
+   * GET /api/v1/admin/funds/dashboard
+   * Dashboard completo de fundos em custódia
+   */
+  async getDashboard(req: Request, res: Response): Promise<void> {
+    try {
+      const result = await AdminFundsService.getDashboard();
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] getDashboard error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar dashboard',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/funds/users/:userId/wallets
+   * Buscar todas as carteiras de um usuário
+   */
+  async getUserWallets(req: Request, res: Response): Promise<void> {
+    try {
+      const { userId } = req.params;
+      const result = await AdminFundsService.getUserWallets(userId);
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] getUserWallets error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar carteiras do usuário',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/funds/freeze
+   * Congelar conta de usuário
+   *
+   * Body: { userId, reason }
+   * Requires: MASTER or ADMIN role
+   */
+  async freezeAccount(req: Request, res: Response): Promise<void> {
+    try {
+      const { userId, reason } = req.body;
+      const adminUserId = (req as any).user.id;
+
+      if (!userId || !reason) {
+        res.status(400).json({
+          success: false,
+          error: 'userId e reason são obrigatórios',
+        });
+        return;
+      }
+
+      const result = await AdminFundsService.freezeAccount({
+        userId,
+        reason,
+        adminUserId,
+      });
+
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] freezeAccount error:', error);
+      res.status(400).json({
+        success: false,
+        error: 'Erro ao congelar conta',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/funds/unfreeze
+   * Descongelar conta de usuário
+   *
+   * Body: { userId }
+   * Requires: MASTER or ADMIN role
+   */
+  async unfreezeAccount(req: Request, res: Response): Promise<void> {
+    try {
+      const { userId } = req.body;
+      const adminUserId = (req as any).user.id;
+
+      if (!userId) {
+        res.status(400).json({
+          success: false,
+          error: 'userId é obrigatório',
+        });
+        return;
+      }
+
+      const result = await AdminFundsService.unfreezeAccount({
+        userId,
+        adminUserId,
+      });
+
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] unfreezeAccount error:', error);
+      res.status(400).json({
+        success: false,
+        error: 'Erro ao descongelar conta',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/funds/internal-transfer
+   * Transferir fundos entre carteiras (sem blockchain)
+   *
+   * Body: { fromWalletId, toWalletId, amount, reason }
+   * Requires: MASTER role (operação crítica)
+   */
+  async internalTransfer(req: Request, res: Response): Promise<void> {
+    try {
+      const { fromWalletId, toWalletId, amount, reason } = req.body;
+      const adminUserId = (req as any).user.id;
+
+      if (!fromWalletId || !toWalletId || !amount || !reason) {
+        res.status(400).json({
+          success: false,
+          error: 'fromWalletId, toWalletId, amount e reason são obrigatórios',
+        });
+        return;
+      }
+
+      const result = await AdminFundsService.internalTransfer({
+        fromWalletId,
+        toWalletId,
+        amount,
+        reason,
+        adminUserId,
+      });
+
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] internalTransfer error:', error);
+      res.status(400).json({
+        success: false,
+        error: 'Erro ao transferir fundos',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/funds/adjust-balance
+   * Ajustar saldo de carteira manualmente
+   *
+   * Body: { walletId, adjustment, reason }
+   * Requires: MASTER role (operação crítica)
+   */
+  async adjustBalance(req: Request, res: Response): Promise<void> {
+    try {
+      const { walletId, adjustment, reason } = req.body;
+      const adminUserId = (req as any).user.id;
+
+      if (!walletId || !adjustment || !reason) {
+        res.status(400).json({
+          success: false,
+          error: 'walletId, adjustment e reason são obrigatórios',
+        });
+        return;
+      }
+
+      const result = await AdminFundsService.adjustBalance({
+        walletId,
+        adjustment,
+        reason,
+        adminUserId,
+      });
+
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] adjustBalance error:', error);
+      res.status(400).json({
+        success: false,
+        error: 'Erro ao ajustar saldo',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/funds/audit-log
+   * Buscar log de auditoria de operações administrativas
+   *
+   * Query params: startDate, endDate, adminUserId, action, limit, offset
+   */
+  async getAuditLog(req: Request, res: Response): Promise<void> {
+    try {
+      const {
+        startDate,
+        endDate,
+        adminUserId,
+        action,
+        limit,
+        offset,
+      } = req.query;
+
+      const result = await AdminFundsService.getAdminAuditLog({
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
+        adminUserId: adminUserId as string,
+        action: action as string,
+        limit: limit ? parseInt(limit as string) : undefined,
+        offset: offset ? parseInt(offset as string) : undefined,
+      });
+
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] getAuditLog error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar log de auditoria',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/funds/wallets/:walletId/transactions
+   * Buscar histórico de transações de uma carteira
+   */
+  async getWalletTransactions(req: Request, res: Response): Promise<void> {
+    try {
+      const { walletId } = req.params;
+      const { limit } = req.query;
+
+      const result = await AdminFundsService.getWalletTransactionHistory(
+        walletId,
+        limit ? parseInt(limit as string) : undefined
+      );
+
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] getWalletTransactions error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar transações',
+        message: (error as Error).message,
+      });
+    }
+  }
+}
+
+export const adminFundsController = new AdminFundsController();

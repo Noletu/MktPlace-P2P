@@ -366,17 +366,11 @@ export class CollateralBalanceController {
 
   /**
    * POST /api/v1/collateral-balance/simulate-deposit/:addressId
-   * APENAS DESENVOLVIMENTO: Simula adição de saldo de teste
+   * SIMULAÇÃO DE SALDO DE TESTE (Disponível em produção com aviso)
    */
   async simulateDeposit(req: Request, res: Response) {
     try {
-      // SECURITY: Bloquear em produção
-      if (process.env.NODE_ENV === 'production') {
-        return res.status(403).json({
-          success: false,
-          message: 'Endpoint de simulação não disponível em produção',
-        });
-      }
+      // Agora disponível em produção - frontend mostra aviso claro
 
       const userId = req.user?.userId;
       const { addressId } = req.params;
