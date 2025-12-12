@@ -174,6 +174,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               ⚖️ Disputas
             </Link>
             <Link
+              href="/admin/security"
+              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+                pathname === '/admin/security'
+                  ? 'border-blue-500 text-blue-400'
+                  : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
+              }`}
+            >
+              🔒 Segurança
+            </Link>
+            <Link
               href="/admin/master-seed"
               className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
                 pathname === '/admin/master-seed'

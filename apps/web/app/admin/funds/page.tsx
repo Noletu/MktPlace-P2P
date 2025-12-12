@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import ToastContainer from '@/components/admin/ToastContainer';
 import { Toast } from '@/components/admin/ToastNotification';
+import PartnersView from '@/components/admin/funds/PartnersView';
+import UsersView from '@/components/admin/funds/UsersView';
+import TotalView from '@/components/admin/funds/TotalView';
 
 interface DashboardData {
   totalCustody: {
@@ -43,7 +46,7 @@ export default function AdminFundsPage() {
   const router = useRouter();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'freeze' | 'transfer' | 'adjust' | 'audit' | 'analytics'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'partners' | 'users' | 'total' | 'freeze' | 'transfer' | 'adjust' | 'audit' | 'analytics'>('partners');
 
   // Freeze/Unfreeze states
   const [freezeUserId, setFreezeUserId] = useState('');
@@ -422,20 +425,40 @@ export default function AdminFundsPage() {
 
       {/* Tabs */}
       <div className="mb-6 border-b border-gray-700">
-        <nav className="flex space-x-8">
+        <nav className="flex space-x-8 overflow-x-auto">
           <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition ${
-              activeTab === 'dashboard'
+            onClick={() => setActiveTab('partners')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
+              activeTab === 'partners'
+                ? 'border-purple-500 text-purple-400'
+                : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
+            }`}
+          >
+            💼 Sócios
+          </button>
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
+              activeTab === 'users'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
             }`}
           >
-            📊 Dashboard
+            👥 Usuários
+          </button>
+          <button
+            onClick={() => setActiveTab('total')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
+              activeTab === 'total'
+                ? 'border-green-500 text-green-400'
+                : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
+            }`}
+          >
+            🌍 Total
           </button>
           <button
             onClick={() => setActiveTab('freeze')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition ${
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
               activeTab === 'freeze'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
@@ -445,7 +468,7 @@ export default function AdminFundsPage() {
           </button>
           <button
             onClick={() => setActiveTab('transfer')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition ${
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
               activeTab === 'transfer'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
@@ -455,7 +478,7 @@ export default function AdminFundsPage() {
           </button>
           <button
             onClick={() => setActiveTab('adjust')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition ${
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
               activeTab === 'adjust'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
@@ -465,7 +488,7 @@ export default function AdminFundsPage() {
           </button>
           <button
             onClick={() => setActiveTab('audit')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition ${
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
               activeTab === 'audit'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
@@ -475,7 +498,7 @@ export default function AdminFundsPage() {
           </button>
           <button
             onClick={() => setActiveTab('analytics')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition ${
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
               activeTab === 'analytics'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
@@ -486,7 +509,22 @@ export default function AdminFundsPage() {
         </nav>
       </div>
 
-      {/* Dashboard Tab */}
+      {/* FASE 5/7: Partners View */}
+      {activeTab === 'partners' && (
+        <PartnersView />
+      )}
+
+      {/* FASE 5/7: Users View */}
+      {activeTab === 'users' && (
+        <UsersView />
+      )}
+
+      {/* FASE 5/7: Total View */}
+      {activeTab === 'total' && (
+        <TotalView />
+      )}
+
+      {/* Dashboard Tab (OLD - DEPRECATED) */}
       {activeTab === 'dashboard' && dashboard && (
         <div className="space-y-6">
           {/* Stats Cards */}

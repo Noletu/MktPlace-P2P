@@ -656,4 +656,239 @@ export class AdminFundsService {
       },
     };
   }
+
+  /**
+   * FASE 5/7: Visão dos Sócios (Platform Wallets - Account 0)
+   * Retorna saldos agregados das platform wallets
+   */
+  static async getPartnersFunds() {
+    const { platformWalletService } = await import('./platformWallet.service');
+    const platformWallets = await platformWalletService.getAllPlatformWallets();
+
+    // Group by crypto and aggregate
+    const byCrypto: { [key: string]: any } = {};
+
+    for (const wallet of platformWallets) {
+      if (!byCrypto[wallet.cryptoType]) {
+        byCrypto[wallet.cryptoType] = {
+          cryptoType: wallet.cryptoType,
+          networks: [],
+          totalBalance: '0',
+          totalFees: '0',
+          totalDeposits: '0',
+          totalWithdrawals: '0',
+        };
+      }
+
+      byCrypto[wallet.cryptoType].networks.push({
+        network: wallet.network,
+        address: wallet.address,
+        balance: wallet.balance,
+        availableBalance: wallet.availableBalance,
+        feesCollected: wallet.totalFeesCollected,
+        deposited: wallet.totalDeposited,
+        withdrawn: wallet.totalWithdrawn,
+        lastSyncedAt: wallet.lastSyncedAt,
+      });
+
+      // Aggregate totals (string arithmetic for precision)
+      const balance = new BigNumber(wallet.balance || '0');
+      const fees = new BigNumber(wallet.totalFeesCollected || '0');
+      const deposits = new BigNumber(wallet.totalDeposited || '0');
+      const withdrawals = new BigNumber(wallet.totalWithdrawn || '0');
+
+      byCrypto[wallet.cryptoType].totalBalance = new BigNumber(
+        byCrypto[wallet.cryptoType].totalBalance
+      )
+        .plus(balance)
+        .toString();
+
+      byCrypto[wallet.cryptoType].totalFees = new BigNumber(
+        byCrypto[wallet.cryptoType].totalFees
+      )
+        .plus(fees)
+        .toString();
+
+      byCrypto[wallet.cryptoType].totalDeposits = new BigNumber(
+        byCrypto[wallet.cryptoType].totalDeposits
+      )
+        .plus(deposits)
+        .toString();
+
+      byCrypto[wallet.cryptoType].totalWithdrawals = new BigNumber(
+        byCrypto[wallet.cryptoType].totalWithdrawals
+      )
+        .plus(withdrawals)
+        .toString();
+    }
+
+    return {
+      partners: Object.values(byCrypto),
+      summary: {
+        totalPlatformWallets: platformWallets.length,
+        cryptosSupported: Object.keys(byCrypto).length,
+      },
+    };
+  }
+
+  /**
+   * FASE 5/7: Visão dos Usuários (User Wallets - Account >= 1)
+   * Retorna saldos agregados das user wallets com breakdown por usuário
+   */
+  static async getUsersFunds() {
+    const userWallets = await prisma.userWallet.findMany({
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    // Group by crypto
+    const byCrypto: { [key: string]: any } = {};
+    const byUser: { [key: string]: any } = {};
+
+    for (const wallet of userWallets) {
+      // Aggregate by crypto
+      if (!byCrypto[wallet.cryptoType]) {
+        byCrypto[wallet.cryptoType] = {
+          cryptoType: wallet.cryptoType,
+          totalBalance: '0',
+          totalWallets: 0,
+          networks: {},
+        };
+      }
+
+      if (!byCrypto[wallet.cryptoType].networks[wallet.network]) {
+        byCrypto[wallet.cryptoType].networks[wallet.network] = {
+          network: wallet.network,
+          balance: '0',
+          walletCount: 0,
+        };
+      }
+
+      const balance = new BigNumber(wallet.balance || '0');
+      byCrypto[wallet.cryptoType].totalBalance = new BigNumber(
+        byCrypto[wallet.cryptoType].totalBalance
+      )
+        .plus(balance)
+        .toString();
+
+      byCrypto[wallet.cryptoType].networks[wallet.network].balance =
+        new BigNumber(byCrypto[wallet.cryptoType].networks[wallet.network].balance)
+          .plus(balance)
+          .toString();
+
+      byCrypto[wallet.cryptoType].networks[wallet.network].walletCount++;
+      byCrypto[wallet.cryptoType].totalWallets++;
+
+      // Aggregate by user
+      if (!byUser[wallet.userId]) {
+        byUser[wallet.userId] = {
+          userId: wallet.userId,
+          userName: wallet.user?.name || 'Unknown',
+          userEmail: wallet.user?.email || 'unknown@example.com',
+          wallets: [],
+          totalBalance: {},
+        };
+      }
+
+      byUser[wallet.userId].wallets.push({
+        cryptoType: wallet.cryptoType,
+        network: wallet.network,
+        address: wallet.address,
+        balance: wallet.balance,
+      });
+
+      if (!byUser[wallet.userId].totalBalance[wallet.cryptoType]) {
+        byUser[wallet.userId].totalBalance[wallet.cryptoType] = '0';
+      }
+
+      byUser[wallet.userId].totalBalance[wallet.cryptoType] = new BigNumber(
+        byUser[wallet.userId].totalBalance[wallet.cryptoType]
+      )
+        .plus(balance)
+        .toString();
+    }
+
+    // Convert networks object to array
+    const cryptoArray = Object.values(byCrypto).map((crypto: any) => ({
+      ...crypto,
+      networks: Object.values(crypto.networks),
+    }));
+
+    return {
+      users: {
+        byCrypto: cryptoArray,
+        byUser: Object.values(byUser),
+      },
+      summary: {
+        totalUsers: Object.keys(byUser).length,
+        totalUserWallets: userWallets.length,
+        cryptosSupported: Object.keys(byCrypto).length,
+      },
+    };
+  }
+
+  /**
+   * FASE 5/7: Visão Total (Sócios + Usuários)
+   * Combina platform wallets e user wallets para visão consolidada
+   */
+  static async getTotalFunds() {
+    const [partnersFunds, usersFunds] = await Promise.all([
+      this.getPartnersFunds(),
+      this.getUsersFunds(),
+    ]);
+
+    // Aggregate partners + users by crypto
+    const totalByCrypto: { [key: string]: any } = {};
+
+    // Add partners
+    for (const crypto of partnersFunds.partners) {
+      totalByCrypto[crypto.cryptoType] = {
+        cryptoType: crypto.cryptoType,
+        partnersBalance: crypto.totalBalance,
+        usersBalance: '0',
+        totalBalance: crypto.totalBalance,
+      };
+    }
+
+    // Add users
+    for (const crypto of usersFunds.users.byCrypto) {
+      if (!totalByCrypto[crypto.cryptoType]) {
+        totalByCrypto[crypto.cryptoType] = {
+          cryptoType: crypto.cryptoType,
+          partnersBalance: '0',
+          usersBalance: '0',
+          totalBalance: '0',
+        };
+      }
+
+      totalByCrypto[crypto.cryptoType].usersBalance = crypto.totalBalance;
+
+      totalByCrypto[crypto.cryptoType].totalBalance = new BigNumber(
+        totalByCrypto[crypto.cryptoType].partnersBalance
+      )
+        .plus(crypto.totalBalance)
+        .toString();
+    }
+
+    return {
+      total: Object.values(totalByCrypto),
+      breakdown: {
+        partners: partnersFunds.partners,
+        users: usersFunds.users.byCrypto,
+      },
+      summary: {
+        totalPlatformWallets: partnersFunds.summary.totalPlatformWallets,
+        totalUserWallets: usersFunds.summary.totalUserWallets,
+        totalUsers: usersFunds.summary.totalUsers,
+        cryptosSupported: Object.keys(totalByCrypto).length,
+      },
+    };
+  }
 }
