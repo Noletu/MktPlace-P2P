@@ -26,6 +26,60 @@ export class AdminFundsController {
   }
 
   /**
+   * FASE 5/7: GET /api/v1/admin/funds/partners
+   * Visão dos Sócios (Platform Wallets - Account 0)
+   */
+  async getPartnersFunds(req: Request, res: Response): Promise<void> {
+    try {
+      const result = await AdminFundsService.getPartnersFunds();
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] getPartnersFunds error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar fundos dos sócios',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * FASE 5/7: GET /api/v1/admin/funds/users-funds
+   * Visão dos Usuários (User Wallets - Account >= 1)
+   */
+  async getUsersFunds(req: Request, res: Response): Promise<void> {
+    try {
+      const result = await AdminFundsService.getUsersFunds();
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] getUsersFunds error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar fundos dos usuários',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * FASE 5/7: GET /api/v1/admin/funds/total
+   * Visão Total (Sócios + Usuários)
+   */
+  async getTotalFunds(req: Request, res: Response): Promise<void> {
+    try {
+      const result = await AdminFundsService.getTotalFunds();
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] getTotalFunds error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar fundos totais',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
    * GET /api/v1/admin/funds/users/:userId/wallets
    * Buscar todas as carteiras de um usuário
    */

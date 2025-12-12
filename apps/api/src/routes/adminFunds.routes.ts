@@ -17,6 +17,24 @@ router.get(
   adminFundsController.getDashboard.bind(adminFundsController)
 );
 
+/**
+ * FASE 5/7: Visões Separadas
+ */
+router.get(
+  '/partners',
+  adminFundsController.getPartnersFunds.bind(adminFundsController)
+);
+
+router.get(
+  '/users-funds',
+  adminFundsController.getUsersFunds.bind(adminFundsController)
+);
+
+router.get(
+  '/total',
+  adminFundsController.getTotalFunds.bind(adminFundsController)
+);
+
 router.get(
   '/users/:userId/wallets',
   adminFundsController.getUserWallets.bind(adminFundsController)
