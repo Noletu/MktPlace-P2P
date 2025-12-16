@@ -35,7 +35,7 @@ import { BalanceSyncWorker } from './workers/balance-sync.worker';
 import { orderExpirationWorker } from './workers/order-expiration.worker';
 // import { negotiationTimeoutWorker } from './workers/negotiation-timeout.worker'; // DESABILITADO: Chat disponível apenas após aceitar pedido
 import { presenceMonitorWorker } from './workers/presence-monitor.worker';
-// import { collateralReleaseWorker } from './workers/collateral-release.worker'; // DESABILITADO: usa código legado
+import { collateralReleaseWorker } from './workers/collateral-release.worker';
 import { chatArchiveWorker } from './workers/chat-archive.worker';
 import { initializeSocketServer } from './socket/socket.server';
 import { initializeChatSocket } from './socket/chat.socket';
@@ -300,7 +300,7 @@ httpServer.listen(port, () => {
 
   // Iniciar workers
   DepositMonitorWorker.start(); // HD Wallet deposit monitor
-  BalanceSyncWorker.start(); // HD Wallet balance sync
+  // BalanceSyncWorker.start(); // Controlado via endpoints HTTP (não auto-start)
   orderExpirationWorker.start();
   // negotiationTimeoutWorker.start(); // DESABILITADO: Chat disponível apenas após aceitar pedido
   presenceMonitorWorker.start();

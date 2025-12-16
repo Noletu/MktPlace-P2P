@@ -9,6 +9,139 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### 🎉 Adicionado
+
+#### 🤖 Sistema de Controle de Workers via Interface Admin (2025-12-14)
+
+**Controle on/off do BalanceSyncWorker em runtime sem reiniciar servidor**
+
+- **Backend - API de Controle de Workers**:
+  - **WorkersController** criado em `apps/api/src/controllers/workers.controller.ts`
+    - 4 endpoints HTTP para controle do BalanceSyncWorker:
+      - `GET /api/v1/workers/balance-sync/status` - Verificar estado atual
+      - `POST /api/v1/workers/balance-sync/start` - Iniciar worker
+      - `POST /api/v1/workers/balance-sync/stop` - Parar worker
+      - `POST /api/v1/workers/balance-sync/toggle` - Alternar estado (liga/desliga)
+    - Apenas ADMINs podem controlar workers (authMiddleware)
+    - Método `isRunning()` adicionado ao `BalanceSyncWorker` para verificação de estado
+
+  - **Rotas adicionadas** em `apps/api/src/routes/workers.routes.ts`:
+    - 4 rotas novas integradas ao sistema de workers existente
+    - Proteção via `authMiddleware` (requer autenticação e role ADMIN)
+    - Binding correto dos métodos do controller
+
+  - **Auto-start removido do BalanceSyncWorker**:
+    - Worker não inicia mais automaticamente ao rodar servidor
+    - Controle 100% manual via API ou interface admin
+    - Arquivo: `apps/api/src/workers/balance-sync.worker.ts:230-233`
+    - Arquivo: `apps/api/src/index.ts:303` (linha comentada)
+
+- **Frontend - Painel Admin de Workers**:
+  - **Nova página** `/admin/workers` criada em `apps/web/app/admin/workers/page.tsx`
+    - Interface visual completa com botões de controle
+    - 3 botões principais:
+      - ▶️ Iniciar Worker (verde)
+      - ⏹️ Parar Worker (vermelho)
+      - 🔄 Alternar Estado (azul)
+    - Status em tempo real: 🟢 Rodando / 🔴 Parado
+    - Auto-refresh a cada 5 segundos
+    - Confirmações antes de ações críticas
+    - Info boxes explicativas sobre função do worker
+    - Avisos sobre impacto em saldos de teste
+
+  - **Link adicionado ao menu admin** em `apps/web/app/admin/layout.tsx:206-215`
+    - Novo item "🤖 Workers" na navegação
+    - Posicionado após "💰 Controle de Fundos"
+    - Highlight automático quando ativo
+
+- **Problema Resolvido**:
+  - **ANTES**: BalanceSyncWorker rodava automaticamente e removia saldos de teste
+  - **DURANTE TESTES**: Saldo de 0.01 BTC sumia após criar pedido (reconciliação automática)
+  - **AGORA**: Admin pode parar worker durante testes, preservando saldos simulados
+
+- **Casos de Uso**:
+  1. **Testes com saldo simulado**: Parar worker antes de adicionar saldo teste
+  2. **Testes de fluxo completo**: Worker parado não interfere nas transações
+  3. **Reconciliação manual**: Iniciar worker temporariamente quando necessário
+  4. **Produção**: Controle granular sobre quando reconciliar saldos
+
+- **Benefícios**:
+  - ✅ Controle total sobre workers em runtime
+  - ✅ Sem necessidade de reiniciar servidor
+  - ✅ Interface visual intuitiva com botões
+  - ✅ Status em tempo real
+  - ✅ Perfeito para desenvolvimento e testes
+  - ✅ Facilita debugging de problemas de saldo
+  - ✅ Padrão reutilizável para outros workers no futuro
+
+### 🐛 Corrigido
+
+#### 🔧 Correções de Dashboard e Saldos (2025-12-14)
+
+**Múltiplos bugs críticos no sistema de saldos corrigidos**
+
+1. **Endpoint 404 - Collateral Balance**:
+   - **Problema**: Frontend chamando `/api/v1/collateral/balance` (404 Not Found)
+   - **Causa**: URL incorreta com slash em vez de hífen
+   - **Correção**: Atualizado para `/api/v1/collateral-balance`
+   - **Arquivo**: `apps/web/components/dashboard/CollateralSummaryWidget.tsx:32`
+
+2. **Dashboard Mostrando Zero Balance**:
+   - **Problema**: Saldos sempre apareciam como R$ 0,00
+   - **Causa Raiz #1**: Field name mismatch
+     - Frontend esperava: `availableAmount`, `lockedAmount`
+     - Backend retornava: `availableBalance`, `lockedBalance`
+   - **Causa Raiz #2**: Response structure mismatch
+     - Frontend esperava: `data: [...]`
+     - Backend retornava: `data: { balances: [...] }`
+   - **Correções Aplicadas**:
+     - Interface atualizada para usar field names corretos
+     - Backend ajustado para retornar array flat
+   - **Arquivos**:
+     - `apps/web/components/dashboard/CollateralSummaryWidget.tsx:8-9, 70-71`
+     - `apps/api/src/controllers/collateral-balance.controller.ts:38, 49`
+
+3. **Saldo de Teste Sumindo Após Criar Pedido**:
+   - **Problema**: 0.01 BTC de teste → criou pedido → saldo foi para zero
+   - **Causa**: BalanceSyncWorker reconciliando automaticamente
+     - Worker consultava blockchain: 0 BTC (saldo teste não existe on-chain)
+     - Comparava com DB: 0.01 BTC
+     - "Corrigia" removendo saldo via WITHDRAWAL transaction
+   - **Transação Indevida**:
+     - Tipo: WITHDRAWAL
+     - Valor: -0.01 BTC
+     - Descrição: "Reconciliação de saldo (sync automático)"
+   - **Correção Inicial**: Desabilitado worker em desenvolvimento
+   - **Correção Final**: Sistema de controle on/off implementado (ver acima)
+
+#### 🗝️ Bug no Sistema de Logout (2025-12-14)
+
+**Logout não aparecia no Audit Log**
+
+- **Problema**: Apenas LOGIN e REGISTER apareciam no audit log
+- **Causa**: Erro 400 (Bad Request) no endpoint de logout
+- **Correção**: Ajustes no `auth.service.ts` para registrar logout corretamente
+- **Status**: ✅ Resolvido - logout agora aparece no audit log
+
+#### 📋 Bug no Botão Copiar Endereço (2025-12-14)
+
+**Copiar endereço só funcionava após clicar OK**
+
+- **Problema**: Endereço era copiado, mas usuário precisava clicar OK para confirmar
+- **UX Ruim**: Dois cliques desnecessários
+- **Correção**: Remoção do alert de confirmação após cópia
+- **Status**: ✅ Resolvido - cópia instantânea com feedback visual
+
+### 🔄 Modificado
+
+#### 🔐 CollateralReleaseWorker Reabilitado (2025-12-14)
+
+- **Arquivo**: `apps/api/src/index.ts:308`
+- **ANTES**: Worker estava comentado (desabilitado)
+- **AGORA**: Worker descomentado e funcionando
+- **Função**: Libera colateral automaticamente quando pedidos são finalizados/cancelados
+- **Importância**: Crítico para evitar saldos bloqueados indefinidamente
+
 ---
 
 ## [v1.0.0] - 2025-11-25

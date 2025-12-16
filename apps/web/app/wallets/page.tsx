@@ -169,9 +169,13 @@ export default function WalletsPage() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    alert('Endereço copiado!');
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert('Endereço copiado!');
+    } catch (err) {
+      alert('Erro ao copiar endereço');
+    }
   };
 
   const fetchTransactions = async (walletId: string) => {

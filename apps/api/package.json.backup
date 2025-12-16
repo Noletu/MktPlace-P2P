@@ -39,7 +39,6 @@
     "@types/multer": "^2.0.0",
     "axios": "^1.12.2",
     "bcryptjs": "^2.4.3",
-    "bignumber.js": "^9.3.1",
     "bip32": "^5.0.0",
     "bip39": "^3.1.0",
     "bitcoinjs-lib": "^7.0.0",
@@ -60,6 +59,7 @@
     "qrcode": "^1.5.4",
     "speakeasy": "^2.0.0",
     "tiny-secp256k1": "^2.2.4",
+    "tronweb": "^6.1.0",
     "winston": "^3.18.3",
     "winston-daily-rotate-file": "^5.0.0",
     "zod": "^3.22.4"

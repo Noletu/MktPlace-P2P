@@ -203,6 +203,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             >
               💰 Controle de Fundos
             </Link>
+            <Link
+              href="/admin/workers"
+              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+                pathname === '/admin/workers'
+                  ? 'border-blue-500 text-blue-400'
+                  : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
+              }`}
+            >
+              🤖 Workers
+            </Link>
           </div>
         </div>
       </nav>

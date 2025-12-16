@@ -35,7 +35,7 @@ export class CollateralBalanceController {
         cryptoType: wallet.cryptoType,
         network: wallet.network,
         balance: wallet.balance,
-        lockedAmount: wallet.lockedBalance,
+        lockedBalance: wallet.lockedBalance,
         availableBalance: wallet.availableBalance,
         totalDeposited: wallet.totalDeposited,
         totalWithdrawn: wallet.totalWithdrawn,
@@ -46,7 +46,7 @@ export class CollateralBalanceController {
 
       return res.json({
         success: true,
-        data: { balances },
+        data: balances,
       });
     } catch (error: any) {
       console.error('❌ Error getting collateral balances:', error);
@@ -89,7 +89,7 @@ export class CollateralBalanceController {
               cryptoType,
               network,
               balance: '0',
-              lockedAmount: '0',
+              lockedBalance: '0',
               availableBalance: '0',
             },
           },
@@ -105,7 +105,7 @@ export class CollateralBalanceController {
             cryptoType: wallet.cryptoType,
             network: wallet.network,
             balance: wallet.balance,
-            lockedAmount: wallet.lockedBalance,
+            lockedBalance: wallet.lockedBalance,
             availableBalance: wallet.availableBalance,
             address: wallet.address,
           },

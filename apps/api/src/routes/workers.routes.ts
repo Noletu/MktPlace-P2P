@@ -5,6 +5,7 @@ import { orderExpirationWorker } from '../workers/order-expiration.worker';
 // import { DepositMonitorWorker } from '../workers/deposit-monitor.worker'; // Now uses static class
 import { presenceMonitorWorker } from '../workers/presence-monitor.worker';
 import { chatArchiveWorker } from '../workers/chat-archive.worker';
+import { workersController } from '../controllers/workers.controller';
 
 const router = Router();
 
@@ -103,5 +104,22 @@ router.post('/collateral-release/process-now', async (req: Request, res: Respons
     });
   }
 });
+
+/**
+ * BalanceSyncWorker Controls
+ * SECURITY: Apenas admins podem controlar workers
+ */
+
+// GET /api/v1/workers/balance-sync/status
+router.get('/balance-sync/status', workersController.getBalanceSyncStatus.bind(workersController));
+
+// POST /api/v1/workers/balance-sync/start
+router.post('/balance-sync/start', workersController.startBalanceSync.bind(workersController));
+
+// POST /api/v1/workers/balance-sync/stop
+router.post('/balance-sync/stop', workersController.stopBalanceSync.bind(workersController));
+
+// POST /api/v1/workers/balance-sync/toggle
+router.post('/balance-sync/toggle', workersController.toggleBalanceSync.bind(workersController));
 
 export default router;
