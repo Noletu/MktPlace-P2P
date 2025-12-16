@@ -69,6 +69,7 @@ export default function AppHeader() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include', // SECURITY: Enviar cookies com a requisição
         body: JSON.stringify({ refreshToken }),
       });
     } catch (error) {

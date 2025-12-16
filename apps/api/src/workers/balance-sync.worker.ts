@@ -55,6 +55,13 @@ export class BalanceSyncWorker {
   }
 
   /**
+   * Verifica se o worker está rodando
+   */
+  static isRunning(): boolean {
+    return this.intervalId !== null;
+  }
+
+  /**
    * Executa sincronização completa
    */
   static async run() {
@@ -220,10 +227,10 @@ export class BalanceSyncWorker {
   }
 }
 
-// Auto-start quando módulo é importado (se não estiver em teste)
-if (process.env.NODE_ENV !== 'test') {
-  BalanceSyncWorker.start();
-}
+// Worker controlado manualmente via endpoints HTTP
+// Para iniciar: POST /api/v1/workers/balance-sync/start
+// Para parar: POST /api/v1/workers/balance-sync/stop
+console.log('⏭️  BalanceSyncWorker em modo manual (controle via API)');
 
 // Graceful shutdown
 process.on('SIGINT', () => {

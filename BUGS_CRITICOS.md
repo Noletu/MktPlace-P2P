@@ -8,10 +8,19 @@ Este arquivo lista todos os bugs críticos conhecidos que estão sendo trabalhad
 
 *Nenhum bug crítico ativo no momento.*
 
-**Última verificação**: 02/12/2025
+**Última verificação**: 14/12/2025
 **Status do sistema**: 🟢 **ESTÁVEL E PRONTO PARA PRODUÇÃO**
 
-**Trabalhos recentes realizados** (v1.0.0):
+**Trabalhos recentes realizados** (14/12/2025):
+- ✅ **Sistema de Controle de Workers** implementado via interface admin
+- ✅ **Dashboard zero balance** corrigido (field names + response structure)
+- ✅ **Endpoint 404** corrigido (/collateral-balance)
+- ✅ **Saldo sumindo** resolvido (BalanceSyncWorker controlável)
+- ✅ **Logout audit log** corrigido
+- ✅ **UX de copiar endereço** melhorada
+- ✅ **CollateralReleaseWorker** reabilitado
+
+**Trabalhos anteriores** (v1.0.0):
 - ✅ **Sistema HD Wallet Completo** (BIP32/BIP44) implementado
 - ✅ Redundância de colateral completamente eliminada
 - ✅ 8 fases de implementação finalizadas
@@ -73,6 +82,120 @@ Este arquivo lista todos os bugs críticos conhecidos que estão sendo trabalhad
 ---
 
 ## ✅ Bugs Resolvidos Recentemente
+
+### v1.0.0+ (14/12/2025) - Correções de Saldos e Workers
+
+#### ✅ Dashboard Mostrando Zero Balance
+**Status**: ✅ RESOLVIDO
+**Data Resolução**: 14/12/2025
+**Prioridade**: 🔴 CRÍTICA
+
+**Descrição**: Dashboard sempre exibia R$ 0,00 de saldo mesmo após depositar crypto.
+
+**Causas Identificadas**:
+1. **Field name mismatch**:
+   - Frontend esperava: `availableAmount`, `lockedAmount`
+   - Backend retornava: `availableBalance`, `lockedBalance`
+2. **Response structure mismatch**:
+   - Frontend esperava: `data: [...]` (array direto)
+   - Backend retornava: `data: { balances: [...] }` (array nested)
+
+**Solução**:
+- Interface frontend atualizada para field names corretos
+- Backend ajustado para retornar array flat sem nesting
+- Arquivos modificados:
+  - `apps/web/components/dashboard/CollateralSummaryWidget.tsx:8-9, 70-71`
+  - `apps/api/src/controllers/collateral-balance.controller.ts:38, 49`
+
+**Resultado**: Dashboard agora exibe saldos corretamente.
+
+---
+
+#### ✅ Endpoint 404 - Collateral Balance
+**Status**: ✅ RESOLVIDO
+**Data Resolução**: 14/12/2025
+**Prioridade**: 🔴 CRÍTICA
+
+**Descrição**: Frontend chamava `/api/v1/collateral/balance` resultando em 404 Not Found.
+
+**Causa**: URL incorreta - slash em vez de hífen.
+
+**Solução**: Atualizado para `/api/v1/collateral-balance` (com hífen).
+
+**Arquivo**: `apps/web/components/dashboard/CollateralSummaryWidget.tsx:32`
+
+**Resultado**: Endpoint agora retorna dados corretamente.
+
+---
+
+#### ✅ Saldo de Teste Sumindo Após Criar Pedido
+**Status**: ✅ RESOLVIDO
+**Data Resolução**: 14/12/2025
+**Prioridade**: 🔴 CRÍTICA
+
+**Descrição**:
+- Usuário adicionava 0.01 BTC de teste
+- Criava pedido com colateral
+- Saldo sumia (voltava para zero)
+
+**Causa**: BalanceSyncWorker reconciliando automaticamente:
+1. Worker consultava blockchain: 0 BTC (saldo teste não existe on-chain)
+2. Comparava com DB: 0.01 BTC
+3. "Corrigia" discrepância criando WITHDRAWAL de -0.01 BTC
+4. Descrição: "Reconciliação de saldo (sync automático)"
+
+**Solução Implementada**: Sistema completo de controle de workers
+- **Backend**: 4 endpoints HTTP para controlar BalanceSyncWorker
+  - `GET /api/v1/workers/balance-sync/status`
+  - `POST /api/v1/workers/balance-sync/start`
+  - `POST /api/v1/workers/balance-sync/stop`
+  - `POST /api/v1/workers/balance-sync/toggle`
+- **Frontend**: Página `/admin/workers` com interface visual
+  - Botões ▶️ Start, ⏹️ Stop, 🔄 Toggle
+  - Status em tempo real (🟢 Rodando / 🔴 Parado)
+  - Auto-refresh a cada 5 segundos
+- **Auto-start removido**: Worker não inicia mais automaticamente
+
+**Arquivos Criados/Modificados**:
+- `apps/api/src/controllers/workers.controller.ts` (criado)
+- `apps/api/src/routes/workers.routes.ts` (atualizado)
+- `apps/api/src/workers/balance-sync.worker.ts` (método isRunning, auto-start removido)
+- `apps/web/app/admin/workers/page.tsx` (criado)
+- `apps/web/app/admin/layout.tsx` (link adicionado)
+
+**Resultado**: Admin pode parar worker durante testes, preservando saldos simulados.
+
+---
+
+#### ✅ Logout Não Aparecia no Audit Log
+**Status**: ✅ RESOLVIDO
+**Data Resolução**: 14/12/2025
+**Prioridade**: 🟠 ALTA
+
+**Descrição**: Apenas LOGIN e REGISTER apareciam no audit log.
+
+**Causa**: Erro 400 (Bad Request) no endpoint de logout.
+
+**Solução**: Ajustes no `auth.service.ts` para registrar logout corretamente.
+
+**Resultado**: Logout agora aparece no audit log como esperado.
+
+---
+
+#### ✅ Botão Copiar Endereço com UX Ruim
+**Status**: ✅ RESOLVIDO
+**Data Resolução**: 14/12/2025
+**Prioridade**: 🟡 MÉDIA
+
+**Descrição**: Endereço só era copiado após usuário clicar OK no alert.
+
+**Problema**: Dois cliques desnecessários para copiar endereço.
+
+**Solução**: Removido alert de confirmação após cópia.
+
+**Resultado**: Cópia instantânea com feedback visual, melhor UX.
+
+---
 
 ### v1.0.0 (25/11/2025) - Sistema HD Wallet
 
@@ -382,7 +505,7 @@ Field 'matchedAt' not found in Order model
 
 ---
 
-**Última atualização**: 25/11/2025
+**Última atualização**: 14/12/2025
 
 ---
 

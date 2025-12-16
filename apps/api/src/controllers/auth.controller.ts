@@ -199,6 +199,15 @@ export class AuthController {
       // SECURITY: Revogar refresh token no banco
       await authService.logout(refreshToken);
 
+      // SECURITY: Audit log - logout bem-sucedido
+      auditLogService.logFromRequest(
+        req,
+        AUDIT_ACTIONS.LOGOUT,
+        AUDIT_RESOURCES.USER,
+        req.user?.userId,
+        { email: req.user?.email }
+      );
+
       // SECURITY: Limpar cookies de autenticação
       clearAuthCookies(res);
 
@@ -209,6 +218,17 @@ export class AuthController {
     } catch (error: any) {
       console.error('[SECURITY] Logout error:', error);
 
+      // SECURITY: Audit log - logout com erro
+      auditLogService.logFromRequest(
+        req,
+        AUDIT_ACTIONS.LOGOUT,
+        AUDIT_RESOURCES.USER,
+        req.user?.userId,
+        { email: req.user?.email },
+        false,
+        error.message
+      );
+
       // Mesmo em caso de erro, limpar cookies locais
       clearAuthCookies(res);
 
@@ -216,6 +236,7 @@ export class AuthController {
         success: false,
         error: 'Erro ao fazer logout',
       });
+
     }
   }
 

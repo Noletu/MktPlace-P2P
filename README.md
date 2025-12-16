@@ -2,9 +2,25 @@
 
 > Marketplace P2P para pagamento de boletos e PIX com criptomoedas. Mais barato, mais livre.
 
-**Versão:** 1.0.0+ (Unreleased) | **Status:** 🟢 Estável | **Data:** 02/12/2025
+**Versão:** 1.0.0+ (Unreleased) | **Status:** 🟢 Estável | **Data:** 14/12/2025
 
 ## 🆕 Novidades Recentes
+
+### 🤖 Sistema de Controle de Workers (14/12/2025)
+Interface admin completa para controlar workers em runtime:
+- **Painel visual**: `/admin/workers` com botões ▶️ Start, ⏹️ Stop, 🔄 Toggle
+- **API REST**: 4 endpoints para controle do BalanceSyncWorker
+- **Auto-refresh**: Status atualizado a cada 5 segundos
+- **Casos de uso**: Parar worker durante testes para preservar saldos simulados
+- **Benefício**: Controle total sem reiniciar servidor
+
+### 🐛 Correções de Saldos (14/12/2025)
+Múltiplos bugs críticos corrigidos no sistema de saldos:
+- ✅ **Dashboard zero balance**: Corrigido field names e response structure
+- ✅ **Endpoint 404**: URL `/collateral-balance` corrigida
+- ✅ **Saldo sumindo**: BalanceSyncWorker agora controlável manualmente
+- ✅ **Logout audit log**: Registros de logout agora aparecem corretamente
+- ✅ **Copiar endereço**: UX melhorada (cópia instantânea sem confirmação)
 
 ### 🏦 Carteiras da Plataforma Configuradas (23/11/2025)
 Sistema completo de carteiras multi-rede pronto para uso:

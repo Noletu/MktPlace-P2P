@@ -6,8 +6,8 @@ import { useRouter } from 'next/navigation';
 interface Balance {
   cryptoType: string;
   balance: string;
-  availableAmount: string;
-  lockedAmount: string;
+  availableBalance: string;
+  lockedBalance: string;
 }
 
 interface Price {
@@ -30,7 +30,7 @@ export default function CollateralSummaryWidget() {
   const fetchBalances = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/v1/collateral/balance', {
+      const response = await fetch('http://localhost:3001/api/v1/collateral-balance', {
         headers: { 'Authorization': `Bearer ${token}` },
       });
 
@@ -68,8 +68,8 @@ export default function CollateralSummaryWidget() {
 
     balances.forEach(balance => {
       const amount = type === 'available'
-        ? parseFloat(balance.availableAmount)
-        : parseFloat(balance.lockedAmount);
+        ? parseFloat(balance.availableBalance)
+        : parseFloat(balance.lockedBalance);
 
       const priceInBRL = prices[balance.cryptoType] || 0;
       total += amount * priceInBRL;
@@ -142,9 +142,9 @@ export default function CollateralSummaryWidget() {
         {expandedAvailable && (
           <div className="mt-4 pt-4 border-t border-green-200 dark:border-green-700 space-y-2">
             {balances
-              .filter(b => parseFloat(b.availableAmount) > 0)
+              .filter(b => parseFloat(b.availableBalance) > 0)
               .map((balance, idx) => {
-                const amount = parseFloat(balance.availableAmount);
+                const amount = parseFloat(balance.availableBalance);
                 const valueInBRL = amount * (prices[balance.cryptoType] || 0);
 
                 return (
@@ -157,7 +157,7 @@ export default function CollateralSummaryWidget() {
                         {balance.cryptoType}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {formatCrypto(balance.availableAmount)} {balance.cryptoType}
+                        {formatCrypto(balance.availableBalance)} {balance.cryptoType}
                       </p>
                     </div>
                     <p className="text-sm font-bold text-green-600 dark:text-green-400">
@@ -167,7 +167,7 @@ export default function CollateralSummaryWidget() {
                 );
               })}
 
-            {balances.filter(b => parseFloat(b.availableAmount) > 0).length === 0 && (
+            {balances.filter(b => parseFloat(b.availableBalance) > 0).length === 0 && (
               <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-2">
                 Nenhum saldo disponível
               </p>
@@ -208,9 +208,9 @@ export default function CollateralSummaryWidget() {
         {expandedLocked && (
           <div className="mt-4 pt-4 border-t border-orange-200 dark:border-orange-700 space-y-2">
             {balances
-              .filter(b => parseFloat(b.lockedAmount) > 0)
+              .filter(b => parseFloat(b.lockedBalance) > 0)
               .map((balance, idx) => {
-                const amount = parseFloat(balance.lockedAmount);
+                const amount = parseFloat(balance.lockedBalance);
                 const valueInBRL = amount * (prices[balance.cryptoType] || 0);
 
                 return (
@@ -223,7 +223,7 @@ export default function CollateralSummaryWidget() {
                         {balance.cryptoType}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        🔒 {formatCrypto(balance.lockedAmount)} {balance.cryptoType}
+                        🔒 {formatCrypto(balance.lockedBalance)} {balance.cryptoType}
                       </p>
                     </div>
                     <p className="text-sm font-bold text-orange-600 dark:text-orange-400">
