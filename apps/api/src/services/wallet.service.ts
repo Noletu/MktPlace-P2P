@@ -425,6 +425,77 @@ export class WalletService {
   }
 
   /**
+   * Credita saldo na carteira (transferência interna)
+   * Usado quando comprador recebe cripto do vendedor após transação P2P
+   *
+   * @param walletId ID da carteira
+   * @param amount Valor a creditar
+   * @param reason Motivo do crédito
+   * @param orderId ID do pedido relacionado (opcional)
+   */
+  static async creditBalance(
+    walletId: string,
+    amount: string,
+    reason: string,
+    orderId?: string
+  ) {
+    const wallet = await prisma.userWallet.findUnique({
+      where: {id: walletId},
+    });
+
+    if (!wallet) {
+      throw new Error(`Wallet ${walletId} not found`);
+    }
+
+    const amountToCredit = parseFloat(amount);
+
+    // Atualizar saldos
+    const newBalance = (parseFloat(wallet.balance) + amountToCredit).toString();
+    const newAvailableBalance = (parseFloat(wallet.availableBalance) + amountToCredit).toString();
+
+    await prisma.$transaction([
+      // Atualizar carteira
+      prisma.userWallet.update({
+        where: {id: walletId},
+        data: {
+          balance: newBalance,
+          availableBalance: newAvailableBalance,
+          totalDeposited: (parseFloat(wallet.totalDeposited) + amountToCredit).toString(),
+        },
+      }),
+
+      // Registrar transação
+      prisma.walletTransaction.create({
+        data: {
+          walletId,
+          userId: wallet.userId,
+          type: 'CREDIT',
+          amount: amount,
+          balanceBefore: wallet.balance,
+          balanceAfter: newBalance,
+          description: reason,
+          orderId: orderId,
+          metadata: JSON.stringify({
+            creditAmount: amount,
+            orderId: orderId,
+            timestamp: new Date().toISOString(),
+          }),
+        },
+      }),
+    ]);
+
+    console.log(
+      `✅ Credited ${amount} ${wallet.cryptoType} to wallet ${walletId} (${reason})`
+    );
+
+    return {
+      success: true,
+      newBalance,
+      newAvailableBalance,
+    };
+  }
+
+  /**
    * Força sincronização do saldo com blockchain
    */
   static async syncBalanceFromBlockchain(walletId: string) {

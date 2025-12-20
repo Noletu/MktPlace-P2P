@@ -2,9 +2,18 @@
 
 > Marketplace P2P para pagamento de boletos e PIX com criptomoedas. Mais barato, mais livre.
 
-**Versão:** 1.0.0+ (Unreleased) | **Status:** 🟢 Estável | **Data:** 14/12/2025
+**Versão:** 1.0.0+ (Unreleased) | **Status:** 🟢 Estável | **Data:** 19/12/2025
 
 ## 🆕 Novidades Recentes
+
+### 🐛 Correção de Dupla Taxação no Backend (19/12/2025)
+Bug crítico resolvido que causava sobrecarga de 2.5% adicional:
+- **Problema**: Backend aplicava taxa de 2.5% **duas vezes** ao bloquear colateral
+- **Exemplo**: Pedido de 120 BRL → Frontend mostrava 22.23 USDC, backend bloqueava 22.78 USDC
+- **Solução**: Removida multiplicação por 1.025 em `calculateRequiredCollateral()`
+- **Impacto**: Economia de ~0.55 USDC por transação (~R$ 3.00)
+- **Status**: ✅ Resolvido - Frontend e backend agora alinhados
+- **Taxa efetiva**: 2.5% (correto, sem dupla taxação)
 
 ### 🤖 Sistema de Controle de Workers (14/12/2025)
 Interface admin completa para controlar workers em runtime:
@@ -44,9 +53,11 @@ Nova ferramenta completa para resetar banco de dados em ambiente de desenvolvime
 - **Comando NPM**: `npm run db:clean`
 
 ### 🐛 Correções Recentes
-- ✅ **21/11/2025**: Colateral não era desbloqueado após cancelamento (commit 52a132e)
-- ✅ **17/11/2025**: Migrações pendentes aplicadas (2FA + penalidades)
-- ✅ **08/11/2025**: Erro 500 em `/api/v1/prices` - graceful degradation
+- ✅ **19/12/2025**: Dupla taxação no backend - Backend bloqueava 2.5% a mais
+- ✅ **18/12/2025**: Dupla taxação no frontend - Modal mostrava valor incorreto
+- ✅ **18/12/2025**: Sistema de cotação multi-fonte implementado
+- ✅ **14/12/2025**: Dashboard zero balance + Sistema de controle de workers
+- ✅ **21/11/2025**: Colateral não era desbloqueado após cancelamento
 
 📋 **Ver detalhes**: [CHANGELOG.md](CHANGELOG.md) | **Status**: [STATUS.md](STATUS.md) | **Bugs**: [BUGS_CRITICOS.md](BUGS_CRITICOS.md)
 

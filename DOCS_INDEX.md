@@ -1,231 +1,108 @@
-# Índice de Documentação - Mktplace da Liberdade
+# Índice de Documentação - Mktplace P2P
 
-**Data de Atualização**: 2025-12-10
-**Versão do Sistema**: v3.2.0
+## 📋 Changelog e Histórico
 
----
+- **[CHANGELOG.md](./CHANGELOG.md)** - Histórico completo de mudanças do projeto
+  - Últimas funcionalidades implementadas
+  - Bugs corrigidos
+  - Melhorias de segurança
+  - Bugs conhecidos e próximos passos
 
-## 📚 Documentação Disponível
+## 📅 Sessões de Desenvolvimento
 
-### 1. Sistema de Controle Administrativo de Fundos
+- **[SESSAO_19_12_2025.md](./SESSAO_19_12_2025.md)** - Correção de dupla taxação no backend
+  - Bug crítico: Backend aplicava taxa de 2.5% duas vezes ao bloquear colateral
+  - Economia de ~0.55 USDC por transação (~R$ 3.00)
+  - Frontend e backend finalmente alinhados
+  - Sistema 100% estável e pronto para produção
 
-#### Resumo Executivo
-**Arquivo**: `RESUMO_SISTEMA_ADMIN_FUNDS.md`
-**Tamanho**: ~400 linhas
-**Para quem**: Gestores, Product Owners, Admins não-técnicos
+- **[SESSAO_18_12_2025.md](./SESSAO_18_12_2025.md)** - Sistema de cotação multi-fonte + Correção dupla taxação frontend
+  - Sistema robusto de cotação USD/BRL com 5 fontes de fallback
+  - Correção de dupla taxação no colateral necessário (apenas display)
+  - Alta disponibilidade para stablecoins (USDC/USDT)
 
-**Conteúdo**:
-- Visão geral do sistema
-- Funcionalidades principais
-- Casos de uso práticos
-- Como usar (passo a passo)
-- Notas importantes de segurança
-- Checklist de deployment
+- **[SESSAO_16_12_2025.md](./SESSAO_16_12_2025.md)** - Sistema de transferência de crypto + Correção erro 400 chat
+  - Transferência interna automática de criptomoedas
+  - Reorganização dos logs de auditoria
+  - Análise de segurança do erro 400
 
-#### Guia Técnico Backend (API)
-**Arquivo**: `ADMIN_FUNDS_CONTROL.md`
-**Tamanho**: ~1200 linhas
-**Para quem**: Desenvolvedores Backend, DevOps
+- **[SESSAO_12_10_2025.md](./SESSAO_12_10_2025.md)** - Sessão anterior
+- **[SESSAO_CHAT_09_10_2025.md](./SESSAO_CHAT_09_10_2025.md)** - Implementação do sistema de chat
+- **[SESSAO_NOTIFICACOES_09_10_2025.md](./SESSAO_NOTIFICACOES_09_10_2025.md)** - Sistema de notificações
+- **[SESSAO_SEGURANCA_08_10_2025.md](./SESSAO_SEGURANCA_08_10_2025.md)** - Melhorias de segurança
+- **[SESSAO_07_10_2025.md](./SESSAO_07_10_2025.md)** - Sessão geral
 
-**Conteúdo**:
-- Documentação completa da API
-- Exemplos de cURL para todos os endpoints
-- Schema do banco de dados
-- Detalhes de implementação
-- Considerações de segurança técnicas
-- Troubleshooting
+## 🏗️ Documentação de Sistemas
 
-#### Guia Técnico Frontend (Interface) ⭐ NOVO
-**Arquivo**: `IMPLEMENTACAO_FRONTEND_ADMIN_FUNDS.md`
-**Tamanho**: ~1000 linhas
-**Para quem**: Desenvolvedores Frontend, UI/UX
+### Core Systems
 
-**Conteúdo**:
-- Documentação completa do frontend
-- 6 abas implementadas (Dashboard, Freeze, Transfer, Adjust, Audit, Analytics)
-- Sistema de notificações toast
-- Gráficos interativos com Recharts
-- Export de relatórios CSV
-- Interfaces TypeScript
-- Como usar e troubleshooting
+- **[README_COMPLETE.md](./README_COMPLETE.md)** - README completo do projeto
+- **[DOCUMENTACAO_COMPLETA.md](./DOCUMENTACAO_COMPLETA.md)** - Documentação técnica completa
 
-#### Changelog Backend
-**Arquivo**: `CHANGELOG_2025-12-08.md`
-**Tamanho**: ~400 linhas
-**Para quem**: Desenvolvedores, Time de QA
+### Sistemas Específicos
 
-**Conteúdo**:
-- Mudanças no código linha por linha
-- Arquivos criados/modificados
-- Testes realizados
-- Bugs corrigidos
-- Próximos passos técnicos
+- **[EXCHANGE_RATE_SYSTEM.md](./EXCHANGE_RATE_SYSTEM.md)** - Sistema de cotação multi-fonte USD/BRL
+- **[CHAT_SYSTEM.md](./CHAT_SYSTEM.md)** - Sistema de chat em tempo real
+- **[NOTIFICATION_SYSTEM.md](./NOTIFICATION_SYSTEM.md)** - Sistema de notificações
+- **[DISPUTE_SYSTEM.md](./DISPUTE_SYSTEM.md)** - Sistema de disputas
+- **[SISTEMA_COLATERAL.md](./SISTEMA_COLATERAL.md)** - Sistema de colateral
 
----
+## 🔒 Segurança
 
-### 2. Sistema HD Wallet (Carteira Hierárquica)
+- **[SECURITY.md](./SECURITY.md)** - Recursos de segurança implementados
+- **[SECURITY_AUDIT_REPORT.md](./SECURITY_AUDIT_REPORT.md)** - Relatório de auditoria
+- **[SECURITY_FEATURES.md](./SECURITY_FEATURES.md)** - Features de segurança detalhadas
 
-#### Documentação HD Wallet
-**Arquivo**: `apps/api/docs/HD_WALLET.md`
-**Para quem**: Desenvolvedores, Arquitetos de Sistema
+## 🧪 Testes
 
-**Conteúdo**:
-- Arquitetura BIP39/BIP32/BIP44
-- Derivação de carteiras
-- Multi-chain support
-- Segurança da master seed
-- Procedimentos de backup
+- **[GUIA_TESTES.md](./GUIA_TESTES.md)** - Guia completo de testes
+- **[TESTE_MANUAL.md](./TESTE_MANUAL.md)** - Procedimentos de teste manual
+- **[TESTE_REGRESSAO.md](./TESTE_REGRESSAO.md)** - Suite de testes de regressão
+- **[DOCUMENTACAO_TESTES_COMPLETA.md](./DOCUMENTACAO_TESTES_COMPLETA.md)** - Documentação completa de testes
+- **[DOCUMENTACAO_TESTES_E2E.md](./DOCUMENTACAO_TESTES_E2E.md)** - Testes end-to-end
 
----
+## 📚 Guias de Uso
 
-### 3. Planejamento Futuro
+- **[QUICKSTART.md](./QUICKSTART.md)** - Início rápido
+- **[GUIA_RAPIDO.md](./GUIA_RAPIDO.md)** - Guia rápido em português
+- **[COMO_USAR.md](./COMO_USAR.md)** - Como usar o sistema
+- **[SETUP.md](./SETUP.md)** - Setup do ambiente
+- **[GUIA_CRIACAO_PEDIDOS.md](./GUIA_CRIACAO_PEDIDOS.md)** - Como criar pedidos
 
-#### Plano: Master Seed Management
-**Arquivo**: `~/.claude/plans/curious-popping-music.md`
-**Status**: Planejado (não implementado ainda)
-**Para quem**: Arquitetos, CISO
+## 🚀 Funcionalidades e Novidades
 
-**Conteúdo**:
-- Interface admin para gerenciar master seed
-- Setup inicial seguro (wizard)
-- 2FA para operações críticas
-- Rotação de encryption keys
-- Recovery de emergência
+- **[NOVAS_FUNCIONALIDADES_08_10_2025.md](./NOVAS_FUNCIONALIDADES_08_10_2025.md)**
+- **[NOVA_FUNCIONALIDADE_NEGOCIACAO.md](./NOVA_FUNCIONALIDADE_NEGOCIACAO.md)**
+
+## 📦 Módulos Específicos
+
+- **[apps/api/README.md](./apps/api/README.md)** - API Backend
+- **[apps/api/BLOCKCHAIN_SETUP.md](./apps/api/BLOCKCHAIN_SETUP.md)** - Setup blockchain
+- **[tests/README.md](./tests/README.md)** - Testes automatizados
 
 ---
 
-## 🔗 Links Rápidos
-
-### Para Começar
-1. **Logar como Admin**: Use credenciais em `RESUMO_SISTEMA_ADMIN_FUNDS.md`
-2. **Testar API**: Exemplos em `ADMIN_FUNDS_CONTROL.md`
-3. **Entender Arquitetura**: Veja `apps/api/docs/HD_WALLET.md`
+## 📌 Links Rápidos
 
 ### Para Desenvolvedores
-- **Código Backend**: `apps/api/src/services/adminFunds.service.ts`
-- **Controllers**: `apps/api/src/controllers/adminFunds.controller.ts`
-- **Routes**: `apps/api/src/routes/adminFunds.routes.ts`
-- **Schema**: `apps/api/prisma/schema.prisma`
+1. [Setup do Ambiente](./SETUP.md)
+2. [Documentação Completa](./DOCUMENTACAO_COMPLETA.md)
+3. [CHANGELOG](./CHANGELOG.md)
+4. [Sessão Atual (16/12/2025)](./SESSAO_16_12_2025.md)
 
-### Para Gestores
-- **Visão Executiva**: `RESUMO_SISTEMA_ADMIN_FUNDS.md`
-- **Casos de Uso**: Seção "Casos de Uso Práticos" no resumo
-- **Riscos e Compliance**: Seção "Notas Importantes" no resumo
+### Para QA
+1. [Teste Manual](./TESTE_MANUAL.md)
+2. [Teste de Regressão](./TESTE_REGRESSAO.md)
+3. [Testes E2E](./DOCUMENTACAO_TESTES_E2E.md)
 
----
+### Para Usuários
+1. [Quick Start](./QUICKSTART.md)
+2. [Como Usar](./COMO_USAR.md)
 
-## 📊 Status de Implementação
-
-| Componente | Status | Arquivo |
-|------------|--------|---------|
-| Backend API | ✅ Implementado | `adminFunds.service.ts` |
-| Controllers REST | ✅ Implementado | `adminFunds.controller.ts` |
-| Routes | ✅ Implementado | `adminFunds.routes.ts` |
-| Database Schema | ✅ Migrado | `schema.prisma` |
-| Documentação Backend | ✅ Completa | `ADMIN_FUNDS_CONTROL.md` |
-| **Frontend Admin** | ✅ **Implementado** | `app/admin/funds/page.tsx` |
-| **Sistema de Notificações** | ✅ **Implementado** | `components/admin/Toast*.tsx` |
-| **Gráficos Analytics** | ✅ **Implementado** | Recharts + Analytics tab |
-| **Export CSV** | ✅ **Implementado** | Audit Log export |
-| **Documentação Frontend** | ✅ **Completa** | `IMPLEMENTACAO_FRONTEND_ADMIN_FUNDS.md` |
-| 2FA para Ops Críticas | ⏳ Pendente | - |
-| Testes Automatizados | ⏳ Pendente | - |
+### Para Segurança
+1. [Security Features](./SECURITY_FEATURES.md)
+2. [Audit Report](./SECURITY_AUDIT_REPORT.md)
 
 ---
 
-## 🚀 Comandos Úteis
-
-### Iniciar Servidores
-```bash
-# API
-cd /home/nicode/MktPlace-P2P/apps/api
-PORT=3001 npm run dev
-
-# Web
-cd /home/nicode/MktPlace-P2P/apps/web
-PORT=3000 npm run dev
-```
-
-### Testar Login
-```bash
-curl -X POST http://localhost:3001/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"master@mktplace.com","password":"Master@2025!"}'
-```
-
-### Ver Dashboard
-```bash
-# Primeiro faça login e pegue o token
-curl -X GET http://localhost:3001/api/v1/admin/funds/dashboard \
-  -H "Authorization: Bearer SEU_TOKEN_AQUI"
-```
-
-### Database
-```bash
-# Atualizar schema
-npx prisma db push
-
-# Visualizar dados
-npx prisma studio
-```
-
----
-
-## 📞 Contatos
-
-### Credenciais de Admin
-```
-MASTER:
-- Email: master@mktplace.com  
-- Senha: Master@2025!
-
-ADMIN:
-- Email: admin@mktplace.com
-- Senha: Admin@123
-```
-
-### Servidores
-- API: http://localhost:3001
-- Web: http://localhost:3000
-
-### Diretório do Projeto
-```
-/home/nicode/MktPlace-P2P/
-```
-
----
-
-## 📝 Histórico de Versões
-
-| Versão | Data | Descrição |
-|--------|------|-----------|
-| v3.2.0 | 2025-12-10 | Frontend Admin Funds completo (6 abas, toasts, gráficos, CSV export) |
-| v3.1.0 | 2025-12-08 | Sistema Admin Funds Control backend implementado |
-| v3.0.x | - | HD Wallet System, 2FA, Order System |
-| v2.x.x | - | Sistema base de marketplace P2P |
-
----
-
-## ⚠️ Avisos Importantes
-
-### Segurança
-- Master seed controla TODAS as carteiras
-- Guarde em cold storage (papel em cofre)
-- NUNCA compartilhe ou armazene digitalmente
-- Implemente 2FA antes de produção
-
-### Compliance
-- Mantenha logs por 7+ anos
-- Atenda ordens judiciais
-- Implemente KYC/AML rigoroso
-- Consulte advogado especializado
-
-### Backup
-- Backup diário do banco de dados
-- Teste restauração regularmente
-- Múltiplas cópias em locais diferentes
-
----
-
-_Última atualização: 2025-12-10_
-_Mantenha este índice atualizado conforme adicionar nova documentação_
+**Última atualização:** 19/12/2025

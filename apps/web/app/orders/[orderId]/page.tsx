@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import ChatWindow from '@/components/chat/ChatWindow';
 import ChatHistoryViewer from '@/components/chat/ChatHistoryViewer';
@@ -92,6 +92,12 @@ export default function OrderDetailsPage() {
   // Edit order state
   const [showEditModal, setShowEditModal] = useState(false);
 
+  // Parse orderData - useMemo to recalculate when order changes
+  const orderData = useMemo(() => {
+    if (!order) return null;
+    return JSON.parse(order.orderData);
+  }, [order]);
+
   useEffect(() => {
     fetchOrder();
     fetchChatUnreadCount();
@@ -172,6 +178,11 @@ export default function OrderDetailsPage() {
     try {
       const token = localStorage.getItem('accessToken');
       if (!token) return;
+
+      // Chat só disponível após MATCHED - não fazer polling para PENDING ou se order não existe
+      if (!order || order.status === 'PENDING') {
+        return;
+      }
 
       const response = await fetch(`http://localhost:3001/api/v1/chat/order/${orderId}`, {
         headers: {
@@ -657,7 +668,6 @@ export default function OrderDetailsPage() {
     );
   }
 
-  const orderData = JSON.parse(order.orderData);
   const transaction = order.transactions[0];
 
   // Detectar método de pagamento a partir do orderData
@@ -694,10 +704,8 @@ export default function OrderDetailsPage() {
     // Se chat existe, SEMPRE mostrar (prioridade máxima)
     if (chatId !== null) return true;
 
-    // Caso contrário, verificar status do pedido
+    // Chat só disponível após MATCHED (após aceitar o pedido)
     return (
-      order.status === 'PENDING' ||
-      order.status === 'IN_NEGOTIATION' ||
       order.status === 'MATCHED' ||
       order.status === 'PAYMENT_SENT' ||
       order.status === 'VALIDATING' ||

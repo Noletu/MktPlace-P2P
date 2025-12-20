@@ -274,6 +274,11 @@ model Order {
   refundedAt          DateTime?
   cancelReason        String? // AUTO_EXPIRED_BOLETO, AUTO_EXPIRED_PIX, USER_CANCELLED
 
+  // Crypto Transfer Tracking (Internal Transfer)
+  cryptoTransferred   Boolean   @default(false) // Se a cripto foi transferida para o comprador
+  cryptoTransferredAt DateTime? // Quando foi transferida
+  cryptoTransferredTo String? // userId do comprador que recebeu a cripto
+
   // Cancellation details
   cancelledBy         String? // userId de quem cancelou
   cancellationReason  String? // Motivo categorizado (USER_CHANGED_MIND, FOUND_BETTER_PRICE, etc)
@@ -909,4 +914,50 @@ model CancellationHistory {
   @@index([role])
   @@index([createdAt])
   @@index([penaltyApplied])
+}
+
+// ============================================
+// WORKER STATE PERSISTENCE - Tracks worker on/off state across restarts
+// ============================================
+
+// Worker State Persistence - Tracks worker on/off state across restarts
+model WorkerState {
+  id String @id @default(cuid())
+
+  // Unique identifier for the worker (e.g., "BalanceSyncWorker")
+  workerName String @unique
+
+  // State: is worker enabled?
+  isEnabled Boolean @default(false)
+
+  // Lifecycle timestamps
+  lastStartedAt  DateTime?
+  lastStoppedAt  DateTime?
+
+  // Standard timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Indexes for queries
+  @@index([isEnabled])
+  @@index([workerName])
+}
+
+// ============================================
+// EXCHANGE RATE - Tabela de taxas de câmbio para auditoria e cache
+// ============================================
+
+// Tabela de taxas de câmbio para auditoria e cache
+model ExchangeRate {
+  id String @id @default(cuid())
+
+  rate         String // Taxa USD/BRL
+  source       String // awesomeapi, banco_central, coingecko_brz, etc
+  responseTime Int // Tempo de resposta em ms
+  timestamp    DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  @@index([source])
+  @@index([timestamp])
 }

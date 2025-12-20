@@ -47,15 +47,11 @@ const NETWORK_OPTIONS: Record<CryptoType, Array<{
     { value: 'BITCOIN', label: 'Bitcoin', description: 'Rede principal', fee: '~$5', time: '30-60 min' },
   ],
   USDT: [
-    { value: 'ETHEREUM', label: 'Ethereum', description: 'ERC-20', fee: '~$10', time: '10-20 min' },
     { value: 'BASE', label: 'Base', description: 'Layer 2', fee: '~$0.50', time: '5-10 min' },
-    { value: 'ARBITRUM', label: 'Arbitrum', description: 'Layer 2', fee: '~$0.30', time: '5-10 min' },
     { value: 'SOLANA', label: 'Solana', description: 'Alta velocidade', fee: '~$0.01', time: '1-2 min' },
   ],
   USDC: [
-    { value: 'ETHEREUM', label: 'Ethereum', description: 'ERC-20', fee: '~$10', time: '10-20 min' },
     { value: 'BASE', label: 'Base', description: 'Layer 2', fee: '~$0.50', time: '5-10 min' },
-    { value: 'ARBITRUM', label: 'Arbitrum', description: 'Layer 2', fee: '~$0.30', time: '5-10 min' },
     { value: 'SOLANA', label: 'Solana', description: 'Alta velocidade', fee: '~$0.01', time: '1-2 min' },
   ],
 };

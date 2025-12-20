@@ -26,12 +26,14 @@ import presenceRoutes from './routes/presence.routes';
 import workersRoutes from './routes/workers.routes';
 import masterSeedAdminRoutes from './routes/masterSeedAdmin.routes';
 import adminFundsRoutes from './routes/adminFunds.routes';
+import exchangeRateRoutes from './routes/exchange-rate.routes';
 // import negotiationRoutes from './routes/negotiation.routes'; // DESABILITADO: Chat disponível apenas após aceitar pedido
 // import statsRoutes from './routes/stats.routes';
 import { apiLimiter } from './middleware/rateLimiter.middleware';
 import { logger } from './utils/logger';
 import { DepositMonitorWorker } from './workers/deposit-monitor.worker';
 import { BalanceSyncWorker } from './workers/balance-sync.worker';
+import { WorkerStateService } from './services/workerState.service';
 import { orderExpirationWorker } from './workers/order-expiration.worker';
 // import { negotiationTimeoutWorker } from './workers/negotiation-timeout.worker'; // DESABILITADO: Chat disponível apenas após aceitar pedido
 import { presenceMonitorWorker } from './workers/presence-monitor.worker';
@@ -238,6 +240,9 @@ app.use('/api/v1/workers', workersRoutes);
 // Master Seed Admin routes (HD Wallet seed management)
 app.use('/api/v1/admin/master-seed', masterSeedAdminRoutes);
 
+// Exchange Rate routes (multi-source USD/BRL rate with fallback)
+app.use('/api/v1/exchange-rate', exchangeRateRoutes);
+
 // Negotiation routes (pre-match negotiation) - DESABILITADO: Chat disponível apenas após aceitar pedido
 // app.use('/api/v1/negotiation', negotiationRoutes);
 
@@ -291,7 +296,7 @@ const io = initializeSocketServer(httpServer);
 const chatSocket = initializeChatSocket(io);
 const notificationSocket = initializeNotificationSocket(io);
 
-httpServer.listen(port, () => {
+httpServer.listen(port, async () => {
   logger.info(`Server started on port ${port}`);
   console.log(`⚡️ [server]: Server is running at http://localhost:${port}`);
   console.log(`🚀 [server]: Mktplace da Liberdade API v0.1.0`);
@@ -300,12 +305,25 @@ httpServer.listen(port, () => {
 
   // Iniciar workers
   DepositMonitorWorker.start(); // HD Wallet deposit monitor
-  // BalanceSyncWorker.start(); // Controlado via endpoints HTTP (não auto-start)
   orderExpirationWorker.start();
   // negotiationTimeoutWorker.start(); // DESABILITADO: Chat disponível apenas após aceitar pedido
   presenceMonitorWorker.start();
   chatArchiveWorker.start();
   // collateralReleaseWorker.start(); // DESABILITADO: processamento agora é feito direto no transaction.service.ts
+
+  // Restaurar estado do BalanceSyncWorker do banco de dados
+  try {
+    const isEnabled = await WorkerStateService.getState('BalanceSyncWorker');
+    if (isEnabled) {
+      await BalanceSyncWorker.start();
+      logger.info('✅ [workers]: BalanceSyncWorker restaurado (estava habilitado)');
+    } else {
+      logger.info('⏸️  [workers]: BalanceSyncWorker mantido parado (estava desabilitado)');
+    }
+  } catch (error) {
+    logger.error('❌ [workers]: Erro ao restaurar estado do BalanceSyncWorker:', error);
+  }
+
   console.log('⚙️  [workers]: Background workers started (HD wallet monitoring, order expiration, presence, chat archive)');
 });
 
