@@ -1,5 +1,6 @@
 import {PrismaClient} from '@prisma/client';
 import {BlockchainService} from '../services/blockchain/blockchain.service';
+import {WorkerStateService} from '../services/workerState.service';
 
 const prisma = new PrismaClient();
 
@@ -18,19 +19,22 @@ const prisma = new PrismaClient();
  */
 
 export class BalanceSyncWorker {
-  private static isRunning = false;
   private static intervalId: NodeJS.Timeout | null = null;
+  private static isExecuting: boolean = false; // Flag para prevenir execuções concorrentes
 
   /**
    * Inicia o worker
    */
-  static start() {
+  static async start() {
     if (this.intervalId) {
       console.log('⚠️  Balance Sync já está rodando');
       return;
     }
 
     console.log('🔄 Balance Sync Worker iniciado (a cada 5min)');
+
+    // Salvar estado no banco
+    await WorkerStateService.setState('BalanceSyncWorker', true);
 
     // Executar após 1 minuto (dar tempo do deposit monitor rodar primeiro)
     setTimeout(() => {
@@ -46,11 +50,15 @@ export class BalanceSyncWorker {
   /**
    * Para o worker
    */
-  static stop() {
+  static async stop() {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
+      this.isExecuting = false; // Resetar flag de execução
       console.log('🛑 Balance Sync Worker parado');
+
+      // Salvar estado no banco
+      await WorkerStateService.setState('BalanceSyncWorker', false);
     }
   }
 
@@ -65,12 +73,13 @@ export class BalanceSyncWorker {
    * Executa sincronização completa
    */
   static async run() {
-    if (this.isRunning) {
+    // Prevenir execuções concorrentes
+    if (this.isExecuting) {
       console.log('⏭️  Balance Sync: já executando, pulando...');
       return;
     }
 
-    this.isRunning = true;
+    this.isExecuting = true;
 
     try {
       console.log('\n🔄 [Balance Sync] Sincronizando saldos...');
@@ -107,7 +116,7 @@ export class BalanceSyncWorker {
     } catch (error) {
       console.error('❌ [Balance Sync] Erro:', (error as Error).message);
     } finally {
-      this.isRunning = false;
+      this.isExecuting = false;
     }
   }
 
@@ -233,12 +242,12 @@ export class BalanceSyncWorker {
 console.log('⏭️  BalanceSyncWorker em modo manual (controle via API)');
 
 // Graceful shutdown
-process.on('SIGINT', () => {
-  BalanceSyncWorker.stop();
+process.on('SIGINT', async () => {
+  await BalanceSyncWorker.stop();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
-  BalanceSyncWorker.stop();
+process.on('SIGTERM', async () => {
+  await BalanceSyncWorker.stop();
   process.exit(0);
 });

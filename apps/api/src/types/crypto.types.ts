@@ -12,6 +12,8 @@ export enum Network {
   ETHEREUM = 'ETHEREUM',
   POLYGON = 'POLYGON',
   BSC = 'BSC',
+  BASE = 'BASE',
+  ARBITRUM = 'ARBITRUM',
   SOLANA = 'SOLANA',
   MONERO = 'MONERO',
   ZCASH = 'ZCASH',
@@ -23,8 +25,8 @@ export const CRYPTO_NETWORKS: Record<CryptoType, Network[]> = {
   [CryptoType.ETH]: [Network.ETHEREUM],
   [CryptoType.XMR]: [Network.MONERO],
   [CryptoType.ZEC]: [Network.ZCASH],
-  [CryptoType.USDC]: [Network.ETHEREUM, Network.POLYGON, Network.BSC, Network.SOLANA],
-  [CryptoType.USDT]: [Network.ETHEREUM, Network.POLYGON, Network.BSC, Network.SOLANA],
+  [CryptoType.USDC]: [Network.BASE, Network.SOLANA],
+  [CryptoType.USDT]: [Network.BASE, Network.SOLANA],
 };
 
 // Mapeamento de IDs do CoinGecko

@@ -37,12 +37,13 @@ export class OrderService {
   }
 
   /**
-   * Calcular colateral necessário (cryptoAmount + 2.5% de taxa)
+   * Retorna o colateral necessário (valor bruto recebido do frontend)
+   * IMPORTANTE: O frontend já envia o valor com taxa embutida (divide por 0.975)
+   * Este método apenas converte para string formatada - NÃO adiciona taxa
    */
   calculateRequiredCollateral(cryptoAmount: string): string {
     const amount = parseFloat(cryptoAmount);
-    const collateral = amount * (1 + FEE_CONFIG.TOTAL_FEE_PERCENTAGE);
-    return collateral.toFixed(8);
+    return amount.toFixed(8);  // Retorna valor exato, sem multiplicar
   }
 
   /**
@@ -901,8 +902,12 @@ export class OrderService {
       const currentOrderData = JSON.parse(order.orderData);
       const newOrderData = { ...currentOrderData };
 
+      // Detectar método de pagamento pelos dados existentes
+      const isPix = currentOrderData.pixKey !== undefined;
+      const isBoleto = currentOrderData.barcode !== undefined;
+
       // Validar tipo de pedido antes de permitir edição
-      if (order.type === 'PIX') {
+      if (isPix) {
         // Atualizar campos PIX
         if (updates.orderData.pixKey !== undefined) {
           if (updates.orderData.pixKey.trim().length < 3) {
@@ -925,7 +930,7 @@ export class OrderService {
           }
           newOrderData.recipientName = updates.orderData.recipientName;
         }
-      } else if (order.type === 'BOLETO') {
+      } else if (isBoleto) {
         // Atualizar campos BOLETO
         if (updates.orderData.barcode !== undefined) {
           if (updates.orderData.barcode.length < 44) {

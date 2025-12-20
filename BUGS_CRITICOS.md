@@ -8,10 +8,22 @@ Este arquivo lista todos os bugs críticos conhecidos que estão sendo trabalhad
 
 *Nenhum bug crítico ativo no momento.*
 
-**Última verificação**: 14/12/2025
+**Última verificação**: 19/12/2025 - 23:00
 **Status do sistema**: 🟢 **ESTÁVEL E PRONTO PARA PRODUÇÃO**
 
-**Trabalhos recentes realizados** (14/12/2025):
+**Trabalhos recentes realizados** (19/12/2025):
+- ✅ **Edição de pedidos não salvava** corrigida completamente
+  - Backend detecta corretamente PIX vs BOLETO pelos dados (não mais por `order.type`)
+  - Todas as edições agora são processadas e salvas no banco
+  - Frontend atualiza instantaneamente com `useMemo` hook
+  - Campos funcionando: recipientName, pixKey, pixKeyType, barcode, dueDate, customExpirationHours, recipientDocument
+- ✅ **Dupla taxação no backend** corrigida completamente
+  - Backend não aplica mais 2.5% adicional ao bloquear colateral
+  - Frontend e backend agora alinhados (nenhum multiplica por 1.025)
+  - Economia de ~0.55 USDC por transação (~R$ 3.00)
+  - Taxa efetiva corrigida de 5.13% para 2.5%
+
+**Trabalhos anteriores** (14/12/2025):
 - ✅ **Sistema de Controle de Workers** implementado via interface admin
 - ✅ **Dashboard zero balance** corrigido (field names + response structure)
 - ✅ **Endpoint 404** corrigido (/collateral-balance)
@@ -82,6 +94,108 @@ Este arquivo lista todos os bugs críticos conhecidos que estão sendo trabalhad
 ---
 
 ## ✅ Bugs Resolvidos Recentemente
+
+### v1.0.0+ (19/12/2025) - Correção de Edição de Pedidos + Dupla Taxação
+
+#### ✅ Edição de Pedidos Não Salvava no Banco de Dados
+**Status**: ✅ RESOLVIDO
+**Data Resolução**: 19/12/2025 - 23:00
+**Prioridade**: 🔴 CRÍTICA
+
+**Descrição**: Backend não processava edições de pedidos PENDING - dados permaneciam inalterados no banco mesmo com mensagem de sucesso.
+
+**Sintomas**:
+- Usuário editava nome do beneficiário, chave PIX, boleto, etc.
+- Mensagem "✅ Pedido atualizado com sucesso!" aparecia
+- Modal fechava normalmente
+- **Mas dados NÃO eram salvos no banco de dados**
+- Mesmo após F5, dados continuavam com valores antigos
+
+**Causa Raiz (Backend)**:
+- Lógica usava `order.type === 'PIX'` mas `order.type` armazena **"SELL"/"BUY"** (tipo de ordem)
+- Backend **nunca entrava nos blocos** de atualização PIX/BOLETO
+- Código de atualização nunca executava → `newOrderData` ficava igual a `currentOrderData`
+
+**Debugging**:
+```
+🔵 recipientName no updates: Joao  ← Backend RECEBEU ✅
+🟡 order.type: SELL                ← Verificação errada! ❌
+🟢 newOrderData: { recipientName: 'Maria' }  ← Não atualizou! ❌
+```
+
+**Solução (Backend)**:
+```typescript
+// ANTES (ERRADO):
+if (order.type === 'PIX') { ... }
+
+// DEPOIS (CORRETO):
+const isPix = currentOrderData.pixKey !== undefined;
+const isBoleto = currentOrderData.barcode !== undefined;
+if (isPix) { ... }
+else if (isBoleto) { ... }
+```
+
+**Solução (Frontend)**:
+- Adicionado `useMemo` para garantir reatividade de `orderData`
+- Guard clause para evitar parsing de dados nulos
+
+**Arquivos Modificados**:
+- `apps/api/src/services/order.service.ts:906-908,924,962` - Detecção PIX/BOLETO corrigida
+- `apps/web/app/orders/[orderId]/page.tsx:96-99` - Adicionado `useMemo` hook
+
+**Resultado**:
+- ✅ Backend detecta corretamente método de pagamento
+- ✅ Todas as edições são processadas e salvas
+- ✅ Frontend atualiza instantaneamente
+- ✅ Todos os campos editáveis funcionando: recipientName, pixKey, pixKeyType, barcode, dueDate, customExpirationHours, recipientDocument
+
+---
+
+#### ✅ Dupla Taxação no Bloqueio de Colateral (Backend)
+**Status**: ✅ RESOLVIDO
+**Data Resolução**: 19/12/2025 - 14:00
+**Prioridade**: 🔴 CRÍTICA
+
+**Descrição**: Backend aplicava taxa de 2.5% **duas vezes** ao bloquear colateral em pedidos.
+
+**Sintomas**:
+- Usuário criava pedido de 120 BRL em USDC
+- Frontend calculava e mostrava: 22.23 USDC necessário
+- Backend bloqueava: 22.78575 USDC (22.23 × 1.025)
+- Diferença: 0.55575 USDC = 2.5% a mais por transação
+- Taxa efetiva: ~5.13% ao invés de 2.5%
+
+**Causas Identificadas**:
+1. **Frontend** (linha 292 de `apps/web/app/orders/create/page.tsx`):
+   - Já divide por 0.975 para incluir a taxa: `brl / price / 0.975`
+   - Valor enviado ao backend JÁ tem taxa embutida
+
+2. **Backend** (linha 44 de `apps/api/src/services/order.service.ts`):
+   - Método `calculateRequiredCollateral()` multiplicava por 1.025 novamente
+   - Código: `amount * (1 + FEE_CONFIG.TOTAL_FEE_PERCENTAGE)` ❌
+   - Aplicava taxa sobre valor que já tinha taxa embutida (dupla taxação)
+
+**Solução**:
+- Removida multiplicação por 1.025 no método `calculateRequiredCollateral()`
+- Método agora apenas formata o valor recebido, sem adicionar taxa
+- Código corrigido: `return amount.toFixed(8)` ✅
+- Comentário atualizado para deixar claro que frontend já envia valor com taxa
+
+**Arquivos Modificados**:
+- `apps/api/src/services/order.service.ts:42-46` - Removida multiplicação indevida
+
+**Resultado**:
+- Colateral bloqueado agora = valor exato calculado no frontend
+- Taxa efetiva: 2.5% (correto)
+- Economia: ~0.55 USDC por transação (~R$ 3.00 na cotação atual)
+- Frontend e backend finalmente alinhados
+
+**Observação**:
+- Correção do dia 18/12/2025 resolveu apenas o DISPLAY no frontend
+- Backend continuava bloqueando valor incorreto até esta correção
+- Sistema agora completamente consistente
+
+---
 
 ### v1.0.0+ (14/12/2025) - Correções de Saldos e Workers
 

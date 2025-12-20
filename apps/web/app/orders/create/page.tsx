@@ -14,6 +14,8 @@ export default function CreateOrderPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [prices, setPrices] = useState<any>({});
+  const [currentRate, setCurrentRate] = useState<string>('');
+  const [rateSource, setRateSource] = useState<string>('');
 
   // Form state
   const [orderType, setOrderType] = useState<'PIX' | 'BOLETO'>('PIX');
@@ -52,8 +54,8 @@ export default function CreateOrderPage() {
 
   const NETWORK_OPTIONS: Record<string, string[]> = {
     BTC: ['BITCOIN'],
-    USDC: ['ETHEREUM', 'BASE', 'ARBITRUM', 'SOLANA'],
-    USDT: ['ETHEREUM', 'BASE', 'ARBITRUM', 'SOLANA'],
+    USDC: ['BASE', 'SOLANA'],
+    USDT: ['BASE', 'SOLANA'],
   };
 
   useEffect(() => {
@@ -226,6 +228,13 @@ export default function CreateOrderPage() {
         });
         console.log('💰 Price map:', priceMap);
         setPrices(priceMap);
+
+        // Mostrar cotação USD/BRL e fonte para stablecoins
+        const usdcData = data.data.find((p: any) => p.crypto === 'USDC');
+        if (usdcData) {
+          setCurrentRate(parseFloat(usdcData.brlPrice).toFixed(2));
+          setRateSource(usdcData.source); // awesomeapi, banco_central, etc
+        }
       }
     } catch (err) {
       console.error('Erro ao buscar preços:', err);
@@ -337,8 +346,8 @@ export default function CreateOrderPage() {
       // NOVO: Primeiro verificar se tem saldo interno suficiente
       console.log('💰 Verificando saldo interno...');
 
-      // Calcular colateral necessário (cryptoAmount + 2.5% de taxa)
-      const requiredCollateral = (parseFloat(cryptoAmount) * 1.025).toFixed(8);
+      // Calcular colateral necessário (valor bruto já inclui taxa embutida)
+      const requiredCollateral = parseFloat(cryptoAmount).toFixed(8);
 
       const checkBalanceResponse = await fetch(
         `http://localhost:3001/api/v1/collateral-balance/check-sufficient/${crypto}/${network}/${requiredCollateral}`,
@@ -1030,6 +1039,25 @@ export default function CreateOrderPage() {
                     orderType === 'BOLETO' && barcodeValid === true ? 'bg-gray-100 dark:bg-gray-700' : 'bg-white dark:bg-gray-700'
                   }`}
                 />
+
+                {/* Cotação USD/BRL */}
+                {(crypto === 'USDC' || crypto === 'USDT') && currentRate && (
+                  <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600 dark:text-gray-400">
+                        Cotação atual (1 USD):
+                      </span>
+                      <span className="font-semibold text-blue-600 dark:text-blue-400">
+                        R$ {currentRate}
+                      </span>
+                    </div>
+                    {rateSource && (
+                      <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                        Fonte: {rateSource === 'awesomeapi' ? 'AwesomeAPI' : rateSource === 'banco_central' ? 'Banco Central' : rateSource === 'coingecko_brz' ? 'CoinGecko BRZ' : rateSource}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Tempo de Expiração */}

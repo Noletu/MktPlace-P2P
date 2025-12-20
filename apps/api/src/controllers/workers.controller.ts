@@ -16,9 +16,9 @@ export class WorkersController {
       const wasRunning = BalanceSyncWorker.isRunning();
 
       if (wasRunning) {
-        BalanceSyncWorker.stop();
+        await BalanceSyncWorker.stop();
       } else {
-        BalanceSyncWorker.start();
+        await BalanceSyncWorker.start();
       }
 
       const isNowRunning = BalanceSyncWorker.isRunning();
@@ -59,7 +59,7 @@ export class WorkersController {
         });
       }
 
-      BalanceSyncWorker.start();
+      await BalanceSyncWorker.start();
 
       console.log('▶️  [Workers] BalanceSyncWorker iniciado por admin');
 
@@ -91,7 +91,7 @@ export class WorkersController {
         });
       }
 
-      BalanceSyncWorker.stop();
+      await BalanceSyncWorker.stop();
 
       console.log('⏹️  [Workers] BalanceSyncWorker parado por admin');
 

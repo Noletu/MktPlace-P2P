@@ -3,6 +3,9 @@ import { TransactionStatus, SubmitProofInput, ValidateProofInput, DisputeInput }
 import { OrderStatus } from '../types/order.types';
 import { notificationService } from './notification.service';
 import { prisma } from '../utils/prisma';
+import { DerivationService } from './hd-wallet/derivation.service';
+import { KeyManagementService } from './hd-wallet/key-management.service';
+import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from './auditLog.service';
 
 export class TransactionService {
   /**
@@ -102,25 +105,180 @@ export class TransactionService {
           },
         });
 
-        // 2. Atualizar status do pedido para COMPLETED
-        await tx.order.update({
+        // 2. Atualizar status do pedido e transferir cripto
+        const completedOrder = await tx.order.update({
           where: { id: transaction.orderId },
           data: {
             status: OrderStatus.COMPLETED,
             completedAt: new Date(),
             collateralLocked: false,
             collateralUnlockedAt: new Date(),
+            // Marcar transferência de cripto
+            cryptoTransferred: true,
+            cryptoTransferredAt: new Date(),
+            cryptoTransferredTo: transaction.payerId, // comprador
           },
         });
 
         console.log(`✅ Transação aprovada e pedido completado: ${transaction.orderId}`);
 
-        // 3. Processar saldo interno foi migrado para HD Wallet system
-        // O deduct do colateral agora é feito via WalletService/CollateralService
-        // Este código legado está comentado pois InternalBalance não existe mais no schema
+        // 3. TRANSFERIR CRIPTO do vendedor para o comprador
 
-        // TODO: Se necessário, implementar deduct via CollateralService aqui
-        // Exemplo: await collateralService.deductCollateral(userId, cryptoType, network, amount)
+        // 3.1 Validação: verificar se ordem ainda não foi transferida (idempotência)
+        if (transaction.order.cryptoTransferred) {
+          console.log(`⚠️ Cripto já foi transferida para pedido ${transaction.orderId} - pulando transferência`);
+          return approved;
+        }
+
+        // 3.2 Buscar carteira do VENDEDOR (onde colateral está bloqueado)
+        if (!completedOrder.walletId) {
+          throw new Error('Order has no wallet (collateral source)');
+        }
+
+        const sellerWallet = await tx.userWallet.findUnique({
+          where: { id: completedOrder.walletId },
+        });
+
+        if (!sellerWallet) {
+          throw new Error('Seller wallet not found');
+        }
+
+        // 3.3 Buscar/criar carteira do COMPRADOR (mesma crypto/network)
+        let buyerWallet = await tx.userWallet.findUnique({
+          where: {
+            userId_cryptoType_network: {
+              userId: transaction.payerId,
+              cryptoType: completedOrder.cryptoType,
+              network: completedOrder.cryptoNetwork,
+            },
+          },
+        });
+
+        // 3.4 Se comprador não tem carteira, CRIAR agora (dentro da transação)
+        if (!buyerWallet) {
+          console.log(`📝 Criando carteira para comprador ${transaction.payerId}...`);
+
+          // Derivar nova carteira para o comprador
+          const { address, privateKey, derivationPath } = DerivationService.deriveUserWallet(
+            transaction.payerId,
+            completedOrder.cryptoType,
+            completedOrder.cryptoNetwork
+          );
+
+          const encryptedPrivateKey = KeyManagementService.encryptPrivateKey(
+            privateKey,
+            transaction.payerId
+          );
+
+          buyerWallet = await tx.userWallet.create({
+            data: {
+              userId: transaction.payerId,
+              cryptoType: completedOrder.cryptoType,
+              network: completedOrder.cryptoNetwork,
+              address,
+              derivationPath,
+              encryptedPrivateKey,
+              balance: '0',
+              availableBalance: '0',
+              lockedBalance: '0',
+              totalDeposited: '0',
+              isActive: true,
+              lastSyncedAt: new Date(),
+            },
+          });
+
+          console.log(`✅ Carteira criada: ${buyerWallet.address}`);
+        }
+
+        // 3.5 Calcular valor total a transferir (crypto + reward)
+        const cryptoAmount = parseFloat(completedOrder.cryptoAmount);
+        const payerReward = parseFloat(completedOrder.payerReward); // 1% cashback
+        const totalToTransfer = cryptoAmount + payerReward;
+
+        // 3.6 Validação: verificar se vendedor tem saldo bloqueado suficiente
+        const sellerLockedBalance = parseFloat(sellerWallet.lockedBalance);
+        if (sellerLockedBalance < totalToTransfer) {
+          throw new Error(
+            `Insufficient locked balance. Seller has ${sellerLockedBalance} locked, needs ${totalToTransfer}`
+          );
+        }
+
+        // 3.7 DEDUZIR do vendedor (do saldo LOCKED)
+        const sellerNewLocked = sellerLockedBalance - totalToTransfer;
+        const sellerNewBalance = parseFloat(sellerWallet.balance) - totalToTransfer;
+
+        await tx.userWallet.update({
+          where: { id: sellerWallet.id },
+          data: {
+            balance: sellerNewBalance.toFixed(8),
+            lockedBalance: sellerNewLocked.toFixed(8),
+            totalUsed: (parseFloat(sellerWallet.totalUsed) + totalToTransfer).toFixed(8),
+          },
+        });
+
+        // 3.8 CREDITAR no comprador (no saldo AVAILABLE)
+        const buyerNewBalance = parseFloat(buyerWallet.balance) + totalToTransfer;
+        const buyerNewAvailable = parseFloat(buyerWallet.availableBalance) + totalToTransfer;
+
+        await tx.userWallet.update({
+          where: { id: buyerWallet.id },
+          data: {
+            balance: buyerNewBalance.toFixed(8),
+            availableBalance: buyerNewAvailable.toFixed(8),
+            totalDeposited: (parseFloat(buyerWallet.totalDeposited) + totalToTransfer).toFixed(8),
+          },
+        });
+
+        // 3.9 Registrar transação de DEDUCT (vendedor)
+        await tx.walletTransaction.create({
+          data: {
+            walletId: sellerWallet.id,
+            userId: sellerWallet.userId,
+            orderId: completedOrder.id,
+            type: 'DEDUCT',
+            amount: totalToTransfer.toFixed(8),
+            balanceBefore: sellerWallet.balance,
+            balanceAfter: sellerNewBalance.toFixed(8),
+            lockedBefore: sellerWallet.lockedBalance,
+            lockedAfter: sellerNewLocked.toFixed(8),
+            description: `Crypto transferred to buyer (Order ${completedOrder.id})`,
+            metadata: JSON.stringify({
+              orderId: completedOrder.id,
+              buyerUserId: transaction.payerId,
+              buyerWalletId: buyerWallet.id,
+              cryptoAmount: completedOrder.cryptoAmount,
+              payerReward: completedOrder.payerReward,
+              totalTransferred: totalToTransfer.toFixed(8),
+              timestamp: new Date().toISOString(),
+            }),
+          },
+        });
+
+        // 3.10 Registrar transação de CREDIT (comprador)
+        await tx.walletTransaction.create({
+          data: {
+            walletId: buyerWallet.id,
+            userId: buyerWallet.userId,
+            orderId: completedOrder.id,
+            type: 'CREDIT',
+            amount: totalToTransfer.toFixed(8),
+            balanceBefore: buyerWallet.balance,
+            balanceAfter: buyerNewBalance.toFixed(8),
+            description: `Crypto received from seller (Order ${completedOrder.id})`,
+            metadata: JSON.stringify({
+              orderId: completedOrder.id,
+              sellerUserId: completedOrder.userId,
+              sellerWalletId: sellerWallet.id,
+              cryptoAmount: completedOrder.cryptoAmount,
+              payerReward: completedOrder.payerReward,
+              totalReceived: totalToTransfer.toFixed(8),
+              timestamp: new Date().toISOString(),
+            }),
+          },
+        });
+
+        console.log(`💸 Crypto transferida: ${totalToTransfer.toFixed(8)} ${completedOrder.cryptoType}`);
+        console.log(`   Vendedor: ${sellerWallet.userId} → Comprador: ${transaction.payerId}`);
 
         return approved;
       }, {
@@ -129,6 +287,104 @@ export class TransactionService {
       });
 
       console.log(`✅ TRANSAÇÃO ATÔMICA COMPLETA com sucesso!`);
+
+      // Registrar audit logs (fora da transação crítica)
+      setImmediate(async () => {
+        try {
+          // Buscar dados atualizados da order para os logs
+          const completedOrder = await prisma.order.findUnique({
+            where: { id: transaction.orderId },
+            select: {
+              id: true,
+              userId: true,
+              cryptoType: true,
+              cryptoNetwork: true,
+              cryptoAmount: true,
+              payerReward: true,
+            },
+          });
+
+          if (completedOrder) {
+            const cryptoAmount = parseFloat(completedOrder.cryptoAmount);
+            const payerReward = parseFloat(completedOrder.payerReward);
+            const totalTransferred = cryptoAmount + payerReward;
+
+            // 1. ORDER_COMPLETED - Comprador
+            await auditLogService.log({
+              userId: transaction.payerId,
+              action: AUDIT_ACTIONS.ORDER_COMPLETED,
+              resource: AUDIT_RESOURCES.TRANSACTION,
+              resourceId: completedOrder.id,
+              description: `Order completed - Payment validated and approved`,
+              metadata: {
+                orderId: completedOrder.id,
+                sellerId: completedOrder.userId,
+                buyerId: transaction.payerId,
+                role: 'buyer',
+              },
+              success: true,
+            });
+
+            // 2. ORDER_COMPLETED - Vendedor
+            await auditLogService.log({
+              userId: completedOrder.userId,
+              action: AUDIT_ACTIONS.ORDER_COMPLETED,
+              resource: AUDIT_RESOURCES.TRANSACTION,
+              resourceId: completedOrder.id,
+              description: `Order completed - Payment received and confirmed`,
+              metadata: {
+                orderId: completedOrder.id,
+                sellerId: completedOrder.userId,
+                buyerId: transaction.payerId,
+                role: 'seller',
+              },
+              success: true,
+            });
+
+            // 3. CRYPTO_TRANSFER - Comprador (visibilidade)
+            await auditLogService.log({
+              userId: transaction.payerId,
+              action: AUDIT_ACTIONS.CRYPTO_TRANSFER,
+              resource: AUDIT_RESOURCES.TRANSACTION,
+              resourceId: completedOrder.id,
+              description: `Crypto transferred: ${totalTransferred.toFixed(8)} ${completedOrder.cryptoType} from seller to buyer`,
+              metadata: {
+                orderId: completedOrder.id,
+                fromUserId: completedOrder.userId,
+                toUserId: transaction.payerId,
+                cryptoType: completedOrder.cryptoType,
+                network: completedOrder.cryptoNetwork,
+                amount: totalTransferred.toFixed(8),
+                direction: 'SELLER_TO_BUYER',
+              },
+              success: true,
+            });
+
+            // 4. CRYPTO_TRANSFER - Vendedor (visibilidade)
+            await auditLogService.log({
+              userId: completedOrder.userId,
+              action: AUDIT_ACTIONS.CRYPTO_TRANSFER,
+              resource: AUDIT_RESOURCES.TRANSACTION,
+              resourceId: completedOrder.id,
+              description: `Crypto transferred: ${totalTransferred.toFixed(8)} ${completedOrder.cryptoType} from seller to buyer`,
+              metadata: {
+                orderId: completedOrder.id,
+                fromUserId: completedOrder.userId,
+                toUserId: transaction.payerId,
+                cryptoType: completedOrder.cryptoType,
+                network: completedOrder.cryptoNetwork,
+                amount: totalTransferred.toFixed(8),
+                direction: 'SELLER_TO_BUYER',
+              },
+              success: true,
+            });
+
+            console.log(`📝 Audit logs: ORDER_COMPLETED (x2) + CRYPTO_TRANSFER (x2)`);
+          }
+        } catch (error) {
+          console.error('Failed to log audit entries:', error);
+        }
+      });
 
       // Atualizar reputação dos usuários (fora da transação crítica)
       setImmediate(async () => {

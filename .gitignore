@@ -54,3 +54,11 @@ tsconfig.tsbuildinfo
 # Temporary scripts and files
 apps/api/delete-*.ts
 SESSION_SUMMARY_*.md
+
+# SQLite temporary files
+*.db-shm
+*.db-wal
+
+# SQLite temporary files
+*.db-shm
+*.db-wal
