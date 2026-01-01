@@ -69,7 +69,7 @@ export default function ReviewDetailPage() {
       if (!userDataStr) return;
       const userData = JSON.parse(userDataStr);
 
-      const response = await fetch(`http://localhost:3001/api/v1/reviews/user/${userData.id}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/reviews/user/${userData.id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 

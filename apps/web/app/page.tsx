@@ -18,14 +18,33 @@ export default function HomePage() {
     successRate: 98.5,
   });
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
-    // Verificar se o usuário está logado
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      setIsLoggedIn(true);
-    }
+    const checkAuth = async () => {
+      const token = localStorage.getItem('accessToken');
+      if (token) {
+        try {
+          const response = await fetch('http://localhost:3001/api/v1/auth/me', {
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            setUserRole(data.data.role);
+            setIsLoggedIn(true);
+          }
+        } catch (error) {
+          console.error('Error fetching user:', error);
+        }
+      }
+    };
+
+    checkAuth();
   }, []);
+
+  // Detectar se é admin
+  const isAdmin = userRole === 'ADMIN' || userRole === 'MASTER';
 
   return (
     <>
@@ -47,21 +66,41 @@ export default function HomePage() {
 
           <div className="mt-10 flex gap-4 justify-center">
             {isLoggedIn ? (
-              <>
-                <a
-                  href="/dashboard"
-                  className="px-8 py-4 bg-blue-600 dark:bg-blue-700 text-white text-lg font-semibold rounded-lg hover:bg-blue-700 dark:hover:bg-blue-800 transition shadow-lg"
-                >
-                  Ir para Dashboard
-                </a>
-                <a
-                  href="/marketplace"
-                  className="px-8 py-4 bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 text-lg font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition shadow-lg border-2 border-blue-600 dark:border-blue-500"
-                >
-                  Ver Marketplace
-                </a>
-              </>
+              isAdmin ? (
+                // Botões para ADMINS
+                <>
+                  <a
+                    href="/admin"
+                    className="px-8 py-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-lg font-semibold rounded-lg transition shadow-lg"
+                  >
+                    ⚙️ Painel Admin
+                  </a>
+                  <a
+                    href="/admin/marketplace"
+                    className="px-8 py-4 bg-white dark:bg-gray-700 border-2 border-purple-600 dark:border-purple-500 text-purple-600 dark:text-purple-400 text-lg font-semibold rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 transition shadow-lg"
+                  >
+                    🛒 Ver Marketplace
+                  </a>
+                </>
+              ) : (
+                // Botões para USUÁRIOS NORMAIS
+                <>
+                  <a
+                    href="/dashboard"
+                    className="px-8 py-4 bg-blue-600 dark:bg-blue-700 text-white text-lg font-semibold rounded-lg hover:bg-blue-700 dark:hover:bg-blue-800 transition shadow-lg"
+                  >
+                    Ir para Dashboard
+                  </a>
+                  <a
+                    href="/marketplace"
+                    className="px-8 py-4 bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 text-lg font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition shadow-lg border-2 border-blue-600 dark:border-blue-500"
+                  >
+                    Ver Marketplace
+                  </a>
+                </>
+              )
             ) : (
+              // Botões para NÃO-LOGADOS
               <>
                 <a
                   href="/register"
@@ -249,7 +288,7 @@ export default function HomePage() {
             {isLoggedIn ? 'Acesse o marketplace e encontre as melhores ofertas' : 'Junte-se ao futuro dos pagamentos descentralizados'}
           </p>
           <a
-            href={isLoggedIn ? '/marketplace' : '/register'}
+            href={isLoggedIn ? (isAdmin ? '/admin/marketplace' : '/marketplace') : '/register'}
             className="inline-block px-10 py-4 bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 text-lg font-bold rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition shadow-lg"
           >
             {isLoggedIn ? 'Ver Marketplace' : 'Criar Conta Grátis'}

@@ -82,7 +82,7 @@ export default function OrderPreviewPage() {
         return;
       }
 
-      const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
 
@@ -113,7 +113,7 @@ export default function OrderPreviewPage() {
         throw new Error('Você precisa estar logado');
       }
 
-      const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}/match`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}/match`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
       });

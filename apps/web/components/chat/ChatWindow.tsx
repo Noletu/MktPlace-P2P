@@ -42,7 +42,7 @@ export default function ChatWindow({ orderId, onClose, onMinimize }: ChatWindowP
         const userId = JSON.parse(userStr).id;
         setCurrentUserId(userId);
 
-        const response = await fetch(`http://localhost:3001/api/v1/chat/order/${orderId}`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/chat/order/${orderId}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },

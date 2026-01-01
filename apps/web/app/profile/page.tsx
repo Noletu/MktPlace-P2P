@@ -92,7 +92,7 @@ export default function ProfilePage() {
         // Buscar estatísticas de avaliações
         try {
           console.log('[DEBUG] Buscando reviews para userId:', userData.id);
-          const reviewRes = await fetch(`http://localhost:3001/api/v1/reviews/user/${userData.id}/stats`, {
+          const reviewRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/reviews/user/${userData.id}/stats`, {
             headers: {
               Authorization: `Bearer ${token}`,
             },

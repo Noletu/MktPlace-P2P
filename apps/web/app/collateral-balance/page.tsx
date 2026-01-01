@@ -134,7 +134,7 @@ export default function CollateralBalancePage() {
       for (const wallet of wallets) {
         try {
           const response = await fetch(
-            `http://localhost:3001/api/v1/wallets/${wallet.id}/transactions?limit=50`,
+            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/wallets/${wallet.id}/transactions?limit=50`,
             {
               headers: {
                 'Authorization': `Bearer ${token}`,
@@ -174,7 +174,7 @@ export default function CollateralBalancePage() {
       }
 
       const response = await fetch(
-        `http://localhost:3001/api/v1/wallets/${testBalanceModal.walletId}/test-balance`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/wallets/${testBalanceModal.walletId}/test-balance`,
         {
           method: 'POST',
           headers: {

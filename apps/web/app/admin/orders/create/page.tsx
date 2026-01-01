@@ -7,7 +7,6 @@ import CryptoIcon from '@/components/ui/CryptoIcon';
 import { CryptoType } from '@mktplace/shared';
 import { formatBRL } from '@/utils/formatters';
 import ThemeToggle from '@/components/ThemeToggle';
-import AppHeader from '@/components/AppHeader';
 
 export default function CreateOrderPage() {
   const router = useRouter();
@@ -898,7 +897,6 @@ export default function CreateOrderPage() {
 
   return (
     <>
-      <AppHeader />
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
         {/* Modal de decisão de saldo */}
         <BalanceDecisionModal />

@@ -37,7 +37,7 @@ export function ReviewResponseForm({ reviewId, onSuccess, onCancel }: ReviewResp
         throw new Error('Você precisa estar logado');
       }
 
-      const res = await fetch(`http://localhost:3001/api/v1/reviews/${reviewId}/respond`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/reviews/${reviewId}/respond`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

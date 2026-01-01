@@ -5,18 +5,11 @@ import { NotificationBell } from './NotificationBell';
 import ThemeToggle from './ThemeToggle';
 import { useState, useEffect } from 'react';
 
-const navigationLinks = [
-  { name: 'Dashboard', path: '/dashboard' },
-  { name: 'Marketplace', path: '/marketplace' },
-  { name: 'Carteiras', path: '/wallets' },
-  { name: 'Meus Pedidos', path: '/orders/my-orders' },
-  { name: 'Perfil', path: '/profile' },
-];
-
 interface User {
   id: string;
   name?: string;
   email: string;
+  role?: string;
 }
 
 export default function AppHeader() {
@@ -89,6 +82,18 @@ export default function AppHeader() {
     return pathname?.startsWith(path);
   };
 
+  // Detectar se é admin
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'MASTER';
+
+  // Links para usuários normais
+  const userNavigationLinks = [
+    { name: 'Dashboard', path: '/dashboard' },
+    { name: 'Marketplace', path: '/marketplace' },
+    { name: 'Carteiras', path: '/wallets' },
+    { name: 'Meus Pedidos', path: '/orders/my-orders' },
+    { name: 'Perfil', path: '/profile' },
+  ];
+
   // Header não logado - apenas logo
   if (!isLoggedIn) {
     return (
@@ -133,19 +138,30 @@ export default function AppHeader() {
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-1 flex-1 justify-center px-4">
-            {navigationLinks.map((link) => (
+            {isAdmin ? (
+              // Botão único para admins
               <button
-                key={link.path}
-                onClick={() => router.push(link.path)}
-                className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
-                  isActive(link.path)
-                    ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-b-2 border-blue-600'
-                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }`}
+                onClick={() => router.push('/admin')}
+                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg font-semibold text-sm transition-all shadow-md"
               >
-                {link.name}
+                ⚙️ Painel Admin
               </button>
-            ))}
+            ) : (
+              // Links normais para usuários
+              userNavigationLinks.map((link) => (
+                <button
+                  key={link.path}
+                  onClick={() => router.push(link.path)}
+                  className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                    isActive(link.path)
+                      ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-b-2 border-blue-600'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {link.name}
+                </button>
+              ))
+            )}
           </nav>
 
           {/* Right Actions */}
@@ -237,22 +253,36 @@ export default function AppHeader() {
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
           <nav className="md:hidden py-4 border-t border-gray-200 dark:border-gray-700">
-            {navigationLinks.map((link) => (
+            {isAdmin ? (
+              // Botão único para admins (mobile)
               <button
-                key={link.path}
                 onClick={() => {
-                  router.push(link.path);
+                  router.push('/admin');
                   setMobileMenuOpen(false);
                 }}
-                className={`w-full text-left px-4 py-3 font-medium transition-colors ${
-                  isActive(link.path)
-                    ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-l-4 border-blue-600'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }`}
+                className="w-full text-left px-4 py-3 mb-2 font-bold bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-l-4 border-purple-800"
               >
-                {link.name}
+                ⚙️ Painel Admin
               </button>
-            ))}
+            ) : (
+              // Links normais para usuários (mobile)
+              userNavigationLinks.map((link) => (
+                <button
+                  key={link.path}
+                  onClick={() => {
+                    router.push(link.path);
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full text-left px-4 py-3 font-medium transition-colors ${
+                    isActive(link.path)
+                      ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-l-4 border-blue-600'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {link.name}
+                </button>
+              ))
+            )}
             <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
               <button
                 onClick={() => {

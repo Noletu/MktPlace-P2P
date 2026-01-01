@@ -49,7 +49,7 @@ export default function RegisterForm() {
 
       setEmailChecking(true);
       try {
-        const response = await fetch(`http://localhost:3001/api/v1/auth/check-email?email=${encodeURIComponent(formData.email)}`);
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/auth/check-email?email=${encodeURIComponent(formData.email)}`);
         const data = await response.json();
         setEmailValid(data.available);
       } catch (err) {
@@ -122,7 +122,7 @@ export default function RegisterForm() {
       }, 1000);
     } catch (err: any) {
       if (err.message === 'Failed to fetch') {
-        setError('❌ Não foi possível conectar à API. Verifique se o servidor está rodando em http://localhost:3001');
+        setError('❌ Não foi possível conectar à API. Verifique se o servidor está rodando em http://localhost:3000');
       } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
         setError('❌ Erro de conexão. A API pode não estar rodando.');
       } else {

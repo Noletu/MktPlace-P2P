@@ -196,40 +196,6 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-6">
-        <h2 className="text-xl font-bold text-white mb-4">Ações Rápidas</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <a
-            href="/admin/wallets"
-            className="p-4 border-2 border-gray-700 rounded-lg hover:border-blue-500 hover:bg-blue-900/20 transition text-center"
-          >
-            <span className="text-3xl block mb-2">🏦</span>
-            <span className="text-sm font-medium text-gray-300">Endereços da Plataforma</span>
-          </a>
-          <a
-            href="/admin/disputes"
-            className="p-4 border-2 border-gray-700 rounded-lg hover:border-blue-500 hover:bg-blue-900/20 transition text-center"
-          >
-            <span className="text-3xl block mb-2">⚖️</span>
-            <span className="text-sm font-medium text-gray-300">Gerenciar Disputas</span>
-          </a>
-          <a
-            href="/admin/users"
-            className="p-4 border-2 border-gray-700 rounded-lg hover:border-blue-500 hover:bg-blue-900/20 transition text-center"
-          >
-            <span className="text-3xl block mb-2">👥</span>
-            <span className="text-sm font-medium text-gray-300">Gerenciar Usuários</span>
-          </a>
-          <a
-            href="/admin/orders"
-            className="p-4 border-2 border-gray-700 rounded-lg hover:border-blue-500 hover:bg-blue-900/20 transition text-center"
-          >
-            <span className="text-3xl block mb-2">📦</span>
-            <span className="text-sm font-medium text-gray-300">Gerenciar Pedidos</span>
-          </a>
-        </div>
-      </div>
     </div>
   );
 }

@@ -102,7 +102,7 @@ export function useChat(chatId?: string) {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        `http://localhost:3001/api/v1/keys/public-key/${recipientId}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/keys/public-key/${recipientId}`,
         {
           headers: { 'Authorization': `Bearer ${token}` },
         }
@@ -151,7 +151,7 @@ export function useChat(chatId?: string) {
     const token = localStorage.getItem('accessToken');
     if (!token) return;
 
-    const newSocket = io('http://localhost:3001/chat', {
+    const newSocket = io('http://localhost:3000/chat', {
       auth: { token },
       path: '/socket.io/',
     });
@@ -215,7 +215,7 @@ export function useChat(chatId?: string) {
       const userStr = localStorage.getItem('user');
       const currentUser = userStr ? JSON.parse(userStr) : null;
 
-      const response = await fetch(`http://localhost:3001/api/v1/chat/${chatId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/chat/${chatId}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
 
@@ -316,7 +316,7 @@ export function useChat(chatId?: string) {
     try {
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch(`http://localhost:3001/api/v1/chat/${chatId}/history`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/chat/${chatId}/history`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
 

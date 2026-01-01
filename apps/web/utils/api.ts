@@ -2,7 +2,9 @@
  * API utility functions for making authenticated requests
  */
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+import { API_CONFIG } from '@/config/api';
+
+const API_BASE_URL = API_CONFIG.baseUrl;
 
 /**
  * Get the access token from localStorage
