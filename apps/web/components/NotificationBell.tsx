@@ -39,7 +39,7 @@ export function NotificationBell() {
     if (!notification.isRead) {
       try {
         const token = localStorage.getItem('accessToken');
-        await fetch(`http://localhost:3001/api/v1/notifications/${notification.id}/read`, {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/notifications/${notification.id}/read`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
         });

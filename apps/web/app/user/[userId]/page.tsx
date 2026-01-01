@@ -55,7 +55,7 @@ export default function PublicUserProfilePage() {
   const fetchPublicProfile = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:3001/api/v1/auth/public-profile/${userId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/auth/public-profile/${userId}`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       });
 
@@ -73,7 +73,7 @@ export default function PublicUserProfilePage() {
   const fetchReviewStats = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:3001/api/v1/reviews/user/${userId}/stats`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/reviews/user/${userId}/stats`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       });
 
@@ -89,7 +89,7 @@ export default function PublicUserProfilePage() {
   const fetchReviews = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:3001/api/v1/reviews/user/${userId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/reviews/user/${userId}`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       });
 

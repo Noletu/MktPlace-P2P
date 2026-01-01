@@ -46,7 +46,7 @@ export function useNotificationSocket({
       return;
     }
 
-    const socket = io('http://localhost:3001/notifications', {
+    const socket = io('http://localhost:3000/notifications', {
       path: '/socket.io/',
       auth: { token },
       transports: ['websocket', 'polling'],

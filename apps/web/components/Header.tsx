@@ -7,7 +7,7 @@ export default function Header() {
   const pathname = usePathname();
 
   // Não mostrar header no dashboard, marketplace, meus pedidos, criar pedido,
-  // detalhes de pedido, profile, wallets e KYC (já têm navegação própria)
+  // detalhes de pedido, profile, wallets, KYC e admin (já têm navegação própria)
   const pagesWithOwnNavigation = [
     '/dashboard',
     '/marketplace',
@@ -15,7 +15,8 @@ export default function Header() {
     '/orders/create',
     '/profile',
     '/wallets',
-    '/kyc'
+    '/kyc',
+    '/admin'
   ];
 
   const shouldHide = pagesWithOwnNavigation.some(page => pathname?.startsWith(page)) ||

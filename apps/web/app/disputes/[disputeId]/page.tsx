@@ -30,7 +30,7 @@ export default function DisputeDetailPage() {
         return;
       }
 
-      const res = await fetch(`http://localhost:3001/api/v1/disputes/${disputeId}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/disputes/${disputeId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -77,7 +77,7 @@ export default function DisputeDetailPage() {
         return;
       }
 
-      const res = await fetch(`http://localhost:3001/api/v1/disputes/${disputeId}/messages`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/disputes/${disputeId}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -117,7 +117,7 @@ export default function DisputeDetailPage() {
         return;
       }
 
-      const res = await fetch(`http://localhost:3001/api/v1/disputes/${disputeId}/respond`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/disputes/${disputeId}/respond`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

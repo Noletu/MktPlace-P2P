@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import { getApiUrl } from '@/config/api';
+import { NotificationBell } from '@/components/NotificationBell';
+import ThemeToggle from '@/components/ThemeToggle';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -13,6 +16,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const pathname = usePathname();
   const [isLoading, setIsLoading] = useState(true);
   const [userName, setUserName] = useState('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -23,7 +27,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       }
 
       try {
-        const response = await fetch('http://localhost:3001/api/v1/auth/me', {
+        const response = await fetch(getApiUrl('auth/me'), {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -75,25 +79,79 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       <header className="bg-gradient-to-r from-gray-800 to-gray-900 border-b border-gray-700 shadow-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
+            {/* LEFT: Logo clicável + Badge */}
             <div className="flex items-center space-x-4">
-              <h1 className="text-2xl font-bold text-white">🔐 Painel Admin</h1>
+              {/* Logo clicável - leva para homepage mantendo login */}
+              <button
+                onClick={() => router.push('/')}
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              >
+                <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">MP</span>
+                </div>
+                <span className="text-lg font-bold text-white">MktPlace P2P</span>
+              </button>
+
+              {/* Badge ADMIN */}
               <span className="px-3 py-1 bg-blue-600/20 border border-blue-500/50 rounded-full text-xs font-semibold text-blue-400">
                 ADMINISTRADOR
               </span>
             </div>
-            <div className="flex items-center space-x-4">
-              <Link
-                href="/admin/profile"
-                className="text-sm text-gray-300 hover:text-white transition"
-              >
-                👤 {userName}
-              </Link>
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded-lg text-sm font-medium text-white transition"
-              >
-                Sair
-              </button>
+
+            {/* RIGHT: Notificações, Tema, Perfil */}
+            <div className="flex items-center gap-3">
+              <NotificationBell />
+              <ThemeToggle />
+
+              {/* Dropdown de Perfil */}
+              <div className="relative">
+                <button
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  <div className="w-8 h-8 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full flex items-center justify-center">
+                    <span className="text-white font-bold text-sm">
+                      {userName?.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <span className="text-sm font-medium text-white hidden sm:block">
+                    {userName}
+                  </span>
+                  <svg
+                    className={`w-4 h-4 text-gray-300 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {/* Dropdown Menu */}
+                {dropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-lg py-1 z-50">
+                    <button
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        router.push('/admin/profile');
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 transition-colors"
+                    >
+                      👤 Meu Perfil
+                    </button>
+                    <div className="border-t border-gray-700"></div>
+                    <button
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        handleLogout();
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-900/20 transition-colors"
+                    >
+                      🚪 Sair
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -144,9 +202,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               📋 Audit Log
             </Link>
             <Link
-              href="/marketplace"
+              href="/admin/marketplace"
               className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
-                pathname === '/marketplace'
+                pathname === '/admin/marketplace'
                   ? 'border-blue-500 text-blue-400'
                   : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
               }`}
@@ -154,9 +212,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               🛒 Marketplace
             </Link>
             <Link
-              href="/orders/create"
+              href="/admin/orders/create"
               className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
-                pathname === '/orders/create'
+                pathname.startsWith('/admin/orders/create')
                   ? 'border-blue-500 text-blue-400'
                   : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
               }`}

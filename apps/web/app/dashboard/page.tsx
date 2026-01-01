@@ -48,7 +48,9 @@ export default function DashboardPage() {
       }
 
       const data = await response.json();
-      setUser(data.data);
+      const userData = data.data;
+
+      setUser(userData);
     } catch (error) {
       console.error('Error fetching user:', error);
       localStorage.removeItem('accessToken');

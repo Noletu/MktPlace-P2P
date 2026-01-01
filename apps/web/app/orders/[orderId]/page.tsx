@@ -150,7 +150,7 @@ export default function OrderDetailsPage() {
         return;
       }
 
-      const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -184,7 +184,7 @@ export default function OrderDetailsPage() {
         return;
       }
 
-      const response = await fetch(`http://localhost:3001/api/v1/chat/order/${orderId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/chat/order/${orderId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -241,7 +241,7 @@ export default function OrderDetailsPage() {
         const token = localStorage.getItem('accessToken');
         if (!token) return;
 
-        const response = await fetch(`http://localhost:3001/api/v1/reviews/can-review/${orderId}`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/reviews/can-review/${orderId}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -391,7 +391,7 @@ export default function OrderDetailsPage() {
         throw new Error('Transação não encontrada');
       }
 
-      const response = await fetch(`http://localhost:3001/api/v1/transactions/${transaction.id}/confirm-received`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/transactions/${transaction.id}/confirm-received`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -437,7 +437,7 @@ export default function OrderDetailsPage() {
       }
 
       // 1. Confirmar que o pagamento foi feito
-      const confirmResponse = await fetch(`http://localhost:3001/api/v1/transactions/${transaction.id}/confirm-payment-made`, {
+      const confirmResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/transactions/${transaction.id}/confirm-payment-made`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -492,7 +492,7 @@ export default function OrderDetailsPage() {
         throw new Error('Você precisa estar logado');
       }
 
-      const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -526,7 +526,7 @@ export default function OrderDetailsPage() {
         throw new Error('Você precisa estar logado');
       }
 
-      const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}/cancel`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}/cancel`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -569,7 +569,7 @@ export default function OrderDetailsPage() {
         throw new Error('Você precisa estar logado');
       }
 
-      const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}/cancel-by-payer`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}/cancel-by-payer`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

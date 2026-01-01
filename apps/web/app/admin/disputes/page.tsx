@@ -112,7 +112,7 @@ export default function AdminDisputesPage() {
         return;
       }
 
-      const res = await fetch(`http://localhost:3001/api/v1/disputes/${resolvingId}/resolve`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/disputes/${resolvingId}/resolve`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

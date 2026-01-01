@@ -40,7 +40,7 @@ export default function WalletBalancesWidget() {
     <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-white">🏦 Carteiras da Plataforma</h3>
-        <a href="/admin/wallets" className="text-sm text-blue-400 hover:text-blue-300 hover:underline">
+        <a href="/admin/funds" className="text-sm text-blue-400 hover:text-blue-300 hover:underline">
           Ver detalhes →
         </a>
       </div>

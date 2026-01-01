@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getApiUrl } from '@/config/api';
 
 export default function LoginForm() {
   const router = useRouter();
@@ -25,7 +26,7 @@ export default function LoginForm() {
         body.twoFactorToken = twoFactorToken;
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/auth/login', {
+      const response = await fetch(getApiUrl('auth/login'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -58,9 +59,9 @@ export default function LoginForm() {
       // Redirecionar baseado no role
       const userRole = data.data.user?.role;
       if (userRole === 'ADMIN' || userRole === 'MASTER') {
-        router.push('/admin');
+        router.push('/admin'); // Admins vão direto para o painel administrativo
       } else {
-        router.push('/dashboard');
+        router.push('/dashboard'); // Usuários normais vão para o dashboard
       }
     } catch (err: any) {
       setError(err.message);
