@@ -11,15 +11,9 @@ export default function ThemeToggle() {
     setMounted(true);
   }, []);
 
+  // Retornar null em vez de botão vazio para evitar problemas de layout
   if (!mounted) {
-    return (
-      <button
-        className="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 w-9 h-9"
-        aria-label="Toggle theme"
-      >
-        <div className="w-5 h-5"></div>
-      </button>
-    );
+    return null;
   }
 
   return (

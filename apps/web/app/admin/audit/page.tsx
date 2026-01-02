@@ -53,7 +53,7 @@ export default function AuditLogPage() {
     return (
       <div className="text-center py-12">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-        <p className="mt-4 text-gray-300">Carregando logs...</p>
+        <p className="mt-4 text-gray-700 dark:text-gray-300">Carregando logs...</p>
       </div>
     );
   }
@@ -61,10 +61,10 @@ export default function AuditLogPage() {
   return (
     <div>
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-white">Audit Log</h1>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Audit Log</h1>
         <button
           onClick={fetchLogs}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 border border-blue-500 text-white rounded-lg transition"
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 border border-blue-500 text-gray-900 dark:text-white rounded-lg transition"
         >
           🔄 Atualizar
         </button>
@@ -72,18 +72,18 @@ export default function AuditLogPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-6">
-          <p className="text-sm text-gray-400">Total de Eventos</p>
-          <p className="text-3xl font-bold text-white mt-2">{logs.length}</p>
+        <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-6">
+          <p className="text-sm text-gray-600 dark:text-gray-400">Total de Eventos</p>
+          <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">{logs.length}</p>
         </div>
-        <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-6">
-          <p className="text-sm text-gray-400">Sucessos</p>
+        <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-6">
+          <p className="text-sm text-gray-600 dark:text-gray-400">Sucessos</p>
           <p className="text-3xl font-bold text-green-400 mt-2">
             {logs.filter(l => l.success).length}
           </p>
         </div>
-        <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-6">
-          <p className="text-sm text-gray-400">Falhas</p>
+        <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-6">
+          <p className="text-sm text-gray-600 dark:text-gray-400">Falhas</p>
           <p className="text-3xl font-bold text-red-400 mt-2">
             {logs.filter(l => !l.success).length}
           </p>
@@ -91,14 +91,14 @@ export default function AuditLogPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-6 mb-6">
+      <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-6 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm text-gray-400 mb-2">Ação</label>
+            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Ação</label>
             <select
               value={filterAction}
               onChange={(e) => setFilterAction(e.target.value)}
-              className="w-full px-4 py-2 bg-gray-900 border border-gray-600 text-white rounded-lg"
+              className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-600 text-gray-900 dark:text-white rounded-lg"
             >
               <option value="ALL">Todas</option>
               <option value="LOGIN">Login</option>
@@ -109,11 +109,11 @@ export default function AuditLogPage() {
             </select>
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-2">Status</label>
+            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Status</label>
             <select
               value={filterSuccess}
               onChange={(e) => setFilterSuccess(e.target.value)}
-              className="w-full px-4 py-2 bg-gray-900 border border-gray-600 text-white rounded-lg"
+              className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-600 text-gray-900 dark:text-white rounded-lg"
             >
               <option value="ALL">Todos</option>
               <option value="true">Sucesso</option>
@@ -124,30 +124,30 @@ export default function AuditLogPage() {
       </div>
 
       {/* Logs Table */}
-      <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-900 border-b border-gray-700">
+            <thead className="bg-white dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Data/Hora</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Usuário</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Ação</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Recurso</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">IP</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Status</th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Data/Hora</th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Usuário</th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Ação</th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Recurso</th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">IP</th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
               {filteredLogs.map((log) => (
                 <tr key={log.id} className="hover:bg-gray-700/50 transition">
                   <td className="px-6 py-4">
-                    <span className="text-xs text-gray-300">
+                    <span className="text-xs text-gray-700 dark:text-gray-300">
                       {new Date(log.createdAt).toLocaleString('pt-BR')}
                     </span>
                   </td>
                   <td className="px-6 py-4">
                     <div>
-                      <p className="text-sm text-white">{log.email || 'Sistema'}</p>
+                      <p className="text-sm text-gray-900 dark:text-white">{log.email || 'Sistema'}</p>
                       {log.role && (
                         <StatusBadge
                           status={log.role}
@@ -161,14 +161,14 @@ export default function AuditLogPage() {
                   </td>
                   <td className="px-6 py-4">
                     <div>
-                      <p className="text-sm text-white">{log.resource}</p>
+                      <p className="text-sm text-gray-900 dark:text-white">{log.resource}</p>
                       {log.resourceId && (
-                        <p className="text-xs text-gray-400 font-mono">{log.resourceId.substring(0, 8)}</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 font-mono">{log.resourceId.substring(0, 8)}</p>
                       )}
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="text-xs text-gray-400 font-mono">{log.ipAddress || 'N/A'}</span>
+                    <span className="text-xs text-gray-600 dark:text-gray-400 font-mono">{log.ipAddress || 'N/A'}</span>
                   </td>
                   <td className="px-6 py-4">
                     <StatusBadge
@@ -186,7 +186,7 @@ export default function AuditLogPage() {
         </div>
         {filteredLogs.length === 0 && (
           <div className="text-center py-12">
-            <p className="text-gray-400">Nenhum log encontrado</p>
+            <p className="text-gray-600 dark:text-gray-400">Nenhum log encontrado</p>
           </div>
         )}
       </div>

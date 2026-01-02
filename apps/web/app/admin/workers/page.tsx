@@ -135,11 +135,11 @@ export default function WorkersControlPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 text-white p-8">
+      <div className="p-8">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-3xl font-bold mb-8">🤖 Controle de Workers</h1>
+          <h1 className="text-3xl font-bold mb-8 text-gray-900 dark:text-white">🤖 Controle de Workers</h1>
           <div className="animate-pulse">
-            <div className="h-48 bg-gray-800 rounded-lg"></div>
+            <div className="h-48 bg-gray-200 dark:bg-gray-800 rounded-lg"></div>
           </div>
         </div>
       </div>
@@ -149,62 +149,62 @@ export default function WorkersControlPage() {
   const isRunning = balanceSyncStatus?.state === 'running';
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-8">
+    <div className="p-8">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">🤖 Controle de Workers</h1>
-          <p className="text-gray-400">
+          <h1 className="text-3xl font-bold mb-2 text-gray-900 dark:text-white">🤖 Controle de Workers</h1>
+          <p className="text-gray-600 dark:text-gray-400">
             Gerencie workers de background do sistema. Controle quando cada worker deve rodar.
           </p>
         </div>
 
         {/* Info Alert */}
-        <div className="mb-6 p-4 bg-blue-900/30 border border-blue-700 rounded-lg">
-          <p className="text-sm text-blue-300">
+        <div className="mb-6 p-4 bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 rounded-lg">
+          <p className="text-sm text-blue-800 dark:text-blue-300">
             💡 <strong>Dica:</strong> Durante testes com saldos simulados, mantenha o BalanceSyncWorker <strong>parado</strong> para evitar reconciliações automáticas.
           </p>
         </div>
 
         {/* Worker Card */}
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-700 p-6">
           {/* Header */}
           <div className="flex items-start justify-between mb-6">
             <div>
-              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
+              <h2 className="text-2xl font-bold mb-2 flex items-center gap-2 text-gray-900 dark:text-white">
                 📊 BalanceSyncWorker
                 {isRunning ? (
-                  <span className="px-3 py-1 bg-green-900/50 border border-green-700 text-green-400 rounded-full text-xs font-medium">
+                  <span className="px-3 py-1 bg-green-100 dark:bg-green-900/50 border border-green-300 dark:border-green-700 text-green-800 dark:text-green-400 rounded-full text-xs font-medium">
                     🟢 Rodando
                   </span>
                 ) : (
-                  <span className="px-3 py-1 bg-gray-700 border border-gray-600 text-gray-400 rounded-full text-xs font-medium">
+                  <span className="px-3 py-1 bg-gray-200 dark:bg-gray-700 border border-gray-400 dark:border-gray-600 text-gray-700 dark:text-gray-400 rounded-full text-xs font-medium">
                     🔴 Parado
                   </span>
                 )}
               </h2>
-              <p className="text-gray-400 text-sm mb-4">
+              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">
                 {balanceSyncStatus?.description || 'Sincroniza saldos on-chain com banco de dados'}
               </p>
               {balanceSyncStatus?.interval && (
-                <p className="text-gray-500 text-xs">
+                <p className="text-gray-500 dark:text-gray-500 text-xs">
                   ⏱️ Intervalo: {balanceSyncStatus.interval}
                 </p>
               )}
             </div>
 
             {/* Auto-refresh indicator */}
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-gray-500 dark:text-gray-500">
               🔄 Auto-refresh: 5s
             </div>
           </div>
 
           {/* Divider */}
-          <div className="border-t border-gray-700 my-6"></div>
+          <div className="border-t border-gray-300 dark:border-gray-700 my-6"></div>
 
           {/* Controls */}
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
+            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">
               Controles
             </h3>
 
@@ -213,10 +213,10 @@ export default function WorkersControlPage() {
               <button
                 onClick={handleStartWorker}
                 disabled={actionLoading || isRunning}
-                className={`p-4 rounded-lg border-2 transition text-center ${
+                className={`p-4 rounded-lg border-2 transition text-center text-gray-900 dark:text-white ${
                   isRunning
-                    ? 'border-gray-700 bg-gray-800/50 cursor-not-allowed opacity-50'
-                    : 'border-green-700 hover:border-green-500 hover:bg-green-900/20'
+                    ? 'border-gray-400 dark:border-gray-700 bg-gray-200 dark:bg-gray-800/50 cursor-not-allowed opacity-50'
+                    : 'border-green-600 dark:border-green-700 hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
                 }`}
               >
                 <span className="text-3xl block mb-2">▶️</span>
@@ -229,10 +229,10 @@ export default function WorkersControlPage() {
               <button
                 onClick={handleStopWorker}
                 disabled={actionLoading || !isRunning}
-                className={`p-4 rounded-lg border-2 transition text-center ${
+                className={`p-4 rounded-lg border-2 transition text-center text-gray-900 dark:text-white ${
                   !isRunning
-                    ? 'border-gray-700 bg-gray-800/50 cursor-not-allowed opacity-50'
-                    : 'border-red-700 hover:border-red-500 hover:bg-red-900/20'
+                    ? 'border-gray-400 dark:border-gray-700 bg-gray-200 dark:bg-gray-800/50 cursor-not-allowed opacity-50'
+                    : 'border-red-600 dark:border-red-700 hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
                 }`}
               >
                 <span className="text-3xl block mb-2">⏹️</span>
@@ -245,7 +245,7 @@ export default function WorkersControlPage() {
               <button
                 onClick={handleToggleWorker}
                 disabled={actionLoading}
-                className="p-4 rounded-lg border-2 border-blue-700 hover:border-blue-500 hover:bg-blue-900/20 transition text-center"
+                className="p-4 rounded-lg border-2 border-blue-600 dark:border-blue-700 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition text-center text-gray-900 dark:text-white"
               >
                 <span className="text-3xl block mb-2">🔄</span>
                 <span className="text-sm font-medium">
@@ -256,25 +256,25 @@ export default function WorkersControlPage() {
           </div>
 
           {/* Info Box */}
-          <div className="mt-6 p-4 bg-gray-900/50 rounded border border-gray-700">
-            <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2">
+          <div className="mt-6 p-4 bg-gray-100 dark:bg-gray-900/50 rounded border border-gray-300 dark:border-gray-700">
+            <h4 className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-2">
               ℹ️ O que este worker faz?
             </h4>
-            <ul className="text-sm text-gray-400 space-y-1">
+            <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
               <li>• Consulta saldos on-chain (blockchain real)</li>
               <li>• Compara com saldos salvos no banco de dados</li>
               <li>• Corrige discrepâncias automaticamente</li>
-              <li>• <strong className="text-yellow-400">⚠️ Remove saldos de teste</strong> (não existem na blockchain)</li>
+              <li>• <strong className="text-yellow-600 dark:text-yellow-400">⚠️ Remove saldos de teste</strong> (não existem na blockchain)</li>
             </ul>
           </div>
         </div>
 
         {/* Warning Box */}
-        <div className="mt-6 p-4 bg-yellow-900/20 border border-yellow-700 rounded-lg">
-          <h4 className="text-sm font-semibold text-yellow-400 mb-2">
+        <div className="mt-6 p-4 bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-lg">
+          <h4 className="text-sm font-semibold text-yellow-800 dark:text-yellow-400 mb-2">
             ⚠️ Importante para Testes
           </h4>
-          <p className="text-sm text-yellow-200">
+          <p className="text-sm text-yellow-700 dark:text-yellow-200">
             Mantenha este worker <strong>PARADO</strong> quando estiver testando com saldos simulados.
             Caso contrário, ele irá detectar que o saldo não existe on-chain e removerá do banco de dados.
           </p>
