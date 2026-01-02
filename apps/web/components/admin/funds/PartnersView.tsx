@@ -85,8 +85,8 @@ export default function PartnersView() {
         <div className="bg-gradient-to-br from-purple-600/20 to-purple-800/20 border border-purple-500/30 rounded-lg p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-purple-300">Platform Wallets</p>
-              <p className="text-3xl font-bold text-white mt-2">{data.summary.totalPlatformWallets}</p>
+              <p className="text-sm font-medium text-purple-900 dark:text-purple-300">Platform Wallets</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">{data.summary.totalPlatformWallets}</p>
             </div>
             <div className="text-4xl">💼</div>
           </div>
@@ -95,8 +95,8 @@ export default function PartnersView() {
         <div className="bg-gradient-to-br from-blue-600/20 to-blue-800/20 border border-blue-500/30 rounded-lg p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-blue-300">Cryptos Suportadas</p>
-              <p className="text-3xl font-bold text-white mt-2">{data.summary.cryptosSupported}</p>
+              <p className="text-sm font-medium text-blue-900 dark:text-blue-300">Cryptos Suportadas</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">{data.summary.cryptosSupported}</p>
             </div>
             <div className="text-4xl">🪙</div>
           </div>
@@ -185,9 +185,9 @@ export default function PartnersView() {
       ))}
 
       {data.partners.length === 0 && (
-        <div className="bg-gray-800 border border-gray-700 rounded-lg p-8 text-center">
-          <p className="text-gray-400">Nenhuma platform wallet encontrada</p>
-          <p className="text-sm text-gray-500 mt-2">Configure a master seed para gerar as carteiras dos sócios</p>
+        <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-8 text-center">
+          <p className="text-gray-600 dark:text-gray-400">Nenhuma platform wallet encontrada</p>
+          <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">Configure a master seed para gerar as carteiras dos sócios</p>
         </div>
       )}
     </div>

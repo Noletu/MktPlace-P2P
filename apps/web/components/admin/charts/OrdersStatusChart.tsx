@@ -66,20 +66,20 @@ export default function OrdersStatusChart() {
             </Pie>
             <Tooltip
               contentStyle={{
-                backgroundColor: '#1f2937',
-                border: '1px solid #374151',
+                backgroundColor: 'var(--tooltip-bg)',
+                border: '1px solid var(--tooltip-border)',
                 borderRadius: '8px',
-                color: '#fff',
+                color: 'var(--tooltip-text)',
               }}
             />
             <Legend
-              wrapperStyle={{ color: '#9ca3af' }}
+              wrapperStyle={{ color: 'var(--legend-color)' }}
               iconType="circle"
             />
           </PieChart>
         </ResponsiveContainer>
       ) : (
-        <div className="h-[300px] flex items-center justify-center text-gray-400">
+        <div className="h-[300px] flex items-center justify-center text-gray-600 dark:text-gray-400">
           Nenhum dado disponível
         </div>
       )}

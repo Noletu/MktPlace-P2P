@@ -24,6 +24,14 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 142 76% 36%;
     --radius: 0.5rem;
+
+    /* Chart variables - Light mode */
+    --tooltip-bg: #ffffff;
+    --tooltip-border: #d1d5db;
+    --tooltip-text: #1f2937;
+    --legend-color: #6b7280;
+    --grid-stroke: #e5e7eb;
+    --axis-stroke: #6b7280;
   }
 
   .dark {
@@ -46,6 +54,14 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 142 76% 36%;
+
+    /* Chart variables - Dark mode */
+    --tooltip-bg: #1f2937;
+    --tooltip-border: #374151;
+    --tooltip-text: #ffffff;
+    --legend-color: #9ca3af;
+    --grid-stroke: #374151;
+    --axis-stroke: #9ca3af;
   }
 }
 

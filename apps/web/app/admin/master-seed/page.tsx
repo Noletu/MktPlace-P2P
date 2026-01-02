@@ -157,9 +157,9 @@ export default function MasterSeedAdminPage() {
 
       {/* Status Card */}
       {!status?.initialized ? (
-        <div className="bg-yellow-500/10 border border-yellow-500 rounded-lg p-6 mb-6">
-          <h2 className="text-xl font-bold text-yellow-400 mb-4">⚠️ Sistema Não Inicializado</h2>
-          <p className="text-gray-300 mb-6">
+        <div className="bg-yellow-100 dark:bg-yellow-500/10 border border-yellow-500 rounded-lg p-6 mb-6">
+          <h2 className="text-xl font-bold text-yellow-800 dark:text-yellow-400 mb-4">⚠️ Sistema Não Inicializado</h2>
+          <p className="text-gray-900 dark:text-gray-300 mb-6">
             Nenhuma master seed configurada. É necessário gerar ou importar uma seed para que o sistema de carteiras HD funcione.
           </p>
           <div className="flex gap-4">
