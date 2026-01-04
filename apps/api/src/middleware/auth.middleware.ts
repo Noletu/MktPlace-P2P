@@ -47,10 +47,20 @@ export const authMiddleware = async (
 
     console.log('✅ Token válido:', { userId: decoded.userId, email: decoded.email });
 
-    // IMPORTANTE: Verificar se usuário existe no banco
+    // IMPORTANTE: Verificar se usuário existe no banco e buscar role atualizado
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { id: true, email: true },
+      select: {
+        id: true,
+        email: true,
+        legacyRole: true, // Role temporário durante migração RBAC
+        role: {
+          select: {
+            slug: true,
+            name: true,
+          }
+        }
+      },
     });
 
     if (!user) {
@@ -62,8 +72,14 @@ export const authMiddleware = async (
       return;
     }
 
-    // Adicionar usuário ao request
-    req.user = decoded;
+    // Adicionar usuário ao request com role atualizado do banco
+    // RBAC: Usar role.slug se disponível, senão usar legacyRole
+    const roleToUse = user.role?.slug?.toUpperCase() || user.legacyRole;
+
+    req.user = {
+      ...decoded,
+      role: roleToUse, // Role sempre vem do banco (não confia no JWT)
+    };
 
     next();
   } catch (error) {

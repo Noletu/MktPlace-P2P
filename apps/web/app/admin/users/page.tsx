@@ -3,6 +3,10 @@
 import { useEffect, useState } from 'react';
 import UserAvatar from '@/components/admin/shared/UserAvatar';
 import StatusBadge from '@/components/admin/shared/StatusBadge';
+import FreezeAccountModal from '@/components/admin/modals/FreezeAccountModal';
+import UnfreezeAccountModal from '@/components/admin/modals/UnfreezeAccountModal';
+import ChangeRoleModal from '@/components/admin/modals/ChangeRoleModal';
+import UserDetailsModal from '@/components/admin/modals/UserDetailsModal';
 
 interface User {
   id: string;
@@ -13,6 +17,10 @@ interface User {
   reputationScore: number;
   totalTransactions: number;
   createdAt: string;
+  accountFrozen?: boolean;
+  frozenReason?: string;
+  frozenAt?: string;
+  frozenUntil?: string; // Data/hora de auto-desbloqueio (null = permanente)
 }
 
 export default function UsersPage() {
@@ -21,6 +29,12 @@ export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('ALL');
   const [filterKYC, setFilterKYC] = useState('ALL');
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [showFreezeModal, setShowFreezeModal] = useState(false);
+  const [showUnfreezeModal, setShowUnfreezeModal] = useState(false);
+  const [showChangeRoleModal, setShowChangeRoleModal] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -158,6 +172,7 @@ export default function UsersPage() {
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Reputação</th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Transações</th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Cadastro</th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
@@ -167,7 +182,26 @@ export default function UsersPage() {
                     <div className="flex items-center space-x-3">
                       <UserAvatar name={user.name} email={user.email} size="md" />
                       <div>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">{user.name || 'Sem nome'}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">{user.name || 'Sem nome'}</p>
+                          {user.accountFrozen && (
+                            <div className="flex flex-col gap-1">
+                              <span className="px-2 py-1 bg-red-600/20 text-red-300 rounded-full text-xs font-bold">
+                                🔒 BLOQUEADA
+                              </span>
+                              {user.frozenUntil && new Date(user.frozenUntil) > new Date() && (
+                                <span className="px-2 py-1 bg-yellow-600/20 text-yellow-300 rounded-full text-xs">
+                                  ⏰ até {new Date(user.frozenUntil).toLocaleString('pt-BR', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                         <p className="text-xs text-gray-600 dark:text-gray-400">{user.email}</p>
                       </div>
                     </div>
@@ -192,6 +226,58 @@ export default function UsersPage() {
                       {new Date(user.createdAt).toLocaleDateString('pt-BR')}
                     </span>
                   </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap gap-2">
+                      {/* Ver Detalhes */}
+                      <button
+                        onClick={() => {
+                          setSelectedUserId(user.id);
+                          setShowDetailsModal(true);
+                        }}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition"
+                        title="Ver detalhes completos do usuário"
+                      >
+                        👁️ Detalhes
+                      </button>
+
+                      {/* Mudar Role */}
+                      <button
+                        onClick={() => {
+                          setSelectedUser(user);
+                          setShowChangeRoleModal(true);
+                        }}
+                        className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm transition"
+                        title="Alterar role do usuário"
+                      >
+                        🔄 Role
+                      </button>
+
+                      {/* Bloquear/Desbloquear */}
+                      {user.accountFrozen ? (
+                        <button
+                          onClick={() => {
+                            setSelectedUser(user);
+                            setShowUnfreezeModal(true);
+                          }}
+                          className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition"
+                          title={`Bloqueada em: ${user.frozenAt ? new Date(user.frozenAt).toLocaleDateString('pt-BR') : ''}\nMotivo: ${user.frozenReason || 'N/A'}${user.frozenUntil ? `\nAuto-desbloqueio: ${new Date(user.frozenUntil).toLocaleString('pt-BR')}` : '\nTipo: Permanente (manual)'}`}
+                        >
+                          🔓 Desbloquear
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setSelectedUser(user);
+                            setShowFreezeModal(true);
+                          }}
+                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition"
+                          title="Bloquear conta"
+                        >
+                          🔒 Bloquear
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -203,6 +289,56 @@ export default function UsersPage() {
           </div>
         )}
       </div>
+
+      {/* Modais */}
+      {showFreezeModal && selectedUser && (
+        <FreezeAccountModal
+          user={selectedUser}
+          onClose={() => {
+            setShowFreezeModal(false);
+            setSelectedUser(null);
+          }}
+          onSuccess={() => {
+            fetchUsers(); // Recarregar lista de usuários
+          }}
+        />
+      )}
+
+      {showUnfreezeModal && selectedUser && (
+        <UnfreezeAccountModal
+          user={selectedUser}
+          onClose={() => {
+            setShowUnfreezeModal(false);
+            setSelectedUser(null);
+          }}
+          onSuccess={() => {
+            fetchUsers(); // Recarregar lista de usuários
+          }}
+        />
+      )}
+
+      {showChangeRoleModal && selectedUser && (
+        <ChangeRoleModal
+          user={selectedUser}
+          onClose={() => {
+            setShowChangeRoleModal(false);
+            setSelectedUser(null);
+          }}
+          onSuccess={() => {
+            fetchUsers(); // Recarregar lista de usuários
+          }}
+        />
+      )}
+
+      {showDetailsModal && selectedUserId && (
+        <UserDetailsModal
+          userId={selectedUserId}
+          onClose={() => {
+            setShowDetailsModal(false);
+            setSelectedUserId(null);
+          }}
+        />
+      )}
     </div>
   );
 }

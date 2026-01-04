@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { getApiUrl } from '@/config/api';
 import { NotificationBell } from '@/components/NotificationBell';
 import ThemeToggle from '@/components/ThemeToggle';
+import CryptoPriceCards from '@/components/CryptoPriceCards';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -16,6 +17,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const pathname = usePathname();
   const [isLoading, setIsLoading] = useState(true);
   const [userName, setUserName] = useState('');
+  const [userRole, setUserRole] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   useEffect(() => {
@@ -47,6 +49,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         }
 
         setUserName(data.data.name || data.data.email);
+        setUserRole(data.data.role);
         setIsLoading(false);
       } catch (error) {
         console.error('Erro ao verificar autenticação:', error);
@@ -101,9 +104,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       {/* Admin Header */}
       <header className="bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900 border-b border-gray-300 dark:border-gray-700 shadow-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
+          <div className="grid grid-cols-3 items-center py-4 gap-4">
             {/* LEFT: Logo clicável + Badge */}
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-4 justify-start">
               {/* Logo clicável - leva para homepage mantendo login */}
               <button
                 onClick={() => router.push('/')}
@@ -115,14 +118,23 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 <span className="text-lg font-bold text-gray-900 dark:text-white">MktPlace P2P</span>
               </button>
 
-              {/* Badge ADMIN */}
-              <span className="px-3 py-1 bg-blue-600/20 border border-blue-500/50 rounded-full text-xs font-semibold text-blue-600 dark:text-blue-400">
-                ADMINISTRADOR
+              {/* Badge ADMIN/MASTER */}
+              <span className={`px-3 py-1 border rounded-full text-xs font-semibold ${
+                userRole === 'MASTER'
+                  ? 'bg-purple-600/20 border-purple-500/50 text-purple-600 dark:text-purple-400'
+                  : 'bg-blue-600/20 border-blue-500/50 text-blue-600 dark:text-blue-400'
+              }`}>
+                {userRole === 'MASTER' ? 'MASTER' : 'ADMINISTRADOR'}
               </span>
             </div>
 
+            {/* CENTER: Crypto Price Cards */}
+            <div className="flex justify-center">
+              <CryptoPriceCards />
+            </div>
+
             {/* RIGHT: Notificações, Tema, Perfil */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center justify-end gap-3">
               <NotificationBell />
               <ThemeToggle />
 
@@ -233,6 +245,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               }`}
             >
               🛒 Marketplace
+            </Link>
+            <Link
+              href="/admin/roles"
+              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+                pathname === '/admin/roles'
+                  ? 'border-purple-500 text-purple-600 dark:text-purple-400'
+                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
+              }`}
+            >
+              👑 Roles (MASTER)
             </Link>
             <Link
               href="/admin/orders/create"

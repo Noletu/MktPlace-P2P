@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { disputeController } from '../controllers/dispute.controller';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
+import { managerMiddleware } from '../middleware/manager.middleware';
 import { disputeLimiter } from '../middleware/rateLimiter.middleware';
 
 const router = Router();
@@ -17,10 +18,10 @@ router.post('/', disputeLimiter, disputeController.createDispute.bind(disputeCon
 
 /**
  * @route   GET /api/v1/disputes/stats
- * @desc    Estatísticas de disputas (admin)
- * @access  Admin
+ * @desc    Estatísticas de disputas (GERENTE + ADMIN + MASTER)
+ * @access  Manager/Admin/Master
  */
-router.get('/stats', adminMiddleware, disputeController.getDisputeStats.bind(disputeController));
+router.get('/stats', managerMiddleware, disputeController.getDisputeStats.bind(disputeController));
 
 /**
  * @route   GET /api/v1/disputes/my-disputes
@@ -56,16 +57,16 @@ router.post('/:disputeId/respond', disputeController.respondToDispute.bind(dispu
 
 /**
  * @route   GET /api/v1/disputes
- * @desc    Listar todas as disputas (admin)
- * @access  Admin
+ * @desc    Listar todas as disputas (GERENTE + ADMIN + MASTER)
+ * @access  Manager/Admin/Master
  */
-router.get('/', adminMiddleware, disputeController.getAllDisputes.bind(disputeController));
+router.get('/', managerMiddleware, disputeController.getAllDisputes.bind(disputeController));
 
 /**
  * @route   POST /api/v1/disputes/:disputeId/resolve
- * @desc    Resolver disputa (admin)
- * @access  Admin
+ * @desc    Resolver disputa (GERENTE + ADMIN + MASTER)
+ * @access  Manager/Admin/Master
  */
-router.post('/:disputeId/resolve', adminMiddleware, disputeController.resolveDispute.bind(disputeController));
+router.post('/:disputeId/resolve', managerMiddleware, disputeController.resolveDispute.bind(disputeController));
 
 export default router;

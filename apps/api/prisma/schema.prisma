@@ -31,8 +31,13 @@ model User {
   recentCancellations Int       @default(0) // Cancelamentos nos últimos 30 dias
   lastCancellationAt  DateTime? // Data do último cancelamento
 
-  // Role - USER, ADMIN, SUPPORT, MASTER
-  role String @default("USER")
+  // RBAC: Relacionamento com Role (migration: manter role string temporariamente)
+  roleId String? // Foreign key para Role
+  role   Role?   @relation(fields: [roleId], references: [id])
+
+  // DEPRECATED: Role string (será removido após migration)
+  // Mantido temporariamente para compatibilidade durante migração
+  legacyRole String @default("USER")
 
   // SECURITY: 2FA
   twoFactorEnabled     Boolean @default(false)
@@ -41,10 +46,11 @@ model User {
   twoFactorBackupCodes String? // JSON array de códigos hasheados
 
   // ADMIN CONTROLS: Account Freeze (Congelamento de conta)
-  accountFrozen Boolean  @default(false) // Se conta está congelada
+  accountFrozen Boolean   @default(false) // Se conta está congelada
   frozenReason  String? // Motivo do congelamento
   frozenAt      DateTime? // Quando foi congelada
   frozenBy      String? // ID do admin que congelou
+  frozenUntil   DateTime? // Data/hora para auto-desbloqueio (null = permanente)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -914,6 +920,93 @@ model CancellationHistory {
   @@index([role])
   @@index([createdAt])
   @@index([penaltyApplied])
+}
+
+// ============================================
+// RBAC SYSTEM - Dynamic Role-Based Access Control
+// ============================================
+
+// Roles dinâmicos - podem ser criados via UI por MASTER
+model Role {
+  id String @id @default(cuid())
+
+  // Identificação
+  name        String @unique // Ex: "Analista Financeiro", "Moderador"
+  slug        String @unique // Ex: "analista_financeiro", "moderador" (URL-friendly)
+  description String? // Descrição do que esse role faz
+
+  // UI
+  color String @default("#6B7280") // Cor em hex para exibição (badge)
+  icon  String @default("👤") // Emoji ou ícone para UI
+
+  // Sistema
+  isSystem Boolean @default(false) // Se é role de sistema (MASTER, USER) - não pode ser deletado
+  isActive Boolean @default(true) // Se está ativo (roles podem ser desativados sem deletar)
+
+  // Hierarquia (quanto maior, mais permissões)
+  level Int @default(0) // MASTER=100, ADMIN=80, GERENTE=60, SUPPORT=40, USER=0
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relações
+  users           User[]
+  rolePermissions RolePermission[]
+
+  @@index([slug])
+  @@index([isSystem])
+  @@index([isActive])
+  @@index([level])
+}
+
+// Permissões granulares - cada ação específica na plataforma
+model Permission {
+  id String @id @default(cuid())
+
+  // Identificação
+  name        String @unique // Ex: "users.view", "orders.edit", "finance.transfer"
+  displayName String // Nome legível: "Visualizar Usuários", "Editar Pedidos"
+
+  // Categoria para agrupar permissões na UI
+  category    String // users, orders, disputes, finance, kyc, reports, system
+
+  // Descrição detalhada do que a permissão permite
+  description String?
+
+  // Se é permissão crítica (requer 2FA ou atenção especial)
+  isCritical Boolean @default(false)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relações
+  rolePermissions RolePermission[]
+
+  @@index([name])
+  @@index([category])
+  @@index([isCritical])
+}
+
+// Tabela de junção Many-to-Many: Role <-> Permission
+model RolePermission {
+  id String @id @default(cuid())
+
+  // Foreign keys
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  // Metadados
+  grantedBy String? // ID do MASTER que concedeu essa permissão
+  grantedAt DateTime @default(now())
+
+  @@unique([roleId, permissionId]) // Um role não pode ter a mesma permissão duplicada
+  @@index([roleId])
+  @@index([permissionId])
 }
 
 // ============================================

@@ -3,75 +3,85 @@ import { adminController } from '../controllers/admin.controller';
 import { financeController } from '../controllers/finance.controller';
 import { disputeController } from '../controllers/dispute.controller';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
+import { managerMiddleware } from '../middleware/manager.middleware';
 import { adminActionLimiter } from '../middleware/rateLimiter.middleware';
 
 const router = Router();
 
-// Todas as rotas requerem autenticação E permissão de admin
+// SECURITY: Autenticação obrigatória em todas as rotas
 router.use(authMiddleware);
-router.use(adminMiddleware);
+// Nota: Middlewares de permissão (admin/manager) aplicados individualmente por rota
 
 /**
- * Dashboard
+ * OPERACIONAL: Dashboard (GERENTE + ADMIN + MASTER)
  */
-router.get('/dashboard', adminController.getDashboard.bind(adminController));
+router.get('/dashboard', managerMiddleware, adminController.getDashboard.bind(adminController));
 
 /**
- * Finance & Analytics
+ * OPERACIONAL: Finance & Analytics (GERENTE + ADMIN + MASTER)
  */
-router.get('/finance/stats', financeController.getFinanceStats.bind(financeController));
-router.get('/finance/wallet-balances', financeController.getWalletBalances.bind(financeController));
+router.get('/finance/stats', managerMiddleware, financeController.getFinanceStats.bind(financeController));
+router.get('/finance/wallet-balances', managerMiddleware, financeController.getWalletBalances.bind(financeController));
 
 /**
- * Gestão de Endereços da Plataforma
+ * ADMINISTRATIVO: Gestão de Endereços da Plataforma (APENAS ADMIN + MASTER)
  */
-router.get('/platform-wallets', adminController.getPlatformWallets.bind(adminController));
-router.get('/platform-wallets/:id', adminController.getPlatformWalletById.bind(adminController));
+router.get('/platform-wallets', adminMiddleware, adminController.getPlatformWallets.bind(adminController));
+router.get('/platform-wallets/:id', adminMiddleware, adminController.getPlatformWalletById.bind(adminController));
 // SECURITY: Ações de escrita com rate limiting
-router.post('/platform-wallets', adminActionLimiter, adminController.createPlatformWallet.bind(adminController));
-router.put('/platform-wallets/:id', adminActionLimiter, adminController.updatePlatformWallet.bind(adminController));
-router.delete('/platform-wallets/:id', adminActionLimiter, adminController.deletePlatformWallet.bind(adminController));
+router.post('/platform-wallets', adminMiddleware, adminActionLimiter, adminController.createPlatformWallet.bind(adminController));
+router.put('/platform-wallets/:id', adminMiddleware, adminActionLimiter, adminController.updatePlatformWallet.bind(adminController));
+router.delete('/platform-wallets/:id', adminMiddleware, adminActionLimiter, adminController.deletePlatformWallet.bind(adminController));
 
 /**
- * Gestão de Usuários
+ * OPERACIONAL: Gestão de Usuários - Visualização (GERENTE + ADMIN + MASTER)
+ * ADMINISTRATIVO: Atualização de usuários (APENAS ADMIN + MASTER)
  */
-router.get('/users', adminController.getUsers.bind(adminController));
-// SECURITY: Atualização de usuário com rate limiting
-router.put('/users/:id', adminActionLimiter, adminController.updateUser.bind(adminController));
+router.get('/users', managerMiddleware, adminController.getUsers.bind(adminController));
+router.get('/users/:id/details', managerMiddleware, adminController.getUserDetails.bind(adminController));
+// SECURITY: Atualização de usuário (mudança de role) apenas ADMIN/MASTER
+router.put('/users/:id', adminMiddleware, adminActionLimiter, adminController.updateUser.bind(adminController));
 
 /**
- * Gestão de Pedidos
+ * FASE 2: Relatório para Autoridades (GERENTE + ADMIN + MASTER)
  */
-router.get('/orders', adminController.getOrders.bind(adminController));
+router.get('/users/:id/authority-report', managerMiddleware, adminController.generateAuthorityReport.bind(adminController));
+
+/**
+ * OPERACIONAL: Gestão de Pedidos (GERENTE + ADMIN + MASTER)
+ */
+router.get('/orders', managerMiddleware, adminController.getOrders.bind(adminController));
 // SECURITY: Cancelamento de pedido com rate limiting
-router.post('/orders/:id/cancel', adminActionLimiter, adminController.cancelOrder.bind(adminController));
+router.post('/orders/:id/cancel', managerMiddleware, adminActionLimiter, adminController.cancelOrder.bind(adminController));
+// SECURITY: Edição de pedido com rate limiting (God Mode)
+router.put('/orders/:id/edit', managerMiddleware, adminActionLimiter, adminController.editOrder.bind(adminController));
 
 /**
- * Audit Log
+ * OPERACIONAL: Audit Log (GERENTE + ADMIN + MASTER)
  */
-router.get('/audit-log', adminController.getAuditLog.bind(adminController));
+router.get('/audit-log', managerMiddleware, adminController.getAuditLog.bind(adminController));
 
 /**
- * SECURITY: Audit Log Completo (Todos os eventos do sistema)
+ * OPERACIONAL: Audit Log Completo (GERENTE + ADMIN + MASTER)
  */
-router.get('/audit-logs', adminController.getAllAuditLogs.bind(adminController));
-router.get('/audit-logs/stats', adminController.getAuditStats.bind(adminController));
-router.get('/audit-logs/export', adminController.exportAuditLogs.bind(adminController));
+router.get('/audit-logs', managerMiddleware, adminController.getAllAuditLogs.bind(adminController));
+router.get('/audit-logs/stats', managerMiddleware, adminController.getAuditStats.bind(adminController));
+router.get('/audit-logs/export', managerMiddleware, adminController.exportAuditLogs.bind(adminController));
 
 /**
- * Gestão de KYC
+ * OPERACIONAL: Gestão de KYC (GERENTE + ADMIN + MASTER)
  */
-router.get('/kyc', adminController.listPendingKYC.bind(adminController));
-router.get('/kyc/stats', adminController.getKYCStats.bind(adminController));
-router.get('/kyc/:userId', adminController.getKYCVerification.bind(adminController));
+router.get('/kyc', managerMiddleware, adminController.listPendingKYC.bind(adminController));
+router.get('/kyc/stats', managerMiddleware, adminController.getKYCStats.bind(adminController));
+router.get('/kyc/:userId', managerMiddleware, adminController.getKYCVerification.bind(adminController));
 // SECURITY: Aprovação/Rejeição de KYC com rate limiting
-router.post('/kyc/:userId/approve', adminActionLimiter, adminController.approveKYC.bind(adminController));
-router.post('/kyc/:userId/reject', adminActionLimiter, adminController.rejectKYC.bind(adminController));
+router.post('/kyc/:userId/approve', managerMiddleware, adminActionLimiter, adminController.approveKYC.bind(adminController));
+router.post('/kyc/:userId/reject', managerMiddleware, adminActionLimiter, adminController.rejectKYC.bind(adminController));
 
 /**
- * Dispute Analytics
+ * OPERACIONAL: Dispute Analytics (GERENTE + ADMIN + MASTER)
  */
-router.get('/disputes/analytics', disputeController.getDisputeAnalytics.bind(disputeController));
-router.get('/disputes/top-disputants', disputeController.getTopDisputants.bind(disputeController));
+router.get('/disputes/analytics', managerMiddleware, disputeController.getDisputeAnalytics.bind(disputeController));
+router.get('/disputes/top-disputants', managerMiddleware, disputeController.getTopDisputants.bind(disputeController));
 
 export default router;

@@ -102,12 +102,14 @@ export class AdminFundsController {
    * POST /api/v1/admin/funds/freeze
    * Congelar conta de usuário
    *
-   * Body: { userId, reason }
-   * Requires: MASTER or ADMIN role
+   * Body: { userId, reason, duration? }
+   * duration (opcional): Tempo em horas para freeze temporário (auto-desbloqueio)
+   * Se duration não fornecida: freeze permanente (requer desbloqueio manual)
+   * Requires: GERENTE, ADMIN or MASTER role
    */
   async freezeAccount(req: Request, res: Response): Promise<void> {
     try {
-      const { userId, reason } = req.body;
+      const { userId, reason, duration } = req.body;
       const adminUserId = (req as any).user.id;
 
       if (!userId || !reason) {
@@ -118,10 +120,23 @@ export class AdminFundsController {
         return;
       }
 
+      // Validar duration se fornecida
+      if (duration !== undefined) {
+        const durationNum = Number(duration);
+        if (isNaN(durationNum) || durationNum <= 0) {
+          res.status(400).json({
+            success: false,
+            error: 'duration deve ser um número positivo (horas)',
+          });
+          return;
+        }
+      }
+
       const result = await AdminFundsService.freezeAccount({
         userId,
         reason,
         adminUserId,
+        duration: duration ? Number(duration) : undefined,
       });
 
       res.status(200).json(result);

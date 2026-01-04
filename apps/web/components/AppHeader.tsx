@@ -3,6 +3,7 @@
 import { useRouter, usePathname } from 'next/navigation';
 import { NotificationBell } from './NotificationBell';
 import ThemeToggle from './ThemeToggle';
+import CryptoPriceCards from './CryptoPriceCards';
 import { useState, useEffect } from 'react';
 
 interface User {
@@ -104,52 +105,29 @@ export default function AppHeader() {
   return (
     <header className="sticky top-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-14">
-          {/* Logo & Brand */}
-          <button
-            onClick={() => router.push('/')}
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-shrink-0"
-          >
-            <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">MP</span>
-            </div>
-            <span className="text-lg font-bold text-gray-900 dark:text-white hidden sm:block">
-              MktPlace P2P
-            </span>
-          </button>
+        <div className="grid grid-cols-3 items-center h-14 gap-4">
+          {/* Left: Logo & Brand */}
+          <div className="flex justify-start">
+            <button
+              onClick={() => router.push('/')}
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-shrink-0"
+            >
+              <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm">MP</span>
+              </div>
+              <span className="text-lg font-bold text-gray-900 dark:text-white hidden sm:block">
+                MktPlace P2P
+              </span>
+            </button>
+          </div>
 
-          {/* Desktop Navigation - Apenas quando logado */}
-          {isLoggedIn && (
-            <nav className="hidden md:flex items-center gap-1 flex-1 justify-center px-4">
-              {isAdmin ? (
-                // Botão único para admins
-                <button
-                  onClick={() => router.push('/admin')}
-                  className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg font-semibold text-sm transition-all shadow-md"
-                >
-                  ⚙️ Painel Admin
-                </button>
-              ) : (
-                // Links normais para usuários
-                userNavigationLinks.map((link) => (
-                  <button
-                    key={link.path}
-                    onClick={() => router.push(link.path)}
-                    className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
-                      isActive(link.path)
-                        ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-b-2 border-blue-600'
-                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    {link.name}
-                  </button>
-                ))
-              )}
-            </nav>
-          )}
+          {/* Center: Crypto Price Cards - SEMPRE visível */}
+          <div className="flex justify-center">
+            <CryptoPriceCards />
+          </div>
 
-          {/* Right Actions */}
-          <div className="flex items-center gap-3 flex-shrink-0">
+          {/* Right: Actions */}
+          <div className="flex items-center justify-end gap-3">
             {/* NotificationBell apenas quando logado */}
             {isLoggedIn && <NotificationBell />}
 
@@ -208,8 +186,8 @@ export default function AppHeader() {
               </div>
             )}
 
-            {/* Mobile Menu Button - Apenas quando logado */}
-            {isLoggedIn && (
+            {/* Mobile Menu Button - Apenas quando logado E não for admin */}
+            {isLoggedIn && !isAdmin && (
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="md:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -241,39 +219,46 @@ export default function AppHeader() {
           </div>
         </div>
 
-        {/* Mobile Navigation */}
-        {mobileMenuOpen && (
-          <nav className="md:hidden py-4 border-t border-gray-200 dark:border-gray-700">
-            {isAdmin ? (
-              // Botão único para admins (mobile)
+        {/* Desktop Navigation - Apenas quando logado E não for admin */}
+        {isLoggedIn && !isAdmin && (
+          <nav className="hidden md:flex items-center gap-1 justify-center py-2 border-t border-gray-200 dark:border-gray-700">
+            {/* Links normais para usuários */}
+            {userNavigationLinks.map((link) => (
               <button
+                key={link.path}
+                onClick={() => router.push(link.path)}
+                className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                  isActive(link.path)
+                    ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-b-2 border-blue-600'
+                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              >
+                {link.name}
+              </button>
+            ))}
+          </nav>
+        )}
+
+        {/* Mobile Navigation - Apenas para usuários normais */}
+        {mobileMenuOpen && !isAdmin && (
+          <nav className="md:hidden py-4 border-t border-gray-200 dark:border-gray-700">
+            {/* Links normais para usuários (mobile) */}
+            {userNavigationLinks.map((link) => (
+              <button
+                key={link.path}
                 onClick={() => {
-                  router.push('/admin');
+                  router.push(link.path);
                   setMobileMenuOpen(false);
                 }}
-                className="w-full text-left px-4 py-3 mb-2 font-bold bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-l-4 border-purple-800"
+                className={`w-full text-left px-4 py-3 font-medium transition-colors ${
+                  isActive(link.path)
+                    ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-l-4 border-blue-600'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
               >
-                ⚙️ Painel Admin
+                {link.name}
               </button>
-            ) : (
-              // Links normais para usuários (mobile)
-              userNavigationLinks.map((link) => (
-                <button
-                  key={link.path}
-                  onClick={() => {
-                    router.push(link.path);
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`w-full text-left px-4 py-3 font-medium transition-colors ${
-                    isActive(link.path)
-                      ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-l-4 border-blue-600'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  {link.name}
-                </button>
-              ))
-            )}
+            ))}
             <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
               <button
                 onClick={() => {

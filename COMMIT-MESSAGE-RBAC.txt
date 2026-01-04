@@ -1,0 +1,153 @@
+feat: Implementação completa do sistema RBAC (Role-Based Access Control)
+
+BREAKING CHANGE: Estrutura de roles migrada de enum hard-coded para sistema
+dinâmico baseado em banco de dados com permissões granulares.
+
+## 🎯 Resumo
+
+Implementado sistema completo de RBAC que permite gestão dinâmica de roles
+e permissões via interface administrativa, eliminando necessidade de code
+changes para criar novos roles.
+
+## ✨ Principais Funcionalidades
+
+- **Gestão dinâmica de roles**: MASTER pode criar roles customizados via UI
+- **Permissões granulares**: 30 permissões organizadas em 7 categorias
+- **Hierarquia de níveis**: Sistema de níveis 0-100 para controle fino
+- **Cache otimizado**: Cache in-memory com TTL de 5 min para performance
+- **Interface administrativa**: UI completa para gestão de roles e permissões
+- **Backward compatibility**: Mantém campo legacyRole durante transição
+
+## 📊 Estatísticas
+
+- **Arquivos criados**: 14
+- **Arquivos modificados**: 6
+- **Total de arquivos afetados**: 20
+- **Linhas adicionadas**: ~6510
+- **Linhas modificadas**: ~313
+
+## 🗄️ Database
+
+### Novos Modelos
+
+- `Role`: Roles do sistema (USER, SUPPORT, GERENTE, ADMIN, MASTER) + customizados
+- `Permission`: Permissões granulares (30 permissões em 7 categorias)
+- `RolePermission`: Tabela de associação many-to-many
+
+### Modificações
+
+- `User.roleId`: Foreign key para Role (novo)
+- `User.legacyRole`: String role (mantido para compatibilidade)
+
+### Seeds Executados
+
+- `rbac-seed.ts`: 5 roles + 30 permissões + 83 associações
+- `migrate-users-to-rbac.ts`: 5 usuários migrados
+
+## 🔧 Backend
+
+### Novos Arquivos
+
+Services:
+- `src/services/role.service.ts`: Lógica RBAC completa
+
+Controllers:
+- `src/controllers/role.controller.ts`: 9 endpoints REST
+
+Routes:
+- `src/routes/role.routes.ts`: Rotas /api/v1/roles
+
+Middleware:
+- `src/middleware/permission.middleware.ts`: Verificação com cache
+- `src/middleware/master.middleware.ts`: MASTER-only access
+
+Seeds:
+- `prisma/seeds/rbac-seed.ts`: Seed inicial
+- `prisma/seeds/migrate-users-to-rbac.ts`: Migração de usuários
+
+### Arquivos Modificados
+
+- `src/services/auth.service.ts`: Retorna role do RBAC
+- `src/services/admin.service.ts`: Compatível com RBAC
+- `src/middleware/auth.middleware.ts`: Extrai role do RBAC
+- `src/index.ts`: Integração de rotas
+
+## 🎨 Frontend
+
+### Novos Arquivos
+
+Pages:
+- `app/admin/roles/page.tsx`: Gestão de roles (MASTER only)
+
+Components:
+- `components/admin/modals/CreateRoleModal.tsx`: Modal criação (2 etapas)
+- `components/admin/modals/EditRolePermissionsModal.tsx`: Modal edição
+
+### Arquivos Modificados
+
+- `app/admin/layout.tsx`: Link para /admin/roles
+
+## 🚀 APIs Implementadas
+
+```
+GET    /api/v1/roles                      - Lista roles
+GET    /api/v1/roles/:id                  - Busca role específico
+POST   /api/v1/roles                      - Cria role customizado
+PUT    /api/v1/roles/:id                  - Atualiza role
+DELETE /api/v1/roles/:id                  - Deleta role customizado
+GET    /api/v1/roles/permissions/all      - Lista permissões
+POST   /api/v1/roles/:id/permissions      - Adiciona permissão
+DELETE /api/v1/roles/:id/permissions/:pid - Remove permissão
+PUT    /api/v1/roles/:id/permissions      - Substitui permissões
+```
+
+## 🛡️ Segurança
+
+- Todas as rotas protegidas por `masterMiddleware` (MASTER only)
+- Rate limiting: 20 operações/hora
+- Validação de hierarquia em mudanças de role
+- Cache de permissões com TTL de 5 minutos
+- Audit log de todas as operações
+
+## 🐛 Bugs Corrigidos
+
+1. Missing master.middleware.ts
+2. Rate limiter import error
+3. Login returns wrong role
+4. Users page rendering error (role as object)
+
+## 📚 Documentação
+
+Criados 4 arquivos de documentação:
+
+- `docs/RBAC-IMPLEMENTATION.md`: Documentação técnica completa
+- `docs/RBAC-QUICK-REFERENCE.md`: Guia rápido para devs
+- `docs/RBAC-FILES-SUMMARY.md`: Resumo de arquivos
+- `CHANGELOG-RBAC.md`: Registro detalhado de mudanças
+
+## ✅ Testes
+
+- [x] Seed RBAC executado com sucesso
+- [x] Migração de usuários (5 usuários)
+- [x] Login retorna role correto
+- [x] APIs de roles funcionando
+- [x] Middleware de permissões com cache
+- [x] Interface frontend completa
+- [x] Página de usuários corrigida
+
+## 🔄 Próximos Passos
+
+- [ ] Substituir middlewares hard-coded por requirePermission()
+- [ ] Remover campo legacyRole após 100% dos usuários migrados
+- [ ] Implementar 2FA obrigatório para permissões críticas
+- [ ] Migrar cache para Redis (produção)
+
+## 📖 Referências
+
+- Documentação: `/docs/RBAC-IMPLEMENTATION.md`
+- Quick Reference: `/docs/RBAC-QUICK-REFERENCE.md`
+- Changelog: `/CHANGELOG-RBAC.md`
+
+---
+
+Co-authored-by: Claude Sonnet 4.5 <noreply@anthropic.com>
