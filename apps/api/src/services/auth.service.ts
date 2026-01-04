@@ -70,9 +70,17 @@ export class AuthService {
   }
 
   async login(input: LoginInput): Promise<AuthResponse> {
-    // Buscar usuário
+    // Buscar usuário com role RBAC
     const user = await prisma.user.findUnique({
       where: { email: input.email },
+      include: {
+        role: {
+          select: {
+            slug: true,
+            name: true,
+          }
+        }
+      }
     });
 
     if (!user) {
@@ -99,20 +107,26 @@ export class AuthService {
       }
     }
 
+    // RBAC: Determinar role para JWT (usar slug do RBAC ou legacyRole)
+    const userRole = user.role?.slug?.toUpperCase() || user.legacyRole;
+
     // SECURITY: Gerar access token e refresh token
     const token = generateToken({
       userId: user.id,
       email: user.email,
-      role: user.role,
+      role: userRole,
     });
 
     const refreshToken = await refreshTokenService.createRefreshToken(user.id);
 
-    // Remover senha do retorno
-    const { password, ...userWithoutPassword } = user;
+    // Remover senha do retorno e adicionar role como string para compatibilidade frontend
+    const { password, role: roleObject, ...userWithoutPassword } = user;
 
     return {
-      user: userWithoutPassword,
+      user: {
+        ...userWithoutPassword,
+        role: userRole, // Role como string (MASTER, ADMIN, etc)
+      } as any,
       token,
       refreshToken,
     };
@@ -152,6 +166,12 @@ export class AuthService {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
+        role: {
+          select: {
+            slug: true,
+            name: true,
+          }
+        },
         kycVerification: {
           select: {
             fullName: true,
@@ -175,11 +195,15 @@ export class AuthService {
       return null;
     }
 
-    const { password, ...userWithoutPassword } = user;
+    // RBAC: Determinar role para resposta (usar slug do RBAC ou legacyRole)
+    const userRole = user.role?.slug?.toUpperCase() || user.legacyRole;
+
+    const { password, role: roleObject, ...userWithoutPassword } = user;
 
     // Adicionar CPF e telefone diretamente no objeto user (compatibilidade com frontend)
     return {
       ...userWithoutPassword,
+      role: userRole, // Role como string (MASTER, ADMIN, etc)
       cpf: user.kycVerification?.cpf || null,
       phone: user.kycVerification?.phone || null,
       kycVerification: user.kycVerification,

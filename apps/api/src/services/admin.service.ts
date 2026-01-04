@@ -294,7 +294,7 @@ export class AdminService {
     const users = await prisma.user.findMany({
       where: {
         kycLevel: filters?.kycLevel,
-        role: filters?.role,
+        legacyRole: filters?.role, // RBAC: Usar legacyRole temporariamente para filtro
         OR: filters?.search
           ? [
               { email: { contains: filters.search } },
@@ -310,15 +310,35 @@ export class AdminService {
         email: true,
         name: true,
         kycLevel: true,
-        role: true,
+        legacyRole: true,
         reputationScore: true,
         totalTransactions: true,
         successfulTransactions: true,
         createdAt: true,
+        accountFrozen: true,
+        frozenReason: true,
+        frozenAt: true,
+        frozenUntil: true,
+        // RBAC: Incluir role relation
+        role: {
+          select: {
+            slug: true,
+            name: true,
+          },
+        },
       },
     });
 
-    return users;
+    // RBAC: Mapear para retornar role como string (compatibilidade frontend)
+    return users.map(user => {
+      const userRole = user.role?.slug?.toUpperCase() || user.legacyRole;
+      const { role: roleObject, legacyRole, ...rest } = user;
+
+      return {
+        ...rest,
+        role: userRole, // Role como string (MASTER, ADMIN, GERENTE, etc)
+      };
+    });
   }
 
   async updateUser(
@@ -329,6 +349,112 @@ export class AdminService {
     },
     adminId: string
   ) {
+    // Buscar admin que está fazendo a mudança (com role RBAC)
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+      include: {
+        role: {
+          select: { slug: true, level: true },
+        },
+      },
+    });
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        role: {
+          select: { slug: true, level: true },
+        },
+      },
+    });
+
+    if (!admin || !targetUser) {
+      throw new Error('Usuário não encontrado');
+    }
+
+    // RBAC: Extrair roles como strings
+    const adminRole = admin.role?.slug?.toUpperCase() || admin.legacyRole;
+    const targetRole = targetUser.role?.slug?.toUpperCase() || targetUser.legacyRole;
+
+    // Regras de hierarquia para mudança de role
+    if (data.role) {
+      const roleHierarchy: Record<string, number> = {
+        USER: 0,
+        SUPPORT: 40,
+        GERENTE: 60,
+        ADMIN: 80,
+        MASTER: 100,
+      };
+
+      const adminLevel = admin.role?.level || roleHierarchy[adminRole] || 0;
+      const targetLevel = targetUser.role?.level || roleHierarchy[targetRole] || 0;
+      const newLevel = roleHierarchy[data.role] || 0;
+
+      // 1. Ninguém pode alterar o próprio role
+      if (adminId === userId) {
+        throw new Error('Você não pode alterar seu próprio role');
+      }
+
+      // 2. Não pode promover alguém acima do seu próprio nível
+      if (newLevel >= adminLevel) {
+        throw new Error(`Apenas usuários MASTER podem promover para ${data.role}`);
+      }
+
+      // 3. Não pode alterar alguém de nível superior ou igual
+      if (targetLevel >= adminLevel) {
+        throw new Error('Você não tem permissão para alterar este usuário');
+      }
+
+      // 4. Apenas MASTER pode criar outro MASTER
+      if (data.role === 'MASTER' && adminRole !== 'MASTER') {
+        throw new Error('Apenas MASTER pode promover para MASTER');
+      }
+
+      // 5. MASTER não pode ser rebaixado (apenas por outro MASTER)
+      if (targetRole === 'MASTER' && adminRole !== 'MASTER') {
+        throw new Error('Apenas MASTER pode alterar outro MASTER');
+      }
+
+      // RBAC: Buscar role ID pelo slug
+      const newRoleSlug = data.role.toLowerCase();
+      const newRoleRecord = await prisma.role.findUnique({
+        where: { slug: newRoleSlug },
+      });
+
+      if (!newRoleRecord) {
+        throw new Error(`Role ${data.role} não encontrado no sistema RBAC`);
+      }
+
+      // Atualizar com roleId (RBAC) e legacyRole (backward compatibility)
+      const user = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          roleId: newRoleRecord.id,
+          legacyRole: data.role,
+          ...(data.kycLevel && { kycLevel: data.kycLevel }),
+        },
+      });
+
+      // Registrar ação admin com detalhes da hierarquia
+      await this.logAdminAction({
+        adminId,
+        action: 'UPDATE_USER_ROLE',
+        resource: 'USER',
+        resourceId: userId,
+        metadata: JSON.stringify({
+          previousRole: targetRole,
+          newRole: data.role,
+          adminRole: adminRole,
+          adminLevel,
+          targetLevel,
+          newLevel,
+        }),
+      });
+
+      return user;
+    }
+
+    // Se não está mudando role, apenas aplica outras mudanças (kycLevel, etc)
     const user = await prisma.user.update({
       where: { id: userId },
       data,
@@ -337,10 +463,13 @@ export class AdminService {
     // Registrar ação admin
     await this.logAdminAction({
       adminId,
-      action: 'UPDATE',
+      action: 'UPDATE_USER',
       resource: 'USER',
       resourceId: userId,
-      metadata: JSON.stringify(data),
+      metadata: JSON.stringify({
+        ...data,
+        adminRole: adminRole,
+      }),
     });
 
     return user;
@@ -382,23 +511,827 @@ export class AdminService {
   }
 
   async cancelOrder(orderId: string, adminId: string, reason: string) {
-    const order = await prisma.order.update({
+    // 1. Buscar pedido com todas as relações necessárias
+    const order = await prisma.order.findUnique({
       where: { id: orderId },
-      data: {
-        status: 'CANCELLED',
+      include: {
+        buyer: {
+          select: { id: true, email: true, name: true },
+        },
+        seller: {
+          select: { id: true, email: true, name: true },
+        },
+        wallet: true, // HD Wallet para desbloqueio de colateral
+        dispute: {
+          where: {
+            status: { in: ['OPEN', 'UNDER_REVIEW'] },
+          },
+        },
       },
     });
 
-    // Registrar ação admin
-    await this.logAdminAction({
-      adminId,
-      action: 'CANCEL',
-      resource: 'ORDER',
-      resourceId: orderId,
-      metadata: JSON.stringify({ reason }),
+    if (!order) {
+      throw new Error('Pedido não encontrado');
+    }
+
+    // 2. Verificar se há disputa ativa
+    if (order.dispute && order.dispute.length > 0) {
+      throw new Error(
+        'Não é possível cancelar pedido com disputa ativa. Resolva a disputa primeiro.'
+      );
+    }
+
+    // 3. Verificar se status permite cancelamento
+    const cancelableStatuses = [
+      'PENDING',
+      'MATCHED',
+      'PAYMENT_SENT',
+      'PAYMENT_RECEIVED',
+    ];
+
+    if (!cancelableStatuses.includes(order.status)) {
+      throw new Error(
+        `Pedido com status ${order.status} não pode ser cancelado. ` +
+        `Apenas pedidos ${cancelableStatuses.join(', ')} podem ser cancelados.`
+      );
+    }
+
+    // 4. Desbloquear colateral se existir (HD Wallet)
+    if (order.walletId && order.collateralLocked) {
+      try {
+        const { HDWalletService } = await import('./hdWallet.service');
+        const hdWalletService = new HDWalletService();
+        await hdWalletService.unlockCollateral(order.walletId, orderId);
+
+        console.log(`[ADMIN CANCEL] Colateral desbloqueado para order ${orderId}`);
+      } catch (error) {
+        console.error('[ADMIN CANCEL] Erro ao desbloquear colateral:', error);
+        // Não falhar o cancelamento por erro de desbloqueio
+        // Mas registrar no log de auditoria
+      }
+    }
+
+    // 5. Atualizar status do pedido
+    const cancelledOrder = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: 'CANCELLED',
+        cancelledBy: adminId,
+        cancellationReason: `[ADMIN] ${reason}`,
+        cancelledAt: new Date(),
+      },
     });
 
-    return order;
+    // 6. Criar histórico de cancelamento
+    await prisma.cancellationHistory.create({
+      data: {
+        orderId,
+        userId: adminId,
+        reason: `[ADMIN CANCEL] ${reason}`,
+        cancelledBy: 'ADMIN',
+        timestamp: new Date(),
+      },
+    });
+
+    // 7. Notificar ambas as partes
+    const { NotificationService } = await import('./notification.service');
+    const notificationService = new NotificationService();
+
+    await notificationService.sendToUser(order.buyer.id, {
+      type: 'ORDER_CANCELLED_BY_ADMIN',
+      title: 'Pedido cancelado pela administração',
+      message: `Seu pedido #${order.id.slice(0, 8)} foi cancelado por um administrador. Motivo: ${reason}`,
+      orderId: order.id,
+    });
+
+    if (order.seller) {
+      await notificationService.sendToUser(order.seller.id, {
+        type: 'ORDER_CANCELLED_BY_ADMIN',
+        title: 'Pedido cancelado pela administração',
+        message: `O pedido #${order.id.slice(0, 8)} foi cancelado por um administrador. Motivo: ${reason}`,
+        orderId: order.id,
+      });
+    }
+
+    // 8. Log de auditoria DETALHADO
+    await this.logAdminAction({
+      adminId,
+      action: 'CANCEL_ORDER',
+      resource: 'ORDER',
+      resourceId: orderId,
+      metadata: JSON.stringify({
+        reason,
+        previousStatus: order.status,
+        buyerId: order.buyer.id,
+        sellerId: order.seller?.id,
+        amount: order.amount,
+        cryptoType: order.cryptoType,
+        collateralUnlocked: order.collateralLocked,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+
+    return cancelledOrder;
+  }
+
+  async editOrder(
+    orderId: string,
+    adminId: string,
+    updates: {
+      amount?: string;
+      cryptoAmount?: string;
+      status?: string;
+      expiresAt?: Date;
+      notes?: string;
+    }
+  ) {
+    // 1. Buscar pedido atual com relações
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        buyer: { select: { id: true, email: true, name: true } },
+        seller: { select: { id: true, email: true, name: true } },
+        wallet: true,
+      },
+    });
+
+    if (!order) {
+      throw new Error('Pedido não encontrado');
+    }
+
+    // 2. Validar mudanças perigosas
+    if (updates.status) {
+      // Não permitir mudança direta para COMPLETED se colateral ainda está locked
+      if (updates.status === 'COMPLETED' && order.collateralLocked) {
+        throw new Error(
+          'Não é possível marcar como COMPLETED com colateral locked. ' +
+          'Desbloqueie o colateral primeiro ou cancele o pedido.'
+        );
+      }
+
+      // Não permitir mudança de status se há disputa ativa
+      const activeDispute = await prisma.dispute.findFirst({
+        where: {
+          orderId,
+          status: { in: ['OPEN', 'UNDER_REVIEW'] },
+        },
+      });
+
+      if (activeDispute) {
+        throw new Error('Não é possível editar pedido com disputa ativa');
+      }
+    }
+
+    // 3. Validar mudanças de valor
+    if (updates.amount && parseFloat(updates.amount) <= 0) {
+      throw new Error('Valor do pedido deve ser positivo');
+    }
+
+    if (updates.cryptoAmount && parseFloat(updates.cryptoAmount) <= 0) {
+      throw new Error('Quantidade de crypto deve ser positiva');
+    }
+
+    // 4. Se mudando valores, recalcular fees
+    let feeAmount = order.feeAmount;
+    if (updates.amount && updates.amount !== order.amount) {
+      const feePercentage = 0.02; // 2% (configuração da plataforma)
+      feeAmount = (parseFloat(updates.amount) * feePercentage).toString();
+    }
+
+    // 5. Registrar estado anterior para auditoria
+    const previousState = {
+      amount: order.amount,
+      cryptoAmount: order.cryptoAmount,
+      status: order.status,
+      expiresAt: order.expiresAt,
+      feeAmount: order.feeAmount,
+    };
+
+    // 6. Aplicar mudanças
+    const updatedOrder = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        ...updates,
+        feeAmount,
+        updatedAt: new Date(),
+      },
+    });
+
+    // 7. Notificar partes envolvidas
+    const { NotificationService } = await import('./notification.service');
+    const notificationService = new NotificationService();
+
+    const changesSummary = Object.entries(updates)
+      .map(([key, value]) => {
+        const oldValue = previousState[key as keyof typeof previousState];
+        return `${key}: ${oldValue} → ${value}`;
+      })
+      .join(', ');
+
+    await notificationService.sendToUser(order.buyer.id, {
+      type: 'ORDER_EDITED_BY_ADMIN',
+      title: 'Pedido modificado pela administração',
+      message: `Seu pedido #${order.id.slice(0, 8)} foi editado por um administrador. Alterações: ${changesSummary}`,
+      orderId: order.id,
+    });
+
+    if (order.seller) {
+      await notificationService.sendToUser(order.seller.id, {
+        type: 'ORDER_EDITED_BY_ADMIN',
+        title: 'Pedido modificado pela administração',
+        message: `O pedido #${order.id.slice(0, 8)} foi editado por um administrador. Alterações: ${changesSummary}`,
+        orderId: order.id,
+      });
+    }
+
+    // 8. Log de auditoria
+    await this.logAdminAction({
+      adminId,
+      action: 'EDIT_ORDER',
+      resource: 'ORDER',
+      resourceId: orderId,
+      metadata: JSON.stringify({
+        previousState,
+        newState: updates,
+        changesSummary,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+
+    return updatedOrder;
+  }
+
+  /**
+   * ============================================
+   * DETALHES COMPLETOS DO USUÁRIO (GOD MODE)
+   * ============================================
+   */
+
+  /**
+   * Buscar detalhes completos de um usuário para o painel admin
+   * Inclui: informações gerais, saldos, transações, audit log
+   */
+  async getUserDetails(userId: string) {
+    // 1. Buscar informações gerais do usuário
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        // RBAC: Incluir role relation
+        role: {
+          select: {
+            slug: true,
+            name: true,
+          },
+        },
+        kycVerification: {
+          select: {
+            cpf: true,
+            phone: true,
+            addressStreet: true,
+            addressNumber: true,
+            addressCity: true,
+            addressState: true,
+            addressZipCode: true,
+            addressComplement: true,
+            addressNeighborhood: true,
+            documentType: true,
+            documentNumber: true,
+            approvedAt: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new Error('Usuário não encontrado');
+    }
+
+    // 2. Buscar carteiras do usuário para calcular saldos
+    const wallets = await prisma.userWallet.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        cryptoType: true,
+        network: true,
+        address: true,
+        balance: true,
+        lockedBalance: true,
+        availableBalance: true,
+      },
+    });
+
+    // 3. Agrupar saldos por criptomoeda
+    const balancesByCrypto: Record<string, {
+      total: string;
+      available: string;
+      locked: string;
+      wallets: number;
+    }> = {};
+
+    wallets.forEach(wallet => {
+      if (!balancesByCrypto[wallet.cryptoType]) {
+        balancesByCrypto[wallet.cryptoType] = {
+          total: '0',
+          available: '0',
+          locked: '0',
+          wallets: 0,
+        };
+      }
+
+      const balance = parseFloat(wallet.balance || '0');
+      const available = parseFloat(wallet.availableBalance || '0');
+      const locked = parseFloat(wallet.lockedBalance || '0');
+
+      balancesByCrypto[wallet.cryptoType].total = (
+        parseFloat(balancesByCrypto[wallet.cryptoType].total) + balance
+      ).toString();
+
+      balancesByCrypto[wallet.cryptoType].available = (
+        parseFloat(balancesByCrypto[wallet.cryptoType].available) + available
+      ).toString();
+
+      balancesByCrypto[wallet.cryptoType].locked = (
+        parseFloat(balancesByCrypto[wallet.cryptoType].locked) + locked
+      ).toString();
+
+      balancesByCrypto[wallet.cryptoType].wallets++;
+    });
+
+    // 4. Buscar estatísticas de transações
+    const transactions = await prisma.transaction.findMany({
+      where: {
+        payerId: userId,
+      },
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        order: {
+          select: {
+            brlAmount: true,
+            cryptoAmount: true,
+            cryptoType: true,
+          },
+        },
+      },
+    });
+
+    const successfulTransactions = transactions.filter(t => t.status === 'APPROVED');
+    const failedTransactions = transactions.filter(t => t.status === 'REJECTED' || t.status === 'DISPUTED');
+
+    const totalVolumeBRL = successfulTransactions.reduce((sum, t) => {
+      return sum + parseFloat(t.order?.brlAmount || '0');
+    }, 0);
+
+    const totalVolumeBTC = successfulTransactions.reduce((sum, t) => {
+      return sum + parseFloat(t.order?.cryptoAmount || '0');
+    }, 0);
+
+    // 5. Buscar últimas transações (10 mais recentes)
+    const recentTransactions = await prisma.transaction.findMany({
+      where: {
+        payerId: userId,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 10,
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        order: {
+          select: {
+            id: true,
+            type: true,
+            brlAmount: true,
+            cryptoAmount: true,
+            cryptoType: true,
+          },
+        },
+      },
+    });
+
+    // 6. Buscar audit log relacionado ao usuário
+    const auditLog = await prisma.auditLog.findMany({
+      where: {
+        OR: [
+          { userId },
+          { resourceId: userId },
+        ],
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 20,
+      select: {
+        id: true,
+        userId: true,
+        email: true,
+        action: true,
+        resource: true,
+        resourceId: true,
+        description: true,
+        metadata: true,
+        success: true,
+        createdAt: true,
+      },
+    });
+
+    // 7. Buscar pedidos do usuário (FASE 2)
+    const orders = await prisma.order.findMany({
+      where: { userId },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 50, // Últimos 50 pedidos
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        cryptoType: true,
+        cryptoNetwork: true,
+        cryptoAmount: true,
+        brlAmount: true,
+        platformFee: true,
+        totalFee: true,
+        collateralConfirmed: true,
+        collateralLocked: true,
+        paidByPlatform: true,
+        timeoutAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    // 8. Buscar disputas envolvendo o usuário (FASE 2)
+    const disputes = await prisma.dispute.findMany({
+      where: {
+        OR: [
+          { createdBy: userId },
+          {
+            order: {
+              userId: userId,
+            },
+          },
+        ],
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: {
+        id: true,
+        orderId: true,
+        category: true,
+        title: true,
+        description: true,
+        status: true,
+        resolution: true,
+        resolutionType: true,
+        resolvedBy: true,
+        resolvedAt: true,
+        createdAt: true,
+        createdBy: true,
+        creator: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        order: {
+          select: {
+            id: true,
+            type: true,
+            brlAmount: true,
+            cryptoAmount: true,
+            cryptoType: true,
+            status: true,
+            userId: true,
+          },
+        },
+      },
+    });
+
+    // 9. Retornar dados consolidados
+    // RBAC: Extrair role como string
+    const userRole = user.role?.slug?.toUpperCase() || user.legacyRole;
+
+    return {
+      // Informações gerais
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: userRole, // RBAC: Role como string (MASTER, ADMIN, etc)
+        kycLevel: user.kycLevel,
+        reputationScore: user.reputationScore,
+        twoFactorEnabled: user.twoFactorEnabled,
+        accountFrozen: user.accountFrozen,
+        frozenReason: user.frozenReason,
+        frozenAt: user.frozenAt,
+        frozenUntil: user.frozenUntil,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        // Dados KYC
+        cpf: user.kycVerification?.cpf,
+        phone: user.kycVerification?.phone,
+        kycData: user.kycVerification ? {
+          address: user.kycVerification.addressStreet,
+          city: user.kycVerification.addressCity,
+          state: user.kycVerification.addressState,
+          zipCode: user.kycVerification.addressZipCode,
+          documentType: user.kycVerification.documentType,
+          documentNumber: user.kycVerification.documentNumber,
+          approvedAt: user.kycVerification.approvedAt,
+        } : undefined,
+      },
+
+      // Saldos por criptomoeda
+      balances: Object.entries(balancesByCrypto).map(([crypto, data]) => ({
+        cryptocurrency: crypto,
+        totalBalance: data.total,
+        availableBalance: data.available,
+        lockedBalance: data.locked,
+        walletCount: data.wallets,
+      })),
+
+      // Estatísticas de transações
+      stats: {
+        totalTransactions: transactions.length,
+        successfulTransactions: successfulTransactions.length,
+        failedTransactions: failedTransactions.length,
+        successRate: transactions.length > 0
+          ? ((successfulTransactions.length / transactions.length) * 100).toFixed(1) + '%'
+          : '0.0%',
+        totalVolumeBRL: totalVolumeBRL.toFixed(2),
+        totalVolumeBTC: totalVolumeBTC.toFixed(8),
+      },
+
+      // Transações recentes
+      recentTransactions: recentTransactions.map(t => ({
+        id: t.id,
+        type: t.order?.type || 'N/A',
+        amount: t.order?.brlAmount || '0',
+        cryptocurrency: t.order?.cryptoType || 'BTC',
+        status: t.status,
+        createdAt: t.createdAt,
+      })),
+
+      // Audit log
+      auditLog: auditLog.map(log => ({
+        id: log.id,
+        action: log.action,
+        resource: log.resource,
+        timestamp: log.createdAt,
+        adminUser: log.email ? {
+          email: log.email,
+          name: log.email.split('@')[0],
+        } : null,
+        metadata: log.metadata,
+      })),
+
+      // FASE 2: Pedidos do usuário
+      orders: orders.map(order => ({
+        id: order.id,
+        type: order.type,
+        status: order.status,
+        cryptoType: order.cryptoType,
+        cryptoNetwork: order.cryptoNetwork,
+        cryptoAmount: order.cryptoAmount,
+        brlAmount: order.brlAmount,
+        platformFee: order.platformFee,
+        totalFee: order.totalFee,
+        collateralConfirmed: order.collateralConfirmed,
+        collateralLocked: order.collateralLocked,
+        paidByPlatform: order.paidByPlatform,
+        timeoutAt: order.timeoutAt,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+      })),
+
+      // FASE 2: Disputas envolvendo o usuário
+      disputes: disputes.map(dispute => ({
+        id: dispute.id,
+        orderId: dispute.orderId,
+        category: dispute.category,
+        title: dispute.title,
+        description: dispute.description,
+        status: dispute.status,
+        resolution: dispute.resolution,
+        resolutionType: dispute.resolutionType,
+        resolvedBy: dispute.resolvedBy,
+        resolvedAt: dispute.resolvedAt,
+        createdAt: dispute.createdAt,
+        creator: dispute.creator,
+        order: dispute.order,
+        // Indicar se o usuário atual foi o criador da disputa ou se é o dono do pedido
+        userRole: dispute.createdBy === userId ? 'CREATOR' : 'ORDER_OWNER',
+      })),
+    };
+  }
+
+  /**
+   * ============================================
+   * RELATÓRIO PARA AUTORIDADES (FASE 2)
+   * ============================================
+   * Gera relatório completo do usuário para envio a autoridades governamentais
+   */
+  async generateAuthorityReport(userId: string, filters?: {
+    startDate?: Date;
+    endDate?: Date;
+    includeAllData?: boolean;
+  }) {
+    // Buscar dados completos do usuário
+    const userDetails = await this.getUserDetails(userId);
+
+    // Buscar informações adicionais para o relatório
+    const allWallets = await prisma.userWallet.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        cryptoType: true,
+        network: true,
+        address: true,
+        balance: true,
+        lockedBalance: true,
+        availableBalance: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+
+    // Buscar TODAS as transações (não apenas as recentes)
+    const allTransactions = await prisma.transaction.findMany({
+      where: {
+        payerId: userId,
+        ...(filters?.startDate || filters?.endDate ? {
+          createdAt: {
+            gte: filters.startDate,
+            lte: filters.endDate,
+          },
+        } : {}),
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        order: {
+          select: {
+            id: true,
+            type: true,
+            brlAmount: true,
+            cryptoAmount: true,
+            cryptoType: true,
+            status: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    // Buscar TODOS os pedidos (incluindo filtros de data)
+    const allOrders = await prisma.order.findMany({
+      where: {
+        userId,
+        ...(filters?.startDate || filters?.endDate ? {
+          createdAt: {
+            gte: filters.startDate,
+            lte: filters.endDate,
+          },
+        } : {}),
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    // Flags de atividade suspeita
+    const suspiciousActivityFlags = [];
+
+    // Flag 1: Muitas disputas
+    if (userDetails.disputes.length > 5) {
+      suspiciousActivityFlags.push({
+        type: 'HIGH_DISPUTE_COUNT',
+        severity: 'MEDIUM',
+        description: `Usuário possui ${userDetails.disputes.length} disputas registradas`,
+      });
+    }
+
+    // Flag 2: Conta bloqueada
+    if (userDetails.user.accountFrozen) {
+      suspiciousActivityFlags.push({
+        type: 'ACCOUNT_FROZEN',
+        severity: 'HIGH',
+        description: `Conta bloqueada. Motivo: ${userDetails.user.frozenReason || 'N/A'}`,
+        frozenAt: userDetails.user.frozenAt,
+      });
+    }
+
+    // Flag 3: KYC não verificado
+    if (userDetails.user.kycLevel === 'NONE') {
+      suspiciousActivityFlags.push({
+        type: 'NO_KYC',
+        severity: 'MEDIUM',
+        description: 'Usuário sem verificação KYC',
+      });
+    }
+
+    // Flag 4: Reputação baixa
+    if (userDetails.user.reputationScore < 50) {
+      suspiciousActivityFlags.push({
+        type: 'LOW_REPUTATION',
+        severity: 'LOW',
+        description: `Reputação baixa: ${userDetails.user.reputationScore}`,
+      });
+    }
+
+    // Calcular totais
+    const totalVolumeAllTime = allTransactions
+      .filter(t => t.status === 'APPROVED')
+      .reduce((sum, t) => sum + parseFloat(t.order?.brlAmount || '0'), 0);
+
+    const totalCryptoAllTime = allTransactions
+      .filter(t => t.status === 'APPROVED')
+      .reduce((sum, t) => sum + parseFloat(t.order?.cryptoAmount || '0'), 0);
+
+    // Montar relatório completo
+    return {
+      // Metadata do relatório
+      reportMetadata: {
+        generatedAt: new Date(),
+        generatedBy: 'SYSTEM',
+        reportType: 'AUTHORITY_COMPLIANCE',
+        userId: userId,
+        period: filters?.startDate && filters?.endDate ? {
+          start: filters.startDate,
+          end: filters.endDate,
+        } : 'ALL_TIME',
+      },
+
+      // Dados do usuário
+      userData: {
+        id: userDetails.user.id,
+        email: userDetails.user.email,
+        name: userDetails.user.name,
+        cpf: userDetails.user.cpf,
+        phone: userDetails.user.phone,
+        role: userDetails.user.role, // Já vem como string de getUserDetails()
+        kycLevel: userDetails.user.kycLevel,
+        reputationScore: userDetails.user.reputationScore,
+        accountStatus: userDetails.user.accountFrozen ? 'FROZEN' : 'ACTIVE',
+        frozenReason: userDetails.user.frozenReason,
+        frozenAt: userDetails.user.frozenAt,
+        frozenUntil: userDetails.user.frozenUntil,
+        createdAt: userDetails.user.createdAt,
+        kycData: userDetails.user.kycData,
+      },
+
+      // Carteiras e saldos
+      wallets: allWallets,
+      balancesSummary: userDetails.balances,
+
+      // Transações completas
+      transactions: {
+        total: allTransactions.length,
+        approved: allTransactions.filter(t => t.status === 'APPROVED').length,
+        rejected: allTransactions.filter(t => t.status === 'REJECTED').length,
+        disputed: allTransactions.filter(t => t.status === 'DISPUTED').length,
+        totalVolumeBRL: totalVolumeAllTime.toFixed(2),
+        totalVolumeCrypto: totalCryptoAllTime.toFixed(8),
+        list: allTransactions,
+      },
+
+      // Pedidos completos
+      orders: {
+        total: allOrders.length,
+        completed: allOrders.filter(o => o.status === 'COMPLETED').length,
+        cancelled: allOrders.filter(o => o.status === 'CANCELLED').length,
+        disputed: allOrders.filter(o => o.status === 'DISPUTED').length,
+        list: allOrders,
+      },
+
+      // Disputas
+      disputes: {
+        total: userDetails.disputes.length,
+        asInitiator: userDetails.disputes.filter(d => d.userRole === 'INITIATOR').length,
+        asRespondent: userDetails.disputes.filter(d => d.userRole === 'RESPONDENT').length,
+        list: userDetails.disputes,
+      },
+
+      // Flags de atividade suspeita
+      suspiciousActivity: {
+        hasFlags: suspiciousActivityFlags.length > 0,
+        flagCount: suspiciousActivityFlags.length,
+        flags: suspiciousActivityFlags,
+      },
+
+      // Audit log completo
+      auditLog: userDetails.auditLog,
+    };
   }
 
   /**

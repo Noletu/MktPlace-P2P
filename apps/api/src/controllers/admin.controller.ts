@@ -22,7 +22,7 @@ const UpdatePlatformWalletSchema = z.object({
 
 const UpdateUserSchema = z.object({
   kycLevel: z.string().optional(),
-  role: z.enum(['USER', 'ADMIN', 'SUPPORT']).optional(),
+  role: z.enum(['USER', 'GERENTE', 'SUPPORT', 'ADMIN', 'MASTER']).optional(),
 });
 
 export class AdminController {
@@ -226,6 +226,30 @@ export class AdminController {
     }
   }
 
+  /**
+   * GET /api/v1/admin/users/:id/details
+   * Buscar detalhes completos de um usuário (GOD MODE)
+   * Inclui: info geral, saldos por crypto, transações, audit log
+   */
+  async getUserDetails(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+
+      const details = await adminService.getUserDetails(id);
+
+      res.json({
+        success: true,
+        data: details,
+      });
+    } catch (error: any) {
+      console.error('Erro ao buscar detalhes do usuário:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar detalhes do usuário',
+      });
+    }
+  }
+
   async updateUser(req: Request, res: Response) {
     try {
       const adminId = req.user?.userId;
@@ -259,6 +283,40 @@ export class AdminController {
       res.status(400).json({
         success: false,
         error: error.message || 'Erro ao atualizar usuário',
+      });
+    }
+  }
+
+  /**
+   * FASE 2: Gerar relatório para autoridades
+   */
+  async generateAuthorityReport(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { startDate, endDate } = req.query;
+
+      const filters: any = {};
+
+      if (startDate) {
+        filters.startDate = new Date(startDate as string);
+      }
+
+      if (endDate) {
+        filters.endDate = new Date(endDate as string);
+      }
+
+      const report = await adminService.generateAuthorityReport(id, filters);
+
+      res.json({
+        success: true,
+        data: report,
+        message: 'Relatório gerado com sucesso',
+      });
+    } catch (error: any) {
+      console.error('Erro ao gerar relatório:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao gerar relatório',
       });
     }
   }
@@ -324,6 +382,50 @@ export class AdminController {
       res.status(400).json({
         success: false,
         error: error.message || 'Erro ao cancelar pedido',
+      });
+    }
+  }
+
+  async editOrder(req: Request, res: Response) {
+    try {
+      const adminId = req.user?.userId;
+      if (!adminId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Não autorizado',
+        });
+      }
+
+      const { id } = req.params;
+      const { amount, cryptoAmount, status, expiresAt, notes } = req.body;
+
+      // Validar que pelo menos um campo foi fornecido
+      if (!amount && !cryptoAmount && !status && !expiresAt && !notes) {
+        return res.status(400).json({
+          success: false,
+          error: 'Pelo menos um campo deve ser fornecido para edição',
+        });
+      }
+
+      const updates: any = {};
+      if (amount) updates.amount = amount;
+      if (cryptoAmount) updates.cryptoAmount = cryptoAmount;
+      if (status) updates.status = status;
+      if (expiresAt) updates.expiresAt = new Date(expiresAt);
+      if (notes) updates.notes = notes;
+
+      const order = await adminService.editOrder(id, adminId, updates);
+
+      res.json({
+        success: true,
+        data: order,
+        message: 'Pedido editado com sucesso',
+      });
+    } catch (error: any) {
+      console.error('Erro ao editar pedido:', error);
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao editar pedido',
       });
     }
   }

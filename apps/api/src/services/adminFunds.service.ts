@@ -174,13 +174,18 @@ export class AdminFundsService {
    * - Bloqueia TODAS as carteiras
    * - Impede saques e novos pedidos
    * - Pedidos ativos continuam (para não prejudicar terceiros)
+   * - Suporta freeze temporário (com auto-desbloqueio) ou permanente
+   *
+   * @param duration - Duração em horas para freeze temporário (opcional)
+   *                   Se não fornecida, freeze é permanente (requer desbloqueio manual)
    */
   static async freezeAccount(params: {
     userId: string;
     reason: string;
     adminUserId: string;
+    duration?: number; // Em horas
   }) {
-    const { userId, reason, adminUserId } = params;
+    const { userId, reason, adminUserId, duration } = params;
 
     // Verificar se usuário existe
     const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -192,6 +197,16 @@ export class AdminFundsService {
       throw new Error('Conta já está congelada');
     }
 
+    // Calcular frozenUntil se duration fornecida
+    let frozenUntil: Date | null = null;
+    let freezeType: 'PERMANENT' | 'TEMPORARY' = 'PERMANENT';
+
+    if (duration && duration > 0) {
+      frozenUntil = new Date();
+      frozenUntil.setHours(frozenUntil.getHours() + duration);
+      freezeType = 'TEMPORARY';
+    }
+
     // Congelar conta
     const updatedUser = await prisma.user.update({
       where: { id: userId },
@@ -200,6 +215,7 @@ export class AdminFundsService {
         frozenReason: reason,
         frozenAt: new Date(),
         frozenBy: adminUserId,
+        frozenUntil, // Null para permanente, Date para temporário
       },
     });
 
@@ -210,20 +226,32 @@ export class AdminFundsService {
         action: 'FREEZE_ACCOUNT',
         resource: 'USER',
         resourceId: userId,
-        description: `Admin congelou conta de ${user.email}`,
-        metadata: JSON.stringify({ reason }),
+        description: freezeType === 'TEMPORARY'
+          ? `Admin congelou conta de ${user.email} temporariamente (${duration}h)`
+          : `Admin congelou conta de ${user.email} permanentemente`,
+        metadata: JSON.stringify({
+          reason,
+          freezeType,
+          duration: duration || null,
+          frozenUntil: frozenUntil ? frozenUntil.toISOString() : null,
+        }),
         success: true,
       },
     });
 
     return {
       success: true,
-      message: 'Conta congelada com sucesso',
+      message: freezeType === 'TEMPORARY'
+        ? `Conta congelada temporariamente até ${frozenUntil?.toLocaleString('pt-BR')}`
+        : 'Conta congelada permanentemente (requer desbloqueio manual)',
       data: {
         userId: updatedUser.id,
         email: updatedUser.email,
         accountFrozen: updatedUser.accountFrozen,
         frozenAt: updatedUser.frozenAt,
+        frozenUntil: updatedUser.frozenUntil,
+        freezeType,
+        autoUnfreezeIn: duration ? `${duration} horas` : null,
       },
     };
   }

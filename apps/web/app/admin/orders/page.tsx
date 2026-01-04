@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import StatusBadge from '@/components/admin/shared/StatusBadge';
 import { formatBRL } from '@/utils/formatters';
+import CancelOrderModal from '@/components/admin/modals/CancelOrderModal';
+import EditOrderModal from '@/components/admin/modals/EditOrderModal';
 
 interface Order {
   id: string;
@@ -21,6 +23,9 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [filterType, setFilterType] = useState('ALL');
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   useEffect(() => {
     fetchOrders();
@@ -138,6 +143,7 @@ export default function OrdersPage() {
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Valor</th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Status</th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Data</th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
@@ -171,6 +177,32 @@ export default function OrdersPage() {
                       {new Date(order.createdAt).toLocaleDateString('pt-BR')}
                     </span>
                   </td>
+                  <td className="px-6 py-4">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setSelectedOrder(order);
+                          setShowEditModal(true);
+                        }}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition"
+                        title="Editar pedido"
+                      >
+                        ✏️ Editar
+                      </button>
+                      {order.status !== 'CANCELLED' && order.status !== 'COMPLETED' && (
+                        <button
+                          onClick={() => {
+                            setSelectedOrder(order);
+                            setShowCancelModal(true);
+                          }}
+                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition"
+                          title="Cancelar pedido"
+                        >
+                          ❌ Cancelar
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -182,6 +214,33 @@ export default function OrdersPage() {
           </div>
         )}
       </div>
+
+      {/* Modais */}
+      {showCancelModal && selectedOrder && (
+        <CancelOrderModal
+          order={selectedOrder}
+          onClose={() => {
+            setShowCancelModal(false);
+            setSelectedOrder(null);
+          }}
+          onSuccess={() => {
+            fetchOrders(); // Recarregar lista de pedidos
+          }}
+        />
+      )}
+
+      {showEditModal && selectedOrder && (
+        <EditOrderModal
+          order={selectedOrder}
+          onClose={() => {
+            setShowEditModal(false);
+            setSelectedOrder(null);
+          }}
+          onSuccess={() => {
+            fetchOrders(); // Recarregar lista de pedidos
+          }}
+        />
+      )}
     </div>
   );
 }

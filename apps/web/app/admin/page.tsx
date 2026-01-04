@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { formatBRL } from '@/utils/formatters';
 import FinanceDashboard from '@/components/admin/FinanceDashboard';
-import WalletBalancesWidget from '@/components/admin/WalletBalancesWidget';
 import StatCard from '@/components/admin/shared/StatCard';
 import OrdersStatusChart from '@/components/admin/charts/OrdersStatusChart';
 import VolumeChart from '@/components/admin/charts/VolumeChart';
@@ -178,22 +177,6 @@ export default function AdminDashboard() {
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">💰 Financeiro</h2>
         <FinanceDashboard />
-      </div>
-
-      {/* Wallet Balances */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <WalletBalancesWidget />
-
-        {/* Disputes Summary */}
-        <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">⚖️ Disputas</h3>
-            <a href="/admin/disputes" className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline">
-              Ver todas →
-            </a>
-          </div>
-          <p className="text-sm text-gray-600 dark:text-gray-400">Acesse o painel de disputas para gerenciar casos pendentes</p>
-        </div>
       </div>
 
     </div>

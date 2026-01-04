@@ -27,6 +27,7 @@ import workersRoutes from './routes/workers.routes';
 import masterSeedAdminRoutes from './routes/masterSeedAdmin.routes';
 import adminFundsRoutes from './routes/adminFunds.routes';
 import exchangeRateRoutes from './routes/exchange-rate.routes';
+import roleRoutes from './routes/role.routes';
 // import negotiationRoutes from './routes/negotiation.routes'; // DESABILITADO: Chat disponível apenas após aceitar pedido
 // import statsRoutes from './routes/stats.routes';
 import { apiLimiter } from './middleware/rateLimiter.middleware';
@@ -44,6 +45,7 @@ import { initializeChatSocket } from './socket/chat.socket';
 import { initializeNotificationSocket } from './socket/notification.socket';
 import { MasterSeedService } from './services/hd-wallet/master-seed.service';
 import { KeyManagementService } from './services/hd-wallet/key-management.service';
+import { startAutoUnfreezeJob } from './jobs/autoUnfreeze.job';
 
 dotenv.config();
 
@@ -243,6 +245,9 @@ app.use('/api/v1/admin/master-seed', masterSeedAdminRoutes);
 // Exchange Rate routes (multi-source USD/BRL rate with fallback)
 app.use('/api/v1/exchange-rate', exchangeRateRoutes);
 
+// Role routes (RBAC - Role-Based Access Control) - MASTER only
+app.use('/api/v1/roles', roleRoutes);
+
 // Negotiation routes (pre-match negotiation) - DESABILITADO: Chat disponível apenas após aceitar pedido
 // app.use('/api/v1/negotiation', negotiationRoutes);
 
@@ -324,7 +329,10 @@ httpServer.listen(port, async () => {
     logger.error('❌ [workers]: Erro ao restaurar estado do BalanceSyncWorker:', error);
   }
 
-  console.log('⚙️  [workers]: Background workers started (HD wallet monitoring, order expiration, presence, chat archive)');
+  // Iniciar job de auto-desbloqueio de contas (freeze temporário)
+  startAutoUnfreezeJob();
+
+  console.log('⚙️  [workers]: Background workers started (HD wallet monitoring, order expiration, presence, chat archive, auto-unfreeze)');
 });
 
 // Exportar para uso em outros módulos
