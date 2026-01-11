@@ -55,11 +55,15 @@ export class AuditLogService {
     errorMessage?: string
   ): void {
     const userId = (req as any).user?.userId;
+    const email = (req as any).user?.email;
+    const role = (req as any).user?.role;
     const ipAddress = req.ip || req.socket.remoteAddress;
     const userAgent = req.get('user-agent');
 
     this.log({
       userId,
+      email,
+      role,
       action,
       resource,
       resourceId,
@@ -245,6 +249,23 @@ export const AUDIT_ACTIONS = {
 
   // Admin
   ADMIN_ACTION: 'ADMIN_ACTION',
+
+  // User Management
+  USER_ROLE_CHANGE: 'USER_ROLE_CHANGE',
+
+  // Role Management
+  ROLE_CREATE: 'ROLE_CREATE',
+  ROLE_UPDATE: 'ROLE_UPDATE',
+  ROLE_DELETE: 'ROLE_DELETE',
+  ROLE_PERMISSION_ASSIGN: 'ROLE_PERMISSION_ASSIGN',
+  ROLE_PERMISSION_REMOVE: 'ROLE_PERMISSION_REMOVE',
+  ROLE_PERMISSION_UPDATE: 'ROLE_PERMISSION_UPDATE',
+
+  // Support Tickets
+  SUPPORT_TICKET_CREATE: 'SUPPORT_TICKET_CREATE',
+  SUPPORT_TICKET_REPLY: 'SUPPORT_TICKET_REPLY',
+  SUPPORT_TICKET_RESOLVE: 'SUPPORT_TICKET_RESOLVE',
+  SUPPORT_TICKET_CLOSE: 'SUPPORT_TICKET_CLOSE',
 } as const;
 
 export const AUDIT_RESOURCES = {
@@ -253,4 +274,7 @@ export const AUDIT_RESOURCES = {
   TRANSACTION: 'TRANSACTION',
   WALLET: 'WALLET',
   KYC: 'KYC',
+  ROLE: 'ROLE',
+  PERMISSION: 'PERMISSION',
+  SUPPORT_TICKET: 'SUPPORT_TICKET',
 } as const;

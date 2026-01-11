@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from './auditLog.service';
 
 const prisma = new PrismaClient();
 
@@ -435,7 +436,7 @@ export class AdminService {
         },
       });
 
-      // Registrar ação admin com detalhes da hierarquia
+      // Registrar ação admin com detalhes da hierarquia (legacy system - manter para backward compatibility)
       await this.logAdminAction({
         adminId,
         action: 'UPDATE_USER_ROLE',
@@ -449,6 +450,28 @@ export class AdminService {
           targetLevel,
           newLevel,
         }),
+      });
+
+      // Log no sistema moderno de audit
+      await auditLogService.log({
+        userId: adminId,
+        email: admin.email,
+        role: adminRole,
+        action: AUDIT_ACTIONS.USER_ROLE_CHANGE,
+        resource: AUDIT_RESOURCES.USER,
+        resourceId: userId,
+        metadata: {
+          previousRole: targetRole,
+          newRole: data.role,
+          adminRole: adminRole,
+          adminLevel,
+          targetLevel,
+          newLevel,
+          targetUserEmail: targetUser.email,
+          targetUserName: targetUser.name,
+        },
+        // Note: IP e userAgent não disponíveis aqui (service layer)
+        // Seria necessário passar do controller se precisar
       });
 
       return user;

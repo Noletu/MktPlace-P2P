@@ -8,6 +8,7 @@ import ActiveOrdersCard from '@/components/dashboard/ActiveOrdersCard';
 import StatisticsCard from '@/components/dashboard/StatisticsCard';
 import SecurityBanner from '@/components/dashboard/SecurityBanner';
 import FloatingActionButton from '@/components/dashboard/FloatingActionButton';
+import { FrozenAccountBanner } from '@/components/FrozenAccountBanner';
 import { useChats } from '@/hooks/useChats';
 
 interface User {
@@ -18,6 +19,11 @@ interface User {
   kycLevel: string;
   reputationScore: number;
   role: string;
+  // ADMIN CONTROLS: Bloqueio
+  accountFrozen?: boolean;
+  frozenReason?: string | null;
+  frozenAt?: string | null;
+  frozenUntil?: string | null;
 }
 
 export default function DashboardPage() {
@@ -102,6 +108,16 @@ export default function DashboardPage() {
   return (
     <>
       <AppHeader />
+
+      {/* BANNER: Aviso de conta bloqueada */}
+      {user.accountFrozen && (
+        <FrozenAccountBanner
+          frozenReason={user.frozenReason || 'Não especificado'}
+          frozenAt={user.frozenAt || ''}
+          frozenUntil={user.frozenUntil}
+        />
+      )}
+
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

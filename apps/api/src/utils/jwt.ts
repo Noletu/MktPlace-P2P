@@ -31,6 +31,10 @@ export interface JWTPayload {
   userId: string;
   email: string;
   role: string;
+  level?: number;
+  accountFrozen?: boolean;
+  frozenReason?: string | null;
+  frozenUntil?: Date | null;
 }
 
 export interface RefreshTokenPayload {

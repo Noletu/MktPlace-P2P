@@ -101,9 +101,16 @@ export default function AdminProfilePage() {
                 <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
                   profile?.role === 'MASTER'
                     ? 'bg-purple-600/20 border border-purple-500/50 text-purple-400'
-                    : 'bg-blue-600/20 border border-blue-500/50 text-blue-400'
+                    : profile?.role === 'ADMIN'
+                    ? 'bg-blue-600/20 border border-blue-500/50 text-blue-400'
+                    : profile?.role === 'GERENTE'
+                    ? 'bg-green-600/20 border border-green-500/50 text-green-400'
+                    : 'bg-orange-600/20 border border-orange-500/50 text-orange-400'
                 }`}>
-                  {profile?.role === 'MASTER' ? '👑 Master Admin' : '🛡️ Admin'}
+                  {profile?.role === 'MASTER' ? '👑 Master Admin'
+                   : profile?.role === 'ADMIN' ? '⚡ Admin'
+                   : profile?.role === 'GERENTE' ? '📊 Gerente'
+                   : '🎧 Suporte'}
                 </span>
               </div>
             </div>

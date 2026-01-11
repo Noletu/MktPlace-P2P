@@ -28,6 +28,7 @@ import masterSeedAdminRoutes from './routes/masterSeedAdmin.routes';
 import adminFundsRoutes from './routes/adminFunds.routes';
 import exchangeRateRoutes from './routes/exchange-rate.routes';
 import roleRoutes from './routes/role.routes';
+import supportRoutes from './routes/support.routes';
 // import negotiationRoutes from './routes/negotiation.routes'; // DESABILITADO: Chat disponível apenas após aceitar pedido
 // import statsRoutes from './routes/stats.routes';
 import { apiLimiter } from './middleware/rateLimiter.middleware';
@@ -170,6 +171,7 @@ app.get('/api/v1', (req: Request, res: Response) => {
       notifications: '/api/v1/notifications',
       disputes: '/api/v1/disputes',
       reviews: '/api/v1/reviews',
+      support: '/api/v1/support',
       chat: '/api/v1/chat',
       keys: '/api/v1/keys'
     }
@@ -178,6 +180,9 @@ app.get('/api/v1', (req: Request, res: Response) => {
 
 // Auth routes
 app.use('/api/v1/auth', authRoutes);
+
+// SECURITY: Middleware de restrição para contas bloqueadas movido para auth.middleware.ts
+// A verificação agora é feita durante a autenticação (após req.user ser definido)
 
 // 2FA routes
 app.use('/api/v1/2fa', twoFactorRoutes);
@@ -223,6 +228,9 @@ app.use('/api/v1/disputes', disputeRoutes);
 
 // Review routes
 app.use('/api/v1/reviews', reviewRoutes);
+
+// Support routes (tickets de suporte para usuários)
+app.use('/api/v1/support', supportRoutes);
 
 // Notification routes
 app.use('/api/v1/notifications', notificationRoutes);

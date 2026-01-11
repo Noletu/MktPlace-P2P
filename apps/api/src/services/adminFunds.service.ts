@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import BigNumber from 'bignumber.js';
+import { notificationService } from './notification.service';
 
 const prisma = new PrismaClient();
 
@@ -239,6 +240,28 @@ export class AdminFundsService {
       },
     });
 
+    // NOTIFICAÇÃO: Avisar usuário sobre bloqueio
+    try {
+      const notificationMessage = freezeType === 'TEMPORARY'
+        ? `Sua conta foi temporariamente suspensa até ${frozenUntil?.toLocaleString('pt-BR')}. Motivo: ${reason}`
+        : `Sua conta foi suspensa. Motivo: ${reason}`;
+
+      await notificationService.createNotification({
+        userId: userId,
+        type: 'ACCOUNT_FROZEN',
+        category: 'ACCOUNT',
+        title: freezeType === 'TEMPORARY' ? '⚠️ Conta Suspensa Temporariamente' : '🚫 Conta Suspensa',
+        message: notificationMessage,
+        priority: 'HIGH',
+        actionUrl: '/disputes/create?category=ACCOUNT_BLOCK_APPEAL',
+        actionLabel: 'Apelar da Decisão',
+      });
+      console.log(`✅ [Freeze] Notificação criada para usuário ${userId}`);
+    } catch (notifError: any) {
+      console.error('❌ [Freeze] Erro ao criar notificação:', notifError.message);
+      // Não falhar o freeze se notificação falhar
+    }
+
     return {
       success: true,
       message: freezeType === 'TEMPORARY'
@@ -294,6 +317,24 @@ export class AdminFundsService {
         success: true,
       },
     });
+
+    // NOTIFICAÇÃO: Avisar usuário sobre desbloqueio
+    try {
+      await notificationService.createNotification({
+        userId: userId,
+        type: 'ACCOUNT_UNFROZEN',
+        category: 'ACCOUNT',
+        title: '✅ Conta Reativada',
+        message: 'Sua conta foi reativada e você já pode usar todas as funcionalidades da plataforma.',
+        priority: 'NORMAL',
+        actionUrl: '/dashboard',
+        actionLabel: 'Ver Dashboard',
+      });
+      console.log(`✅ [Unfreeze] Notificação criada para usuário ${userId}`);
+    } catch (notifError: any) {
+      console.error('❌ [Unfreeze] Erro ao criar notificação:', notifError.message);
+      // Não falhar o unfreeze se notificação falhar
+    }
 
     return {
       success: true,
@@ -600,6 +641,7 @@ export class AdminFundsService {
         in: [
           'FREEZE_ACCOUNT',
           'UNFREEZE_ACCOUNT',
+          'AUTO_UNFREEZE_ACCOUNT',
           'INTERNAL_TRANSFER',
           'BALANCE_ADJUSTMENT',
         ],

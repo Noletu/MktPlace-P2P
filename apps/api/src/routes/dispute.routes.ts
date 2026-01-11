@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { disputeController } from '../controllers/dispute.controller';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
 import { managerMiddleware } from '../middleware/manager.middleware';
+import { supportMiddleware } from '../middleware/support.middleware';
 import { disputeLimiter } from '../middleware/rateLimiter.middleware';
 
 const router = Router();
@@ -18,10 +19,10 @@ router.post('/', disputeLimiter, disputeController.createDispute.bind(disputeCon
 
 /**
  * @route   GET /api/v1/disputes/stats
- * @desc    Estatísticas de disputas (GERENTE + ADMIN + MASTER)
- * @access  Manager/Admin/Master
+ * @desc    Estatísticas de disputas (SUPPORT + GERENTE + ADMIN + MASTER)
+ * @access  Support/Manager/Admin/Master
  */
-router.get('/stats', managerMiddleware, disputeController.getDisputeStats.bind(disputeController));
+router.get('/stats', supportMiddleware, disputeController.getDisputeStats.bind(disputeController));
 
 /**
  * @route   GET /api/v1/disputes/my-disputes
@@ -29,6 +30,22 @@ router.get('/stats', managerMiddleware, disputeController.getDisputeStats.bind(d
  * @access  Private
  */
 router.get('/my-disputes', disputeController.getUserDisputes.bind(disputeController));
+
+// ============================================
+// ADMIN ROUTES
+// ============================================
+
+/**
+ * @route   GET /api/v1/disputes
+ * @desc    Listar todas as disputas (SUPPORT + GERENTE + ADMIN + MASTER)
+ * @access  Support/Manager/Admin/Master
+ * IMPORTANT: Deve vir ANTES de /:disputeId para evitar match incorreto
+ */
+router.get('/', supportMiddleware, disputeController.getAllDisputes.bind(disputeController));
+
+// ============================================
+// USER ROUTES (com parâmetros - devem vir por último)
+// ============================================
 
 /**
  * @route   GET /api/v1/disputes/:disputeId
@@ -50,17 +67,6 @@ router.post('/:disputeId/messages', disputeController.addMessage.bind(disputeCon
  * @access  Private
  */
 router.post('/:disputeId/respond', disputeController.respondToDispute.bind(disputeController));
-
-// ============================================
-// ADMIN ROUTES
-// ============================================
-
-/**
- * @route   GET /api/v1/disputes
- * @desc    Listar todas as disputas (GERENTE + ADMIN + MASTER)
- * @access  Manager/Admin/Master
- */
-router.get('/', managerMiddleware, disputeController.getAllDisputes.bind(disputeController));
 
 /**
  * @route   POST /api/v1/disputes/:disputeId/resolve

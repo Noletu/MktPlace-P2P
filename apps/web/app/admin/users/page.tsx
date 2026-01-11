@@ -14,6 +14,7 @@ interface User {
   name?: string;
   kycLevel: string;
   role: string;
+  level?: number;
   reputationScore: number;
   totalTransactions: number;
   createdAt: string;
@@ -103,9 +104,9 @@ export default function UsersPage() {
           </p>
         </div>
         <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-6">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Admins</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Equipe (Staff)</p>
           <p className="text-3xl font-bold text-blue-400 mt-2">
-            {users.filter(u => u.role === 'ADMIN' || u.role === 'MASTER').length}
+            {users.filter(u => (u.level || 0) >= 40).length}
           </p>
         </div>
         <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-6">

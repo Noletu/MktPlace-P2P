@@ -70,6 +70,11 @@ model User {
   disputesResolved Dispute[]        @relation("DisputeResolver")
   disputeMessages  DisputeMessage[] @relation("DisputeMessageAuthor")
 
+  // Tickets de Suporte
+  ticketsCreated  SupportTicket[]  @relation("TicketCreator")
+  ticketsResolved SupportTicket[]  @relation("TicketResolver")
+  ticketMessages  TicketMessage[]  @relation("TicketMessageAuthor")
+
   // Notificações
   notifications Notification[] @relation("notifications")
 
@@ -617,6 +622,70 @@ model DisputeMessage {
   createdAt DateTime @default(now())
 
   @@index([disputeId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+// ============================================
+// SISTEMA DE TICKETS DE SUPORTE
+// ============================================
+
+// Ticket de suporte (usuário ↔ plataforma)
+model SupportTicket {
+  id String @id @default(cuid())
+
+  // Criador do ticket
+  createdBy String
+  creator   User   @relation("TicketCreator", fields: [createdBy], references: [id])
+
+  // Status do ticket
+  status String @default("OPEN") // OPEN, UNDER_REVIEW, RESOLVED, CLOSED
+
+  // Categoria e prioridade
+  category String // ACCOUNT_ISSUE, PAYMENT_ISSUE, TECHNICAL_ISSUE, KYC_ISSUE, WALLET_ISSUE, QUESTION, FEATURE_REQUEST, OTHER
+  priority String @default("MEDIUM") // URGENT, HIGH, MEDIUM, LOW
+
+  // Conteúdo
+  subject     String // Assunto (5-200 caracteres)
+  description String // Descrição inicial
+
+  // Resolução
+  resolvedBy String?
+  resolver   User?   @relation("TicketResolver", fields: [resolvedBy], references: [id])
+  resolution String?
+  resolvedAt DateTime?
+  closedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages TicketMessage[]
+
+  @@index([createdBy])
+  @@index([status])
+  @@index([category])
+  @@index([priority])
+  @@index([createdAt])
+}
+
+// Mensagens do ticket
+model TicketMessage {
+  id String @id @default(cuid())
+
+  ticketId String
+  ticket   SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation("TicketMessageAuthor", fields: [authorId], references: [id])
+
+  message     String
+  attachments String? // JSON array
+
+  isSupportMessage Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
   @@index([authorId])
   @@index([createdAt])
 }

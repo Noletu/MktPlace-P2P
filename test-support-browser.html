@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug SUPPORT Role</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 20px;
+        }
+        .output {
+            background: #000;
+            border: 1px solid #00ff00;
+            padding: 20px;
+            margin: 20px 0;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .error { color: #ff0000; }
+        .success { color: #00ff00; }
+        .warning { color: #ffaa00; }
+        .info { color: #00aaff; }
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            font-family: monospace;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #00dd00;
+        }
+        input {
+            background: #2a2a2a;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            padding: 8px;
+            font-family: monospace;
+            width: 300px;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Debug SUPPORT Role - MktPlace P2P</h1>
+
+    <div>
+        <h3>Credenciais:</h3>
+        <div>
+            <label>Email:</label>
+            <input type="email" id="email" value="suporte@mktplace.com">
+        </div>
+        <div>
+            <label>Senha:</label>
+            <input type="password" id="password" value="Suporte@123">
+        </div>
+        <div>
+            <label>API URL:</label>
+            <input type="text" id="apiUrl" value="http://localhost:3001">
+        </div>
+        <button onclick="runTest()">🧪 Executar Teste</button>
+        <button onclick="clearOutput()">🗑️ Limpar</button>
+    </div>
+
+    <div class="output" id="output"></div>
+
+    <script>
+        let output = document.getElementById('output');
+
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = message;
+            output.appendChild(div);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clearOutput() {
+            output.innerHTML = '';
+        }
+
+        async function runTest() {
+            clearOutput();
+
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const apiUrl = document.getElementById('apiUrl').value;
+
+            log('🔍 INICIANDO DEBUG DO ROLE SUPPORT', 'info');
+            log('=====================================\n', 'info');
+
+            try {
+                // 1. Testar conexão com API
+                log('1️⃣ Testando conexão com API...', 'info');
+                try {
+                    const healthResponse = await fetch(`${apiUrl}/health`);
+                    if (healthResponse.ok) {
+                        log('✅ API está online!', 'success');
+                    } else {
+                        log('⚠️ API respondeu mas com status: ' + healthResponse.status, 'warning');
+                    }
+                } catch (e) {
+                    log('❌ ERRO: API não está acessível!', 'error');
+                    log('   Verifique se o backend está rodando na porta 3001', 'error');
+                    log('   Erro: ' + e.message, 'error');
+                    return;
+                }
+
+                // 2. Login
+                log('\n2️⃣ Fazendo login...', 'info');
+                const loginResponse = await fetch(`${apiUrl}/api/v1/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password }),
+                });
+
+                const loginData = await loginResponse.json();
+
+                if (!loginData.success) {
+                    log('❌ Erro no login: ' + loginData.error, 'error');
+                    log('   Verifique email e senha', 'error');
+                    return;
+                }
+
+                log('✅ Login OK!', 'success');
+                const token = loginData.data.accessToken;
+
+                // 3. Buscar dados do usuário
+                log('\n3️⃣ Buscando dados do usuário via /auth/me...', 'info');
+                const meResponse = await fetch(`${apiUrl}/api/v1/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+
+                const meData = await meResponse.json();
+
+                if (!meData.success) {
+                    log('❌ Erro ao buscar /auth/me: ' + meData.error, 'error');
+                    return;
+                }
+
+                log('✅ Dados recebidos!', 'success');
+                log('\n📊 INFORMAÇÕES DO USUÁRIO:', 'info');
+                log('   Email: ' + meData.data.email, 'info');
+                log('   Nome: ' + (meData.data.name || 'N/A'), 'info');
+                log('   Role: ' + meData.data.role, 'info');
+                log('   Level: ' + meData.data.level, 'info');
+                log('   Level Type: ' + typeof meData.data.level, 'info');
+
+                // 4. Análise
+                log('\n🔍 ANÁLISE:', 'info');
+
+                if (typeof meData.data.level === 'undefined') {
+                    log('❌ PROBLEMA: Campo "level" está UNDEFINED', 'error');
+                    log('   Causa: Backend não está retornando o campo level', 'error');
+                    log('   Solução: Verificar auth.service.ts e REINICIAR o backend', 'warning');
+                } else if (meData.data.level === null) {
+                    log('❌ PROBLEMA: Campo "level" está NULL', 'error');
+                    log('   Causa: Role SUPPORT no banco não tem level configurado', 'error');
+                    log('   Solução: Executar seed RBAC', 'warning');
+                } else if (meData.data.level === 0) {
+                    log('❌ PROBLEMA: Campo "level" é ZERO', 'error');
+                    log('   Causa: user.role?.level retorna undefined', 'error');
+                    log('   Solução: Adicionar level: true no include da role', 'warning');
+                } else if (meData.data.level < 40) {
+                    log(`❌ PROBLEMA: Level é ${meData.data.level}, menor que 40`, 'error');
+                    log('   Causa: Role atribuído incorretamente', 'error');
+                    log('   Role atual: ' + meData.data.role, 'error');
+                } else {
+                    log(`✅ Level está CORRETO: ${meData.data.level} (>= 40)`, 'success');
+                    log('   O usuário DEVERIA conseguir acessar /admin', 'success');
+                }
+
+                // 5. Objeto completo
+                log('\n📦 OBJETO COMPLETO:', 'info');
+                log(JSON.stringify(meData.data, null, 2), 'info');
+
+                // 6. Recomendações
+                log('\n=====================================', 'info');
+                log('📋 RECOMENDAÇÕES:', 'info');
+                log('=====================================', 'info');
+
+                if (meData.data.level >= 40) {
+                    log('\n✅ Backend OK! Problema pode ser no FRONTEND:', 'success');
+                    log('🔧 SOLUÇÕES:', 'warning');
+                    log('1. Faça LOGOUT completo', 'info');
+                    log('2. Limpe localStorage: localStorage.clear()', 'info');
+                    log('3. Recarregue (Ctrl+Shift+R)', 'info');
+                    log('4. Faça LOGIN novamente', 'info');
+                } else {
+                    log('\n❌ Backend NÃO está retornando level correto!', 'error');
+                    log('🔧 SOLUÇÕES:', 'warning');
+                    log('1. Verifique auth.service.ts tem level: true', 'info');
+                    log('2. REINICIE o servidor backend', 'info');
+                    log('3. Verifique se role SUPPORT existe no banco', 'info');
+                }
+
+            } catch (error) {
+                log('\n❌ ERRO: ' + error.message, 'error');
+                log(error.stack, 'error');
+            }
+        }
+
+        // Executar automaticamente ao carregar
+        window.addEventListener('load', () => {
+            log('✅ Página carregada. Clique em "Executar Teste" para começar.', 'success');
+        });
+    </script>
+</body>
+</html>

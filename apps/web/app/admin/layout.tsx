@@ -18,6 +18,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
+  const [userLevel, setUserLevel] = useState(0);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   useEffect(() => {
@@ -41,15 +42,18 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
         const data = await response.json();
 
-        // Verificar se é admin ou master
-        if (data.data.role !== 'ADMIN' && data.data.role !== 'MASTER') {
-          alert('Acesso negado. Apenas administradores podem acessar esta área.');
+        // Verificar se tem level >= 40 (SUPPORT, GERENTE, ADMIN, MASTER)
+        const userLevel = data.data.level || 0;
+
+        if (userLevel < 40) {
+          alert('Acesso negado. Você precisa de permissões administrativas para acessar esta área.');
           router.push('/dashboard');
           return;
         }
 
         setUserName(data.data.name || data.data.email);
         setUserRole(data.data.role);
+        setUserLevel(userLevel);
         setIsLoading(false);
       } catch (error) {
         console.error('Erro ao verificar autenticação:', error);
@@ -118,13 +122,22 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 <span className="text-lg font-bold text-gray-900 dark:text-white">MktPlace P2P</span>
               </button>
 
-              {/* Badge ADMIN/MASTER */}
+              {/* Badge ADMIN/MASTER/SUPPORT/GERENTE */}
               <span className={`px-3 py-1 border rounded-full text-xs font-semibold ${
                 userRole === 'MASTER'
                   ? 'bg-purple-600/20 border-purple-500/50 text-purple-600 dark:text-purple-400'
-                  : 'bg-blue-600/20 border-blue-500/50 text-blue-600 dark:text-blue-400'
+                  : userRole === 'ADMIN'
+                  ? 'bg-blue-600/20 border-blue-500/50 text-blue-600 dark:text-blue-400'
+                  : userRole === 'GERENTE'
+                  ? 'bg-green-600/20 border-green-500/50 text-green-600 dark:text-green-400'
+                  : 'bg-orange-600/20 border-orange-500/50 text-orange-600 dark:text-orange-400'
               }`}>
-                {userRole === 'MASTER' ? 'MASTER' : 'ADMINISTRADOR'}
+                {userRole === 'MASTER' ? '👑 MASTER'
+                 : userRole === 'ADMIN' ? '⚡ ADMINISTRADOR'
+                 : userRole === 'GERENTE' ? '📊 GERENTE'
+                 : '🎧 SUPORTE'}
+                {' '}
+                <span className="opacity-70">(Nv. {userLevel})</span>
               </span>
             </div>
 
@@ -277,6 +290,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               ⚖️ Disputas
             </Link>
             <Link
+              href="/admin/support"
+              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+                pathname.startsWith('/admin/support')
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
+              }`}
+            >
+              🎫 Suporte
+            </Link>
+            <Link
               href="/admin/security"
               className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
                 pathname === '/admin/security'
@@ -315,6 +338,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               }`}
             >
               🤖 Workers
+            </Link>
+            <Link
+              href="/admin/platform-wallets"
+              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+                pathname.startsWith('/admin/platform-wallets')
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
+              }`}
+            >
+              🏦 Carteiras
             </Link>
           </div>
         </div>

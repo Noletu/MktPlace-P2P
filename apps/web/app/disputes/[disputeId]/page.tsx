@@ -14,8 +14,12 @@ export default function DisputeDetailPage() {
   const [dispute, setDispute] = useState<Dispute | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [userLevel, setUserLevel] = useState<number>(0);
   const [responding, setResponding] = useState(false);
   const [responseText, setResponseText] = useState('');
+  const [resolutionType, setResolutionType] = useState('');
+  const [resolutionText, setResolutionText] = useState('');
+  const [resolving, setResolving] = useState(false);
 
   useEffect(() => {
     fetchDispute();
@@ -62,6 +66,7 @@ export default function DisputeDetailPage() {
       const data = await res.json();
       if (data.success) {
         setCurrentUserId(data.data.id);
+        setUserLevel(data.data.level || 0);
       }
     } catch (error) {
       console.error('Erro ao buscar usuário:', error);
@@ -144,6 +149,50 @@ export default function DisputeDetailPage() {
     }
   };
 
+  const handleResolve = async () => {
+    if (!resolutionType || resolutionText.length < 20) {
+      alert('Por favor, selecione um tipo de resolução e forneça uma justificativa (mínimo 20 caracteres)');
+      return;
+    }
+
+    if (!confirm('Confirma a resolução desta disputa? Esta ação é irreversível.')) {
+      return;
+    }
+
+    setResolving(true);
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/disputes/${disputeId}/resolve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          resolution: resolutionText,
+          resolutionType: resolutionType,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        alert('✅ Disputa resolvida com sucesso!');
+        setResolutionText('');
+        setResolutionType('');
+        await fetchDispute();
+      } else {
+        alert(`❌ Erro: ${data.error || 'Erro ao resolver disputa'}`);
+      }
+    } catch (err) {
+      console.error('Erro ao resolver disputa:', err);
+      alert('❌ Erro ao resolver disputa. Tente novamente.');
+    } finally {
+      setResolving(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'OPEN':
@@ -166,8 +215,20 @@ export default function DisputeDetailPage() {
     return dispute.createdBy !== currentUserId;
   };
 
+  const isStaff = () => {
+    return userLevel >= 40; // SUPPORT, GERENTE, ADMIN, MASTER
+  };
+
   const canRespond = () => {
-    return dispute?.status === DisputeStatus.OPEN && isOtherParty();
+    // Apenas partes da disputa (não staff) podem responder
+    return dispute?.status === DisputeStatus.OPEN && isOtherParty() && !isStaff();
+  };
+
+  const canResolve = () => {
+    // GERENTE+ pode resolver disputas
+    return dispute?.status !== DisputeStatus.RESOLVED &&
+           dispute?.status !== DisputeStatus.CANCELLED &&
+           userLevel >= 60;
   };
 
   const canSendMessages = () => {
@@ -319,6 +380,65 @@ export default function DisputeDetailPage() {
           >
             {responding ? 'Enviando...' : 'Enviar Resposta'}
           </button>
+        </div>
+      )}
+
+      {/* Botão Resolver para GERENTE+ */}
+      {canResolve() && (
+        <div className="bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-700 rounded-lg p-6 mb-6">
+          <h2 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-3">
+            👨‍⚖️ Resolver Disputa (Gerente/Admin)
+          </h2>
+          <p className="text-sm text-blue-800 dark:text-blue-200 mb-4">
+            Como gerente, você pode resolver esta disputa tomando uma decisão final.
+          </p>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Tipo de Resolução
+              </label>
+              <select
+                value={resolutionType}
+                onChange={(e) => setResolutionType(e.target.value)}
+                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              >
+                <option value="">Selecione...</option>
+                <option value="REFUND_BUYER">Reembolso ao Comprador</option>
+                <option value="PARTIAL_REFUND">Reembolso Parcial</option>
+                <option value="RELEASE_SELLER">Liberar para Vendedor</option>
+                <option value="NO_ACTION">Sem Ação</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Resolução (mínimo 20 caracteres)
+              </label>
+              <textarea
+                value={resolutionText}
+                onChange={(e) => setResolutionText(e.target.value)}
+                placeholder="Descreva a decisão e justificativa..."
+                rows={6}
+                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {resolutionText.length} caracteres
+              </p>
+            </div>
+
+            <button
+              onClick={handleResolve}
+              disabled={resolving || !resolutionType || resolutionText.length < 20}
+              className={`w-full py-3 px-4 rounded-lg font-medium transition ${
+                resolving || !resolutionType || resolutionText.length < 20
+                  ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
+            >
+              {resolving ? 'Resolvendo...' : 'Resolver Disputa'}
+            </button>
+          </div>
         </div>
       )}
 

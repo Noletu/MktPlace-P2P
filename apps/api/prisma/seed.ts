@@ -6,6 +6,20 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Iniciando seed do banco de dados...');
 
+  // ============ BUSCAR ROLES RBAC ============
+  const masterRole = await prisma.role.findUnique({
+    where: { slug: 'master' },
+  });
+
+  const adminRole = await prisma.role.findUnique({
+    where: { slug: 'admin' },
+  });
+
+  if (!masterRole || !adminRole) {
+    console.error('❌ Roles RBAC não encontrados! Execute primeiro: npx tsx prisma/seeds/rbac-seed.ts');
+    process.exit(1);
+  }
+
   // ============ CRIAR USUÁRIO MASTER ============
   const masterEmail = 'master@mktplace.com';
   const masterPassword = 'Master@2025!'; // MUDAR EM PRODUÇÃO!
@@ -22,7 +36,8 @@ async function main() {
     await prisma.user.update({
       where: { id: existingMaster.id },
       data: {
-        role: 'MASTER',
+        roleId: masterRole.id,
+        legacyRole: 'MASTER',
         password: hashedMasterPassword,
         name: 'Master Administrator',
       },
@@ -39,7 +54,8 @@ async function main() {
         email: masterEmail,
         password: hashedMasterPassword,
         name: 'Master Administrator',
-        role: 'MASTER',
+        roleId: masterRole.id,
+        legacyRole: 'MASTER',
       },
     });
 
@@ -63,7 +79,8 @@ async function main() {
     await prisma.user.update({
       where: { id: existingAdmin.id },
       data: {
-        role: 'ADMIN',
+        roleId: adminRole.id,
+        legacyRole: 'ADMIN',
         password: hashedPassword,
       },
     });
@@ -79,15 +96,17 @@ async function main() {
         email: adminEmail,
         password: hashedPassword,
         name: 'Administrador',
-        role: 'ADMIN',
+        roleId: adminRole.id,
+        legacyRole: 'ADMIN',
       },
     });
 
     console.log('✅ Usuário admin criado:', admin.email);
   }
 
-  // Criar endereços da plataforma de exemplo (OPCIONAL - apenas para testes)
-  console.log('\n📝 Verificando endereços de exemplo...');
+  // NOTA: Carteiras da plataforma devem ser criadas via painel admin HD Wallet
+  // Comentado para permitir seed funcionar - criar carteiras manualmente no admin
+  console.log('\n⚠️  Carteiras da plataforma devem ser criadas via painel admin');
 
   // Endereços válidos para TESTE (NÃO enviar fundos reais!)
   const BITCOIN_ADDRESS = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh';
@@ -101,6 +120,7 @@ async function main() {
       network: 'BITCOIN',
       address: BITCOIN_ADDRESS,
       label: 'Carteira Principal Bitcoin',
+      derivationPath: "m/84'/0'/0'/0/0",
     },
     // USDT - Múltiplas redes
     {
@@ -108,24 +128,28 @@ async function main() {
       network: 'ETHEREUM',
       address: EVM_ADDRESS,
       label: 'Carteira Principal USDT Ethereum',
+      derivationPath: "m/44'/60'/0'/0/0",
     },
     {
       cryptoType: 'USDT',
       network: 'BASE',
       address: EVM_ADDRESS,
       label: 'Carteira Principal USDT Base',
+      derivationPath: "m/44'/60'/0'/0/0",
     },
     {
       cryptoType: 'USDT',
       network: 'ARBITRUM',
       address: EVM_ADDRESS,
       label: 'Carteira Principal USDT Arbitrum',
+      derivationPath: "m/44'/60'/0'/0/0",
     },
     {
       cryptoType: 'USDT',
       network: 'SOLANA',
       address: SOLANA_ADDRESS,
       label: 'Carteira Principal USDT Solana',
+      derivationPath: "m/44'/501'/0'/0'",
     },
     // USDC - Múltiplas redes
     {
@@ -133,48 +157,52 @@ async function main() {
       network: 'ETHEREUM',
       address: EVM_ADDRESS,
       label: 'Carteira Principal USDC Ethereum',
+      derivationPath: "m/44'/60'/0'/0/0",
     },
     {
       cryptoType: 'USDC',
       network: 'BASE',
       address: EVM_ADDRESS,
       label: 'Carteira Principal USDC Base',
+      derivationPath: "m/44'/60'/0'/0/0",
     },
     {
       cryptoType: 'USDC',
       network: 'ARBITRUM',
       address: EVM_ADDRESS,
       label: 'Carteira Principal USDC Arbitrum',
+      derivationPath: "m/44'/60'/0'/0/0",
     },
     {
       cryptoType: 'USDC',
       network: 'SOLANA',
       address: SOLANA_ADDRESS,
       label: 'Carteira Principal USDC Solana',
+      derivationPath: "m/44'/501'/0'/0'",
     },
   ];
 
-  for (const wallet of platformWallets) {
-    // Check by cryptoType + network (not just address, since EVM addresses are reused)
-    const existing = await prisma.platformWallet.findFirst({
-      where: {
-        cryptoType: wallet.cryptoType,
-        network: wallet.network,
-      },
-    });
-
-    if (!existing) {
-      await prisma.platformWallet.create({
-        data: {
-          ...wallet,
-          isActive: true,
-        },
-      });
-      console.log(`✅ Criado: ${wallet.label}`);
-    } else {
-      console.log(`⚠️ Já existe: ${wallet.label}`);
-    }
-  }
+  // COMENTADO: Usar painel admin para criar carteiras com HD Wallet
+  // for (const wallet of platformWallets) {
+  //   const existing = await prisma.platformWallet.findFirst({
+  //     where: {
+  //       cryptoType: wallet.cryptoType,
+  //       network: wallet.network,
+  //     },
+  //   });
+  //
+  //   if (!existing) {
+  //     await prisma.platformWallet.create({
+  //       data: {
+  //         ...wallet,
+  //         isActive: true,
+  //       },
+  //     });
+  //     console.log(`✅ Criado: ${wallet.label}`);
+  //   } else {
+  //     console.log(`⚠️ Já existe: ${wallet.label}`);
+  //   }
+  // }
 
   console.log('\n✅ Seed completo!');
   console.log('\n📋 CREDENCIAIS DO MASTER:');
