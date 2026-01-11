@@ -19,6 +19,7 @@ export default function HomePage() {
   });
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [userLevel, setUserLevel] = useState<number>(0);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -32,6 +33,7 @@ export default function HomePage() {
           if (response.ok) {
             const data = await response.json();
             setUserRole(data.data.role);
+            setUserLevel(data.data.level || 0);
             setIsLoggedIn(true);
           }
         } catch (error) {
@@ -43,8 +45,8 @@ export default function HomePage() {
     checkAuth();
   }, []);
 
-  // Detectar se é admin
-  const isAdmin = userRole === 'ADMIN' || userRole === 'MASTER';
+  // Detectar se é admin (level >= 40: SUPPORT, GERENTE, ADMIN, MASTER)
+  const isAdmin = userLevel >= 40;
 
   return (
     <>

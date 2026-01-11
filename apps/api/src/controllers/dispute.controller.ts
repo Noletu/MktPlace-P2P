@@ -13,6 +13,7 @@ const CreateDisputeSchema = z.object({
     'FAKE_RECEIPT',
     'WRONG_AMOUNT',
     'WRONG_RECIPIENT',
+    'ACCOUNT_BLOCK_APPEAL',
     'OTHER'
   ]),
   title: z.string().min(10, 'Título deve ter no mínimo 10 caracteres'),
@@ -192,13 +193,14 @@ export class DisputeController {
    */
   async resolveDispute(req: Request, res: Response) {
     try {
+      // Autorização gerenciada por managerMiddleware (level >= 60)
+      // GERENTE, ADMIN, MASTER têm acesso
       const userId = req.user?.userId;
-      const userRole = req.user?.role;
 
-      if (!userId || (userRole !== 'ADMIN' && userRole !== 'MASTER')) {
-        return res.status(403).json({
+      if (!userId) {
+        return res.status(401).json({
           success: false,
-          error: 'Apenas administradores podem resolver disputas',
+          error: 'Usuário não autenticado',
         });
       }
 
@@ -270,12 +272,13 @@ export class DisputeController {
       }
 
       // SECURITY: Verificar se usuário tem permissão
-      const isAdmin = userRole === 'ADMIN' || userRole === 'MASTER';
+      const userLevel = (req as any).user?.level || 0;
+      const isStaff = userLevel >= 40; // SUPPORT+ pode ver todas as disputas
       const isCreator = dispute.createdBy === userId;
       const isOrderOwner = dispute.order.userId === userId;
       const isPayer = dispute.order.transactions.some(t => t.payerId === userId);
 
-      if (!isAdmin && !isCreator && !isOrderOwner && !isPayer) {
+      if (!isStaff && !isCreator && !isOrderOwner && !isPayer) {
         return res.status(403).json({
           success: false,
           error: 'Você não tem permissão para visualizar esta disputa',
@@ -322,19 +325,11 @@ export class DisputeController {
   }
 
   /**
-   * Listar todas as disputas (admin)
+   * Listar todas as disputas (SUPPORT+)
+   * Autorização gerenciada por supportMiddleware (level >= 40)
    */
   async getAllDisputes(req: Request, res: Response) {
     try {
-      const userRole = req.user?.role;
-
-      if (userRole !== 'ADMIN' && userRole !== 'MASTER') {
-        return res.status(403).json({
-          success: false,
-          error: 'Apenas administradores podem visualizar todas as disputas',
-        });
-      }
-
       const { status, category, limit, offset } = req.query;
 
       const result = await disputeService.getAllDisputes({
@@ -362,19 +357,11 @@ export class DisputeController {
   }
 
   /**
-   * Estatísticas de disputas (admin)
+   * Estatísticas de disputas (SUPPORT+)
+   * Autorização gerenciada por supportMiddleware (level >= 40)
    */
   async getDisputeStats(req: Request, res: Response) {
     try {
-      const userRole = req.user?.role;
-
-      if (userRole !== 'ADMIN' && userRole !== 'MASTER') {
-        return res.status(403).json({
-          success: false,
-          error: 'Apenas administradores podem visualizar estatísticas',
-        });
-      }
-
       const stats = await disputeService.getDisputeStats();
 
       res.json({
@@ -390,19 +377,11 @@ export class DisputeController {
   }
 
   /**
-   * Analytics de disputas por período (admin)
+   * Analytics de disputas por período (SUPPORT+)
+   * Autorização gerenciada por supportMiddleware (level >= 40)
    */
   async getDisputeAnalytics(req: Request, res: Response) {
     try {
-      const userRole = req.user?.role;
-
-      if (userRole !== 'ADMIN' && userRole !== 'MASTER') {
-        return res.status(403).json({
-          success: false,
-          error: 'Apenas administradores podem visualizar analytics',
-        });
-      }
-
       const { days } = req.query;
       const daysNum = days ? parseInt(days as string) : 30;
 
@@ -421,19 +400,11 @@ export class DisputeController {
   }
 
   /**
-   * Top disputantes (admin)
+   * Top disputantes (SUPPORT+)
+   * Autorização gerenciada por supportMiddleware (level >= 40)
    */
   async getTopDisputants(req: Request, res: Response) {
     try {
-      const userRole = req.user?.role;
-
-      if (userRole !== 'ADMIN' && userRole !== 'MASTER') {
-        return res.status(403).json({
-          success: false,
-          error: 'Apenas administradores podem visualizar top disputantes',
-        });
-      }
-
       const { limit } = req.query;
       const limitNum = limit ? parseInt(limit as string) : 10;
 

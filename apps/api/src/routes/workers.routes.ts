@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
+import { supportMiddleware } from '../middleware/support.middleware';
 import { collateralReleaseWorker } from '../workers/collateral-release.worker';
 import { orderExpirationWorker } from '../workers/order-expiration.worker';
 // import { DepositMonitorWorker } from '../workers/deposit-monitor.worker'; // Now uses static class
@@ -16,13 +17,8 @@ router.use(authMiddleware);
  * GET /api/v1/workers/status
  * Obter status de todos os workers
  */
-router.get('/status', async (req: Request, res: Response) => {
+router.get('/status', supportMiddleware, async (req: Request, res: Response) => {
   try {
-    // SECURITY: Apenas admins podem ver status dos workers
-    if (req.user?.role !== 'ADMIN') {
-      return res.status(403).json({ error: 'Acesso negado - apenas admins' });
-    }
-
     const workersStatus = {
       collateralRelease: collateralReleaseWorker.getStatus(),
       orderExpiration: {
@@ -59,13 +55,8 @@ router.get('/status', async (req: Request, res: Response) => {
  * POST /api/v1/workers/collateral-release/check-orphaned
  * Forçar verificação de colaterais órfãos
  */
-router.post('/collateral-release/check-orphaned', async (req: Request, res: Response) => {
+router.post('/collateral-release/check-orphaned', supportMiddleware, async (req: Request, res: Response) => {
   try {
-    // SECURITY: Apenas admins podem forçar verificações
-    if (req.user?.role !== 'ADMIN') {
-      return res.status(403).json({ error: 'Acesso negado - apenas admins' });
-    }
-
     await collateralReleaseWorker.checkOrphanedCollateral();
 
     res.json({
@@ -84,13 +75,8 @@ router.post('/collateral-release/check-orphaned', async (req: Request, res: Resp
  * POST /api/v1/workers/collateral-release/process-now
  * Forçar processamento de colaterais bloqueados
  */
-router.post('/collateral-release/process-now', async (req: Request, res: Response) => {
+router.post('/collateral-release/process-now', supportMiddleware, async (req: Request, res: Response) => {
   try {
-    // SECURITY: Apenas admins podem forçar processamento
-    if (req.user?.role !== 'ADMIN') {
-      return res.status(403).json({ error: 'Acesso negado - apenas admins' });
-    }
-
     await collateralReleaseWorker.processLockedCollateral();
 
     res.json({
@@ -107,19 +93,19 @@ router.post('/collateral-release/process-now', async (req: Request, res: Respons
 
 /**
  * BalanceSyncWorker Controls
- * SECURITY: Apenas admins podem controlar workers
+ * SECURITY: SUPPORT+ (level >= 40) podem controlar workers
  */
 
 // GET /api/v1/workers/balance-sync/status
-router.get('/balance-sync/status', workersController.getBalanceSyncStatus.bind(workersController));
+router.get('/balance-sync/status', supportMiddleware, workersController.getBalanceSyncStatus.bind(workersController));
 
 // POST /api/v1/workers/balance-sync/start
-router.post('/balance-sync/start', workersController.startBalanceSync.bind(workersController));
+router.post('/balance-sync/start', supportMiddleware, workersController.startBalanceSync.bind(workersController));
 
 // POST /api/v1/workers/balance-sync/stop
-router.post('/balance-sync/stop', workersController.stopBalanceSync.bind(workersController));
+router.post('/balance-sync/stop', supportMiddleware, workersController.stopBalanceSync.bind(workersController));
 
 // POST /api/v1/workers/balance-sync/toggle
-router.post('/balance-sync/toggle', workersController.toggleBalanceSync.bind(workersController));
+router.post('/balance-sync/toggle', supportMiddleware, workersController.toggleBalanceSync.bind(workersController));
 
 export default router;

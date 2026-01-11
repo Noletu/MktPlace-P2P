@@ -9,6 +9,89 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Adicionado
 
+#### Sistema de Avisos de Conta Bloqueada (06/01/2026)
+
+**Backend - Segurança e Validação:**
+- **Validação de Bloqueio no Login** (`auth.service.ts`)
+  - Mensagens específicas para bloqueio temporário vs permanente
+  - Inclui motivo e data de expiração na mensagem de erro
+  - Impede acesso inicial de usuários bloqueados
+- **Middleware de Bloqueio** (`auth.middleware.ts`)
+  - Valida status de bloqueio em TODAS as requisições API
+  - Retorna HTTP 403 (Forbidden) com detalhes do bloqueio
+  - Dupla camada de segurança (login + middleware)
+- **Endpoint `/auth/me` Expandido** (`auth.service.ts`)
+  - Retorna campos: `accountFrozen`, `frozenReason`, `frozenAt`, `frozenUntil`
+  - Frontend pode verificar status de bloqueio em tempo real
+- **Tratamento de Erro Específico** (`auth.controller.ts`)
+  - Diferencia erro de login de erro de conta bloqueada
+  - Evita mensagens genéricas confusas
+
+**Backend - Sistema de Notificações:**
+- **Notificação ao Bloquear Conta** (`adminFunds.service.ts`)
+  - Priority: HIGH
+  - Título diferenciado: "⚠️ Conta Suspensa Temporariamente" ou "🚫 Conta Suspensa"
+  - Mensagem com motivo e data de expiração
+  - Link para abrir ticket de suporte
+- **Notificação ao Desbloquear Manualmente** (`adminFunds.service.ts`)
+  - Priority: NORMAL
+  - Título: "✅ Conta Reativada"
+  - Link para dashboard
+- **Notificação ao Desbloquear Automaticamente** (`autoUnfreeze.job.ts`)
+  - Enviada quando suspensão temporária expira
+  - Título: "✅ Suspensão Temporária Expirada"
+  - Executada pelo cron job a cada 5 minutos
+
+**Backend - Audit Logs:**
+- **Correção de Auto-Unfreeze Logs** (`autoUnfreeze.job.ts`)
+  - Removido campo `timestamp` inválido que causava erro silencioso
+  - Adicionados campos `description` e `success`
+  - Metadata completo: email, motivo, datas de freeze/unfreeze
+  - Logs agora criados corretamente no banco
+- **Filtro API de Audit Logs** (`adminFunds.service.ts`)
+  - Adicionado `AUTO_UNFREEZE_ACCOUNT` ao whitelist de ações
+  - Logs de auto-unfreeze agora visíveis no painel admin
+  - Rastreabilidade completa de bloqueios automáticos
+
+**Backend - UX:**
+- **Ordem Cronológica de Notificações** (`notification.service.ts`)
+  - Alterado de ordenação por prioridade + data para apenas data
+  - Notificações mais recentes aparecem primeiro
+  - Melhor acompanhamento temporal dos eventos
+
+**Frontend - Componentes:**
+- **Componente FrozenAccountBanner** (`components/FrozenAccountBanner.tsx`)
+  - Banner vermelho para bloqueio permanente
+  - Banner laranja para bloqueio temporário
+  - Exibe: motivo, data de expiração, tempo restante em horas
+  - Lista de ações bloqueadas (criar pedidos, saques, transferências)
+  - Botão para abrir ticket de suporte
+  - Funcionalidade de recolher/expandir
+  - Não exibe se freeze já expirou
+- **Integração no Dashboard** (`app/dashboard/page.tsx`)
+  - Banner exibido no topo quando conta está bloqueada
+  - Campos de bloqueio adicionados à interface User
+  - Verificação automática via `/auth/me`
+
+**Arquivos Criados:**
+- `apps/web/components/FrozenAccountBanner.tsx` - Componente de banner
+
+**Arquivos Modificados:**
+- `apps/api/src/services/auth.service.ts` - Login e /auth/me
+- `apps/api/src/middleware/auth.middleware.ts` - Validação em todas requisições
+- `apps/api/src/controllers/auth.controller.ts` - Tratamento de erro específico
+- `apps/api/src/services/adminFunds.service.ts` - Notificações e filtro de logs
+- `apps/api/src/jobs/autoUnfreeze.job.ts` - Correção de logs e notificações
+- `apps/api/src/services/notification.service.ts` - Ordem cronológica
+- `apps/web/app/dashboard/page.tsx` - Integração do banner
+
+**Impacto:**
+- ✅ Segurança: Dupla camada de validação (login + middleware)
+- ✅ Rastreabilidade: Audit logs completos de bloqueios manuais e automáticos
+- ✅ Transparência: Usuários sempre informados sobre status da conta
+- ✅ Compliance: Motivo do bloqueio claramente comunicado
+- ✅ Suporte: Canal disponível via notificação HIGH priority
+
 #### Sistema de Cotação Multi-Fonte para USDC/USDT (18/12/2025)
 - **ExchangeRateService:** Implementado sistema robusto de fallback em cascata com 5 fontes de cotação USD/BRL
   - **Problema Resolvido:** CoinGecko retornava preços incorretos/desatualizados para USDC/USDT (ex: 5.38 BRL/USD ao invés de 5.52)
@@ -71,6 +154,44 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
     - \`apps/api/src/services/transaction.service.ts\` - Logs reorganizados (2 ORDER_COMPLETED + 2 CRYPTO_TRANSFER)
 
 ### Corrigido
+
+#### Sistema de Avisos de Conta Bloqueada - 5 Bugs Críticos (06/01/2026)
+
+1. **Conflito include/select no Prisma** (`auth.service.ts`)
+   - **Problema:** Query de login usava `include` e `select` simultaneamente
+   - **Impacto:** Falhava silenciosamente impedindo TODOS os logins
+   - **Solução:** Removido `include` duplicado, mantido apenas `select`
+   - **Criticidade:** 🔴 CRÍTICA - Quebrava autenticação completamente
+
+2. **Mensagem Genérica no Login Bloqueado** (`auth.controller.ts`)
+   - **Problema:** Erro de conta bloqueada retornava "Email ou senha inválidos"
+   - **Impacto:** Usuários não sabiam por que não conseguiam fazer login
+   - **Solução:** Tratamento específico retornando HTTP 403 com detalhes do bloqueio
+   - **Criticidade:** 🟡 MÉDIA - UX ruim, mas sem impacto de segurança
+
+3. **Campo `timestamp` Inválido nos Audit Logs** (`autoUnfreeze.job.ts`)
+   - **Problema:** Auto-unfreeze job tentava criar logs com campo inexistente no schema
+   - **Impacto:** Erro silencioso impedia criação de TODOS os logs de auto-unfreeze
+   - **Solução:** Removido campo `timestamp`, adicionados `description` e `success`
+   - **Criticidade:** 🟠 ALTA - Perda de rastreabilidade de desbloqueios automáticos
+
+4. **Filtro API Excluindo AUTO_UNFREEZE_ACCOUNT** (`adminFunds.service.ts`)
+   - **Problema:** Whitelist de ações não incluía `AUTO_UNFREEZE_ACCOUNT`
+   - **Impacto:** Logs existiam no banco mas ficavam ocultos na API do admin
+   - **Solução:** Adicionado `AUTO_UNFREEZE_ACCOUNT` ao filtro
+   - **Criticidade:** 🟡 MÉDIA - Logs existiam mas não eram visíveis
+
+5. **Ordem Confusa de Notificações** (`notification.service.ts`)
+   - **Problema:** Notificações agrupadas por prioridade em vez de cronológica
+   - **Impacto:** Eventos recentes apareciam abaixo de eventos antigos
+   - **Solução:** Alterado `orderBy` de `[{ priority: 'desc' }, { createdAt: 'desc' }]` para `{ createdAt: 'desc' }`
+   - **Criticidade:** 🟢 BAIXA - Apenas UX confusa
+
+**Resumo de Correções:**
+- 1 bug crítico (login quebrado)
+- 1 bug de alta criticidade (logs não criados)
+- 2 bugs de média criticidade (mensagens e visibilidade)
+- 1 bug de baixa criticidade (ordenação UX)
 
 #### Edição de Pedidos Não Atualizava - Backend Não Processava Mudanças (19/12/2025)
 - **Problema:** Após editar um pedido PENDING (nome do beneficiário, chave PIX, boleto, etc.), mensagem de sucesso aparecia mas dados NÃO eram salvos
@@ -152,6 +273,30 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Segurança
 
+#### Sistema de Bloqueio de Contas - Camada Dupla de Proteção (06/01/2026)
+- **Implementação:** Dupla camada de validação para contas bloqueadas
+  - **Camada 1 - Login:** Impede acesso inicial ao sistema
+    - Verifica `accountFrozen` antes de gerar tokens
+    - Retorna HTTP 403 com mensagem específica
+    - Inclui motivo e data de expiração
+  - **Camada 2 - Middleware:** Bloqueia todas as requisições subsequentes
+    - Valida `accountFrozen` em TODA requisição API
+    - Protege contra tokens gerados antes do bloqueio
+    - Garante que conta bloqueada não pode fazer NENHUMA ação
+- **Rastreabilidade:** Audit logs completos
+  - `FREEZE_ACCOUNT` (bloqueio manual por admin)
+  - `AUTO_UNFREEZE_ACCOUNT` (desbloqueio automático por expiração)
+  - `UNFREEZE_ACCOUNT` (desbloqueio manual por admin)
+  - Metadata: motivo, responsável, timestamps
+- **Transparência:** Notificações automáticas
+  - HIGH priority ao bloquear (com link para suporte)
+  - NORMAL priority ao desbloquear
+  - Mensagens claras sobre motivo e duração
+- **Compliance:** Sistema preparado para requisitos regulatórios
+  - Histórico imutável de bloqueios
+  - Motivos documentados
+  - Rastreamento de responsável pela ação
+
 #### Análise de Segurança do Erro 400 (16/12/2025)
 - **Status:** Sem brechas de segurança identificadas
 - **Validações do Backend:**
@@ -175,16 +320,22 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   - KYC (SUBMIT, APPROVE, REJECT)
   - Pedidos (CREATE, MATCH, CANCEL)
   - Transações (SUBMIT_PROOF, VALIDATE, DISPUTE)
-  - **Transferências (ORDER_COMPLETED, CRYPTO_TRANSFER)** ← NOVO
+  - Transferências (ORDER_COMPLETED, CRYPTO_TRANSFER)
   - Carteiras (CREATE, DEPOSIT, WITHDRAWAL)
+  - **Bloqueio de Contas (FREEZE_ACCOUNT, UNFREEZE_ACCOUNT, AUTO_UNFREEZE_ACCOUNT)** ← NOVO 06/01/2026
 - Logs imutáveis com timestamp, userId, IP, user-agent e metadata
 - Proteção contra falhas: logs executados em background
+- **Visibilidade completa**: Todos os tipos de bloqueio agora visíveis na API do admin
 
 ### Fluxo de Transação Completa
-1. Vendedor cria pedido → Order (PENDING)
-2. Comprador aceita → Order (MATCHED) + Transaction criada + Chat habilitado
-3. Comprador envia pagamento PIX/Boleto → Transaction (PAYMENT_SENT)
-4. Comprador envia comprovante → Transaction (VALIDATING)
+1. **Vendedor cria pedido** → Order (PENDING)
+   - ✅ Sistema verifica se conta NÃO está bloqueada (middleware)
+2. **Comprador aceita** → Order (MATCHED) + Transaction criada + Chat habilitado
+   - ✅ Sistema verifica se conta NÃO está bloqueada (middleware)
+3. **Comprador envia pagamento** PIX/Boleto → Transaction (PAYMENT_SENT)
+   - ✅ Sistema verifica se conta NÃO está bloqueada (middleware)
+4. **Comprador envia comprovante** → Transaction (VALIDATING)
+   - ✅ Sistema verifica se conta NÃO está bloqueada (middleware)
 5. **Vendedor valida pagamento:**
    - Transaction → APPROVED
    - Order → COMPLETED
@@ -192,7 +343,31 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
    - **Logs criados:** 2x ORDER_COMPLETED + 2x CRYPTO_TRANSFER
    - Reputação atualizada
    - Notificações enviadas
-6. Comprador pode avaliar transação
+   - ✅ Sistema verifica se conta NÃO está bloqueada (middleware)
+6. **Comprador pode avaliar transação**
+   - ✅ Sistema verifica se conta NÃO está bloqueada (middleware)
+
+### Fluxo de Bloqueio de Conta
+1. **Admin bloqueia conta (manual):**
+   - Conta marcada como `accountFrozen = true`
+   - Campos salvos: `frozenReason`, `frozenAt`, `frozenBy`, `frozenUntil` (opcional)
+   - Audit log criado: `FREEZE_ACCOUNT`
+   - Notificação HIGH priority enviada ao usuário
+   - Usuário não consegue mais fazer login
+   - Todas requisições API retornam HTTP 403
+2. **Auto-unfreeze (temporário):**
+   - Cron job roda a cada 5 minutos
+   - Verifica contas com `frozenUntil <= now`
+   - Desbloqueia em batch
+   - Audit log criado: `AUTO_UNFREEZE_ACCOUNT`
+   - Notificação NORMAL priority enviada
+   - Usuário pode fazer login novamente
+3. **Admin desbloqueia conta (manual):**
+   - Conta marcada como `accountFrozen = false`
+   - Campos limpos: `frozenReason`, `frozenAt`, `frozenBy`, `frozenUntil`
+   - Audit log criado: `UNFREEZE_ACCOUNT`
+   - Notificação NORMAL priority enviada
+   - Usuário pode fazer login novamente
 
 ## Arquivos de Documentação
 
@@ -206,7 +381,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - \`SISTEMA_COLATERAL.md\` - Sistema de colateral
 
 ### Esta Atualização
-- **Criado:** \`CHANGELOG.md\` - Este arquivo
+- **Atualizado (06/01/2026):** `CHANGELOG.md` - Sistema de Avisos de Conta Bloqueada
+  - Adicionadas 93 linhas detalhando implementação completa
+  - Documentados 5 bugs críticos corrigidos
+  - Adicionado fluxo de bloqueio de conta
+  - Atualizada seção de bugs conhecidos
+  - Adicionados próximos passos para melhorias
+- **Criado (16/12/2025):** `CHANGELOG.md` - Este arquivo
 - **Atualizado:** Documentação de audit logs e transferências internas
 
 ## Bugs Conhecidos
@@ -215,6 +396,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 **Nenhum bug crítico identificado no momento.**
 
 Todos os bugs críticos reportados foram corrigidos:
+- ✅ Sistema de bloqueio de contas (5 bugs corrigidos - 06/01/2026)
+  - Login quebrado (conflito Prisma include/select)
+  - Audit logs de auto-unfreeze não criados (campo timestamp inválido)
+  - Mensagem genérica no login bloqueado
+  - Logs ocultos na API (filtro excluindo AUTO_UNFREEZE_ACCOUNT)
+  - Ordem confusa de notificações (agrupamento por prioridade)
 - ✅ Edição de pedidos não salvava (resolvido - backend detecta PIX/BOLETO corretamente - 19/12/2025)
 - ✅ Cotação USDC/USDT incorreta (resolvido com ExchangeRateService - 18/12/2025)
 - ✅ Dupla taxação no frontend (resolvido removendo multiplicação - 18/12/2025)
@@ -224,10 +411,19 @@ Todos os bugs críticos reportados foram corrigidos:
 ### Bugs em Investigação
 **Nenhum bug em investigação no momento.**
 
-**Última verificação**: 19/12/2025 - 23:00
+**Última verificação**: 06/01/2026 - 22:00
 **Status do sistema**: 🟢 **ESTÁVEL E PRONTO PARA PRODUÇÃO**
 
 ## Próximos Passos Sugeridos
+
+### Melhorias do Sistema de Bloqueio de Contas
+- [ ] Email de notificação ao bloquear/desbloquear conta
+- [ ] Dashboard de métricas de bloqueios para admins
+- [ ] Histórico completo de bloqueios no perfil do usuário
+- [ ] Integração com sistema de tickets para contestação
+- [ ] Bloqueio automático baseado em regras (múltiplas disputas, fraude detectada)
+- [ ] Níveis de bloqueio (parcial vs total)
+- [ ] Whitelist de IPs para acesso durante bloqueio temporário
 
 ### Melhorias do Sistema de Cotação
 - [ ] Dashboard admin para monitorar health das fontes em tempo real

@@ -104,10 +104,7 @@ export class NotificationService {
     const [notifications, total, unreadCount] = await Promise.all([
       prisma.notification.findMany({
         where,
-        orderBy: [
-          { priority: 'desc' },
-          { createdAt: 'desc' },
-        ],
+        orderBy: { createdAt: 'desc' }, // Ordem cronológica (mais recente primeiro)
         take: filters?.limit || 50,
         skip: filters?.offset || 0,
       }),

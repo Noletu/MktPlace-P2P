@@ -14,6 +14,9 @@ export function NotificationBell() {
   useEffect(() => {
     const fetchInitialNotifications = async () => {
       try {
+        // FIX: Guard de browser API para evitar erro SSR
+        if (typeof window === 'undefined') return;
+
         const token = localStorage.getItem('accessToken');
         if (!token) return;
 

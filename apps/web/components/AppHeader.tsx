@@ -11,6 +11,7 @@ interface User {
   name?: string;
   email: string;
   role?: string;
+  level?: number;
 }
 
 export default function AppHeader() {
@@ -18,19 +19,19 @@ export default function AppHeader() {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  // Verificar token imediatamente no useState para evitar flash
-  const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return !!localStorage.getItem('accessToken');
-    }
-    return false;
-  });
+  // FIX: Mounted state pattern para evitar erro de hidratação
+  const [mounted, setMounted] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   useEffect(() => {
+    // Marcar componente como montado
+    setMounted(true);
+
     // Verificar se o usuário está logado
     const token = localStorage.getItem('accessToken');
     if (token) {
+      setIsLoggedIn(true);
       fetchUser(token);
     }
   }, []);
@@ -89,8 +90,8 @@ export default function AppHeader() {
     return pathname?.startsWith(path);
   };
 
-  // Detectar se é admin
-  const isAdmin = user?.role === 'ADMIN' || user?.role === 'MASTER';
+  // Detectar se é admin (level >= 40: SUPPORT, GERENTE, ADMIN, MASTER)
+  const isAdmin = (user?.level || 0) >= 40;
 
   // Links para usuários normais
   const userNavigationLinks = [
@@ -98,6 +99,7 @@ export default function AppHeader() {
     { name: 'Marketplace', path: '/marketplace' },
     { name: 'Carteiras', path: '/wallets' },
     { name: 'Meus Pedidos', path: '/orders/my-orders' },
+    { name: 'Suporte', path: '/support' },
     { name: 'Perfil', path: '/profile' },
   ];
 
@@ -128,8 +130,8 @@ export default function AppHeader() {
 
           {/* Right: Actions */}
           <div className="flex items-center justify-end gap-3">
-            {/* NotificationBell apenas quando logado */}
-            {isLoggedIn && <NotificationBell />}
+            {/* NotificationBell apenas quando logado - mounted state previne hydration error */}
+            {mounted && isLoggedIn && <NotificationBell />}
 
             {/* ThemeToggle SEMPRE visível */}
             <ThemeToggle />

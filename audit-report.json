@@ -1,0 +1,271 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "bip32": {
+      "name": "bip32",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "valibot"
+      ],
+      "effects": [],
+      "range": ">=5.0.0-rc.0",
+      "nodes": [
+        "node_modules/bip32"
+      ],
+      "fixAvailable": {
+        "name": "bip32",
+        "version": "4.0.0",
+        "isSemVerMajor": true
+      }
+    },
+    "bitcoinjs-lib": {
+      "name": "bitcoinjs-lib",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "valibot"
+      ],
+      "effects": [],
+      "range": "7.0.0-rc.0 - 7.0.0",
+      "nodes": [
+        "node_modules/bitcoinjs-lib"
+      ],
+      "fixAvailable": true
+    },
+    "body-parser": {
+      "name": "body-parser",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "qs"
+      ],
+      "effects": [
+        "express"
+      ],
+      "range": "<=1.20.3 || 2.0.0-beta.1 - 2.0.2",
+      "nodes": [
+        "node_modules/body-parser"
+      ],
+      "fixAvailable": true
+    },
+    "elliptic": {
+      "name": "elliptic",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1112030,
+          "name": "elliptic",
+          "dependency": "elliptic",
+          "title": "Elliptic Uses a Cryptographic Primitive with a Risky Implementation",
+          "url": "https://github.com/advisories/GHSA-848j-6mx2-7j84",
+          "severity": "low",
+          "cwe": [
+            "CWE-1240"
+          ],
+          "cvss": {
+            "score": 5.6,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:L"
+          },
+          "range": "<=6.6.1"
+        }
+      ],
+      "effects": [
+        "secp256k1"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/elliptic"
+      ],
+      "fixAvailable": {
+        "name": "ethereumjs-wallet",
+        "version": "0.6.4",
+        "isSemVerMajor": true
+      }
+    },
+    "ethereum-cryptography": {
+      "name": "ethereum-cryptography",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "secp256k1"
+      ],
+      "effects": [
+        "ethereumjs-util",
+        "ethereumjs-wallet"
+      ],
+      "range": "0.1.0 - 0.1.3",
+      "nodes": [
+        "node_modules/ethereumjs-util/node_modules/ethereum-cryptography",
+        "node_modules/ethereumjs-wallet/node_modules/ethereum-cryptography"
+      ],
+      "fixAvailable": {
+        "name": "ethereumjs-wallet",
+        "version": "0.6.4",
+        "isSemVerMajor": true
+      }
+    },
+    "ethereumjs-util": {
+      "name": "ethereumjs-util",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "ethereum-cryptography"
+      ],
+      "effects": [
+        "ethereumjs-wallet"
+      ],
+      "range": "4.5.1 || 5.2.1 || 6.2.1 || >=7.0.3",
+      "nodes": [
+        "node_modules/ethereumjs-util"
+      ],
+      "fixAvailable": {
+        "name": "ethereumjs-wallet",
+        "version": "0.6.4",
+        "isSemVerMajor": true
+      }
+    },
+    "ethereumjs-wallet": {
+      "name": "ethereumjs-wallet",
+      "severity": "low",
+      "isDirect": true,
+      "via": [
+        "ethereum-cryptography",
+        "ethereumjs-util"
+      ],
+      "effects": [],
+      "range": ">=0.6.5",
+      "nodes": [
+        "node_modules/ethereumjs-wallet"
+      ],
+      "fixAvailable": {
+        "name": "ethereumjs-wallet",
+        "version": "0.6.4",
+        "isSemVerMajor": true
+      }
+    },
+    "express": {
+      "name": "express",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "body-parser",
+        "qs"
+      ],
+      "effects": [],
+      "range": "2.5.8 - 2.5.11 || 3.2.1 - 3.2.3 || 4.0.0-rc1 - 4.21.2 || 5.0.0-alpha.1 - 5.0.1",
+      "nodes": [
+        "node_modules/express"
+      ],
+      "fixAvailable": true
+    },
+    "qs": {
+      "name": "qs",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1111755,
+          "name": "qs",
+          "dependency": "qs",
+          "title": "qs's arrayLimit bypass in its bracket notation allows DoS via memory exhaustion",
+          "url": "https://github.com/advisories/GHSA-6rw7-vpxm-498p",
+          "severity": "high",
+          "cwe": [
+            "CWE-20"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<6.14.1"
+        }
+      ],
+      "effects": [
+        "body-parser",
+        "express"
+      ],
+      "range": "<6.14.1",
+      "nodes": [
+        "node_modules/qs"
+      ],
+      "fixAvailable": true
+    },
+    "secp256k1": {
+      "name": "secp256k1",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "elliptic"
+      ],
+      "effects": [
+        "ethereum-cryptography"
+      ],
+      "range": ">=2.0.0",
+      "nodes": [
+        "node_modules/secp256k1"
+      ],
+      "fixAvailable": {
+        "name": "ethereumjs-wallet",
+        "version": "0.6.4",
+        "isSemVerMajor": true
+      }
+    },
+    "valibot": {
+      "name": "valibot",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1110992,
+          "name": "valibot",
+          "dependency": "valibot",
+          "title": "Valibot has a ReDoS vulnerability in `EMOJI_REGEX`",
+          "url": "https://github.com/advisories/GHSA-vqpr-j7v3-hqw9",
+          "severity": "high",
+          "cwe": [
+            "CWE-1333"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": ">=0.31.0 <1.2.0"
+        }
+      ],
+      "effects": [
+        "bip32",
+        "bitcoinjs-lib"
+      ],
+      "range": "0.31.0 - 1.1.0",
+      "nodes": [
+        "node_modules/bitcoinjs-lib/node_modules/valibot",
+        "node_modules/valibot"
+      ],
+      "fixAvailable": {
+        "name": "bip32",
+        "version": "4.0.0",
+        "isSemVerMajor": true
+      }
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 5,
+      "moderate": 0,
+      "high": 6,
+      "critical": 0,
+      "total": 11
+    },
+    "dependencies": {
+      "prod": 443,
+      "dev": 701,
+      "optional": 64,
+      "peer": 26,
+      "peerOptional": 0,
+      "total": 1187
+    }
+  }
+}

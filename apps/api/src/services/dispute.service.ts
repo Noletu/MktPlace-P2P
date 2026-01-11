@@ -301,15 +301,23 @@ export class DisputeService {
     const isOrderOwner = order.userId === input.authorId;
     const isPayer = order.transactions.some(t => t.payerId === input.authorId);
 
-    // Buscar usuário para verificar se é admin
+    // Buscar usuário para verificar se é staff (SUPPORT+)
     const user = await prisma.user.findUnique({
       where: { id: input.authorId },
-      select: { role: true },
+      include: {
+        role: {
+          select: {
+            slug: true,
+            level: true,
+          },
+        },
+      },
     });
 
-    const isAdmin = user?.role === 'ADMIN' || user?.role === 'MASTER';
+    const userLevel = user?.role?.level || 0;
+    const isStaff = userLevel >= 40; // SUPPORT+ pode adicionar mensagens como staff
 
-    if (!isOrderOwner && !isPayer && !isAdmin) {
+    if (!isOrderOwner && !isPayer && !isStaff) {
       throw new Error('Você não tem permissão para adicionar mensagens nesta disputa');
     }
 
@@ -320,7 +328,7 @@ export class DisputeService {
         authorId: input.authorId,
         message: input.message,
         attachments: input.attachments ? JSON.stringify(input.attachments) : null,
-        isAdminMessage: input.isAdminMessage || isAdmin,
+        isAdminMessage: input.isAdminMessage || isStaff,
       },
       include: {
         author: {
@@ -334,8 +342,8 @@ export class DisputeService {
       },
     });
 
-    // Se for admin adicionando mensagem, mudar status para UNDER_REVIEW
-    if (isAdmin && dispute.status === 'OPEN') {
+    // Se for staff adicionando mensagem, mudar status para UNDER_REVIEW
+    if (isStaff && dispute.status === 'OPEN') {
       await prisma.dispute.update({
         where: { id: input.disputeId },
         data: { status: 'UNDER_REVIEW' },
@@ -375,14 +383,25 @@ export class DisputeService {
    * Resolver disputa (apenas admin)
    */
   async resolveDispute(input: ResolveDisputeInput) {
-    // Verificar se é admin
-    const admin = await prisma.user.findUnique({
+    // Verificar se usuário existe e tem nível adequado (GERENTE+)
+    const user = await prisma.user.findUnique({
       where: { id: input.resolvedBy },
-      select: { role: true },
+      include: {
+        role: {
+          select: {
+            level: true,
+          },
+        },
+      },
     });
 
-    if (!admin || (admin.role !== 'ADMIN' && admin.role !== 'MASTER')) {
-      throw new Error('Apenas administradores podem resolver disputas');
+    if (!user) {
+      throw new Error('Usuário não encontrado');
+    }
+
+    const userLevel = user.role?.level || 0;
+    if (userLevel < 60) {
+      throw new Error('Você não tem permissão para resolver disputas. Requer nível GERENTE ou superior.');
     }
 
     // Buscar disputa

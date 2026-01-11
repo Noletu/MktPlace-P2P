@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import cron from 'node-cron';
+import { notificationService } from '../services/notification.service';
 
 const prisma = new PrismaClient();
 
@@ -66,6 +67,7 @@ export const startAutoUnfreezeJob = () => {
         action: 'AUTO_UNFREEZE_ACCOUNT',
         resource: 'USER',
         resourceId: user.id,
+        description: `Conta desbloqueada automaticamente: ${user.email}`,
         metadata: JSON.stringify({
           email: user.email,
           name: user.name,
@@ -74,15 +76,24 @@ export const startAutoUnfreezeJob = () => {
           frozenUntil: user.frozenUntil,
           unfrozenAt: now,
         }),
-        timestamp: now,
+        success: true,
       }));
 
       await prisma.auditLog.createMany({ data: auditLogs });
 
-      // TODO: Enviar notificações por email para usuários desbloqueados
-      // for (const user of expiredFreezes) {
-      //   await emailService.sendAccountUnfrozenEmail(user.email, user.name);
-      // }
+      // NOTIFICAÇÃO: Avisar usuários desbloqueados automaticamente
+      for (const user of expiredFreezes) {
+        await notificationService.createNotification({
+          userId: user.id,
+          type: 'ACCOUNT_UNFROZEN',
+          category: 'ACCOUNT',
+          title: '✅ Suspensão Temporária Expirada',
+          message: 'Sua suspensão temporária expirou e sua conta foi reativada automaticamente. Você já pode usar todas as funcionalidades da plataforma.',
+          priority: 'NORMAL',
+          actionUrl: '/dashboard',
+          actionLabel: 'Ver Dashboard',
+        });
+      }
 
       console.log(`[AutoUnfreeze Job] ${expiredFreezes.length} contas desbloqueadas com sucesso.`);
 

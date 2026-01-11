@@ -39,6 +39,15 @@ export class AuthService {
     // Hash da senha
     const hashedPassword = await hashPassword(input.password);
 
+    // Buscar role USER para novo cadastro
+    const userRole = await prisma.role.findUnique({
+      where: { slug: 'user' },
+    });
+
+    if (!userRole) {
+      throw new Error('Role USER não encontrado. Execute o seed RBAC primeiro.');
+    }
+
     // Criar usuário
     const user = await prisma.user.create({
       data: {
@@ -46,7 +55,11 @@ export class AuthService {
         password: hashedPassword,
         name: input.name,
         kycLevel: "NONE",
-        role: 'USER',
+        roleId: userRole.id,
+        legacyRole: 'USER',
+      },
+      include: {
+        role: true,
       },
     });
 
@@ -54,7 +67,7 @@ export class AuthService {
     const token = generateToken({
       userId: user.id,
       email: user.email,
-      role: user.role,
+      role: user.role?.slug || user.legacyRole || 'USER',
     });
 
     const refreshToken = await refreshTokenService.createRefreshToken(user.id);
@@ -73,7 +86,18 @@ export class AuthService {
     // Buscar usuário com role RBAC
     const user = await prisma.user.findUnique({
       where: { email: input.email },
-      include: {
+      // SECURITY: Incluir campos de bloqueio para validação
+      select: {
+        id: true,
+        email: true,
+        password: true,
+        name: true,
+        twoFactorEnabled: true,
+        twoFactorSecret: true,
+        accountFrozen: true,
+        frozenReason: true,
+        frozenUntil: true,
+        legacyRole: true,
         role: {
           select: {
             slug: true,
@@ -142,6 +166,13 @@ export class AuthService {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
+      include: {
+        role: {
+          select: {
+            slug: true,
+          }
+        }
+      }
     });
 
     if (!user) {
@@ -151,7 +182,7 @@ export class AuthService {
     const token = generateToken({
       userId: user.id,
       email: user.email,
-      role: user.role,
+      role: user.role?.slug || user.legacyRole || 'USER',
     });
 
     return { token };
@@ -170,6 +201,7 @@ export class AuthService {
           select: {
             slug: true,
             name: true,
+            level: true,
           }
         },
         kycVerification: {
@@ -204,10 +236,16 @@ export class AuthService {
     return {
       ...userWithoutPassword,
       role: userRole, // Role como string (MASTER, ADMIN, etc)
+      level: user.role?.level || 0, // Level do role (SUPPORT=40, GERENTE=60, ADMIN=80, MASTER=100)
       cpf: user.kycVerification?.cpf || null,
       phone: user.kycVerification?.phone || null,
       kycVerification: user.kycVerification,
       has2FA: user.twoFactorEnabled, // Mapear para compatibilidade com SecurityBanner
+      // ADMIN CONTROLS: Bloqueio (incluir para frontend exibir banner)
+      accountFrozen: user.accountFrozen,
+      frozenReason: user.frozenReason,
+      frozenAt: user.frozenAt,
+      frozenUntil: user.frozenUntil,
     };
   }
 

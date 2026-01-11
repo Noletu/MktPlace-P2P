@@ -5,6 +5,7 @@ import { kycService } from '../services/kyc.service';
 import { KYCLevel } from '../types/kyc.types';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+import { platformWalletService } from '../services/platformWallet.service';
 
 const prisma = new PrismaClient();
 
@@ -197,6 +198,50 @@ export class AdminController {
     }
   }
 
+  async createAllPlatformWallets(req: Request, res: Response) {
+    try {
+      console.log('🏦 [ADMIN] Criando todas as carteiras da plataforma...');
+
+      // Chamar service para criar carteiras
+      // O service valida internamente se master seed existe via MasterSeedService.getMasterSeed()
+      await platformWalletService.createPlatformWallets();
+
+      // Buscar carteiras criadas
+      const wallets = await platformWalletService.getAllPlatformWallets();
+
+      // Log de auditoria
+      await auditLogService.logFromRequest(
+        req,
+        'PLATFORM_WALLETS_CREATED',
+        'PLATFORM_WALLET',
+        'all',
+        { count: wallets.length }
+      );
+
+      console.log(`✅ [ADMIN] ${wallets.length} carteiras da plataforma criadas com sucesso`);
+
+      return res.json({
+        success: true,
+        message: `${wallets.length} carteiras da plataforma criadas com sucesso`,
+        data: wallets.map(w => ({
+          id: w.id,
+          cryptoType: w.cryptoType,
+          network: w.network,
+          address: w.address,
+          derivationPath: w.derivationPath,
+          balance: w.balance,
+          isActive: w.isActive,
+        })),
+      });
+    } catch (error: any) {
+      console.error('❌ [ADMIN] Erro ao criar carteiras da plataforma:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao criar carteiras da plataforma',
+      });
+    }
+  }
+
   /**
    * ============================================
    * GESTÃO DE USUÁRIOS
@@ -346,6 +391,42 @@ export class AdminController {
       res.status(500).json({
         success: false,
         error: error.message || 'Erro ao buscar pedidos',
+      });
+    }
+  }
+
+  async getOrdersStats(req: Request, res: Response) {
+    try {
+      // Buscar estatísticas de pedidos
+      const totalOrders = await prisma.order.count();
+      const pendingOrders = await prisma.order.count({ where: { status: 'PENDING' } });
+      const matchedOrders = await prisma.order.count({ where: { status: 'MATCHED' } });
+      const completedOrders = await prisma.order.count({ where: { status: 'COMPLETED' } });
+      const cancelledOrders = await prisma.order.count({ where: { status: 'CANCELLED' } });
+
+      // Calcular volume total em BRL
+      const orders = await prisma.order.findMany({
+        where: { status: 'COMPLETED' },
+        select: { brlAmount: true },
+      });
+      const totalVolume = orders.reduce((sum, order) => sum + parseFloat(order.brlAmount || '0'), 0);
+
+      res.json({
+        success: true,
+        data: {
+          total: totalOrders,
+          pending: pendingOrders,
+          matched: matchedOrders,
+          completed: completedOrders,
+          cancelled: cancelledOrders,
+          volume: totalVolume.toFixed(2),
+        },
+      });
+    } catch (error: any) {
+      console.error('Erro ao buscar estatísticas de pedidos:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar estatísticas de pedidos',
       });
     }
   }
