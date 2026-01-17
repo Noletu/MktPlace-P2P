@@ -208,147 +208,175 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       {/* Navigation */}
       <nav className="bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-8">
+          <div className="flex justify-center space-x-1">
             <Link
               href="/admin"
-              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
                 pathname === '/admin'
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
               }`}
             >
-              📊 Dashboard
+              <span className="text-lg mb-1">📊</span>
+              <span>Dashboard</span>
             </Link>
             <Link
               href="/admin/users"
-              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
                 pathname === '/admin/users'
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
               }`}
             >
-              👥 Usuários
+              <span className="text-lg mb-1">👥</span>
+              <span>Usuários</span>
             </Link>
             <Link
               href="/admin/orders"
-              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
                 pathname === '/admin/orders'
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
               }`}
             >
-              📦 Pedidos
+              <span className="text-lg mb-1">📦</span>
+              <span>Pedidos</span>
             </Link>
             <Link
               href="/admin/audit"
-              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
                 pathname === '/admin/audit'
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
               }`}
             >
-              📋 Audit Log
+              <span className="text-lg mb-1">📋</span>
+              <span className="text-center leading-tight">Audit<br/>Log</span>
             </Link>
             <Link
               href="/admin/marketplace"
-              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
                 pathname === '/admin/marketplace'
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
               }`}
             >
-              🛒 Marketplace
+              <span className="text-lg mb-1">🛒</span>
+              <span>Marketplace</span>
             </Link>
             <Link
               href="/admin/roles"
-              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
                 pathname === '/admin/roles'
                   ? 'border-purple-500 text-purple-600 dark:text-purple-400'
                   : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
               }`}
             >
-              👑 Roles (MASTER)
+              <span className="text-lg mb-1">👑</span>
+              <span>Roles</span>
             </Link>
             <Link
               href="/admin/orders/create"
-              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
                 pathname.startsWith('/admin/orders/create')
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
               }`}
             >
-              ➕ Criar Pedido
+              <span className="text-lg mb-1">➕</span>
+              <span className="text-center leading-tight">Criar<br/>Pedido</span>
+            </Link>
+            <Link
+              href="/admin/coupons"
+              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
+                pathname === '/admin/coupons'
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
+              }`}
+            >
+              <span className="text-lg mb-1">🎟️</span>
+              <span>Cupons</span>
             </Link>
             <Link
               href="/admin/disputes"
-              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
                 pathname.startsWith('/admin/disputes')
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
               }`}
             >
-              ⚖️ Disputas
+              <span className="text-lg mb-1">⚖️</span>
+              <span>Disputas</span>
             </Link>
             <Link
               href="/admin/support"
-              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
                 pathname.startsWith('/admin/support')
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
               }`}
             >
-              🎫 Suporte
+              <span className="text-lg mb-1">🎫</span>
+              <span>Suporte</span>
             </Link>
             <Link
               href="/admin/security"
-              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
                 pathname === '/admin/security'
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
               }`}
             >
-              🔒 Segurança
+              <span className="text-lg mb-1">🔒</span>
+              <span>Segurança</span>
             </Link>
             <Link
               href="/admin/master-seed"
-              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
                 pathname === '/admin/master-seed'
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
               }`}
             >
-              🔐 Master Seed
+              <span className="text-lg mb-1">🔐</span>
+              <span className="text-center leading-tight">Master<br/>Seed</span>
             </Link>
             <Link
               href="/admin/funds"
-              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
                 pathname.startsWith('/admin/funds')
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
               }`}
             >
-              💰 Controle de Fundos
+              <span className="text-lg mb-1">💰</span>
+              <span className="text-center leading-tight">Controle<br/>de Fundos</span>
             </Link>
             <Link
               href="/admin/workers"
-              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
+              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
                 pathname === '/admin/workers'
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
               }`}
             >
-              🤖 Workers
+              <span className="text-lg mb-1">🤖</span>
+              <span>Workers</span>
             </Link>
-            <Link
-              href="/admin/platform-wallets"
-              className={`py-4 px-2 border-b-2 font-medium text-sm transition ${
-                pathname.startsWith('/admin/platform-wallets')
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-              }`}
-            >
-              🏦 Carteiras
-            </Link>
+            {/* Carteiras da Plataforma - ADMIN+ (level >= 80) */}
+            {userLevel >= 80 && (
+              <Link
+                href="/admin/platform-wallets"
+                className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
+                  pathname.startsWith('/admin/platform-wallets')
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
+                }`}
+              >
+                <span className="text-lg mb-1">🏦</span>
+                <span>Carteiras</span>
+              </Link>
+            )}
           </div>
         </div>
       </nav>

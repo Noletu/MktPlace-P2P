@@ -25,7 +25,7 @@ router.get('/finance/stats', managerMiddleware, financeController.getFinanceStat
 router.get('/finance/wallet-balances', managerMiddleware, financeController.getWalletBalances.bind(financeController));
 
 /**
- * ADMINISTRATIVO: Gestão de Endereços da Plataforma (APENAS ADMIN + MASTER)
+ * ADMINISTRATIVO: Gestão de Endereços da Plataforma (ADMIN + MASTER apenas)
  */
 router.get('/platform-wallets', adminMiddleware, adminController.getPlatformWallets.bind(adminController));
 router.get('/platform-wallets/:id', adminMiddleware, adminController.getPlatformWalletById.bind(adminController));

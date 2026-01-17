@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { getWsUrl } from '@/config/api';
 
 interface Notification {
   id: string;
@@ -46,7 +47,7 @@ export function useNotificationSocket({
       return;
     }
 
-    const socket = io('http://localhost:3000/notifications', {
+    const socket = io(getWsUrl('notifications'), {
       path: '/socket.io/',
       auth: { token },
       transports: ['websocket', 'polling'],

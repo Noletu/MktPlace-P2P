@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import * as encryptionUtils from '@/utils/encryption.utils';
+import { getWsUrl } from '@/config/api';
 
 export interface ChatMessage {
   id: string;
@@ -47,6 +48,10 @@ export function useChat(chatId?: string) {
   const privateKeyRef = useRef<CryptoKey | null>(null);
   const publicKeyRef = useRef<CryptoKey | null>(null);
   const recipientPublicKeyRef = useRef<CryptoKey | null>(null);
+  // Map para guardar mensagens próprias antes da criptografia
+  const ownMessagesRef = useRef<Map<string, string>>(new Map());
+  // Texto da mensagem que acabou de ser enviada (esperando ID do servidor)
+  const pendingMessageRef = useRef<string | null>(null);
 
   // Inicializar chaves de criptografia
   const initializeEncryption = useCallback(async () => {
@@ -128,6 +133,13 @@ export function useChat(chatId?: string) {
       return { ...msg, decryptedMessage: msg.message };
     }
 
+    // NOVO: Se é própria mensagem, buscar texto puro do cache
+    const ownMessage = ownMessagesRef.current.get(msg.id);
+    if (ownMessage) {
+      console.log('[Chat] Using cached plaintext for own message:', msg.id.slice(0, 8));
+      return { ...msg, decryptedMessage: ownMessage };
+    }
+
     if (!privateKeyRef.current) {
       console.warn('Private key not available for decryption');
       return { ...msg, decryptedMessage: '🔒 Mensagem criptografada' };
@@ -151,7 +163,7 @@ export function useChat(chatId?: string) {
     const token = localStorage.getItem('accessToken');
     if (!token) return;
 
-    const newSocket = io('http://localhost:3000/chat', {
+    const newSocket = io(getWsUrl('chat'), {
       auth: { token },
       path: '/socket.io/',
     });
@@ -171,6 +183,25 @@ export function useChat(chatId?: string) {
     });
 
     newSocket.on('message:new', async (message: ChatMessage) => {
+      // Verificar se é própria mensagem para guardar no cache
+      const userStr = localStorage.getItem('user');
+      const currentUser = userStr ? JSON.parse(userStr) : null;
+
+      console.log('📩 New message received:', {
+        id: message.id.slice(0, 8),
+        isEncrypted: message.isEncrypted,
+        hasIV: !!message.iv,
+        senderId: message.senderId.slice(0, 8),
+        isMine: currentUser && message.senderId === currentUser.id,
+      });
+
+      // Se é minha mensagem e tenho pendingMessage, guardar no cache
+      if (currentUser && message.senderId === currentUser.id && pendingMessageRef.current) {
+        console.log('[Chat] Storing own message plaintext:', message.id.slice(0, 8));
+        ownMessagesRef.current.set(message.id, pendingMessageRef.current);
+        pendingMessageRef.current = null; // Limpar após usar
+      }
+
       // Descriptografar mensagem se necessário
       const decryptedMsg = await decryptMessageContent(message);
       setMessages((prev) => [...prev, decryptedMsg]);
@@ -194,6 +225,10 @@ export function useChat(chatId?: string) {
   // Entrar no chat quando chatId mudar
   useEffect(() => {
     if (socket && chatId) {
+      // Limpar cache de mensagens próprias ao trocar de chat
+      ownMessagesRef.current.clear();
+      pendingMessageRef.current = null;
+
       socket.emit('chat:join', { chatId });
 
       socket.once('chat:joined', () => {
@@ -275,6 +310,9 @@ export function useChat(chatId?: string) {
           message.trim(),
           recipientPublicKeyRef.current
         );
+
+        // Guardar texto puro temporariamente (será associado ao ID quando mensagem voltar do servidor)
+        pendingMessageRef.current = message.trim();
 
         socket.emit('message:send', {
           chatId,

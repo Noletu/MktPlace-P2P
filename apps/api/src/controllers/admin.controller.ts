@@ -478,10 +478,10 @@ export class AdminController {
       }
 
       const { id } = req.params;
-      const { amount, cryptoAmount, status, expiresAt, notes } = req.body;
+      const { brlAmount, cryptoAmount, status, notes } = req.body;
 
       // Validar que pelo menos um campo foi fornecido
-      if (!amount && !cryptoAmount && !status && !expiresAt && !notes) {
+      if (!brlAmount && !cryptoAmount && !status && !notes) {
         return res.status(400).json({
           success: false,
           error: 'Pelo menos um campo deve ser fornecido para edição',
@@ -489,10 +489,9 @@ export class AdminController {
       }
 
       const updates: any = {};
-      if (amount) updates.amount = amount;
+      if (brlAmount) updates.brlAmount = brlAmount;
       if (cryptoAmount) updates.cryptoAmount = cryptoAmount;
       if (status) updates.status = status;
-      if (expiresAt) updates.expiresAt = new Date(expiresAt);
       if (notes) updates.notes = notes;
 
       const order = await adminService.editOrder(id, adminId, updates);
