@@ -52,6 +52,16 @@ export default function CreateOrderPage() {
   const [showBalanceDecisionModal, setShowBalanceDecisionModal] = useState(false);
   const [balanceDecisionData, setBalanceDecisionData] = useState<any>(null);
 
+  // Coupon state
+  const [activeCoupon, setActiveCoupon] = useState<any>(null);
+
+  // Account status state (for frozen accounts)
+  const [accountStatus, setAccountStatus] = useState<{
+    frozen: boolean;
+    reason?: string;
+    until?: string;
+  } | null>(null);
+
   const NETWORK_OPTIONS: Record<string, string[]> = {
     BTC: ['BITCOIN'],
     USDC: ['BASE', 'SOLANA'],
@@ -64,6 +74,66 @@ export default function CreateOrderPage() {
 
   useEffect(() => {
     fetchPrices();
+  }, []);
+
+  // Buscar cupom ativo do usuário
+  useEffect(() => {
+    const fetchActiveCoupon = async () => {
+      try {
+        const token = localStorage.getItem('accessToken');
+        if (!token) return;
+
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/coupons/active`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data) {
+            setActiveCoupon(data.data);
+            console.log('🎟️ Cupom ativo encontrado:', data.data.coupon.code);
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao buscar cupom ativo:', err);
+      }
+    };
+
+    fetchActiveCoupon();
+  }, []);
+
+  // Buscar status da conta do usuário (verificar se está bloqueada)
+  useEffect(() => {
+    const fetchAccountStatus = async () => {
+      try {
+        const token = localStorage.getItem('accessToken');
+        if (!token) return;
+
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/users/me`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data) {
+            setAccountStatus({
+              frozen: data.data.accountFrozen || false,
+              reason: data.data.frozenReason,
+              until: data.data.frozenUntil,
+            });
+            if (data.data.accountFrozen) {
+              console.log('🚫 Conta bloqueada detectada');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao verificar status da conta:', err);
+      }
+    };
+
+    fetchAccountStatus();
   }, []);
 
   // Carregar saldo interno quando mudar cripto ou rede
@@ -298,13 +368,33 @@ export default function CreateOrderPage() {
   const fees = useMemo(() => {
     const amount = parseFloat(cryptoAmount);
     const decimals = (crypto === 'USDC' || crypto === 'USDT') ? 2 : 8;
+
+    // Taxa padrão: 1.5%
+    let platformFeePercentage = 0.015;
+    const originalPlatformFee = amount * 0.015;
+    let discountAmount = 0;
+
+    // Aplicar desconto se houver cupom ativo
+    if (activeCoupon) {
+      const discount = activeCoupon.coupon.discountPercentage / 100;
+      platformFeePercentage = platformFeePercentage * (1 - discount);
+      discountAmount = originalPlatformFee - (amount * platformFeePercentage);
+    }
+
+    const platformFee = amount * platformFeePercentage;
+    const payerReward = amount * 0.01; // 1% inalterado
+
     return {
-      platformFee: (amount * 0.015).toFixed(decimals),
-      payerReward: (amount * 0.01).toFixed(decimals),
-      totalFee: (amount * 0.025).toFixed(decimals),
-      netAmount: (amount * 0.975).toFixed(decimals),
+      platformFee: platformFee.toFixed(decimals),
+      payerReward: payerReward.toFixed(decimals),
+      totalFee: (platformFee + payerReward).toFixed(decimals),
+      netAmount: (amount - platformFee - payerReward).toFixed(decimals),
+      // Novos campos para exibição do cupom
+      originalPlatformFee: originalPlatformFee.toFixed(decimals),
+      discountAmount: discountAmount.toFixed(decimals),
+      hasDiscount: activeCoupon !== null,
     };
-  }, [cryptoAmount, crypto]);
+  }, [cryptoAmount, crypto, activeCoupon]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -550,8 +640,12 @@ export default function CreateOrderPage() {
         {
           method: 'POST',
           headers: {
+            'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
           },
+          body: JSON.stringify({
+            amount: collateralAddress.expectedAmount,
+          }),
         }
       );
 
@@ -923,6 +1017,33 @@ export default function CreateOrderPage() {
           </div>
         )}
 
+        {/* Banner de Conta Bloqueada */}
+        {accountStatus?.frozen && (
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border-2 border-red-500 rounded-lg">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🚫</span>
+              <div>
+                <h3 className="text-lg font-bold text-red-700 dark:text-red-400">
+                  Conta Suspensa
+                </h3>
+                <p className="text-sm text-red-600 dark:text-red-300">
+                  {accountStatus.until
+                    ? `Sua conta está suspensa até ${new Date(accountStatus.until).toLocaleString('pt-BR')}.`
+                    : 'Sua conta está suspensa permanentemente.'}
+                </p>
+                {accountStatus.reason && (
+                  <p className="text-xs text-red-500 dark:text-red-400 mt-1">
+                    Motivo: {accountStatus.reason}
+                  </p>
+                )}
+                <p className="text-xs text-red-500 dark:text-red-400 mt-2">
+                  Entre em contato com o suporte para mais informações.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Formulário */}
           <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
@@ -1226,10 +1347,18 @@ export default function CreateOrderPage() {
 
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full py-3 px-4 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg disabled:opacity-50"
+                disabled={loading || accountStatus?.frozen}
+                className={`w-full py-3 px-4 font-semibold rounded-lg disabled:opacity-50 ${
+                  accountStatus?.frozen
+                    ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed text-gray-200'
+                    : 'bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white'
+                }`}
               >
-                {loading ? 'Gerando endereço...' : '🔒 Depositar Colateral em Cripto'}
+                {accountStatus?.frozen
+                  ? '🚫 Conta Suspensa'
+                  : loading
+                    ? 'Gerando endereço...'
+                    : '🔒 Depositar Colateral em Cripto'}
               </button>
             </form>
           </div>
@@ -1297,13 +1426,68 @@ export default function CreateOrderPage() {
                 </p>
               </div>
 
+              {/* Cupom Ativo Banner */}
+              {activeCoupon && (
+                <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/30 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🎟️</span>
+                      <div>
+                        <p className="text-sm font-bold text-green-600 dark:text-green-400">
+                          Cupom {activeCoupon.coupon.code}
+                        </p>
+                        <p className="text-xs text-green-600/80 dark:text-green-400/80">
+                          {activeCoupon.coupon.discountPercentage}% de desconto na taxa
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                      -{activeCoupon.coupon.discountPercentage}%
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <hr className="border-gray-200 dark:border-gray-700" />
 
+              {/* Taxa da Plataforma - Com ou sem desconto */}
               <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Taxa da plataforma (1.5%)</p>
-                <p className="text-sm text-gray-900 dark:text-white">
-                  {fees.platformFee} {crypto}
-                </p>
+                {activeCoupon ? (
+                  <>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-xs text-gray-500 dark:text-gray-500 line-through">
+                          Taxa original (1.5%)
+                        </p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Taxa com desconto ({(1.5 * (1 - activeCoupon.coupon.discountPercentage / 100)).toFixed(2)}%)
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500 dark:text-gray-500 line-through">
+                          {fees.originalPlatformFee} {crypto}
+                        </p>
+                        <p className="text-sm font-semibold text-green-600 dark:text-green-400">
+                          {fees.platformFee} {crypto}
+                        </p>
+                      </div>
+                    </div>
+                    {/* Economia */}
+                    <div className="mt-2 flex justify-between items-center bg-green-50 dark:bg-green-900/20 rounded px-2 py-1">
+                      <span className="text-xs text-green-700 dark:text-green-300">💰 Você economiza:</span>
+                      <span className="text-xs font-bold text-green-700 dark:text-green-300">
+                        {fees.discountAmount} {crypto}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Taxa da plataforma (1.5%)</p>
+                    <p className="text-sm text-gray-900 dark:text-white">
+                      {fees.platformFee} {crypto}
+                    </p>
+                  </>
+                )}
               </div>
 
               <div>
@@ -1314,7 +1498,9 @@ export default function CreateOrderPage() {
               </div>
 
               <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Taxa total (2.5%)</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Taxa total ({activeCoupon ? (1.5 * (1 - activeCoupon.coupon.discountPercentage / 100) + 1).toFixed(2) : '2.5'}%)
+                </p>
                 <p className="text-sm font-semibold text-red-600 dark:text-red-400">
                   {fees.totalFee} {crypto}
                 </p>

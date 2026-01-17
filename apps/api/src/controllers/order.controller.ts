@@ -44,6 +44,15 @@ export class OrderController {
         return res.status(401).json({ error: 'Não autorizado' });
       }
 
+      // SECURITY: Verificação rápida de conta congelada (segunda camada)
+      if ((req.user as any)?.accountFrozen) {
+        return res.status(403).json({
+          success: false,
+          error: 'Sua conta está suspensa. Você não pode criar pedidos.',
+          code: 'ACCOUNT_FROZEN',
+        });
+      }
+
       // Log completo do body para debug
       console.log('📦 [ORDER] Request body:', JSON.stringify(req.body, null, 2));
 

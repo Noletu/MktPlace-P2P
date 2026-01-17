@@ -549,8 +549,12 @@ export default function CreateOrderPage() {
         {
           method: 'POST',
           headers: {
+            'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
           },
+          body: JSON.stringify({
+            amount: collateralAddress.expectedAmount,
+          }),
         }
       );
 

@@ -29,6 +29,7 @@ import adminFundsRoutes from './routes/adminFunds.routes';
 import exchangeRateRoutes from './routes/exchange-rate.routes';
 import roleRoutes from './routes/role.routes';
 import supportRoutes from './routes/support.routes';
+import couponRoutes from './routes/coupon.routes';
 // import negotiationRoutes from './routes/negotiation.routes'; // DESABILITADO: Chat disponível apenas após aceitar pedido
 // import statsRoutes from './routes/stats.routes';
 import { apiLimiter } from './middleware/rateLimiter.middleware';
@@ -255,6 +256,9 @@ app.use('/api/v1/exchange-rate', exchangeRateRoutes);
 
 // Role routes (RBAC - Role-Based Access Control) - MASTER only
 app.use('/api/v1/roles', roleRoutes);
+
+// Coupon routes (discount coupons system)
+app.use('/api/v1/coupons', couponRoutes);
 
 // Negotiation routes (pre-match negotiation) - DESABILITADO: Chat disponível apenas após aceitar pedido
 // app.use('/api/v1/negotiation', negotiationRoutes);

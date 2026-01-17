@@ -22,6 +22,7 @@ export default function AuditLogPage() {
   const [loading, setLoading] = useState(true);
   const [filterAction, setFilterAction] = useState('ALL');
   const [filterSuccess, setFilterSuccess] = useState('ALL');
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     fetchLogs();
@@ -49,6 +50,67 @@ export default function AuditLogPage() {
     return matchAction && matchSuccess;
   });
 
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        alert('Sessão expirada. Faça login novamente.');
+        return;
+      }
+
+      // Construir URL com filtros atuais
+      const params = new URLSearchParams();
+
+      // Aplicar filtros selecionados
+      if (filterAction && filterAction !== 'ALL') {
+        params.append('action', filterAction);
+      }
+
+      if (filterSuccess && filterSuccess !== 'ALL') {
+        params.append('success', filterSuccess);
+      }
+
+      // Fazer requisição
+      const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/admin/audit-logs/export?${params.toString()}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Falha ao exportar logs');
+      }
+
+      // Obter CSV como blob
+      const blob = await response.blob();
+
+      // Criar URL temporária para download
+      const downloadUrl = window.URL.createObjectURL(blob);
+
+      // Criar link temporário e clicar
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `audit-logs-${new Date().toISOString()}.csv`;
+      document.body.appendChild(link);
+      link.click();
+
+      // Limpar
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+
+      console.log('✅ Audit logs exported successfully');
+    } catch (error) {
+      console.error('Failed to export audit logs:', error);
+      alert('Erro ao exportar logs. Tente novamente.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="text-center py-12">
@@ -62,12 +124,30 @@ export default function AuditLogPage() {
     <div>
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Audit Log</h1>
-        <button
-          onClick={fetchLogs}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 border border-blue-500 text-gray-900 dark:text-white rounded-lg transition"
-        >
-          🔄 Atualizar
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={fetchLogs}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 border border-blue-500 text-gray-900 dark:text-white rounded-lg transition"
+          >
+            🔄 Atualizar
+          </button>
+          <button
+            onClick={handleExportCSV}
+            disabled={isExporting}
+            className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition flex items-center gap-2"
+          >
+            {isExporting ? (
+              <>
+                <span className="animate-spin">⏳</span>
+                Exportando...
+              </>
+            ) : (
+              <>
+                📥 Exportar CSV
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Stats */}

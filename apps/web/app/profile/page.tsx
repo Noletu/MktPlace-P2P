@@ -47,6 +47,12 @@ export default function ProfilePage() {
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState('');
   const [reviewStats, setReviewStats] = useState<any>(null);
+  const [activeCoupon, setActiveCoupon] = useState<any>(null);
+  const [publicCoupons, setPublicCoupons] = useState<any[]>([]);
+  const [couponCode, setCouponCode] = useState('');
+  const [activatingCoupon, setActivatingCoupon] = useState(false);
+  const [couponError, setCouponError] = useState('');
+  const [couponSuccess, setCouponSuccess] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -113,6 +119,34 @@ export default function ProfilePage() {
           // Silently fail - reviews são opcionais
           console.log('[DEBUG] Erro ao buscar reviews:', reviewErr);
         }
+
+        // Buscar cupons (ativo e públicos)
+        try {
+          const [activeRes, publicRes] = await Promise.all([
+            fetch('http://localhost:3001/api/v1/coupons/active', {
+              headers: { Authorization: `Bearer ${token}` },
+            }),
+            fetch('http://localhost:3001/api/v1/coupons/public', {
+              headers: { Authorization: `Bearer ${token}` },
+            }),
+          ]);
+
+          if (activeRes.ok) {
+            const activeData = await activeRes.json();
+            if (activeData.success && activeData.data) {
+              setActiveCoupon(activeData.data);
+            }
+          }
+
+          if (publicRes.ok) {
+            const publicData = await publicRes.json();
+            if (publicData.success) {
+              setPublicCoupons(publicData.data);
+            }
+          }
+        } catch (couponErr) {
+          console.log('[DEBUG] Erro ao buscar cupons:', couponErr);
+        }
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -160,6 +194,102 @@ export default function ProfilePage() {
       setEditError(err.message);
     } finally {
       setEditLoading(false);
+    }
+  };
+
+  const handleActivateCoupon = async () => {
+    setActivatingCoupon(true);
+    setCouponError('');
+    setCouponSuccess('');
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://localhost:3001/api/v1/coupons/activate', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code: couponCode }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Erro ao ativar cupom');
+      }
+
+      setCouponSuccess('Cupom ativado com sucesso!');
+      setCouponCode('');
+
+      // Refresh coupon data
+      const token2 = localStorage.getItem('accessToken');
+      const [activeRes, publicRes] = await Promise.all([
+        fetch('http://localhost:3001/api/v1/coupons/active', {
+          headers: { Authorization: `Bearer ${token2}` },
+        }),
+        fetch('http://localhost:3001/api/v1/coupons/public', {
+          headers: { Authorization: `Bearer ${token2}` },
+        }),
+      ]);
+
+      if (activeRes.ok) {
+        const activeData = await activeRes.json();
+        if (activeData.success && activeData.data) {
+          setActiveCoupon(activeData.data);
+        }
+      }
+
+      if (publicRes.ok) {
+        const publicData = await publicRes.json();
+        if (publicData.success) {
+          setPublicCoupons(publicData.data);
+        }
+      }
+    } catch (err: any) {
+      setCouponError(err.message);
+    } finally {
+      setActivatingCoupon(false);
+    }
+  };
+
+  const handleDeactivateCoupon = async () => {
+    if (!confirm('Deseja realmente desativar este cupom?')) return;
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://localhost:3001/api/v1/coupons/deactivate', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error);
+      }
+
+      // Refresh coupon data
+      const [activeRes, publicRes] = await Promise.all([
+        fetch('http://localhost:3001/api/v1/coupons/active', {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch('http://localhost:3001/api/v1/coupons/public', {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+
+      if (activeRes.ok) {
+        const activeData = await activeRes.json();
+        setActiveCoupon(activeData.success && activeData.data ? activeData.data : null);
+      }
+
+      if (publicRes.ok) {
+        const publicData = await publicRes.json();
+        if (publicData.success) {
+          setPublicCoupons(publicData.data);
+        }
+      }
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -537,6 +667,143 @@ export default function ProfilePage() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Cupons Section */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 mb-6 border border-gray-300 dark:border-gray-700">
+          <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">
+            🎟️ Cupons de Desconto
+          </h2>
+
+          {/* Active Coupon Display */}
+          {activeCoupon ? (
+            <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border-2 border-green-500 rounded-lg">
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <h3 className="text-lg font-bold text-green-700 dark:text-green-400">
+                    Cupom Ativo: {activeCoupon.coupon.code}
+                  </h3>
+                  {activeCoupon.coupon.description && (
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      {activeCoupon.coupon.description}
+                    </p>
+                  )}
+                </div>
+                <span className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  {activeCoupon.coupon.discountPercentage}% OFF
+                </span>
+              </div>
+              <div className="flex justify-between items-center mt-4">
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  <p>
+                    {activeCoupon.coupon.maxUsesPerUser === 0
+                      ? 'Uso ilimitado'
+                      : `Usos restantes: ${activeCoupon.usesRemaining} de ${activeCoupon.coupon.maxUsesPerUser}`}
+                  </p>
+                  {activeCoupon.coupon.expiresAt && (
+                    <p>Expira em: {new Date(activeCoupon.coupon.expiresAt).toLocaleDateString('pt-BR')}</p>
+                  )}
+                </div>
+                <button
+                  onClick={handleDeactivateCoupon}
+                  className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm transition"
+                >
+                  Desativar Cupom
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-6 p-4 bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg">
+              <p className="text-gray-600 dark:text-gray-400 text-center">
+                Você não tem nenhum cupom ativo no momento.
+              </p>
+            </div>
+          )}
+
+          {/* Activate Coupon Form */}
+          {!activeCoupon && (
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold mb-3 text-gray-900 dark:text-white">
+                Ativar Cupom
+              </h3>
+              <div className="flex space-x-2">
+                <input
+                  type="text"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  placeholder="Digite o código do cupom"
+                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                  maxLength={20}
+                />
+                <button
+                  onClick={handleActivateCoupon}
+                  disabled={!couponCode || activatingCoupon}
+                  className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg disabled:opacity-50 transition"
+                >
+                  {activatingCoupon ? 'Ativando...' : 'Ativar'}
+                </button>
+              </div>
+              {couponError && (
+                <p className="text-red-500 text-sm mt-2">{couponError}</p>
+              )}
+              {couponSuccess && (
+                <p className="text-green-500 text-sm mt-2">{couponSuccess}</p>
+              )}
+            </div>
+          )}
+
+          {/* Public Coupons List */}
+          {publicCoupons.length > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-gray-900 dark:text-white">
+                Cupons Públicos Disponíveis
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {publicCoupons.map((coupon) => (
+                  <div
+                    key={coupon.id}
+                    className="p-4 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg"
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h4 className="font-bold text-gray-900 dark:text-white">
+                          {coupon.code}
+                        </h4>
+                        {coupon.description && (
+                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                            {coupon.description}
+                          </p>
+                        )}
+                      </div>
+                      <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                        {coupon.discountPercentage}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center mt-3">
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        <p>Limite: {coupon.maxUsesPerUser === 0 ? 'Ilimitado' : `${coupon.maxUsesPerUser}x por usuário`}</p>
+                        <p>Você já usou: {coupon.userTimesUsed}x</p>
+                        {coupon.expiresAt && (
+                          <p>Expira: {new Date(coupon.expiresAt).toLocaleDateString('pt-BR')}</p>
+                        )}
+                      </div>
+                      {coupon.canActivate && !activeCoupon && (
+                        <button
+                          onClick={() => {
+                            setCouponCode(coupon.code);
+                            handleActivateCoupon();
+                          }}
+                          className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm transition"
+                        >
+                          Ativar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Ações */}

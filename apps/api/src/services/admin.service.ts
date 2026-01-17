@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from './auditLog.service';
+import { notificationService } from './notification.service';
 
 const prisma = new PrismaClient();
 
@@ -538,14 +539,18 @@ export class AdminService {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
-        buyer: {
+        user: {
           select: { id: true, email: true, name: true },
         },
-        seller: {
-          select: { id: true, email: true, name: true },
+        transactions: {
+          include: {
+            payer: {
+              select: { id: true, email: true, name: true },
+            },
+          },
         },
         wallet: true, // HD Wallet para desbloqueio de colateral
-        dispute: {
+        disputes: {
           where: {
             status: { in: ['OPEN', 'UNDER_REVIEW'] },
           },
@@ -558,7 +563,7 @@ export class AdminService {
     }
 
     // 2. Verificar se há disputa ativa
-    if (order.dispute && order.dispute.length > 0) {
+    if (order.disputes && order.disputes.length > 0) {
       throw new Error(
         'Não é possível cancelar pedido com disputa ativa. Resolva a disputa primeiro.'
       );
@@ -605,34 +610,67 @@ export class AdminService {
       },
     });
 
-    // 6. Criar histórico de cancelamento
+    // 6. Criar histórico de cancelamento para o vendedor
     await prisma.cancellationHistory.create({
       data: {
         orderId,
-        userId: adminId,
-        reason: `[ADMIN CANCEL] ${reason}`,
-        cancelledBy: 'ADMIN',
-        timestamp: new Date(),
+        userId: order.user.id,
+        role: 'SELLER',
+        reason: `ADMIN_CANCELLED`,
+        note: reason,
+        orderStatus: order.status,
+        orderValue: order.brlAmount,
+        penaltyApplied: false, // Admin cancel não aplica penalidade
       },
     });
 
+    // 6b. Criar histórico para o comprador se existir transação
+    const buyer = order.transactions[0]?.payer;
+    if (buyer) {
+      await prisma.cancellationHistory.create({
+        data: {
+          orderId,
+          userId: buyer.id,
+          role: 'BUYER',
+          reason: `ADMIN_CANCELLED`,
+          note: reason,
+          orderStatus: order.status,
+          orderValue: order.brlAmount,
+          penaltyApplied: false,
+        },
+      });
+    }
+
     // 7. Notificar ambas as partes
-    const { NotificationService } = await import('./notification.service');
-    const notificationService = new NotificationService();
-
-    await notificationService.sendToUser(order.buyer.id, {
-      type: 'ORDER_CANCELLED_BY_ADMIN',
-      title: 'Pedido cancelado pela administração',
-      message: `Seu pedido #${order.id.slice(0, 8)} foi cancelado por um administrador. Motivo: ${reason}`,
-      orderId: order.id,
-    });
-
-    if (order.seller) {
-      await notificationService.sendToUser(order.seller.id, {
+    // Notificar comprador (payer) se existir transação
+    if (buyer) {
+      await notificationService.createNotification({
+        userId: buyer.id,
         type: 'ORDER_CANCELLED_BY_ADMIN',
+        category: 'ORDER',
+        title: 'Pedido cancelado pela administração',
+        message: `Seu pedido #${order.id.slice(0, 8)} foi cancelado por um administrador. Motivo: ${reason}`,
+        actionUrl: `/orders/${order.id}`,
+        actionLabel: 'Ver Detalhes',
+        relatedId: order.id,
+        relatedType: 'ORDER',
+        priority: 'HIGH',
+      });
+    }
+
+    // Notificar vendedor (user)
+    if (order.user) {
+      await notificationService.createNotification({
+        userId: order.user.id,
+        type: 'ORDER_CANCELLED_BY_ADMIN',
+        category: 'ORDER',
         title: 'Pedido cancelado pela administração',
         message: `O pedido #${order.id.slice(0, 8)} foi cancelado por um administrador. Motivo: ${reason}`,
-        orderId: order.id,
+        actionUrl: `/orders/${order.id}`,
+        actionLabel: 'Ver Detalhes',
+        relatedId: order.id,
+        relatedType: 'ORDER',
+        priority: 'HIGH',
       });
     }
 
@@ -645,9 +683,9 @@ export class AdminService {
       metadata: JSON.stringify({
         reason,
         previousStatus: order.status,
-        buyerId: order.buyer.id,
-        sellerId: order.seller?.id,
-        amount: order.amount,
+        buyerId: buyer?.id,
+        sellerId: order.user?.id,
+        brlAmount: order.brlAmount,
         cryptoType: order.cryptoType,
         collateralUnlocked: order.collateralLocked,
         timestamp: new Date().toISOString(),
@@ -661,10 +699,9 @@ export class AdminService {
     orderId: string,
     adminId: string,
     updates: {
-      amount?: string;
+      brlAmount?: string;
       cryptoAmount?: string;
       status?: string;
-      expiresAt?: Date;
       notes?: string;
     }
   ) {
@@ -672,8 +709,12 @@ export class AdminService {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
-        buyer: { select: { id: true, email: true, name: true } },
-        seller: { select: { id: true, email: true, name: true } },
+        user: { select: { id: true, email: true, name: true } },
+        transactions: {
+          include: {
+            payer: { select: { id: true, email: true, name: true } },
+          },
+        },
         wallet: true,
       },
     });
@@ -706,7 +747,7 @@ export class AdminService {
     }
 
     // 3. Validar mudanças de valor
-    if (updates.amount && parseFloat(updates.amount) <= 0) {
+    if (updates.brlAmount && parseFloat(updates.brlAmount) <= 0) {
       throw new Error('Valor do pedido deve ser positivo');
     }
 
@@ -714,36 +755,25 @@ export class AdminService {
       throw new Error('Quantidade de crypto deve ser positiva');
     }
 
-    // 4. Se mudando valores, recalcular fees
-    let feeAmount = order.feeAmount;
-    if (updates.amount && updates.amount !== order.amount) {
-      const feePercentage = 0.02; // 2% (configuração da plataforma)
-      feeAmount = (parseFloat(updates.amount) * feePercentage).toString();
-    }
-
-    // 5. Registrar estado anterior para auditoria
+    // 4. Registrar estado anterior para auditoria
     const previousState = {
-      amount: order.amount,
+      brlAmount: order.brlAmount,
       cryptoAmount: order.cryptoAmount,
       status: order.status,
-      expiresAt: order.expiresAt,
-      feeAmount: order.feeAmount,
+      platformFee: order.platformFee,
+      totalFee: order.totalFee,
     };
 
-    // 6. Aplicar mudanças
+    // 5. Aplicar mudanças
     const updatedOrder = await prisma.order.update({
       where: { id: orderId },
       data: {
         ...updates,
-        feeAmount,
         updatedAt: new Date(),
       },
     });
 
-    // 7. Notificar partes envolvidas
-    const { NotificationService } = await import('./notification.service');
-    const notificationService = new NotificationService();
-
+    // 6. Notificar partes envolvidas
     const changesSummary = Object.entries(updates)
       .map(([key, value]) => {
         const oldValue = previousState[key as keyof typeof previousState];
@@ -751,19 +781,36 @@ export class AdminService {
       })
       .join(', ');
 
-    await notificationService.sendToUser(order.buyer.id, {
-      type: 'ORDER_EDITED_BY_ADMIN',
-      title: 'Pedido modificado pela administração',
-      message: `Seu pedido #${order.id.slice(0, 8)} foi editado por um administrador. Alterações: ${changesSummary}`,
-      orderId: order.id,
-    });
-
-    if (order.seller) {
-      await notificationService.sendToUser(order.seller.id, {
+    // Notificar comprador (payer) se existir transação
+    const buyer = order.transactions[0]?.payer;
+    if (buyer) {
+      await notificationService.createNotification({
+        userId: buyer.id,
         type: 'ORDER_EDITED_BY_ADMIN',
+        category: 'ORDER',
+        title: 'Pedido modificado pela administração',
+        message: `Seu pedido #${order.id.slice(0, 8)} foi editado por um administrador. Alterações: ${changesSummary}`,
+        actionUrl: `/orders/${order.id}`,
+        actionLabel: 'Ver Alterações',
+        relatedId: order.id,
+        relatedType: 'ORDER',
+        priority: 'NORMAL',
+      });
+    }
+
+    // Notificar vendedor (user)
+    if (order.user) {
+      await notificationService.createNotification({
+        userId: order.user.id,
+        type: 'ORDER_EDITED_BY_ADMIN',
+        category: 'ORDER',
         title: 'Pedido modificado pela administração',
         message: `O pedido #${order.id.slice(0, 8)} foi editado por um administrador. Alterações: ${changesSummary}`,
-        orderId: order.id,
+        actionUrl: `/orders/${order.id}`,
+        actionLabel: 'Ver Alterações',
+        relatedId: order.id,
+        relatedType: 'ORDER',
+        priority: 'NORMAL',
       });
     }
 

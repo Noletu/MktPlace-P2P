@@ -15,17 +15,40 @@ import { boletoOCRService } from './boleto-ocr.service';
 import { CryptoType } from '../types/crypto.types';
 import { notificationService } from './notification.service';
 import { prisma } from '../utils/prisma';
+import { couponService } from './coupon.service';
 
 export class OrderService {
   /**
-   * Calcula as taxas do pedido
+   * Calcula as taxas do pedido (com suporte a cupons de desconto)
    */
-  calculateFees(cryptoAmount: string): FeeCalculation {
+  async calculateFees(cryptoAmount: string, userId?: string): Promise<FeeCalculation> {
     const amount = parseFloat(cryptoAmount);
 
-    const platformFee = amount * FEE_CONFIG.PLATFORM_FEE_PERCENTAGE;
-    const payerReward = amount * FEE_CONFIG.PAYER_REWARD_PERCENTAGE;
-    const totalFee = amount * FEE_CONFIG.TOTAL_FEE_PERCENTAGE;
+    let platformFeePercentage = FEE_CONFIG.PLATFORM_FEE_PERCENTAGE; // 1.5%
+    let appliedCoupon = null;
+
+    // Verificar se usuário tem cupom ativo
+    if (userId) {
+      const activeCoupon = await couponService.getActiveCoupon(userId);
+
+      if (activeCoupon) {
+        const discount = activeCoupon.coupon.discountPercentage / 100;
+        const originalPlatformFeePercentage = platformFeePercentage;
+        platformFeePercentage = platformFeePercentage * (1 - discount);
+
+        appliedCoupon = {
+          couponId: activeCoupon.coupon.id,
+          code: activeCoupon.coupon.code,
+          discountPercentage: activeCoupon.coupon.discountPercentage,
+          originalPlatformFee: (amount * originalPlatformFeePercentage).toFixed(8),
+          discountAmount: (amount * originalPlatformFeePercentage - amount * platformFeePercentage).toFixed(8),
+        };
+      }
+    }
+
+    const platformFee = amount * platformFeePercentage;
+    const payerReward = amount * FEE_CONFIG.PAYER_REWARD_PERCENTAGE; // 1% inalterado
+    const totalFee = platformFee + payerReward;
     const netCryptoAmount = amount - totalFee;
 
     return {
@@ -33,6 +56,7 @@ export class OrderService {
       payerReward: payerReward.toFixed(8),
       totalFee: totalFee.toFixed(8),
       netCryptoAmount: netCryptoAmount.toFixed(8),
+      appliedCoupon,
     };
   }
 
@@ -87,6 +111,39 @@ export class OrderService {
       throw new Error(
         `Valor excede seu limite de transação (R$ ${limit}). Complete um nível KYC superior.`
       );
+    }
+
+    // Verificar se conta está congelada/bloqueada
+    const user = await prisma.user.findUnique({
+      where: { id: input.userId },
+      select: {
+        accountFrozen: true,
+        frozenReason: true,
+        frozenUntil: true,
+      },
+    });
+
+    if (user?.accountFrozen) {
+      // Verificar se o bloqueio tem data de expiração e se já expirou
+      if (user.frozenUntil && new Date(user.frozenUntil) < new Date()) {
+        // Bloqueio expirou - desbloquear automaticamente
+        await prisma.user.update({
+          where: { id: input.userId },
+          data: {
+            accountFrozen: false,
+            frozenReason: null,
+            frozenUntil: null,
+            frozenBy: null,
+          },
+        });
+        console.log(`🔓 Conta desbloqueada automaticamente (expirou): ${input.userId}`);
+      } else {
+        // Conta ainda bloqueada
+        const message = user.frozenUntil
+          ? `Sua conta está suspensa até ${new Date(user.frozenUntil).toLocaleString('pt-BR')}. Motivo: ${user.frozenReason || 'Não especificado'}.`
+          : `Sua conta está suspensa permanentemente. Motivo: ${user.frozenReason || 'Não especificado'}. Entre em contato com o suporte.`;
+        throw new Error(message);
+      }
     }
 
     // Validar carteira para pedidos BUY
@@ -171,8 +228,8 @@ export class OrderService {
     // Validar criação
     await this.validateOrderCreation(input);
 
-    // Calcular taxas
-    const fees = this.calculateFees(input.cryptoAmount);
+    // Calcular taxas (com cupom se houver)
+    const fees = await this.calculateFees(input.cryptoAmount, input.userId);
 
     // Calcular colateral necessário
     const requiredCollateral = this.calculateRequiredCollateral(input.cryptoAmount);
@@ -267,6 +324,14 @@ export class OrderService {
     collateralAmount: string,
     walletId: string
   ): Promise<Order> {
+    // Aplicar cupom se houver (antes da transaction)
+    let couponData = null;
+    if (fees.appliedCoupon) {
+      // Nota: usamos um orderId temporário que será substituído pelo ID real
+      // O applyCouponToOrder incrementará os contadores de uso
+      couponData = fees.appliedCoupon;
+    }
+
     // Transaction atômica: criar pedido + bloquear saldo
     const result = await prisma.$transaction(async (tx) => {
       // 1. Criar pedido primeiro
@@ -282,6 +347,12 @@ export class OrderService {
           platformFee: fees.platformFee,
           payerReward: fees.payerReward,
           totalFee: fees.totalFee,
+          // Coupon tracking
+          appliedCouponId: couponData?.couponId || null,
+          appliedCouponCode: couponData?.code || null,
+          appliedCouponDiscount: couponData?.discountPercentage || null,
+          originalPlatformFee: couponData?.originalPlatformFee || null,
+          discountAmount: couponData?.discountAmount || null,
           orderData: JSON.stringify(input.orderData),
           timeoutAt,
           customExpirationHours: input.customExpirationHours,
@@ -297,11 +368,41 @@ export class OrderService {
       });
 
       console.log(`🚀 Pedido ${order.id} criado usando carteira HD!`);
+      if (couponData) {
+        console.log(`🎟️ Cupom ${couponData.code} (${couponData.discountPercentage}%) aplicado!`);
+      }
+
+      // 2. Incrementar contadores de uso do cupom DENTRO da transaction (atomicidade)
+      if (couponData) {
+        const now = new Date();
+
+        // Atualizar UserCoupon (incrementar timesUsed, definir firstUsedAt apenas se null)
+        await tx.$executeRaw`
+          UPDATE "UserCoupon"
+          SET
+            "timesUsed" = "timesUsed" + 1,
+            "lastUsedAt" = ${now},
+            "firstUsedAt" = COALESCE("firstUsedAt", ${now})
+          WHERE "userId" = ${input.userId}
+            AND "couponId" = ${couponData.couponId}
+            AND "isActive" = true
+        `;
+
+        // Atualizar Coupon (incrementar totalUses)
+        await tx.coupon.update({
+          where: { id: couponData.couponId },
+          data: {
+            totalUses: { increment: 1 },
+          },
+        });
+
+        console.log(`✅ Contadores do cupom ${couponData.code} incrementados (dentro da transaction)`);
+      }
 
       return order;
     });
 
-    // 2. Bloquear saldo usando WalletService (FORA da transaction para evitar deadlock)
+    // 3. Bloquear saldo usando WalletService (FORA da transaction para evitar deadlock)
     try {
       await WalletService.lockBalance(
         walletId,
@@ -499,6 +600,39 @@ export class OrderService {
         throw new Error(
           `Valor excede seu limite de transação (R$ ${limit}). Complete um nível KYC superior.`
         );
+      }
+
+      // Verificar se conta do pagador está congelada/bloqueada
+      const payer = await tx.user.findUnique({
+        where: { id: payerId },
+        select: {
+          accountFrozen: true,
+          frozenReason: true,
+          frozenUntil: true,
+        },
+      });
+
+      if (payer?.accountFrozen) {
+        // Verificar se o bloqueio tem data de expiração e se já expirou
+        if (payer.frozenUntil && new Date(payer.frozenUntil) < new Date()) {
+          // Bloqueio expirou - desbloquear automaticamente
+          await tx.user.update({
+            where: { id: payerId },
+            data: {
+              accountFrozen: false,
+              frozenReason: null,
+              frozenUntil: null,
+              frozenBy: null,
+            },
+          });
+          console.log(`🔓 Conta desbloqueada automaticamente (expirou): ${payerId}`);
+        } else {
+          // Conta ainda bloqueada
+          const message = payer.frozenUntil
+            ? `Sua conta está suspensa até ${new Date(payer.frozenUntil).toLocaleString('pt-BR')}. Motivo: ${payer.frozenReason || 'Não especificado'}.`
+            : `Sua conta está suspensa permanentemente. Motivo: ${payer.frozenReason || 'Não especificado'}. Entre em contato com o suporte.`;
+          throw new Error(message);
+        }
       }
 
       // Atualizar pedido para MATCHED dentro da transação

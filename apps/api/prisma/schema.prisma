@@ -91,6 +91,9 @@ model User {
 
   // Cancellation history
   cancellationHistory CancellationHistory[]
+
+  // Coupon system
+  userCoupons UserCoupon[]
 }
 
 // ============================================
@@ -249,6 +252,13 @@ model Order {
   platformFee String
   payerReward String
   totalFee    String
+
+  // Coupon discount tracking
+  appliedCouponId        String? // ID do cupom aplicado
+  appliedCouponCode      String? // Código do cupom (denormalizado para histórico)
+  appliedCouponDiscount  Int?    // Percentual aplicado (snapshot)
+  originalPlatformFee    String? // Taxa original antes do desconto
+  discountAmount         String? // Valor economizado
 
   // Order specific data (JSON string)
   orderData String
@@ -1122,4 +1132,78 @@ model ExchangeRate {
 
   @@index([source])
   @@index([timestamp])
+}
+
+// ============================================
+// COUPON DISCOUNT SYSTEM
+// ============================================
+
+// Cupons de desconto criados por ADMIN/MASTER
+model Coupon {
+  id String @id @default(cuid())
+
+  // Código único do cupom (ex: "WELCOME50", "PROMO2024")
+  code String @unique
+
+  // Desconto aplicado (1-100%)
+  discountPercentage Int // Percentual de desconto aplicado SOMENTE à platform fee
+
+  // Limites de uso
+  maxUsesPerUser Int      // Quantas vezes cada usuário pode usar
+  expiresAt      DateTime? // Data de expiração (null = sem expiração)
+
+  // Visibilidade
+  isPublic Boolean @default(false) // true = aparece na lista pública, false = só via código
+
+  // Estado
+  isActive Boolean @default(true) // Se o cupom está ativo
+
+  // Estatísticas
+  totalUses Int @default(0) // Total de vezes que foi usado
+
+  // Metadados
+  description String? // Descrição opcional do cupom
+  createdBy   String? // ID do admin que criou
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relações
+  userCoupons UserCoupon[]
+
+  @@index([code])
+  @@index([isActive])
+  @@index([isPublic])
+  @@index([expiresAt])
+  @@index([createdAt])
+}
+
+// Relacionamento Many-to-Many: User <-> Coupon (com tracking de uso)
+model UserCoupon {
+  id String @id @default(cuid())
+
+  // Relacionamentos
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  couponId String
+  coupon   Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  // Status
+  isActive  Boolean @default(false) // Se este cupom está ativo para o usuário
+  timesUsed Int     @default(0)     // Quantas vezes o usuário usou este cupom
+
+  // Timestamps
+  activatedAt   DateTime? // Quando foi ativado
+  deactivatedAt DateTime? // Quando foi desativado
+  firstUsedAt   DateTime? // Primeira vez que foi usado
+  lastUsedAt    DateTime? // Última vez que foi usado
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, couponId]) // Um usuário não pode ter o mesmo cupom duplicado
+  @@index([userId])
+  @@index([couponId])
+  @@index([isActive])
+  @@index([activatedAt])
 }

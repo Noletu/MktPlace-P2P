@@ -47,10 +47,17 @@ export interface CreateOrderInput {
 }
 
 export interface FeeCalculation {
-  platformFee: string; // 1.5% em crypto
-  payerReward: string; // 1% em crypto
-  totalFee: string; // 2.5% em crypto
+  platformFee: string; // 1.5% em crypto (com desconto de cupom aplicado, se houver)
+  payerReward: string; // 1% em crypto (permanece inalterado)
+  totalFee: string; // 2.5% em crypto (ou menos com cupom)
   netCryptoAmount: string; // Valor que o criador recebe
+  appliedCoupon?: {
+    couponId: string;
+    code: string;
+    discountPercentage: number;
+    originalPlatformFee: string;
+    discountAmount: string;
+  } | null;
 }
 
 // Configurações de taxas

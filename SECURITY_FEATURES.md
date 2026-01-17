@@ -1,6 +1,7 @@
 # 🔒 Funcionalidades de Segurança - MktPlace P2P
 
 **Data da Implementação**: 08/10/2025
+**Última Atualização**: 17/01/2026
 **Status**: ✅ Todas as funcionalidades implementadas e testadas
 
 ---
@@ -343,7 +344,64 @@ const backupCodes = twoFactorService.generateBackupCodes(10);
 
 ## 4. Outras Medidas de Segurança
 
-### 4.1. Headers de Segurança (Helmet)
+### 4.1. Bloqueio de Usuários Congelados (v4.1.2/v4.1.3)
+
+**Implementado em**: 17/01/2026
+
+#### Objetivo
+Impedir que usuários com conta congelada (bloqueados pelo admin) realizem operações críticas na plataforma.
+
+#### Validações em 3 Camadas (Defense in Depth)
+
+| Camada | Arquivo | Descrição |
+|--------|---------|-----------|
+| **1. Service** | `order.service.ts` | Verificação em `validateOrderCreation()` e `matchOrder()` |
+| **2. Controller** | `order.controller.ts` | Verificação rápida via `req.user.accountFrozen` |
+| **3. Frontend** | `orders/create/page.tsx` | Banner vermelho + botão desabilitado |
+
+#### Campos do Sistema de Bloqueio
+
+```prisma
+model User {
+  accountFrozen   Boolean   @default(false)  // Conta está bloqueada?
+  frozenReason    String?                     // Motivo do bloqueio
+  frozenUntil     DateTime?                   // Data de expiração (null = permanente)
+  frozenBy        String?                     // ID do admin que bloqueou
+}
+```
+
+#### Operações Bloqueadas
+
+- **Criar pedidos** (v4.1.2)
+- **Aceitar pedidos no marketplace** (v4.1.3)
+
+#### Desbloqueio Automático
+
+Quando `frozenUntil` expira, o sistema desbloqueia automaticamente a conta:
+
+```typescript
+if (user?.accountFrozen) {
+  if (user.frozenUntil && new Date(user.frozenUntil) < new Date()) {
+    // Bloqueio expirou - desbloquear automaticamente
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        accountFrozen: false,
+        frozenReason: null,
+        frozenUntil: null,
+        frozenBy: null,
+      },
+    });
+  }
+}
+```
+
+#### Mensagens de Erro
+
+- **Bloqueio temporário**: "Sua conta está suspensa até {data}. Motivo: {motivo}."
+- **Bloqueio permanente**: "Sua conta está suspensa permanentemente. Motivo: {motivo}. Entre em contato com o suporte."
+
+### 4.2. Headers de Segurança (Helmet)
 
 **Configurado em**: `/apps/api/src/index.ts`
 
@@ -353,7 +411,7 @@ const backupCodes = twoFactorService.generateBackupCodes(10);
 - ✅ **No Sniff**: Previne MIME sniffing
 - ✅ **Hide Powered By**: Oculta tecnologia do servidor
 
-### 4.2. CORS Whitelist
+### 4.3. CORS Whitelist
 
 **Configurado em**: `/apps/api/src/index.ts`
 
@@ -362,7 +420,7 @@ const backupCodes = twoFactorService.generateBackupCodes(10);
 - ✅ **Methods**: Apenas métodos necessários (GET, POST, PUT, DELETE, PATCH)
 - ✅ **Headers**: Headers permitidos definidos explicitamente
 
-### 4.3. Cookies HttpOnly
+### 4.4. Cookies HttpOnly
 
 **Configurado em**: `/apps/api/src/utils/cookies.ts`
 
@@ -370,13 +428,13 @@ const backupCodes = twoFactorService.generateBackupCodes(10);
 - ✅ **Refresh Token**: HttpOnly + Secure (produção) + SameSite
 - ✅ **Proteção XSS**: Cookies não acessíveis via JavaScript
 
-### 4.4. Validação de Inputs
+### 4.5. Validação de Inputs
 
 - ✅ **Zod schemas**: Validação tipada de todos os inputs
 - ✅ **Sanitização**: Prevenção de SQL Injection e XSS
 - ✅ **Limite de payload**: Máximo 10MB para uploads
 
-### 4.5. Senhas
+### 4.6. Senhas
 
 - ✅ **Bcrypt**: Hash com salt de 10 rounds
 - ✅ **Validação forte**: Mínimo 8 caracteres, maiúscula, minúscula, número

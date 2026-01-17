@@ -5,462 +5,183 @@ Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
-## [Não Lançado]
+---
 
-### Adicionado
-
-#### Sistema de Avisos de Conta Bloqueada (06/01/2026)
-
-**Backend - Segurança e Validação:**
-- **Validação de Bloqueio no Login** (`auth.service.ts`)
-  - Mensagens específicas para bloqueio temporário vs permanente
-  - Inclui motivo e data de expiração na mensagem de erro
-  - Impede acesso inicial de usuários bloqueados
-- **Middleware de Bloqueio** (`auth.middleware.ts`)
-  - Valida status de bloqueio em TODAS as requisições API
-  - Retorna HTTP 403 (Forbidden) com detalhes do bloqueio
-  - Dupla camada de segurança (login + middleware)
-- **Endpoint `/auth/me` Expandido** (`auth.service.ts`)
-  - Retorna campos: `accountFrozen`, `frozenReason`, `frozenAt`, `frozenUntil`
-  - Frontend pode verificar status de bloqueio em tempo real
-- **Tratamento de Erro Específico** (`auth.controller.ts`)
-  - Diferencia erro de login de erro de conta bloqueada
-  - Evita mensagens genéricas confusas
-
-**Backend - Sistema de Notificações:**
-- **Notificação ao Bloquear Conta** (`adminFunds.service.ts`)
-  - Priority: HIGH
-  - Título diferenciado: "⚠️ Conta Suspensa Temporariamente" ou "🚫 Conta Suspensa"
-  - Mensagem com motivo e data de expiração
-  - Link para abrir ticket de suporte
-- **Notificação ao Desbloquear Manualmente** (`adminFunds.service.ts`)
-  - Priority: NORMAL
-  - Título: "✅ Conta Reativada"
-  - Link para dashboard
-- **Notificação ao Desbloquear Automaticamente** (`autoUnfreeze.job.ts`)
-  - Enviada quando suspensão temporária expira
-  - Título: "✅ Suspensão Temporária Expirada"
-  - Executada pelo cron job a cada 5 minutos
-
-**Backend - Audit Logs:**
-- **Correção de Auto-Unfreeze Logs** (`autoUnfreeze.job.ts`)
-  - Removido campo `timestamp` inválido que causava erro silencioso
-  - Adicionados campos `description` e `success`
-  - Metadata completo: email, motivo, datas de freeze/unfreeze
-  - Logs agora criados corretamente no banco
-- **Filtro API de Audit Logs** (`adminFunds.service.ts`)
-  - Adicionado `AUTO_UNFREEZE_ACCOUNT` ao whitelist de ações
-  - Logs de auto-unfreeze agora visíveis no painel admin
-  - Rastreabilidade completa de bloqueios automáticos
-
-**Backend - UX:**
-- **Ordem Cronológica de Notificações** (`notification.service.ts`)
-  - Alterado de ordenação por prioridade + data para apenas data
-  - Notificações mais recentes aparecem primeiro
-  - Melhor acompanhamento temporal dos eventos
-
-**Frontend - Componentes:**
-- **Componente FrozenAccountBanner** (`components/FrozenAccountBanner.tsx`)
-  - Banner vermelho para bloqueio permanente
-  - Banner laranja para bloqueio temporário
-  - Exibe: motivo, data de expiração, tempo restante em horas
-  - Lista de ações bloqueadas (criar pedidos, saques, transferências)
-  - Botão para abrir ticket de suporte
-  - Funcionalidade de recolher/expandir
-  - Não exibe se freeze já expirou
-- **Integração no Dashboard** (`app/dashboard/page.tsx`)
-  - Banner exibido no topo quando conta está bloqueada
-  - Campos de bloqueio adicionados à interface User
-  - Verificação automática via `/auth/me`
-
-**Arquivos Criados:**
-- `apps/web/components/FrozenAccountBanner.tsx` - Componente de banner
-
-**Arquivos Modificados:**
-- `apps/api/src/services/auth.service.ts` - Login e /auth/me
-- `apps/api/src/middleware/auth.middleware.ts` - Validação em todas requisições
-- `apps/api/src/controllers/auth.controller.ts` - Tratamento de erro específico
-- `apps/api/src/services/adminFunds.service.ts` - Notificações e filtro de logs
-- `apps/api/src/jobs/autoUnfreeze.job.ts` - Correção de logs e notificações
-- `apps/api/src/services/notification.service.ts` - Ordem cronológica
-- `apps/web/app/dashboard/page.tsx` - Integração do banner
-
-**Impacto:**
-- ✅ Segurança: Dupla camada de validação (login + middleware)
-- ✅ Rastreabilidade: Audit logs completos de bloqueios manuais e automáticos
-- ✅ Transparência: Usuários sempre informados sobre status da conta
-- ✅ Compliance: Motivo do bloqueio claramente comunicado
-- ✅ Suporte: Canal disponível via notificação HIGH priority
-
-#### Sistema de Cotação Multi-Fonte para USDC/USDT (18/12/2025)
-- **ExchangeRateService:** Implementado sistema robusto de fallback em cascata com 5 fontes de cotação USD/BRL
-  - **Problema Resolvido:** CoinGecko retornava preços incorretos/desatualizados para USDC/USDT (ex: 5.38 BRL/USD ao invés de 5.52)
-  - **Solução:** Stablecoins agora usam cotação USD/BRL real (USDC = USDT = 1 USD)
-  - **Cascata de Fallback:**
-    1. AwesomeAPI (primária) - API brasileira em tempo real
-    2. Banco Central do Brasil (oficial) - PTAX governamental
-    3. CoinGecko BRZ (crypto) - Inverso do preço do BRZ (1 / BRZ_USD)
-    4. Cache Local (database) - Última cotação válida (máx 5 min)
-    5. Valor Fixo (emergência) - 5.50 BRL/USD com alerta crítico
-  - **Funcionalidades Robustas:**
-    - Timeout de 5s por fonte (previne travamentos)
-    - Health monitoring (success/failure count, response time, uptime %)
-    - Cache inteligente (60s normal, 5min para fallback)
-    - Validação de divergência (alerta se fontes diferem > 5%)
-    - Auditoria completa (registra fonte, timestamp, response time)
-    - Limites de sanidade (rejeita taxas fora de 4.0-7.0 BRL/USD)
-  - **Frontend:** Display da cotação atual e fonte na UI (transparência)
-  - **Endpoints Admin:**
-    - `GET /api/v1/exchange-rate/current` - Taxa atual
-    - `GET /api/v1/exchange-rate/health` - Métricas de saúde das fontes
-    - `GET /api/v1/exchange-rate/validate` - Validar consistência entre fontes
-  - **Arquivos Criados:**
-    - `apps/api/src/types/exchange-rate.types.ts` - Interfaces e enums
-    - `apps/api/src/services/exchange-rate.service.ts` - Serviço multi-fonte (~480 linhas)
-    - `apps/api/src/controllers/exchange-rate.controller.ts` - Endpoints admin
-    - `apps/api/src/routes/exchange-rate.routes.ts` - Rotas de monitoramento
-  - **Arquivos Modificados:**
-    - `apps/api/prisma/schema.prisma` - Model ExchangeRate para auditoria
-    - `apps/api/src/services/price.service.ts` - Integração com ExchangeRateService
-    - `apps/api/src/index.ts` - Registro de rotas
-    - `apps/web/app/orders/create/page.tsx` - Display de cotação e fonte
-  - **Impacto:** Cotação sempre precisa e transparente, alta disponibilidade (99.9%+)
-
-#### Sistema de Transferência Interna de Criptomoedas (16/12/2025)
-- **Transferência Automática de Crypto:** Implementado sistema completo de transferência interna (off-chain) de criptomoedas
-  - Quando vendedor valida o pagamento, a crypto é automaticamente transferida do saldo bloqueado do vendedor para o saldo disponível do comprador
-  - Sistema HD Wallet BIP32/BIP44 para gerenciamento seguro de carteiras
-  - Criação automática de carteira para compradores que ainda não possuem
-  - Transação atômica do Prisma garante consistência (all-or-nothing)
-  - Proteção contra reprocessamento com verificação de idempotência
-  - Registro completo na tabela \`WalletTransaction\` (DEDUCT + CREDIT)
-  - Arquivos modificados:
-    - \`apps/api/src/services/transaction.service.ts\` - Lógica principal de transferência
-    - \`apps/api/src/services/wallet.service.ts\` - Método \`creditBalance()\` para creditar comprador
-    - \`apps/api/prisma/schema.prisma\` - Adicionados campos de rastreamento de transferência
-
-#### Logs de Auditoria Aprimorados (16/12/2025)
-- **Novos Tipos de Logs:** Adicionada separação clara entre conclusão de transação e transferência de crypto
-  - \`ORDER_COMPLETED\`: Registra quando uma transação é aprovada (pagamento validado)
-    - Log para comprador: "Payment validated and approved"
-    - Log para vendedor: "Payment received and confirmed"
-  - \`CRYPTO_TRANSFER\`: Registra transferência de criptomoeda entre usuários
-    - Descrição unificada: "Crypto transferred: X.XXXXXXXX BTC from seller to buyer"
-    - Logs separados para visibilidade de comprador e vendedor
-    - Metadados incluem: orderId, fromUserId, toUserId, cryptoType, network, amount, direction
-  - Logs executados fora da transação crítica usando \`setImmediate()\` para não bloquear operações principais
-  - Arquivos modificados:
-    - \`apps/api/src/services/auditLog.service.ts\` - Adicionada constante \`ORDER_COMPLETED\`
-    - \`apps/api/src/services/transaction.service.ts\` - Logs reorganizados (2 ORDER_COMPLETED + 2 CRYPTO_TRANSFER)
+## [4.1.3] - 2026-01-17
 
 ### Corrigido
 
-#### Sistema de Avisos de Conta Bloqueada - 5 Bugs Críticos (06/01/2026)
-
-1. **Conflito include/select no Prisma** (`auth.service.ts`)
-   - **Problema:** Query de login usava `include` e `select` simultaneamente
-   - **Impacto:** Falhava silenciosamente impedindo TODOS os logins
-   - **Solução:** Removido `include` duplicado, mantido apenas `select`
-   - **Criticidade:** 🔴 CRÍTICA - Quebrava autenticação completamente
-
-2. **Mensagem Genérica no Login Bloqueado** (`auth.controller.ts`)
-   - **Problema:** Erro de conta bloqueada retornava "Email ou senha inválidos"
-   - **Impacto:** Usuários não sabiam por que não conseguiam fazer login
-   - **Solução:** Tratamento específico retornando HTTP 403 com detalhes do bloqueio
-   - **Criticidade:** 🟡 MÉDIA - UX ruim, mas sem impacto de segurança
-
-3. **Campo `timestamp` Inválido nos Audit Logs** (`autoUnfreeze.job.ts`)
-   - **Problema:** Auto-unfreeze job tentava criar logs com campo inexistente no schema
-   - **Impacto:** Erro silencioso impedia criação de TODOS os logs de auto-unfreeze
-   - **Solução:** Removido campo `timestamp`, adicionados `description` e `success`
-   - **Criticidade:** 🟠 ALTA - Perda de rastreabilidade de desbloqueios automáticos
-
-4. **Filtro API Excluindo AUTO_UNFREEZE_ACCOUNT** (`adminFunds.service.ts`)
-   - **Problema:** Whitelist de ações não incluía `AUTO_UNFREEZE_ACCOUNT`
-   - **Impacto:** Logs existiam no banco mas ficavam ocultos na API do admin
-   - **Solução:** Adicionado `AUTO_UNFREEZE_ACCOUNT` ao filtro
-   - **Criticidade:** 🟡 MÉDIA - Logs existiam mas não eram visíveis
-
-5. **Ordem Confusa de Notificações** (`notification.service.ts`)
-   - **Problema:** Notificações agrupadas por prioridade em vez de cronológica
-   - **Impacto:** Eventos recentes apareciam abaixo de eventos antigos
-   - **Solução:** Alterado `orderBy` de `[{ priority: 'desc' }, { createdAt: 'desc' }]` para `{ createdAt: 'desc' }`
-   - **Criticidade:** 🟢 BAIXA - Apenas UX confusa
-
-**Resumo de Correções:**
-- 1 bug crítico (login quebrado)
-- 1 bug de alta criticidade (logs não criados)
-- 2 bugs de média criticidade (mensagens e visibilidade)
-- 1 bug de baixa criticidade (ordenação UX)
-
-#### Edição de Pedidos Não Atualizava - Backend Não Processava Mudanças (19/12/2025)
-- **Problema:** Após editar um pedido PENDING (nome do beneficiário, chave PIX, boleto, etc.), mensagem de sucesso aparecia mas dados NÃO eram salvos
-  - Frontend enviava dados corretamente ✅
-  - Backend recebia a requisição ✅
-  - **Mas backend não processava as mudanças** ❌
-  - Banco de dados mantinha valores antigos
-  - Mesmo após F5, dados continuavam inalterados
-- **Causa Raiz (Backend):** Lógica de validação usava `order.type === 'PIX'` mas `order.type` armazena "SELL"/"BUY" (tipo de ordem), não o método de pagamento
-  - Backend nunca entrava nos blocos `if (order.type === 'PIX')` ou `else if (order.type === 'BOLETO')`
-  - Resultado: `newOrderData` ficava igual a `currentOrderData` (nenhum campo era atualizado)
-  - Linha crítica: `order.service.ts:913` verificava tipo errado
-- **Solução (Backend):** Detectar método de pagamento pelos dados existentes ao invés de usar `order.type`
-  ```typescript
-  // ANTES (ERRADO):
-  if (order.type === 'PIX') { ... }
-
-  // DEPOIS (CORRETO):
-  const isPix = currentOrderData.pixKey !== undefined;
-  const isBoleto = currentOrderData.barcode !== undefined;
-  if (isPix) { ... }
-  else if (isBoleto) { ... }
-  ```
-- **Solução (Frontend):** Adicionado `useMemo` para garantir que `orderData` recalcula quando `order` muda
-  - Garante reatividade após `fetchOrder()` buscar dados atualizados
-  - Guard clause para evitar parsing de dados nulos
-- **Arquivos Modificados:**
-  - `apps/api/src/services/order.service.ts:906-908,924,962` - Detecção de PIX/BOLETO corrigida
-  - `apps/web/app/orders/[orderId]/page.tsx:96-99` - Adicionado `useMemo` hook
-- **Impacto:**
-  - Edições de pedido agora salvam E atualizam instantaneamente ✅
-  - Todos os campos editáveis funcionando: recipientName, pixKey, pixKeyType, barcode, dueDate, customExpirationHours, recipientDocument
-  - Sem necessidade de recarregar página (F5)
-  - UX completamente funcional
-
-#### Dupla Taxação no Bloqueio de Colateral - Backend (19/12/2025)
-- **Problema:** Backend aplicava taxa de 2.5% **duas vezes** ao bloquear colateral
-  - Frontend já divide por 0.975 (taxa embutida): 120 BRL → 22.29 USDC
-  - Backend multiplicava por 1.025 novamente: 22.29 × 1.025 = 22.78575 USDC ❌
-  - Usuário via "22.23 USDC necessário" mas sistema bloqueava 22.78575 USDC
-  - Diferença: 0.55575 USDC (2.5% a mais) por transação
-  - Taxa efetiva: ~5.13% ao invés de 2.5%
-- **Solução:** Removida multiplicação por 1.025 no método `calculateRequiredCollateral()`
-  - Método agora apenas converte para string formatada, sem adicionar taxa
-  - Colateral bloqueado = valor exato recebido do frontend (já com taxa embutida)
-- **Arquivo Modificado:**
-  - `apps/api/src/services/order.service.ts:42-46` - Removida linha `amount * (1 + FEE_CONFIG.TOTAL_FEE_PERCENTAGE)`
-  - Comentário atualizado para refletir que frontend já envia valor com taxa
-- **Impacto:**
-  - Economia de ~0.55 USDC por transação (~R$ 3.00 na cotação atual)
-  - Taxa agora correta: 2.5% (sem duplicação)
-  - Frontend e backend finalmente alinhados
-
-#### Dupla Taxação no Cálculo do Colateral Necessário - Frontend (18/12/2025)
-- **Problema:** Modal de saldo interno mostrava colateral necessário com taxa duplicada
-  - Exemplo: Para pedido de 120 BRL em USDT, mostrava "Necessário: 22.84725 USDT" ao invés de "22.29 USDT"
-  - Causa: Linha 350 aplicava 2.5% sobre `cryptoAmount` que já tinha a taxa embutida (linha 292 divide por 0.975)
-  - Taxa efetiva: ~5.13% (dupla taxação) ao invés de 2.5%
-- **Solução:** Removida multiplicação indevida por 1.025 no cálculo do colateral
-  - `requiredCollateral = parseFloat(cryptoAmount).toFixed(8)` (ao invés de `* 1.025`)
-  - Colateral necessário agora = valor bruto (sem aplicar taxa adicional)
-- **Arquivo Modificado:**
-  - `apps/web/app/orders/create/page.tsx:350` - Removido `* 1.025`
-- **Impacto:** Economia de ~0.56 USDT por transação, taxa correta de 2.5%
-- **Observação:** Esta correção resolveu apenas o DISPLAY no frontend. O backend ainda aplicava a taxa ao bloquear o saldo (corrigido em 19/12/2025)
-
-#### Erro 400 no Chat para Pedidos PENDING (16/12/2025)
-- **Problema:** Frontend fazia polling contínuo do endpoint de chat para pedidos com status PENDING, gerando erros 400
-- **Causa Raiz:**
-  1. Função \`shouldShowChat()\` incluía PENDING na lista de status que renderizam a aba Chat
-  2. Guard em \`fetchChatUnreadCount()\` não verificava se \`order\` era \`undefined\` antes de checar status
-- **Solução Implementada:**
-  - Removido \`PENDING\` e \`IN_NEGOTIATION\` de \`shouldShowChat()\` - chat só aparece a partir de MATCHED
-  - Adicionado guard \`!order\` em \`fetchChatUnreadCount()\` para evitar chamadas quando order ainda está carregando
-  - Aba Chat agora só é renderizada quando pedido está em MATCHED, PAYMENT_SENT, VALIDATING ou COMPLETED
-- **Criticidade de Segurança:** BAIXA - Backend sempre validou corretamente, apenas problema de UX
-- **Arquivos modificados:**
-  - \`apps/web/app/orders/[orderId]/page.tsx\` - Linhas 696-709 e 171-179
-
-### Segurança
-
-#### Sistema de Bloqueio de Contas - Camada Dupla de Proteção (06/01/2026)
-- **Implementação:** Dupla camada de validação para contas bloqueadas
-  - **Camada 1 - Login:** Impede acesso inicial ao sistema
-    - Verifica `accountFrozen` antes de gerar tokens
-    - Retorna HTTP 403 com mensagem específica
-    - Inclui motivo e data de expiração
-  - **Camada 2 - Middleware:** Bloqueia todas as requisições subsequentes
-    - Valida `accountFrozen` em TODA requisição API
-    - Protege contra tokens gerados antes do bloqueio
-    - Garante que conta bloqueada não pode fazer NENHUMA ação
-- **Rastreabilidade:** Audit logs completos
-  - `FREEZE_ACCOUNT` (bloqueio manual por admin)
-  - `AUTO_UNFREEZE_ACCOUNT` (desbloqueio automático por expiração)
-  - `UNFREEZE_ACCOUNT` (desbloqueio manual por admin)
-  - Metadata: motivo, responsável, timestamps
-- **Transparência:** Notificações automáticas
-  - HIGH priority ao bloquear (com link para suporte)
-  - NORMAL priority ao desbloquear
-  - Mensagens claras sobre motivo e duração
-- **Compliance:** Sistema preparado para requisitos regulatórios
-  - Histórico imutável de bloqueios
-  - Motivos documentados
-  - Rastreamento de responsável pela ação
-
-#### Análise de Segurança do Erro 400 (16/12/2025)
-- **Status:** Sem brechas de segurança identificadas
-- **Validações do Backend:**
-  - \`chat.service.ts\` bloqueia corretamente acesso a chat de pedidos PENDING
-  - Verifica se usuário é dono do pedido OU pagador
-  - Retorna erro 400 sem vazar informações sensíveis
-  - Requer token de autenticação válido
-- **Conclusão:** Erro era apenas de UX/Performance, não representa risco de segurança
-
-## Estrutura do Sistema
-
-### Sistema de Carteiras HD (Hierarchical Deterministic)
-- Implementação BIP32/BIP44 para derivação de endereços
-- Suporte a Bitcoin, Ethereum, USDT (ERC-20 e TRC-20)
-- Cada usuário recebe carteiras derivadas de uma seed master
-- Saldos gerenciados off-chain para transações internas
-
-### Sistema de Audit Logs
-- Rastreamento completo de ações críticas:
-  - Autenticação (LOGIN, LOGOUT, REGISTER)
-  - KYC (SUBMIT, APPROVE, REJECT)
-  - Pedidos (CREATE, MATCH, CANCEL)
-  - Transações (SUBMIT_PROOF, VALIDATE, DISPUTE)
-  - Transferências (ORDER_COMPLETED, CRYPTO_TRANSFER)
-  - Carteiras (CREATE, DEPOSIT, WITHDRAWAL)
-  - **Bloqueio de Contas (FREEZE_ACCOUNT, UNFREEZE_ACCOUNT, AUTO_UNFREEZE_ACCOUNT)** ← NOVO 06/01/2026
-- Logs imutáveis com timestamp, userId, IP, user-agent e metadata
-- Proteção contra falhas: logs executados em background
-- **Visibilidade completa**: Todos os tipos de bloqueio agora visíveis na API do admin
-
-### Fluxo de Transação Completa
-1. **Vendedor cria pedido** → Order (PENDING)
-   - ✅ Sistema verifica se conta NÃO está bloqueada (middleware)
-2. **Comprador aceita** → Order (MATCHED) + Transaction criada + Chat habilitado
-   - ✅ Sistema verifica se conta NÃO está bloqueada (middleware)
-3. **Comprador envia pagamento** PIX/Boleto → Transaction (PAYMENT_SENT)
-   - ✅ Sistema verifica se conta NÃO está bloqueada (middleware)
-4. **Comprador envia comprovante** → Transaction (VALIDATING)
-   - ✅ Sistema verifica se conta NÃO está bloqueada (middleware)
-5. **Vendedor valida pagamento:**
-   - Transaction → APPROVED
-   - Order → COMPLETED
-   - **Crypto transferida:** Saldo bloqueado vendedor → Saldo disponível comprador
-   - **Logs criados:** 2x ORDER_COMPLETED + 2x CRYPTO_TRANSFER
-   - Reputação atualizada
-   - Notificações enviadas
-   - ✅ Sistema verifica se conta NÃO está bloqueada (middleware)
-6. **Comprador pode avaliar transação**
-   - ✅ Sistema verifica se conta NÃO está bloqueada (middleware)
-
-### Fluxo de Bloqueio de Conta
-1. **Admin bloqueia conta (manual):**
-   - Conta marcada como `accountFrozen = true`
-   - Campos salvos: `frozenReason`, `frozenAt`, `frozenBy`, `frozenUntil` (opcional)
-   - Audit log criado: `FREEZE_ACCOUNT`
-   - Notificação HIGH priority enviada ao usuário
-   - Usuário não consegue mais fazer login
-   - Todas requisições API retornam HTTP 403
-2. **Auto-unfreeze (temporário):**
-   - Cron job roda a cada 5 minutos
-   - Verifica contas com `frozenUntil <= now`
-   - Desbloqueia em batch
-   - Audit log criado: `AUTO_UNFREEZE_ACCOUNT`
-   - Notificação NORMAL priority enviada
-   - Usuário pode fazer login novamente
-3. **Admin desbloqueia conta (manual):**
-   - Conta marcada como `accountFrozen = false`
-   - Campos limpos: `frozenReason`, `frozenAt`, `frozenBy`, `frozenUntil`
-   - Audit log criado: `UNFREEZE_ACCOUNT`
-   - Notificação NORMAL priority enviada
-   - Usuário pode fazer login novamente
-
-## Arquivos de Documentação
-
-### Documentação Existente
-- \`README_COMPLETE.md\` - README completo do projeto
-- \`CHAT_SYSTEM.md\` - Sistema de chat
-- \`NOTIFICATION_SYSTEM.md\` - Sistema de notificações
-- \`DISPUTE_SYSTEM.md\` - Sistema de disputas
-- \`SECURITY.md\` - Recursos de segurança
-- \`SECURITY_AUDIT_REPORT.md\` - Relatório de auditoria de segurança
-- \`SISTEMA_COLATERAL.md\` - Sistema de colateral
-
-### Esta Atualização
-- **Atualizado (06/01/2026):** `CHANGELOG.md` - Sistema de Avisos de Conta Bloqueada
-  - Adicionadas 93 linhas detalhando implementação completa
-  - Documentados 5 bugs críticos corrigidos
-  - Adicionado fluxo de bloqueio de conta
-  - Atualizada seção de bugs conhecidos
-  - Adicionados próximos passos para melhorias
-- **Criado (16/12/2025):** `CHANGELOG.md` - Este arquivo
-- **Atualizado:** Documentação de audit logs e transferências internas
-
-## Bugs Conhecidos
-
-### Bugs Críticos
-**Nenhum bug crítico identificado no momento.**
-
-Todos os bugs críticos reportados foram corrigidos:
-- ✅ Sistema de bloqueio de contas (5 bugs corrigidos - 06/01/2026)
-  - Login quebrado (conflito Prisma include/select)
-  - Audit logs de auto-unfreeze não criados (campo timestamp inválido)
-  - Mensagem genérica no login bloqueado
-  - Logs ocultos na API (filtro excluindo AUTO_UNFREEZE_ACCOUNT)
-  - Ordem confusa de notificações (agrupamento por prioridade)
-- ✅ Edição de pedidos não salvava (resolvido - backend detecta PIX/BOLETO corretamente - 19/12/2025)
-- ✅ Cotação USDC/USDT incorreta (resolvido com ExchangeRateService - 18/12/2025)
-- ✅ Dupla taxação no frontend (resolvido removendo multiplicação - 18/12/2025)
-- ✅ Dupla taxação no backend (resolvido removendo multiplicação - 19/12/2025)
-- ✅ Erro 400 no chat para pedidos PENDING (resolvido - 16/12/2025)
-
-### Bugs em Investigação
-**Nenhum bug em investigação no momento.**
-
-**Última verificação**: 06/01/2026 - 22:00
-**Status do sistema**: 🟢 **ESTÁVEL E PRONTO PARA PRODUÇÃO**
-
-## Próximos Passos Sugeridos
-
-### Melhorias do Sistema de Bloqueio de Contas
-- [ ] Email de notificação ao bloquear/desbloquear conta
-- [ ] Dashboard de métricas de bloqueios para admins
-- [ ] Histórico completo de bloqueios no perfil do usuário
-- [ ] Integração com sistema de tickets para contestação
-- [ ] Bloqueio automático baseado em regras (múltiplas disputas, fraude detectada)
-- [ ] Níveis de bloqueio (parcial vs total)
-- [ ] Whitelist de IPs para acesso durante bloqueio temporário
-
-### Melhorias do Sistema de Cotação
-- [ ] Dashboard admin para monitorar health das fontes em tempo real
-- [ ] Alertas automáticos quando divergência > 5% entre fontes
-- [ ] Histórico de cotações para análise de tendências
-- [ ] Configuração dinâmica de timeouts e limites via admin
-- [ ] Suporte a outras stablecoins (DAI, BUSD, etc)
-
-### Melhorias de Transferência de Crypto
-- [ ] Adicionar taxa de rede para transferências on-chain futuras
-- [ ] Implementar limite diário de transferências
-- [ ] Adicionar confirmação em dois passos para grandes valores
-
-### Melhorias de Audit Logs
-- [ ] Interface de visualização filtrada por tipo de ação
-- [ ] Exportação de logs em CSV/PDF para compliance
-- [ ] Dashboard de estatísticas de auditoria
-
-### Monitoramento e Observabilidade
-- [ ] Implementar APM (Application Performance Monitoring)
-- [ ] Alertas automáticos para transações acima de threshold
-- [ ] Dashboard de métricas em tempo real
-- [ ] Monitoramento de uptime das APIs externas (AwesomeAPI, Banco Central)
-
-## Notas de Migração
-
-### Versão Atual → Próxima Versão
-- **Banco de Dados:** Nenhuma migração necessária (campos já existem)
-- **Código:** Compatível com versões anteriores
-- **API:** Sem breaking changes
+#### Segurança - Usuários Bloqueados Podiam Aceitar Pedidos
+- **Bug Crítico**: FASE 11 (v4.1.2) bloqueou criação de pedidos, mas usuários bloqueados ainda podiam aceitar pedidos no marketplace
+- **Causa**: Método `matchOrder()` não verificava `accountFrozen` do pagador
+- **Solução**: Adicionada verificação de conta congelada em `matchOrder()` com desbloqueio automático para freezes temporários expirados
+- **Arquivo modificado**: `apps/api/src/services/order.service.ts`
 
 ---
 
-**Legenda:**
-- \`Adicionado\` para novas funcionalidades
-- \`Modificado\` para mudanças em funcionalidades existentes
-- \`Descontinuado\` para funcionalidades que serão removidas
-- \`Removido\` para funcionalidades removidas
-- \`Corrigido\` para correções de bugs
-- \`Segurança\` para correções de vulnerabilidades
+## [4.1.2] - 2026-01-17
+
+### Corrigido
+
+#### Segurança - Usuários Bloqueados Podiam Criar Pedidos
+- **Bug Crítico**: Usuários com conta congelada (bloqueados pelo admin) ainda conseguiam criar pedidos
+- **Evidência**: Audit log mostrava FREEZE_ACCOUNT seguido de ORDER_CREATE pelo mesmo usuário
+- **Solução**: Implementada validação em 3 camadas (defense in depth):
+  1. **Backend Service** (`order.service.ts`): Verificação em `validateOrderCreation()` com desbloqueio automático para freezes temporários expirados
+  2. **Backend Controller** (`order.controller.ts`): Verificação rápida como segunda camada de segurança
+  3. **Frontend** (`orders/create/page.tsx`): Banner vermelho "Conta Suspensa" + botão desabilitado
+- **Arquivos modificados**:
+  - `apps/api/src/services/order.service.ts`
+  - `apps/api/src/controllers/order.controller.ts`
+  - `apps/web/app/orders/create/page.tsx`
+
+### Melhorado
+- Mensagens de erro mais claras para usuários bloqueados (mostra motivo e data de expiração)
+- Desbloqueio automático quando `frozenUntil` expira
+
+---
+
+## [4.1.1] - 2026-01-17
+
+### Melhorado
+
+#### Menu Admin - Alinhamento de Ícones
+- **Ícones centralizados** no menu de navegação do painel admin
+- Layout vertical com ícone em cima e texto embaixo
+- Itens com múltiplas palavras agora quebram corretamente:
+  - "Audit Log" → duas linhas centralizadas
+  - "Master Seed" → duas linhas centralizadas
+  - "Criar Pedido" → duas linhas centralizadas
+  - "Controle de Fundos" → duas linhas centralizadas
+- Menu centralizado horizontalmente na página
+- **Arquivo**: `apps/web/app/admin/layout.tsx`
+
+---
+
+## [4.1.0] - 2026-01-16
+
+### Adicionado
+
+#### Sistema de Cupons - Melhorias de UX
+- **Visualização de desconto em tempo real** na tela de criação de pedido (`/orders/create`)
+  - Banner destacado mostrando cupom ativo com código e percentual
+  - Taxa original riscada vs taxa com desconto
+  - Economia em crypto exibida em destaque
+  - Taxa total recalculada dinamicamente
+- **Opção "Ilimitado"** para limite de uso por usuário (`maxUsesPerUser = 0`)
+  - Checkbox no formulário de criação de cupom
+  - Exibição "Ilimitado" na tabela admin
+  - Exibição "Uso ilimitado" no perfil do usuário
+
+### Corrigido
+
+#### Sistema de Cupons - Bugs Críticos
+- **Bug: Cupom criado mas sem efeito nas taxas**
+  - **Causa**: `applyCouponToOrder()` era chamado FORA da transaction, podendo falhar silenciosamente
+  - **Solução**: Movido incremento de contadores para DENTRO da transaction com `tx.$executeRaw`
+  - **Arquivo**: `apps/api/src/services/order.service.ts`
+
+- **Bug: Simulação de pagamento de colateral retornando 400**
+  - **Causa**: Frontend não enviava parâmetro `amount` no body da requisição
+  - **Solução**: Adicionado `Content-Type: application/json` e body com `amount`
+  - **Arquivos**: `apps/web/app/orders/create/page.tsx`, `apps/web/app/admin/orders/create/page.tsx`
+
+- **Bug: Cupom expirado ainda mostrava status "Ativo"**
+  - **Causa**: Frontend verificava apenas campo `isActive`, ignorando `expiresAt`
+  - **Solução**: Adicionada função `getCouponStatus()` que verifica ambos os campos
+  - **Arquivo**: `apps/web/app/admin/coupons/page.tsx`
+
+- **Bug: Hora não aparecia na coluna "Validade"**
+  - **Causa**: Usava `toLocaleDateString()` ao invés de `toLocaleString()`
+  - **Solução**: Alterado para `toLocaleString('pt-BR')`
+  - **Arquivo**: `apps/web/app/admin/coupons/page.tsx`
+
+- **Bug: Erro "Invalid datetime" ao criar cupom**
+  - **Causa**: Input `datetime-local` não retorna formato ISO 8601
+  - **Solução**: Conversão explícita com `new Date().toISOString()`
+  - **Arquivo**: `apps/web/app/admin/coupons/page.tsx`
+
+### Alterado
+- Validação de `maxUsesPerUser` alterada de `min(1)` para `min(0)` no backend
+- Lógica de verificação de limite de uso agora ignora verificação quando `maxUsesPerUser === 0`
+
+---
+
+## [4.0.0] - 2026-01-14
+
+### Adicionado
+
+#### Sistema de Cupons de Desconto (Feature Completa)
+- **Backend**
+  - Models Prisma: `Coupon` e `UserCoupon`
+  - Campos de tracking em `Order`: `appliedCouponId`, `appliedCouponCode`, `appliedCouponDiscount`, `originalPlatformFee`, `discountAmount`
+  - Service: `coupon.service.ts` com CRUD completo
+  - Controller: `coupon.controller.ts`
+  - Routes: `coupon.routes.ts` (user + admin endpoints)
+  - Validator: `coupon.validator.ts` (schemas Zod)
+  - Integração com `order.service.ts` para aplicação automática de desconto
+
+- **Frontend Admin** (`/admin/coupons`)
+  - Página de listagem com filtros (status, visibilidade, busca)
+  - Cards de estatísticas (total, ativos, usos, desconto médio)
+  - Modal de criação de cupom
+  - Modal de edição de cupom
+  - Modal de confirmação de exclusão
+  - Link no menu admin
+
+- **Frontend User** (`/profile`)
+  - Seção de cupons de desconto
+  - Exibição de cupom ativo
+  - Formulário para ativar cupom por código
+  - Lista de cupons públicos disponíveis
+  - Botão para desativar cupom
+
+#### Endpoints de API
+- `GET /api/v1/coupons/public` - Listar cupons públicos
+- `GET /api/v1/coupons/active` - Obter cupom ativo do usuário
+- `POST /api/v1/coupons/activate` - Ativar cupom
+- `POST /api/v1/coupons/deactivate` - Desativar cupom
+- `GET /api/v1/coupons` - Listar todos (admin)
+- `GET /api/v1/coupons/stats` - Estatísticas (admin)
+- `GET /api/v1/coupons/:id` - Detalhes (admin)
+- `POST /api/v1/coupons` - Criar (admin)
+- `PUT /api/v1/coupons/:id` - Editar (admin)
+- `DELETE /api/v1/coupons/:id` - Deletar (admin)
+
+### Regras de Negócio
+- Desconto de 1-100% aplicado SOMENTE à taxa da plataforma (1.5%)
+- Cashback do comprador (1%) permanece inalterado
+- Apenas 1 cupom ativo por usuário
+- Cupom pode ser público ou secreto
+- Cupom pode ter limite de usos por usuário
+- Cupom pode ter data de expiração
+- Aplicação automática ao criar pedido
+
+---
+
+## Bugs Conhecidos / Em Investigação
+
+Nenhum bug crítico conhecido no momento.
+
+---
+
+## Arquivos Principais Modificados (v4.1.0)
+
+### Backend
+- `apps/api/src/services/order.service.ts` - Transaction atômica para cupons
+- `apps/api/src/services/coupon.service.ts` - Suporte a ilimitado
+- `apps/api/src/validators/coupon.validator.ts` - Validação min(0)
+
+### Frontend
+- `apps/web/app/orders/create/page.tsx` - Visualização de desconto + fix simulate-payment
+- `apps/web/app/admin/orders/create/page.tsx` - Fix simulate-payment
+- `apps/web/app/admin/coupons/page.tsx` - Status expirado, hora, ilimitado
+- `apps/web/app/profile/page.tsx` - Exibição ilimitado
+- `apps/web/app/admin/layout.tsx` - Menu com ícones centralizados (v4.1.1)
+
+---
+
+## Contribuidores
+
+- Desenvolvimento: Claude Code (Anthropic)
+- Revisão: Equipe MktPlace-P2P
