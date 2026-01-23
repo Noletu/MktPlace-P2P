@@ -6,6 +6,7 @@ import { prisma } from '../utils/prisma';
 import { DerivationService } from './hd-wallet/derivation.service';
 import { KeyManagementService } from './hd-wallet/key-management.service';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from './auditLog.service';
+import BigNumber from 'bignumber.js';
 
 export class TransactionService {
   /**
@@ -190,57 +191,57 @@ export class TransactionService {
           console.log(`✅ Carteira criada: ${buyerWallet.address}`);
         }
 
-        // 3.5 Calcular valor total a transferir (crypto + reward)
-        const cryptoAmount = parseFloat(completedOrder.cryptoAmount);
-        const payerReward = parseFloat(completedOrder.payerReward); // 1% cashback
-        const totalToTransfer = cryptoAmount + payerReward;
+        // 3.5 Calcular valor total a transferir (crypto + reward) usando BigNumber para precisao
+        const cryptoAmountBN = new BigNumber(completedOrder.cryptoAmount);
+        const payerRewardBN = new BigNumber(completedOrder.payerReward || '0'); // 1% cashback
+        const totalToTransferBN = cryptoAmountBN.plus(payerRewardBN);
 
-        // 3.6 Validação: verificar se vendedor tem saldo bloqueado suficiente
-        const sellerLockedBalance = parseFloat(sellerWallet.lockedBalance);
-        if (sellerLockedBalance < totalToTransfer) {
+        // 3.6 Validacao: verificar se vendedor tem saldo bloqueado suficiente
+        const sellerLockedBalanceBN = new BigNumber(sellerWallet.lockedBalance);
+        if (sellerLockedBalanceBN.lt(totalToTransferBN)) {
           throw new Error(
-            `Insufficient locked balance. Seller has ${sellerLockedBalance} locked, needs ${totalToTransfer}`
+            `Insufficient locked balance. Seller has ${sellerLockedBalanceBN.toFixed(8)} locked, needs ${totalToTransferBN.toFixed(8)}`
           );
         }
 
         // 3.7 DEDUZIR do vendedor (do saldo LOCKED)
-        const sellerNewLocked = sellerLockedBalance - totalToTransfer;
-        const sellerNewBalance = parseFloat(sellerWallet.balance) - totalToTransfer;
+        const sellerNewLockedBN = sellerLockedBalanceBN.minus(totalToTransferBN);
+        const sellerNewBalanceBN = new BigNumber(sellerWallet.balance).minus(totalToTransferBN);
 
         await tx.userWallet.update({
           where: { id: sellerWallet.id },
           data: {
-            balance: sellerNewBalance.toFixed(8),
-            lockedBalance: sellerNewLocked.toFixed(8),
-            totalUsed: (parseFloat(sellerWallet.totalUsed) + totalToTransfer).toFixed(8),
+            balance: sellerNewBalanceBN.toFixed(8),
+            lockedBalance: sellerNewLockedBN.toFixed(8),
+            totalUsed: new BigNumber(sellerWallet.totalUsed).plus(totalToTransferBN).toFixed(8),
           },
         });
 
         // 3.8 CREDITAR no comprador (no saldo AVAILABLE)
-        const buyerNewBalance = parseFloat(buyerWallet.balance) + totalToTransfer;
-        const buyerNewAvailable = parseFloat(buyerWallet.availableBalance) + totalToTransfer;
+        const buyerNewBalanceBN = new BigNumber(buyerWallet.balance).plus(totalToTransferBN);
+        const buyerNewAvailableBN = new BigNumber(buyerWallet.availableBalance).plus(totalToTransferBN);
 
         await tx.userWallet.update({
           where: { id: buyerWallet.id },
           data: {
-            balance: buyerNewBalance.toFixed(8),
-            availableBalance: buyerNewAvailable.toFixed(8),
-            totalDeposited: (parseFloat(buyerWallet.totalDeposited) + totalToTransfer).toFixed(8),
+            balance: buyerNewBalanceBN.toFixed(8),
+            availableBalance: buyerNewAvailableBN.toFixed(8),
+            totalDeposited: new BigNumber(buyerWallet.totalDeposited).plus(totalToTransferBN).toFixed(8),
           },
         });
 
-        // 3.9 Registrar transação de DEDUCT (vendedor)
+        // 3.9 Registrar transacao de DEDUCT (vendedor)
         await tx.walletTransaction.create({
           data: {
             walletId: sellerWallet.id,
             userId: sellerWallet.userId,
             orderId: completedOrder.id,
             type: 'DEDUCT',
-            amount: totalToTransfer.toFixed(8),
+            amount: totalToTransferBN.toFixed(8),
             balanceBefore: sellerWallet.balance,
-            balanceAfter: sellerNewBalance.toFixed(8),
+            balanceAfter: sellerNewBalanceBN.toFixed(8),
             lockedBefore: sellerWallet.lockedBalance,
-            lockedAfter: sellerNewLocked.toFixed(8),
+            lockedAfter: sellerNewLockedBN.toFixed(8),
             description: `Crypto transferred to buyer (Order ${completedOrder.id})`,
             metadata: JSON.stringify({
               orderId: completedOrder.id,
@@ -248,22 +249,22 @@ export class TransactionService {
               buyerWalletId: buyerWallet.id,
               cryptoAmount: completedOrder.cryptoAmount,
               payerReward: completedOrder.payerReward,
-              totalTransferred: totalToTransfer.toFixed(8),
+              totalTransferred: totalToTransferBN.toFixed(8),
               timestamp: new Date().toISOString(),
             }),
           },
         });
 
-        // 3.10 Registrar transação de CREDIT (comprador)
+        // 3.10 Registrar transacao de CREDIT (comprador)
         await tx.walletTransaction.create({
           data: {
             walletId: buyerWallet.id,
             userId: buyerWallet.userId,
             orderId: completedOrder.id,
             type: 'CREDIT',
-            amount: totalToTransfer.toFixed(8),
+            amount: totalToTransferBN.toFixed(8),
             balanceBefore: buyerWallet.balance,
-            balanceAfter: buyerNewBalance.toFixed(8),
+            balanceAfter: buyerNewBalanceBN.toFixed(8),
             description: `Crypto received from seller (Order ${completedOrder.id})`,
             metadata: JSON.stringify({
               orderId: completedOrder.id,
@@ -271,7 +272,7 @@ export class TransactionService {
               sellerWalletId: sellerWallet.id,
               cryptoAmount: completedOrder.cryptoAmount,
               payerReward: completedOrder.payerReward,
-              totalReceived: totalToTransfer.toFixed(8),
+              totalReceived: totalToTransferBN.toFixed(8),
               timestamp: new Date().toISOString(),
             }),
           },
@@ -305,9 +306,9 @@ export class TransactionService {
           });
 
           if (completedOrder) {
-            const cryptoAmount = parseFloat(completedOrder.cryptoAmount);
-            const payerReward = parseFloat(completedOrder.payerReward);
-            const totalTransferred = cryptoAmount + payerReward;
+            const cryptoAmountLog = new BigNumber(completedOrder.cryptoAmount);
+            const payerRewardLog = new BigNumber(completedOrder.payerReward || '0');
+            const totalTransferred = cryptoAmountLog.plus(payerRewardLog);
 
             // 1. ORDER_COMPLETED - Comprador
             await auditLogService.log({
