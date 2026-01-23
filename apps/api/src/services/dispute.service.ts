@@ -12,6 +12,9 @@ import {
 } from '../types/dispute.types';
 import { OrderStatus } from '../types/order.types';
 import { logger } from '../utils/logger';
+import { DerivationService } from './hd-wallet/derivation.service';
+import BigNumber from 'bignumber.js';
+import { KeyManagementService } from './hd-wallet/key-management.service';
 
 const prisma = new PrismaClient();
 
@@ -38,7 +41,7 @@ export interface ResolveDisputeInput {
   disputeId: string;
   resolvedBy: string; // Admin ID
   resolution: string; // Descrição da resolução
-  resolutionType: 'REFUND_BUYER' | 'RELEASE_SELLER' | 'PARTIAL_REFUND' | 'CANCELLED';
+  resolutionType: 'RELEASE_TO_BUYER' | 'RETURN_TO_SELLER' | 'CANCEL_NO_PENALTY' | 'PENALTY_BUYER' | 'PENALTY_SELLER';
 }
 
 export class DisputeService {
@@ -350,6 +353,9 @@ export class DisputeService {
       });
     }
 
+    // Capturar valor de isStaff para usar no callback assíncrono
+    const isAdmin = isStaff;
+
     // Enviar notificação para outras partes da disputa
     setImmediate(async () => {
       try {
@@ -468,12 +474,13 @@ export class DisputeService {
     let newOrderStatus = dispute.order.status;
 
     switch (input.resolutionType) {
-      case 'RELEASE_SELLER':
+      case 'RELEASE_TO_BUYER':
+      case 'PENALTY_SELLER':
         newOrderStatus = 'COMPLETED';
         break;
-      case 'REFUND_BUYER':
-      case 'PARTIAL_REFUND':
-      case 'CANCELLED':
+      case 'RETURN_TO_SELLER':
+      case 'PENALTY_BUYER':
+      case 'CANCEL_NO_PENALTY':
         newOrderStatus = 'CANCELLED';
         break;
       default:
@@ -485,58 +492,194 @@ export class DisputeService {
       data: { status: newOrderStatus },
     });
 
-    // NOVO: Aplicar penalidades baseadas na resolução
+    // Buscar dados completos do pedido para transferência de cripto
     const order = await prisma.order.findUnique({
       where: { id: dispute.orderId },
       include: { transactions: true, user: true },
     });
 
     if (order) {
-      // Determinar quem é vendedor e quem é comprador
       const sellerId = order.userId;
       const buyerId = order.transactions[0]?.payerId;
 
-      // Aplicar penalidade conforme resolução
-      if (input.resolutionType === 'REFUND_BUYER' && sellerId) {
-        // Penalidade para vendedor (disputa perdida - má-fé)
-        const currentReputation = order.user.reputationScore;
-        const penaltyPoints = DISPUTE_REPUTATION.LOSE_PENALTY; // -20
-        const newReputation = Math.max(0, currentReputation + penaltyPoints);
+      // ═══════════════════════════════════════════════════════════════════════
+      // TRANSFERENCIA DE CRIPTO BASEADA NA RESOLUCAO
+      // ═══════════════════════════════════════════════════════════════════════
+      if (order.walletId) {
+        // Usar BigNumber para evitar erros de precisao de ponto flutuante
+        const cryptoAmountBN = new BigNumber(order.cryptoAmount);
+        const payerRewardBN = new BigNumber(order.payerReward || '0');
+        const totalAmountBN = cryptoAmountBN.plus(payerRewardBN);
+        const transaction = order.transactions[0];
 
-        await prisma.user.update({
-          where: { id: sellerId },
-          data: { reputationScore: newReputation },
+        // Buscar carteira do vendedor (onde esta o colateral bloqueado)
+        const sellerWallet = await prisma.userWallet.findUnique({
+          where: { id: order.walletId },
         });
 
-        console.log(`[DISPUTE PENALTY] Seller ${sellerId}: ${currentReputation} → ${newReputation} (${penaltyPoints} pts)`);
-      } else if (input.resolutionType === 'RELEASE_SELLER' && buyerId) {
-        // Penalidade para comprador (30 pontos por disputa perdida)
-        const buyer = await prisma.user.findUnique({
-          where: { id: buyerId },
-          select: { reputationScore: true },
-        });
+        if (sellerWallet) {
+          const sellerLockedBalanceBN = new BigNumber(sellerWallet.lockedBalance);
 
-        if (buyer) {
-          const currentReputation = buyer.reputationScore;
+          if (input.resolutionType === 'RELEASE_TO_BUYER' || input.resolutionType === 'PENALTY_SELLER') {
+            // A FAVOR DO COMPRADOR: Transferir cripto do vendedor para o comprador
+
+            if (sellerLockedBalanceBN.lt(totalAmountBN)) {
+              logger.warn(`[DISPUTE] Saldo bloqueado insuficiente: ${sellerLockedBalanceBN.toFixed(8)} < ${totalAmountBN.toFixed(8)}`);
+            } else if (transaction?.payerId) {
+              // Buscar/criar carteira do comprador
+              let buyerWallet = await prisma.userWallet.findFirst({
+                where: {
+                  userId: transaction.payerId,
+                  cryptoType: order.cryptoType,
+                  network: order.cryptoNetwork,
+                },
+              });
+
+              if (!buyerWallet) {
+                // Criar carteira para o comprador
+                const { address, privateKey, derivationPath } = DerivationService.deriveUserWallet(
+                  transaction.payerId,
+                  order.cryptoType,
+                  order.cryptoNetwork
+                );
+                const encryptedPrivateKey = KeyManagementService.encryptPrivateKey(privateKey, transaction.payerId);
+
+                buyerWallet = await prisma.userWallet.create({
+                  data: {
+                    userId: transaction.payerId,
+                    cryptoType: order.cryptoType,
+                    network: order.cryptoNetwork,
+                    address,
+                    derivationPath,
+                    encryptedPrivateKey,
+                    balance: '0',
+                    availableBalance: '0',
+                    lockedBalance: '0',
+                    totalDeposited: '0',
+                    isActive: true,
+                    lastSyncedAt: new Date(),
+                  },
+                });
+                logger.info(`[DISPUTE] Carteira criada para comprador: ${buyerWallet.address}`);
+              }
+
+              // Deduzir do vendedor (lockedBalance e balance)
+              await prisma.userWallet.update({
+                where: { id: sellerWallet.id },
+                data: {
+                  balance: new BigNumber(sellerWallet.balance).minus(totalAmountBN).toFixed(8),
+                  lockedBalance: sellerLockedBalanceBN.minus(totalAmountBN).toFixed(8),
+                },
+              });
+
+              // Creditar no comprador (availableBalance e balance)
+              await prisma.userWallet.update({
+                where: { id: buyerWallet.id },
+                data: {
+                  balance: new BigNumber(buyerWallet.balance).plus(totalAmountBN).toFixed(8),
+                  availableBalance: new BigNumber(buyerWallet.availableBalance).plus(totalAmountBN).toFixed(8),
+                },
+              });
+
+              // Marcar pedido como transferido
+              await prisma.order.update({
+                where: { id: order.id },
+                data: {
+                  cryptoTransferred: true,
+                  cryptoTransferredAt: new Date(),
+                  cryptoTransferredTo: transaction.payerId,
+                  collateralLocked: false,
+                  collateralUnlockedAt: new Date(),
+                },
+              });
+
+              logger.info(`[DISPUTE] Cripto transferida para comprador: ${totalAmountBN.toFixed(8)} ${order.cryptoType}`);
+            }
+
+          } else if (input.resolutionType === 'RETURN_TO_SELLER' || input.resolutionType === 'PENALTY_BUYER' || input.resolutionType === 'CANCEL_NO_PENALTY') {
+            // A FAVOR DO VENDEDOR ou CANCELAMENTO: Desbloquear cripto para o vendedor
+
+            // Mover de lockedBalance para availableBalance
+            await prisma.userWallet.update({
+              where: { id: sellerWallet.id },
+              data: {
+                lockedBalance: sellerLockedBalanceBN.minus(totalAmountBN).toFixed(8),
+                availableBalance: new BigNumber(sellerWallet.availableBalance).plus(totalAmountBN).toFixed(8),
+              },
+            });
+
+            // Marcar pedido como desbloqueado (nao transferido)
+            await prisma.order.update({
+              where: { id: order.id },
+              data: {
+                collateralLocked: false,
+                collateralUnlockedAt: new Date(),
+                cryptoTransferred: false,
+              },
+            });
+
+            const action = input.resolutionType === 'CANCEL_NO_PENALTY' ? 'Cancelamento' : 'Devolvida ao vendedor';
+            logger.info(`[DISPUTE] ${action}: ${totalAmountBN.toFixed(8)} ${order.cryptoType}`);
+          }
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // APLICAR PENALIDADES DE REPUTAÇÃO
+      // ═══════════════════════════════════════════════════════════════════════
+      if (input.resolutionType === 'RELEASE_TO_BUYER' || input.resolutionType === 'PENALTY_SELLER') {
+        // Penalidade para vendedor (disputa perdida)
+        if (sellerId) {
+          const currentReputation = order.user.reputationScore;
           const penaltyPoints = DISPUTE_REPUTATION.LOSE_PENALTY; // -20
           const newReputation = Math.max(0, currentReputation + penaltyPoints);
 
           await prisma.user.update({
-            where: { id: buyerId },
+            where: { id: sellerId },
             data: { reputationScore: newReputation },
           });
 
-          console.log(`[DISPUTE PENALTY] Buyer ${buyerId}: ${currentReputation} → ${newReputation} (${penaltyPoints} pts)`);
+          logger.info(`[DISPUTE PENALTY] Vendedor ${sellerId}: ${currentReputation} → ${newReputation} (${penaltyPoints} pts)`);
+        }
+      } else if (input.resolutionType === 'RETURN_TO_SELLER' || input.resolutionType === 'PENALTY_BUYER') {
+        // Penalidade para comprador (disputa perdida)
+        if (buyerId) {
+          const buyer = await prisma.user.findUnique({
+            where: { id: buyerId },
+            select: { reputationScore: true },
+          });
+
+          if (buyer) {
+            const currentReputation = buyer.reputationScore;
+            const penaltyPoints = DISPUTE_REPUTATION.LOSE_PENALTY; // -20
+            const newReputation = Math.max(0, currentReputation + penaltyPoints);
+
+            await prisma.user.update({
+              where: { id: buyerId },
+              data: { reputationScore: newReputation },
+            });
+
+            logger.info(`[DISPUTE PENALTY] Comprador ${buyerId}: ${currentReputation} → ${newReputation} (${penaltyPoints} pts)`);
+          }
         }
       }
+      // CANCEL_NO_PENALTY não aplica penalidade a ninguém
     }
 
     // Adicionar mensagem de resolução
+    const resolutionLabels: Record<string, string> = {
+      'RELEASE_TO_BUYER': '✅ Cripto liberada para o pagador do PIX',
+      'RETURN_TO_SELLER': '↩️ Cripto devolvida ao vendedor',
+      'CANCEL_NO_PENALTY': '🤝 Negociação cancelada sem penalidades',
+      'PENALTY_BUYER': '🚫 Cripto devolvida ao vendedor + Penalidade ao comprador',
+      'PENALTY_SELLER': '🚫 Cripto liberada ao comprador + Penalidade ao vendedor',
+    };
+
     await prisma.disputeMessage.create({
       data: {
         disputeId: input.disputeId,
         authorId: input.resolvedBy,
-        message: `Disputa resolvida: ${input.resolution}`,
+        message: `Disputa resolvida: ${resolutionLabels[input.resolutionType] || input.resolutionType}\n\nJustificativa: ${input.resolution}`,
         isAdminMessage: true,
       },
     });
@@ -583,9 +726,11 @@ export class DisputeService {
 
   /**
    * Buscar disputa por ID
+   * @param disputeId ID da disputa
+   * @param requesterId ID do usuário que está fazendo a requisição (para filtro de privacidade)
    */
-  async getDisputeById(disputeId: string) {
-    return await prisma.dispute.findUnique({
+  async getDisputeById(disputeId: string, requesterId?: string) {
+    const dispute = await prisma.dispute.findUnique({
       where: { id: disputeId },
       include: {
         creator: {
@@ -642,6 +787,29 @@ export class DisputeService {
         },
       },
     });
+
+    if (!dispute) return null;
+
+    // Filtrar mensagens por privacidade
+    if (requesterId) {
+      // Verificar se requester é staff (SUPPORT+ level >= 40)
+      const requester = await prisma.user.findUnique({
+        where: { id: requesterId },
+        include: { role: { select: { level: true } } },
+      });
+
+      const isStaff = (requester?.role?.level || 0) >= 40;
+
+      if (!isStaff) {
+        // Usuário normal: ver apenas suas próprias mensagens + mensagens de admin/staff
+        dispute.messages = dispute.messages.filter(
+          (msg) => msg.authorId === requesterId || msg.isAdminMessage
+        );
+      }
+      // Staff vê todas as mensagens (sem filtro)
+    }
+
+    return dispute;
   }
 
   /**
@@ -910,13 +1078,12 @@ export class DisputeService {
    */
   private getResolvedStatus(resolutionType: string): string {
     switch (resolutionType) {
-      case 'REFUND_BUYER_FULL':
-      case 'REFUND_BUYER_PARTIAL':
-        return 'RESOLVED_BUYER';
-      case 'RELEASE_SELLER':
-        return 'RESOLVED_SELLER';
+      case 'RELEASE_TO_BUYER':
+        return 'RESOLVED_BUYER';  // Liberar cripto para comprador
+      case 'RETURN_TO_SELLER':
+        return 'RESOLVED_SELLER'; // Devolver cripto para vendedor
       case 'CANCEL_NO_PENALTY':
-        return 'CANCELLED';
+        return 'CANCELLED';       // Cancelamento sem penalidade
       case 'PENALTY_BUYER':
         return 'RESOLVED_SELLER'; // Penaliza comprador = favor vendedor
       case 'PENALTY_SELLER':

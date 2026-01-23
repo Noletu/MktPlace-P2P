@@ -34,10 +34,11 @@ const RespondDisputeSchema = z.object({
 const ResolveDisputeSchema = z.object({
   resolution: z.string().min(20, 'Resolução deve ter no mínimo 20 caracteres'),
   resolutionType: z.enum([
-    'REFUND_BUYER',      // Reembolso ao comprador
-    'PARTIAL_REFUND',    // Reembolso parcial
-    'RELEASE_SELLER',    // Liberar crypto para vendedor
-    'CANCELLED'          // Cancelar ordem
+    'RELEASE_TO_BUYER',   // Liberar cripto para o pagador do PIX (comprovante valido)
+    'RETURN_TO_SELLER',   // Devolver cripto ao vendedor (comprovante invalido)
+    'CANCEL_NO_PENALTY',  // Cancelar negociacao sem penalidade
+    'PENALTY_BUYER',      // Penalizar pagador do PIX (fraude)
+    'PENALTY_SELLER',     // Penalizar vendedor (ma-fe)
   ]),
 });
 
@@ -262,7 +263,7 @@ export class DisputeController {
 
       const { disputeId } = req.params;
 
-      const dispute = await disputeService.getDisputeById(disputeId);
+      const dispute = await disputeService.getDisputeById(disputeId, userId);
 
       if (!dispute) {
         return res.status(404).json({

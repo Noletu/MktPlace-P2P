@@ -22,15 +22,15 @@ export enum DisputeCategory {
 }
 
 /**
- * ALINHADO COM PRISMA SCHEMA
- * Ver: schema.prisma -> model Dispute -> resolutionType
- * Valores: REFUND_BUYER, RELEASE_SELLER, PARTIAL_REFUND, CANCELLED
+ * Tipos de resolucao de disputa
+ * Alinhado com frontend e logica de negocio
  */
 export enum ResolutionType {
-  REFUND_BUYER = 'REFUND_BUYER', // Reembolso ao comprador
-  PARTIAL_REFUND = 'PARTIAL_REFUND', // Reembolso parcial ao comprador
-  RELEASE_SELLER = 'RELEASE_SELLER', // Liberar crypto para vendedor
-  CANCELLED = 'CANCELLED', // Cancelar ordem sem penalidade
+  RELEASE_TO_BUYER = 'RELEASE_TO_BUYER',   // Liberar cripto para o pagador do PIX (comprovante valido)
+  RETURN_TO_SELLER = 'RETURN_TO_SELLER',   // Devolver cripto ao vendedor (comprovante invalido)
+  CANCEL_NO_PENALTY = 'CANCEL_NO_PENALTY', // Cancelar negociacao sem penalidade
+  PENALTY_BUYER = 'PENALTY_BUYER',         // Penalizar pagador do PIX (fraude)
+  PENALTY_SELLER = 'PENALTY_SELLER',       // Penalizar vendedor (ma-fe)
 }
 
 export interface CreateDisputeInput {
