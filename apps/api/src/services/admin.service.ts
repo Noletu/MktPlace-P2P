@@ -896,6 +896,14 @@ export class AdminService {
       available: string;
       locked: string;
       wallets: number;
+      walletList: Array<{
+        id: string;
+        address: string;
+        network: string;
+        balance: string;
+        availableBalance: string;
+        lockedBalance: string;
+      }>;
     }> = {};
 
     wallets.forEach(wallet => {
@@ -905,6 +913,7 @@ export class AdminService {
           available: '0',
           locked: '0',
           wallets: 0,
+          walletList: [],
         };
       }
 
@@ -925,6 +934,16 @@ export class AdminService {
       ).toString();
 
       balancesByCrypto[wallet.cryptoType].wallets++;
+
+      // Adicionar carteira individual à lista
+      balancesByCrypto[wallet.cryptoType].walletList.push({
+        id: wallet.id,
+        address: wallet.address,
+        network: wallet.network,
+        balance: wallet.balance || '0',
+        availableBalance: wallet.availableBalance || '0',
+        lockedBalance: wallet.lockedBalance || '0',
+      });
     });
 
     // 4. Buscar estatísticas de transações
@@ -1008,13 +1027,14 @@ export class AdminService {
       },
     });
 
-    // 7. Buscar pedidos do usuário (FASE 2)
-    const orders = await prisma.order.findMany({
+    // 7. Buscar pedidos do usuário (FASE 2) - Como CRIADOR e como PAGADOR
+    // Pedidos onde o usuário é o CRIADOR
+    const ordersAsCreator = await prisma.order.findMany({
       where: { userId },
       orderBy: {
         createdAt: 'desc',
       },
-      take: 50, // Últimos 50 pedidos
+      take: 100, // Aumentado para incluir mais histórico
       select: {
         id: true,
         type: true,
@@ -1033,6 +1053,61 @@ export class AdminService {
         updatedAt: true,
       },
     });
+
+    // Pedidos onde o usuário é o PAGADOR (aceitou pedido de outro usuário)
+    const ordersAsPayer = await prisma.order.findMany({
+      where: {
+        transactions: {
+          some: { payerId: userId },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 100,
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        cryptoType: true,
+        cryptoNetwork: true,
+        cryptoAmount: true,
+        brlAmount: true,
+        platformFee: true,
+        totalFee: true,
+        collateralConfirmed: true,
+        collateralLocked: true,
+        paidByPlatform: true,
+        timeoutAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    // Combinar pedidos, remover duplicados e ordenar por data
+    const orderIds = new Set<string>();
+    const allOrdersCombined: Array<typeof ordersAsCreator[0] & { userRole: 'CREATOR' | 'PAYER' }> = [];
+
+    // Adicionar pedidos como criador
+    for (const order of ordersAsCreator) {
+      if (!orderIds.has(order.id)) {
+        orderIds.add(order.id);
+        allOrdersCombined.push({ ...order, userRole: 'CREATOR' });
+      }
+    }
+
+    // Adicionar pedidos como pagador (se não já adicionado)
+    for (const order of ordersAsPayer) {
+      if (!orderIds.has(order.id)) {
+        orderIds.add(order.id);
+        allOrdersCombined.push({ ...order, userRole: 'PAYER' });
+      }
+    }
+
+    // Ordenar por data de criação (mais recentes primeiro)
+    const orders = allOrdersCombined.sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
 
     // 8. Buscar disputas envolvendo o usuário (FASE 2)
     const disputes = await prisma.dispute.findMany({
@@ -1124,6 +1199,7 @@ export class AdminService {
         availableBalance: data.available,
         lockedBalance: data.locked,
         walletCount: data.wallets,
+        wallets: data.walletList, // Lista de carteiras individuais com endereços
       })),
 
       // Estatísticas de transações
@@ -1161,7 +1237,7 @@ export class AdminService {
         metadata: log.metadata,
       })),
 
-      // FASE 2: Pedidos do usuário
+      // FASE 2: Pedidos do usuário (inclui pedidos como CRIADOR e PAGADOR)
       orders: orders.map(order => ({
         id: order.id,
         type: order.type,
@@ -1178,6 +1254,7 @@ export class AdminService {
         timeoutAt: order.timeoutAt,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
+        userRole: order.userRole, // NOVO: Indica se é CREATOR ou PAYER
       })),
 
       // FASE 2: Disputas envolvendo o usuário

@@ -39,6 +39,14 @@ interface UserDetails {
     availableBalance: string;
     lockedBalance: string;
     walletCount: number;
+    wallets: Array<{
+      id: string;
+      address: string;
+      network: string;
+      balance: string;
+      availableBalance: string;
+      lockedBalance: string;
+    }>;
   }>;
   stats: {
     totalTransactions: number;
@@ -78,6 +86,7 @@ interface UserDetails {
     brlAmount: string;
     platformFee: string;
     createdAt: string;
+    userRole: 'CREATOR' | 'PAYER';
   }>;
   disputes: Array<{
     id: string;
@@ -105,6 +114,18 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
   const [details, setDetails] = useState<UserDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>('ALL');
+  const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+
+  const copyToClipboard = async (address: string) => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopiedAddress(address);
+      setTimeout(() => setCopiedAddress(null), 2000);
+    } catch (err) {
+      console.error('Erro ao copiar:', err);
+    }
+  };
 
   useEffect(() => {
     fetchUserDetails();
@@ -153,6 +174,15 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
       PENDING: 'bg-yellow-600',
       FAILED: 'bg-red-600',
       CANCELLED: 'bg-gray-600',
+      MATCHED: 'bg-blue-600',
+      DISPUTED: 'bg-red-600',
+      PAYMENT_SENT: 'bg-purple-600',
+      VALIDATING: 'bg-orange-600',
+      APPROVED: 'bg-green-600',
+      REJECTED: 'bg-red-600',
+      OPEN: 'bg-yellow-600',
+      UNDER_REVIEW: 'bg-orange-600',
+      RESOLVED: 'bg-green-600',
     };
     return colors[status] || 'bg-gray-600';
   };
@@ -409,13 +439,13 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                                 {balance.walletCount} carteira(s)
                               </span>
                             </div>
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-3 gap-4 mb-3">
                               <div>
                                 <p className="text-xs text-gray-600 dark:text-gray-400">Saldo Total</p>
                                 <p className="text-lg font-bold text-blue-400">{balance.totalBalance}</p>
                               </div>
                               <div>
-                                <p className="text-xs text-gray-600 dark:text-gray-400">Disponível</p>
+                                <p className="text-xs text-gray-600 dark:text-gray-400">Disponivel</p>
                                 <p className="text-lg font-bold text-green-400">{balance.availableBalance}</p>
                               </div>
                               <div>
@@ -423,6 +453,44 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                                 <p className="text-lg font-bold text-yellow-400">{balance.lockedBalance}</p>
                               </div>
                             </div>
+
+                            {/* Lista de carteiras individuais com enderecos */}
+                            {balance.wallets && balance.wallets.length > 0 && (
+                              <div className="border-t border-gray-200 dark:border-gray-700 pt-3 mt-3">
+                                <p className="text-xs font-bold text-gray-600 dark:text-gray-400 mb-2">Carteiras:</p>
+                                <div className="space-y-2">
+                                  {balance.wallets.map((wallet) => (
+                                    <div key={wallet.id} className="bg-gray-50 dark:bg-gray-900 rounded p-3">
+                                      <div className="flex items-center justify-between flex-wrap gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="text-xs px-2 py-1 bg-purple-600 text-white rounded font-bold">
+                                            {wallet.network}
+                                          </span>
+                                          <code className="text-xs font-mono bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded text-gray-900 dark:text-gray-100 break-all max-w-[300px]">
+                                            {wallet.address}
+                                          </code>
+                                          <button
+                                            onClick={() => copyToClipboard(wallet.address)}
+                                            className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition"
+                                            title="Copiar endereco"
+                                          >
+                                            {copiedAddress === wallet.address ? 'Copiado!' : 'Copiar'}
+                                          </button>
+                                        </div>
+                                        <div className="text-right text-sm">
+                                          <span className="text-green-500 font-bold">{wallet.availableBalance}</span>
+                                          {parseFloat(wallet.lockedBalance) > 0 && (
+                                            <span className="text-yellow-500 ml-2 font-bold">
+                                              Bloq: {wallet.lockedBalance}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ))
                       ) : (
@@ -501,14 +569,35 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
               {activeTab === 'orders' && (
                 <div className="space-y-4">
                   <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4">
-                    <div className="flex justify-between items-center mb-4">
-                      <h5 className="font-bold text-gray-900 dark:text-white">📦 Pedidos do Usuário ({details.orders?.length || 0})</h5>
+                    <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+                      <h5 className="font-bold text-gray-900 dark:text-white">
+                        📦 Pedidos do Usuario ({details.orders?.length || 0})
+                      </h5>
                     </div>
+
+                    {/* Filtro de Status */}
+                    <div className="flex gap-2 mb-4 flex-wrap">
+                      {['ALL', 'PENDING', 'MATCHED', 'COMPLETED', 'CANCELLED', 'DISPUTED'].map((status) => (
+                        <button
+                          key={status}
+                          onClick={() => setOrderStatusFilter(status)}
+                          className={`px-3 py-1 rounded-full text-xs font-bold transition ${
+                            orderStatusFilter === status
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          {status === 'ALL' ? 'Todos' : status}
+                        </button>
+                      ))}
+                    </div>
+
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b border-gray-300 dark:border-gray-700">
                             <th className="text-left py-2 px-3 text-gray-700 dark:text-gray-300">Data</th>
+                            <th className="text-left py-2 px-3 text-gray-700 dark:text-gray-300">Papel</th>
                             <th className="text-left py-2 px-3 text-gray-700 dark:text-gray-300">Tipo</th>
                             <th className="text-left py-2 px-3 text-gray-700 dark:text-gray-300">Cripto</th>
                             <th className="text-left py-2 px-3 text-gray-700 dark:text-gray-300">Valor BRL</th>
@@ -517,24 +606,33 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                         </thead>
                         <tbody>
                           {details.orders && details.orders.length > 0 ? (
-                            details.orders.map((order) => (
-                              <tr key={order.id} className="border-b border-gray-200 dark:border-gray-800">
-                                <td className="py-2 px-3 text-gray-900 dark:text-white">{formatDate(order.createdAt)}</td>
-                                <td className="py-2 px-3 text-gray-900 dark:text-white">{order.type}</td>
-                                <td className="py-2 px-3 text-gray-900 dark:text-white font-mono">
-                                  {order.cryptoAmount} {order.cryptoType}
-                                </td>
-                                <td className="py-2 px-3 text-gray-900 dark:text-white">R$ {order.brlAmount}</td>
-                                <td className="py-2 px-3">
-                                  <span className={`px-2 py-1 ${getStatusColor(order.status)} text-white rounded-full text-xs font-bold`}>
-                                    {order.status}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))
+                            details.orders
+                              .filter((order) => orderStatusFilter === 'ALL' || order.status === orderStatusFilter)
+                              .map((order) => (
+                                <tr key={order.id} className="border-b border-gray-200 dark:border-gray-800">
+                                  <td className="py-2 px-3 text-gray-900 dark:text-white">{formatDate(order.createdAt)}</td>
+                                  <td className="py-2 px-3">
+                                    <span className={`text-xs font-bold ${
+                                      order.userRole === 'CREATOR' ? 'text-blue-500' : 'text-green-500'
+                                    }`}>
+                                      {order.userRole === 'CREATOR' ? 'Criador' : 'Pagador'}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3 text-gray-900 dark:text-white">{order.type}</td>
+                                  <td className="py-2 px-3 text-gray-900 dark:text-white font-mono">
+                                    {order.cryptoAmount} {order.cryptoType}
+                                  </td>
+                                  <td className="py-2 px-3 text-gray-900 dark:text-white">R$ {order.brlAmount}</td>
+                                  <td className="py-2 px-3">
+                                    <span className={`px-2 py-1 ${getStatusColor(order.status)} text-white rounded-full text-xs font-bold`}>
+                                      {order.status}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))
                           ) : (
                             <tr>
-                              <td colSpan={5} className="text-center py-4 text-gray-600 dark:text-gray-400">
+                              <td colSpan={6} className="text-center py-4 text-gray-600 dark:text-gray-400">
                                 Nenhum pedido encontrado
                               </td>
                             </tr>
@@ -542,6 +640,13 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                         </tbody>
                       </table>
                     </div>
+
+                    {/* Contador de pedidos filtrados */}
+                    {details.orders && details.orders.length > 0 && orderStatusFilter !== 'ALL' && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                        Mostrando {details.orders.filter((o) => o.status === orderStatusFilter).length} de {details.orders.length} pedidos
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
