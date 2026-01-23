@@ -36,7 +36,11 @@ export interface Chat {
   messages: ChatMessage[];
 }
 
-export function useChat(chatId?: string) {
+interface UseChatOptions {
+  onNewMessage?: (message: ChatMessage, isMine: boolean) => void;
+}
+
+export function useChat(chatId?: string, options?: UseChatOptions) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -52,6 +56,8 @@ export function useChat(chatId?: string) {
   const ownMessagesRef = useRef<Map<string, string>>(new Map());
   // Texto da mensagem que acabou de ser enviada (esperando ID do servidor)
   const pendingMessageRef = useRef<string | null>(null);
+  // Callback ref para evitar re-renders
+  const onNewMessageRef = useRef(options?.onNewMessage);
 
   // Inicializar chaves de criptografia
   const initializeEncryption = useCallback(async () => {
@@ -158,6 +164,11 @@ export function useChat(chatId?: string) {
     }
   }, []);
 
+  // Atualizar ref do callback quando options mudar
+  useEffect(() => {
+    onNewMessageRef.current = options?.onNewMessage;
+  }, [options?.onNewMessage]);
+
   // Conectar ao WebSocket
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
@@ -186,17 +197,18 @@ export function useChat(chatId?: string) {
       // Verificar se é própria mensagem para guardar no cache
       const userStr = localStorage.getItem('user');
       const currentUser = userStr ? JSON.parse(userStr) : null;
+      const isMine = currentUser && message.senderId === currentUser.id;
 
-      console.log('📩 New message received:', {
+      console.log('[Chat] New message received:', {
         id: message.id.slice(0, 8),
         isEncrypted: message.isEncrypted,
         hasIV: !!message.iv,
         senderId: message.senderId.slice(0, 8),
-        isMine: currentUser && message.senderId === currentUser.id,
+        isMine,
       });
 
       // Se é minha mensagem e tenho pendingMessage, guardar no cache
-      if (currentUser && message.senderId === currentUser.id && pendingMessageRef.current) {
+      if (isMine && pendingMessageRef.current) {
         console.log('[Chat] Storing own message plaintext:', message.id.slice(0, 8));
         ownMessagesRef.current.set(message.id, pendingMessageRef.current);
         pendingMessageRef.current = null; // Limpar após usar
@@ -205,6 +217,11 @@ export function useChat(chatId?: string) {
       // Descriptografar mensagem se necessário
       const decryptedMsg = await decryptMessageContent(message);
       setMessages((prev) => [...prev, decryptedMsg]);
+
+      // Notificar componente pai sobre nova mensagem (para atualizar badge)
+      if (onNewMessageRef.current) {
+        onNewMessageRef.current(decryptedMsg, !!isMine);
+      }
     });
 
     newSocket.on('user:typing', (data: any) => {
