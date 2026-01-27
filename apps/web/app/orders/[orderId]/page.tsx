@@ -1183,6 +1183,38 @@ export default function OrderDetailsPage() {
           </div>
         )}
 
+        {/* Banner de Identificacao de Papel */}
+        {order && currentUserId && (isCreator || isPayer) && (
+          <div className={`mb-6 p-4 rounded-lg border-2 ${
+            isPayer
+              ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700'
+              : 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700'
+          }`}>
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">{isPayer ? '🛒' : '💰'}</span>
+              <div>
+                <h2 className={`text-xl font-bold ${
+                  isPayer
+                    ? 'text-blue-800 dark:text-blue-200'
+                    : 'text-green-800 dark:text-green-200'
+                }`}>
+                  {isPayer ? 'VOCE E O COMPRADOR' : 'VOCE E O VENDEDOR'}
+                </h2>
+                <p className={`text-sm ${
+                  isPayer
+                    ? 'text-blue-700 dark:text-blue-300'
+                    : 'text-green-700 dark:text-green-300'
+                }`}>
+                  {isPayer
+                    ? `Voce paga ${formatBRL(order.brlAmount)} no ${paymentMethod} e recebe ${(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward)).toFixed(8)} ${order.cryptoType} (inclui 1% cashback)`
+                    : `Voce recebera ${formatBRL(order.brlAmount)} via ${paymentMethod}. Seu colateral de ${(parseFloat(order.cryptoAmount) + parseFloat(order.totalFee)).toFixed(8)} ${order.cryptoType} sera liberado (inclui 2.5% fee: 1.5% plataforma + 1% cashback)`
+                  }
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Sistema de Abas */}
         <Tabs
           tabs={buildTabs()}
