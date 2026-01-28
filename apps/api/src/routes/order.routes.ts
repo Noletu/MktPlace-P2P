@@ -38,13 +38,19 @@ router.get('/:orderId', orderController.getOrder.bind(orderController));
 // Atualizar pedido (somente se PENDING)
 router.patch('/:orderId', orderController.updateOrder.bind(orderController));
 
-// Fazer match (aceitar pedido)
+// Fazer match (aceitar pedido SELL)
 router.post('/:orderId/match', orderController.matchOrder.bind(orderController));
 
-// Cancelar pedido
+// Aceitar ordem BUY (provedor fornece liquidez)
+router.post('/:orderId/accept-buy', orderController.acceptBuyOrder.bind(orderController));
+
+// Cancelar pedido (pelo criador)
 router.post('/:orderId/cancel', orderController.cancelOrder.bind(orderController));
 
-// Cancelar pedido pelo pagador (comprador) - pedido volta ao marketplace
+// Cancelar pedido pelo pagador (comprador em ordens SELL) - pedido volta ao marketplace
 router.post('/:orderId/cancel-by-payer', orderController.cancelOrderByPayer.bind(orderController));
+
+// Cancelar pedido pelo provedor (em ordens BUY) - pedido volta ao marketplace
+router.post('/:orderId/cancel-by-provider', orderController.cancelOrderByProvider.bind(orderController));
 
 export default router;

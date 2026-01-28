@@ -42,7 +42,25 @@ export interface Dispute {
     brlAmount: string;
     cryptoAmount: string;
     cryptoType: string;
+    // Vendedor de cripto (criador do anuncio)
+    user?: {
+      id: string;
+      name: string;
+      email: string;
+    };
+    // Transacoes com dados do pagador do PIX
+    transactions?: Array<{
+      id: string;
+      payerId: string;
+      payer?: {
+        id: string;
+        name: string;
+        email: string;
+      };
+      payerWalletAddress?: string;
+    }>;
   };
+  attachments?: string[];
   messages: DisputeMessage[];
 }
 

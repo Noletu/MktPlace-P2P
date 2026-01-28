@@ -235,7 +235,10 @@ model Order {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
-  // Type - BOLETO, PIX
+  // Order Type - BUY (user wants to buy crypto) or SELL (user wants to sell crypto)
+  orderType String @default("SELL")
+
+  // Payment Method - BOLETO, PIX (for SELL orders, provider sets for BUY orders)
   type   String
   // Status - PENDING, MATCHED, IN_NEGOTIATION, PAYMENT_SENT, VALIDATING, COMPLETED, DISPUTED, CANCELLED, TIMEOUT, EXPIRED
   status String @default("PENDING")
@@ -309,6 +312,10 @@ model Order {
   negotiatingUserId    String? // Quem está negociando agora (reserva por 10min)
   negotiationStartedAt DateTime? // Quando negociação iniciou
 
+  // BUY ORDER SYSTEM - Provider (liquidity provider) tracking
+  providerId       String? // userId do provedor que aceitou ordem BUY
+  providerWalletId String? // walletId do provedor (para colateral em ordens BUY)
+
   // Presence system (por pedido)
   ownerOnline         Boolean  @default(false) // Toggle manual do vendedor
   ownerLastSeenAt     DateTime @default(now()) // Último heartbeat recebido
@@ -334,6 +341,7 @@ model Order {
   @@index([ownerOnline])
   @@index([ownerLastSeenAt])
   @@index([awaitingDeposit])
+  @@index([providerId])
 }
 
 model Transaction {

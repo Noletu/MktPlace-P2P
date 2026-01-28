@@ -14,21 +14,27 @@ interface DisputeStats {
 }
 
 enum ResolutionType {
-  REFUND_BUYER_FULL = 'REFUND_BUYER_FULL',
-  REFUND_BUYER_PARTIAL = 'REFUND_BUYER_PARTIAL',
-  RELEASE_SELLER = 'RELEASE_SELLER',
+  RELEASE_TO_BUYER = 'RELEASE_TO_BUYER',
+  RETURN_TO_SELLER = 'RETURN_TO_SELLER',
   CANCEL_NO_PENALTY = 'CANCEL_NO_PENALTY',
   PENALTY_BUYER = 'PENALTY_BUYER',
   PENALTY_SELLER = 'PENALTY_SELLER',
 }
 
 const RESOLUTION_TYPE_LABELS: Record<ResolutionType, string> = {
-  [ResolutionType.REFUND_BUYER_FULL]: 'Reembolso Total ao Comprador',
-  [ResolutionType.REFUND_BUYER_PARTIAL]: 'Reembolso Parcial ao Comprador',
-  [ResolutionType.RELEASE_SELLER]: 'Liberar Crypto para Vendedor',
-  [ResolutionType.CANCEL_NO_PENALTY]: 'Cancelar sem Penalidade',
-  [ResolutionType.PENALTY_BUYER]: 'Penalizar Comprador (Fraude)',
-  [ResolutionType.PENALTY_SELLER]: 'Penalizar Vendedor (Má-fé)',
+  [ResolutionType.RELEASE_TO_BUYER]: 'Liberar Cripto para Pagador do PIX (comprovante valido)',
+  [ResolutionType.RETURN_TO_SELLER]: 'Devolver Cripto ao Vendedor (comprovante invalido)',
+  [ResolutionType.CANCEL_NO_PENALTY]: 'Cancelar Negociacao (sem penalidade)',
+  [ResolutionType.PENALTY_BUYER]: 'Penalizar Pagador do PIX (fraude comprovada)',
+  [ResolutionType.PENALTY_SELLER]: 'Penalizar Vendedor de Cripto (ma-fe comprovada)',
+};
+
+const RESOLUTION_DESCRIPTIONS: Record<ResolutionType, string> = {
+  [ResolutionType.RELEASE_TO_BUYER]: 'A cripto sera transferida para a carteira do pagador do PIX. O vendedor perde a cripto bloqueada.',
+  [ResolutionType.RETURN_TO_SELLER]: 'A cripto sera desbloqueada e devolvida ao vendedor. O pagador do PIX nao recebe nada.',
+  [ResolutionType.CANCEL_NO_PENALTY]: 'A cripto sera desbloqueada para o vendedor. Nenhuma penalidade aplicada.',
+  [ResolutionType.PENALTY_BUYER]: 'Cripto devolvida ao vendedor + penalidade de reputacao ao comprador.',
+  [ResolutionType.PENALTY_SELLER]: 'Cripto liberada ao comprador + penalidade de reputacao ao vendedor.',
 };
 
 export default function AdminDisputesPage() {
@@ -369,20 +375,25 @@ export default function AdminDisputesPage() {
                   {/* Resolution Type */}
                   <div className="mb-3">
                     <label className="block text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
-                      Tipo de Resolução
+                      Tipo de Resolucao
                     </label>
                     <select
                       value={resolutionType}
                       onChange={(e) => setResolutionType(e.target.value as ResolutionType)}
-                      className="w-full px-3 py-2 border border-blue-300 dark:border-blue-600 rounded-lg dark:bg-white dark:bg-gray-800 dark:text-gray-900 dark:text-white"
+                      className="w-full px-3 py-2 border border-blue-300 dark:border-blue-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                     >
-                      <option value="">Selecione...</option>
+                      <option value="">Selecione a decisao...</option>
                       {Object.entries(RESOLUTION_TYPE_LABELS).map(([key, label]) => (
                         <option key={key} value={key}>
                           {label}
                         </option>
                       ))}
                     </select>
+                    {resolutionType && (
+                      <p className="mt-2 text-xs text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-800 p-2 rounded">
+                        {RESOLUTION_DESCRIPTIONS[resolutionType as ResolutionType]}
+                      </p>
+                    )}
                   </div>
 
                   {/* Resolution Text */}

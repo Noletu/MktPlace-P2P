@@ -6,7 +6,10 @@ import {
   FeeCalculation,
   FEE_CONFIG,
   BoletoData,
-  PixData
+  PixData,
+  BUY_ORDER_CONFIG,
+  CreateBuyOrderInput,
+  AcceptBuyOrderInput
 } from '../types/order.types';
 import { kycService } from './kyc.service';
 import { WalletService } from './wallet.service';
@@ -61,13 +64,67 @@ export class OrderService {
   }
 
   /**
-   * Retorna o colateral necessário (valor bruto recebido do frontend)
-   * IMPORTANTE: O frontend já envia o valor com taxa embutida (divide por 0.975)
-   * Este método apenas converte para string formatada - NÃO adiciona taxa
+   * Calcula o colateral necessário para criar um pedido SELL
+   * Inclui: cryptoAmount + payerReward (1% cashback para o comprador)
+   *
+   * O payerReward precisa ser incluído porque na liberação das criptos,
+   * o vendedor transfere cryptoAmount + payerReward para o comprador.
    */
   calculateRequiredCollateral(cryptoAmount: string): string {
     const amount = parseFloat(cryptoAmount);
-    return amount.toFixed(8);  // Retorna valor exato, sem multiplicar
+    // Incluir payerReward (1% cashback) que será dado ao comprador
+    const payerReward = amount * FEE_CONFIG.PAYER_REWARD_PERCENTAGE;
+    return (amount + payerReward).toFixed(8);
+  }
+
+  /**
+   * Calcula o colateral necessário para PROVEDOR em ordem BUY
+   * Inclui: cryptoAmount + platformFee (1.5%)
+   *
+   * Em ordens BUY, não há cashback para o comprador.
+   * O provedor deposita crypto + fee, recebe BRL com markup de 2.5%.
+   * Lucro líquido do provedor: ~1% (2.5% markup - 1.5% fee)
+   */
+  calculateBuyOrderCollateral(cryptoAmount: string): string {
+    const amount = parseFloat(cryptoAmount);
+    // Somente platformFee (1.5%) - sem payerReward em ordens BUY
+    const platformFee = amount * BUY_ORDER_CONFIG.PROVIDER_COLLATERAL_FEE;
+    return (amount + platformFee).toFixed(8);
+  }
+
+  /**
+   * Calcula taxas para ordem BUY (diferente de SELL)
+   * - Sem cashback (payerReward = 0)
+   * - Platform fee = 1.5% do cryptoAmount
+   * - Comprador paga BRL com markup de 2.5%
+   */
+  async calculateBuyOrderFees(cryptoAmount: string): Promise<FeeCalculation> {
+    const amount = parseFloat(cryptoAmount);
+    const platformFee = amount * FEE_CONFIG.PLATFORM_FEE_PERCENTAGE;
+    // Sem cashback em ordens BUY
+    const payerReward = 0;
+    const totalFee = platformFee;
+    const netCryptoAmount = amount; // Comprador recebe exatamente o que pediu
+
+    return {
+      platformFee: platformFee.toFixed(8),
+      payerReward: payerReward.toFixed(8),
+      totalFee: totalFee.toFixed(8),
+      netCryptoAmount: netCryptoAmount.toFixed(8),
+      appliedCoupon: null, // Cupons não aplicam em ordens BUY por enquanto
+    };
+  }
+
+  /**
+   * Calcula valor em BRL para ordem BUY com markup
+   * Busca cotação atual e aplica markup de 2.5%
+   */
+  async calculateBuyOrderBrlAmount(cryptoAmount: string, cryptoType: string): Promise<string> {
+    const amount = parseFloat(cryptoAmount);
+    const brlValue = await priceService.convertCryptoToBRL(amount, cryptoType as CryptoType);
+    const brlBase = parseFloat(brlValue);
+    const brlWithMarkup = brlBase * (1 + BUY_ORDER_CONFIG.BRL_MARKUP_PERCENTAGE);
+    return brlWithMarkup.toFixed(2);
   }
 
   /**
@@ -173,7 +230,15 @@ export class OrderService {
       throw new Error(`Valor mínimo é R$ ${minBRL}`);
     }
 
-    // Validar dados específicos do método de pagamento
+    // Para ordens BUY, orderData não é obrigatório na criação
+    // O provedor fornecerá os dados de pagamento ao aceitar a ordem
+    if (input.type === 'BUY') {
+      // Validação mínima para BUY - orderData pode estar vazio ou ausente
+      console.log(`📝 [ORDER] Ordem BUY - dados de pagamento serão fornecidos pelo provedor`);
+      return; // Não precisa validar orderData
+    }
+
+    // Validar dados específicos do método de pagamento (apenas para SELL)
     // Determinar tipo de pagamento pela presença de campos
     if ('barcode' in input.orderData) {
       // É um boleto
@@ -429,20 +494,388 @@ export class OrderService {
   }
 
   /**
-   * Listar pedidos disponíveis para matching (marketplace)
-   * IMPORTANTE: Só mostra pedidos com colateral CONFIRMADO
-   * NOTA: Mostra TODOS os pedidos, incluindo do próprio usuário
-   * A validação de não aceitar próprio pedido é feita no matchOrder()
+   * Criar ordem BUY (comprador quer comprar crypto)
+   * NÃO requer colateral do criador - o provedor depositará ao aceitar
+   * NÃO requer dados de pagamento - o provedor fornecerá ao aceitar
+   * Sistema calcula automaticamente o valor em BRL com markup de 2.5%
    */
-  async getAvailableOrders(excludeUserId?: string): Promise<Order[]> {
+  async createBuyOrder(input: CreateBuyOrderInput): Promise<Order> {
+    console.log(`📝 [BUY ORDER] Creating - userId: ${input.userId}, crypto: ${input.cryptoType}/${input.cryptoNetwork}, amount: ${input.cryptoAmount}`);
+
+    // Validar KYC e limites (usando o brlAmount calculado)
+    const brlAmount = await this.calculateBuyOrderBrlAmount(input.cryptoAmount, input.cryptoType);
+    const canTransact = await kycService.canUserTransact(input.userId, parseFloat(brlAmount));
+
+    if (!canTransact) {
+      const limit = await kycService.getTransactionLimit(input.userId);
+      throw new Error(
+        `Valor excede seu limite de transação (R$ ${limit}). Complete um nível KYC superior.`
+      );
+    }
+
+    // Verificar se conta está congelada
+    const user = await prisma.user.findUnique({
+      where: { id: input.userId },
+      select: {
+        accountFrozen: true,
+        frozenReason: true,
+        frozenUntil: true,
+      },
+    });
+
+    if (user?.accountFrozen) {
+      if (user.frozenUntil && new Date(user.frozenUntil) < new Date()) {
+        await prisma.user.update({
+          where: { id: input.userId },
+          data: {
+            accountFrozen: false,
+            frozenReason: null,
+            frozenUntil: null,
+            frozenBy: null,
+          },
+        });
+        console.log(`🔓 Conta desbloqueada automaticamente (expirou): ${input.userId}`);
+      } else {
+        const message = user.frozenUntil
+          ? `Sua conta está suspensa até ${new Date(user.frozenUntil).toLocaleString('pt-BR')}. Motivo: ${user.frozenReason || 'Não especificado'}.`
+          : `Sua conta está suspensa permanentemente. Motivo: ${user.frozenReason || 'Não especificado'}. Entre em contato com o suporte.`;
+        throw new Error(message);
+      }
+    }
+
+    // Verificar se usuário tem carteira para receber a crypto
+    let buyerWallet = await prisma.userWallet.findUnique({
+      where: {
+        userId_cryptoType_network: {
+          userId: input.userId,
+          cryptoType: input.cryptoType,
+          network: input.cryptoNetwork,
+        },
+      },
+    });
+
+    // Se não tem carteira, criar automaticamente
+    if (!buyerWallet) {
+      console.log(`📝 [BUY ORDER] Criando carteira HD para comprador...`);
+      buyerWallet = await WalletService.createWallet(
+        input.userId,
+        input.cryptoType,
+        input.cryptoNetwork
+      );
+      console.log(`✅ [BUY ORDER] Carteira criada: ${buyerWallet.address}`);
+    }
+
+    // Calcular taxas para ordem BUY
+    const fees = await this.calculateBuyOrderFees(input.cryptoAmount);
+
+    // Calcular timeout
+    const timeoutAt = this.calculateTimeoutAt(input.customExpirationHours, input.manualCancelOnly);
+
+    // Criar ordem BUY
+    // NOTA: Ordem criada SEM colateral (provedor deposita ao aceitar)
+    // NOTA: Ordem criada SEM orderData (provedor fornece PIX ao aceitar)
+    const order = await prisma.order.create({
+      data: {
+        userId: input.userId,
+        orderType: OrderType.BUY, // BUY = usuario quer comprar crypto
+        type: 'PIX', // Payment method - BUY orders only support PIX
+        status: OrderStatus.PENDING,
+        cryptoType: input.cryptoType,
+        cryptoNetwork: input.cryptoNetwork,
+        cryptoAmount: input.cryptoAmount,
+        brlAmount: brlAmount,
+        platformFee: fees.platformFee,
+        payerReward: fees.payerReward, // 0 para BUY
+        totalFee: fees.totalFee,
+        orderData: JSON.stringify({}), // Vazio - provedor preenche ao aceitar
+        timeoutAt,
+        customExpirationHours: input.customExpirationHours,
+        manualCancelOnly: input.manualCancelOnly || false,
+        paidByPlatform: false,
+        // Colateral NAO confirmado ainda - provedor deposita ao aceitar
+        collateralConfirmed: false,
+        collateralSource: null,
+        walletId: null,
+        collateralLocked: false,
+        collateralLockedAmount: null,
+      },
+    });
+
+    console.log(`✅ [BUY ORDER] Created: ${order.id}`);
+    console.log(`   Crypto: ${input.cryptoAmount} ${input.cryptoType}`);
+    console.log(`   BRL (com markup 2.5%): R$ ${brlAmount}`);
+    console.log(`   Aguardando provedor de liquidez...`);
+
+    return order;
+  }
+
+  /**
+   * Provedor aceita ordem BUY (fornece liquidez)
+   * - Deposita colateral (cryptoAmount + 1.5% fee)
+   * - Fornece dados PIX para receber BRL
+   * - Cria Transaction com comprador como pagador
+   */
+  async acceptBuyOrder(input: AcceptBuyOrderInput): Promise<Order> {
+    console.log(`🤝 [BUY ORDER] Provider ${input.providerId} accepting order ${input.orderId}`);
+
+    return await prisma.$transaction(async (tx) => {
+      // Buscar e travar a ordem
+      const order = await tx.order.findUnique({
+        where: { id: input.orderId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!order) {
+        throw new Error('Pedido não encontrado');
+      }
+
+      // Validar que e uma ordem BUY
+      if (order.orderType !== OrderType.BUY) {
+        throw new Error('Este metodo e apenas para ordens de compra (BUY). Use matchOrder para ordens SELL.');
+      }
+
+      // Validar status
+      if (order.status !== OrderStatus.PENDING) {
+        throw new Error('Este pedido não está mais disponível');
+      }
+
+      // Provedor não pode aceitar própria ordem
+      if (order.userId === input.providerId) {
+        throw new Error('Você não pode fornecer liquidez para seu próprio pedido');
+      }
+
+      // Verificar timeout
+      if (order.timeoutAt && order.timeoutAt < new Date()) {
+        throw new Error('Este pedido expirou');
+      }
+
+      // Verificar KYC do provedor
+      const canTransact = await kycService.canUserTransact(
+        input.providerId,
+        parseFloat(order.brlAmount)
+      );
+
+      if (!canTransact) {
+        const limit = await kycService.getTransactionLimit(input.providerId);
+        throw new Error(
+          `Valor excede seu limite de transação (R$ ${limit}). Complete um nível KYC superior.`
+        );
+      }
+
+      // Verificar se provedor está congelado
+      const provider = await tx.user.findUnique({
+        where: { id: input.providerId },
+        select: {
+          accountFrozen: true,
+          frozenReason: true,
+          frozenUntil: true,
+        },
+      });
+
+      if (provider?.accountFrozen) {
+        if (provider.frozenUntil && new Date(provider.frozenUntil) < new Date()) {
+          await tx.user.update({
+            where: { id: input.providerId },
+            data: {
+              accountFrozen: false,
+              frozenReason: null,
+              frozenUntil: null,
+              frozenBy: null,
+            },
+          });
+        } else {
+          const message = provider.frozenUntil
+            ? `Sua conta está suspensa até ${new Date(provider.frozenUntil).toLocaleString('pt-BR')}.`
+            : `Sua conta está suspensa permanentemente. Entre em contato com o suporte.`;
+          throw new Error(message);
+        }
+      }
+
+      // Buscar carteira do provedor
+      const providerWallet = await tx.userWallet.findUnique({
+        where: {
+          userId_cryptoType_network: {
+            userId: input.providerId,
+            cryptoType: order.cryptoType,
+            network: order.cryptoNetwork,
+          },
+        },
+      });
+
+      if (!providerWallet) {
+        throw new Error(`Você não possui carteira ${order.cryptoType} (${order.cryptoNetwork}). Crie uma carteira primeiro.`);
+      }
+
+      // Calcular colateral necessário (crypto + 1.5% fee)
+      const requiredCollateral = this.calculateBuyOrderCollateral(order.cryptoAmount);
+      const availableBalance = parseFloat(providerWallet.availableBalance);
+
+      if (availableBalance < parseFloat(requiredCollateral)) {
+        throw new Error(
+          `Saldo insuficiente. Necessário: ${requiredCollateral} ${order.cryptoType}, Disponível: ${availableBalance.toFixed(8)} ${order.cryptoType}`
+        );
+      }
+
+      // Preparar dados PIX do provedor
+      const providerPixData: PixData = {
+        pixKey: input.pixKey,
+        pixKeyType: input.pixKeyType,
+        recipientName: input.recipientName,
+      };
+
+      // Atualizar ordem com dados do provedor
+      // TIMEOUT: 30 minutos para pagamento ser confirmado
+      const timeout = new Date(Date.now() + 30 * 60 * 1000);
+
+      const updatedOrder = await tx.order.update({
+        where: { id: input.orderId },
+        data: {
+          status: OrderStatus.MATCHED,
+          timeoutAt: timeout,
+          // Dados do provedor
+          providerId: input.providerId,
+          providerWalletId: providerWallet.id,
+          orderData: JSON.stringify(providerPixData),
+          // Colateral
+          walletId: providerWallet.id,
+          collateralSource: 'HD_WALLET',
+          collateralConfirmed: true,
+          collateralLocked: true,
+          collateralLockedAmount: requiredCollateral,
+        },
+      });
+
+      // Criar Transaction
+      // NOTA: Em ordens BUY, o "pagador" (payerId) é o COMPRADOR (criador da ordem)
+      // que vai pagar BRL via PIX para o provedor
+      const transaction = await tx.transaction.create({
+        data: {
+          orderId: input.orderId,
+          payerId: order.userId, // Comprador é quem paga BRL
+          status: 'PENDING',
+        },
+      });
+
+      console.log(`✅ [BUY ORDER] Match successful!`);
+      console.log(`   Provider: ${input.providerId}`);
+      console.log(`   Collateral: ${requiredCollateral} ${order.cryptoType}`);
+      console.log(`   PIX: ${input.pixKey} (${input.pixKeyType})`);
+      console.log(`   Transaction: ${transaction.id}`);
+
+      return { ...updatedOrder, transaction };
+    }, {
+      timeout: 15000,
+    }).then(async (result) => {
+      // Bloquear saldo do provedor FORA da transaction do Prisma
+      const providerWallet = await prisma.userWallet.findUnique({
+        where: {
+          userId_cryptoType_network: {
+            userId: input.providerId,
+            cryptoType: result.cryptoType,
+            network: result.cryptoNetwork,
+          },
+        },
+      });
+
+      if (providerWallet && result.collateralLockedAmount) {
+        await WalletService.lockBalance(
+          providerWallet.id,
+          result.collateralLockedAmount,
+          result.id,
+          `Colateral bloqueado para ordem BUY ${result.id}`
+        );
+        console.log(`🔒 [BUY ORDER] Saldo bloqueado: ${result.collateralLockedAmount} ${result.cryptoType}`);
+      }
+
+      // Enviar notificações
+      setImmediate(async () => {
+        try {
+          // Notificar comprador (criador da ordem)
+          await notificationService.createNotification({
+            userId: result.userId,
+            type: 'ORDER_MATCHED',
+            category: 'ORDER',
+            title: '🎉 Provedor Encontrado!',
+            message: `Um provedor aceitou seu pedido de compra. Pague R$ ${result.brlAmount} via PIX para receber ${result.cryptoAmount} ${result.cryptoType}.`,
+            actionUrl: `/orders/${result.id}`,
+            actionLabel: 'Fazer Pagamento',
+            relatedId: result.id,
+            relatedType: 'ORDER',
+            priority: 'HIGH',
+          });
+
+          // Notificar provedor
+          await notificationService.createNotification({
+            userId: input.providerId,
+            type: 'ORDER_MATCHED',
+            category: 'ORDER',
+            title: '✅ Você aceitou uma ordem de compra',
+            message: `Aguardando pagamento de R$ ${result.brlAmount} do comprador. Seu colateral está bloqueado.`,
+            actionUrl: `/orders/${result.id}`,
+            actionLabel: 'Ver Pedido',
+            relatedId: result.id,
+            relatedType: 'ORDER',
+            priority: 'NORMAL',
+          });
+        } catch (error) {
+          console.error('Failed to send buy order notifications:', error);
+        }
+      });
+
+      return result;
+    });
+  }
+
+  /**
+   * Listar pedidos disponíveis para matching (marketplace)
+   *
+   * SELL orders: Só mostra pedidos com colateral CONFIRMADO
+   * BUY orders: Mostra pedidos PENDING aguardando provedor (sem colateral ainda)
+   *
+   * NOTA: Mostra TODOS os pedidos, incluindo do próprio usuário
+   * A validação de não aceitar próprio pedido é feita no matchOrder()/acceptBuyOrder()
+   */
+  async getAvailableOrders(excludeUserId?: string, orderTypeFilter?: 'BUY' | 'SELL' | 'ALL'): Promise<Order[]> {
+    // Construir filtro baseado no tipo de ordem (usando campo orderType)
+    let typeFilter: any = {};
+
+    if (orderTypeFilter === 'BUY') {
+      // BUY orders: aguardando provedor (sem colateral confirmado)
+      typeFilter = {
+        orderType: OrderType.BUY,
+        // BUY orders nao precisam de colateral confirmado - o provedor deposita ao aceitar
+      };
+    } else if (orderTypeFilter === 'SELL') {
+      // SELL orders: com colateral confirmado
+      typeFilter = {
+        orderType: OrderType.SELL,
+        collateralConfirmed: true,
+      };
+    } else {
+      // ALL: Mostrar ambos os tipos
+      // SELL: precisa ter colateral confirmado
+      // BUY: nao precisa (provedor deposita ao aceitar)
+      typeFilter = {
+        OR: [
+          { orderType: OrderType.SELL, collateralConfirmed: true },
+          { orderType: OrderType.BUY },
+        ],
+      };
+    }
+
     const orders = await prisma.order.findMany({
       where: {
         status: OrderStatus.PENDING, // Apenas pedidos pendentes
-        // SECURITY: Só mostrar pedidos com colateral confirmado
-        collateralConfirmed: true,
-        // REMOVIDO: não excluir pedidos do próprio usuário do marketplace
-        // userId: excludeUserId ? { not: excludeUserId } : undefined,
         timeoutAt: { gt: new Date() }, // Não expirados
+        ...typeFilter,
       },
       orderBy: [
         { ownerOnline: 'desc' }, // Online primeiro
@@ -462,21 +895,25 @@ export class OrderService {
       },
     });
 
-    console.log(`📊 Marketplace: found ${orders.length} orders (online prioritized)`);
+    console.log(`📊 Marketplace: found ${orders.length} orders (type filter: ${orderTypeFilter || 'ALL'})`);
 
     return orders;
   }
 
   /**
    * Obter pedidos do usuário
-   * Retorna pedidos onde o usuário é o CRIADOR ou o PAGADOR
+   * Retorna pedidos onde o usuário é:
+   * - CRIADOR (userId)
+   * - PAGADOR em ordens SELL (transaction.payerId)
+   * - PROVEDOR em ordens BUY (providerId)
    */
   async getUserOrders(userId: string): Promise<Order[]> {
     const orders = await prisma.order.findMany({
       where: {
         OR: [
           { userId }, // Pedidos criados pelo usuário
-          { transactions: { some: { payerId: userId } } }, // Pedidos onde é pagador
+          { transactions: { some: { payerId: userId } } }, // Pedidos onde é pagador (SELL)
+          { providerId: userId }, // Pedidos onde é provedor (BUY)
         ],
       },
       orderBy: { createdAt: 'desc' },
@@ -551,7 +988,8 @@ export class OrderService {
   }
 
   /**
-   * Fazer match de um pedido (pagador aceita pagar)
+   * Fazer match de um pedido SELL (pagador aceita pagar)
+   * NOTA: Para ordens BUY, use acceptBuyOrder() - este método redirecionará automaticamente
    * SECURITY: Usa transação atômica para prevenir race conditions
    */
   async matchOrder(orderId: string, payerId: string): Promise<Order> {
@@ -573,6 +1011,12 @@ export class OrderService {
 
       if (!order) {
         throw new Error('Pedido não encontrado');
+      }
+
+      // Para ordens BUY, informar que deve usar acceptBuyOrder
+      // O controller vai redirecionar automaticamente
+      if (order.orderType === OrderType.BUY) {
+        throw new Error('BUY_ORDER_REQUIRES_ACCEPT');
       }
 
       if (order.userId === payerId) {
@@ -681,7 +1125,9 @@ export class OrderService {
   }
 
   /**
-   * Cancelar pedido (por vendedor/criador)
+   * Cancelar pedido (pelo criador)
+   * SELL: Criador é o vendedor
+   * BUY: Criador é o comprador
    */
   async cancelOrder(
     orderId: string,
@@ -723,19 +1169,26 @@ export class OrderService {
     const { cancellationHistoryService } = await import('./cancellationHistory.service');
     const { UserRole } = await import('../types/cancellation.types');
 
+    // Determinar role baseado no tipo de ordem
+    // SELL: criador e vendedor (SELLER)
+    // BUY: criador e comprador (BUYER)
+    const isBuyOrder = order.orderType === OrderType.BUY;
+    const creatorRole = isBuyOrder ? UserRole.BUYER : UserRole.SELLER;
+
     // REGRA: Só aplicar penalidade se alguém já aceitou o pedido (status MATCHED)
     // Se está PENDING, ninguém foi prejudicado, então não há penalidade
     const shouldCalculatePenalty = order.status === OrderStatus.MATCHED;
 
     let penalty;
     if (shouldCalculatePenalty) {
-      penalty = await penaltyService.calculateCancellationPenalty(userId, UserRole.SELLER);
+      penalty = await penaltyService.calculateCancellationPenalty(userId, creatorRole);
     } else {
       // Cancelamento sem penalidade (pedido ainda não foi aceito)
+      const noAffectedParty = isBuyOrder ? 'nenhum provedor foi prejudicado' : 'nenhum comprador foi prejudicado';
       penalty = {
         shouldApplyPenalty: false,
         penaltyPoints: 0,
-        message: 'Pedido cancelado sem penalidade (nenhum comprador foi prejudicado)',
+        message: `Pedido cancelado sem penalidade (${noAffectedParty})`,
       };
     }
 
@@ -744,10 +1197,11 @@ export class OrderService {
     let reputationAfter: number | undefined;
 
     if (penalty.shouldApplyPenalty) {
+      const roleDescription = isBuyOrder ? 'comprador' : 'vendedor';
       const result = await penaltyService.applyReputationPenalty(
         userId,
         penalty.penaltyPoints,
-        `Cancelamento de pedido como vendedor: ${reason}`
+        `Cancelamento de pedido como ${roleDescription}: ${reason}`
       );
       reputationBefore = result.oldReputation;
       reputationAfter = result.newReputation;
@@ -769,7 +1223,7 @@ export class OrderService {
     await cancellationHistoryService.create({
       userId,
       orderId,
-      role: UserRole.SELLER,
+      role: creatorRole,
       reason: reason as any,
       note,
       penaltyApplied: penalty.shouldApplyPenalty,
@@ -780,18 +1234,22 @@ export class OrderService {
       orderValue: order.brlAmount,
     });
 
-    // Desbloquear saldo da carteira HD se foi usado
+    // Desbloquear colateral
+    // SELL: colateral do criador (vendedor) em order.walletId
+    // BUY: colateral do provedor em order.providerWalletId (se MATCHED)
+    const walletToUnlock = isBuyOrder ? order.providerWalletId : order.walletId;
+
     if (order.collateralSource === 'HD_WALLET' &&
         order.collateralLocked &&
         order.collateralLockedAmount &&
-        order.walletId) {
+        walletToUnlock) {
 
       try {
         await WalletService.unlockBalance(
-          order.walletId,
+          walletToUnlock,
           order.collateralLockedAmount,
           orderId,
-          `Colateral desbloqueado - pedido cancelado`
+          `Colateral desbloqueado - pedido cancelado pelo criador`
         );
 
         // Atualizar a ordem para marcar colateral como desbloqueado
@@ -819,15 +1277,27 @@ export class OrderService {
 
         await notificationService.notifyOrderCancelled(orderId, userId, notificationMessage);
 
-        // Se tem transação matched, notificar o comprador também
-        const transactions = await this.getOrderTransactions(orderId);
-        if (transactions && transactions.length > 0) {
-          const transaction = transactions[0];
-          await notificationService.notifyOrderCancelled(
-            orderId,
-            transaction.payerId,
-            'Pedido foi cancelado pelo vendedor'
-          );
+        // Notificar a outra parte se o pedido estava MATCHED
+        if (order.status === OrderStatus.MATCHED) {
+          if (isBuyOrder && order.providerId) {
+            // BUY order: notificar o provedor
+            await notificationService.notifyOrderCancelled(
+              orderId,
+              order.providerId,
+              'Pedido foi cancelado pelo comprador'
+            );
+          } else {
+            // SELL order: notificar o comprador
+            const transactions = await this.getOrderTransactions(orderId);
+            if (transactions && transactions.length > 0) {
+              const transaction = transactions[0];
+              await notificationService.notifyOrderCancelled(
+                orderId,
+                transaction.payerId,
+                'Pedido foi cancelado pelo vendedor'
+              );
+            }
+          }
         }
       } catch (error) {
         console.error('Failed to send order cancelled notifications:', error);
@@ -966,6 +1436,167 @@ export class OrderService {
         });
       } catch (error) {
         console.error('Failed to send payer cancellation notifications:', error);
+      }
+    });
+
+    return {
+      message: penalty.message,
+      penaltyApplied: penalty.shouldApplyPenalty,
+      penaltyPoints: penalty.penaltyPoints,
+    };
+  }
+
+  /**
+   * Cancelar ordem BUY pelo PROVEDOR (quem aceitou fornecer liquidez)
+   * O pedido VOLTA para o marketplace (status PENDING)
+   * Colateral do provedor é desbloqueado e dados de pagamento são limpos
+   */
+  async cancelOrderByProvider(
+    orderId: string,
+    providerId: string,
+    reason: string,
+    note: string
+  ): Promise<{ message: string; penaltyApplied: boolean; penaltyPoints: number }> {
+    const order = await this.getOrderById(orderId);
+
+    if (!order) {
+      throw new Error('Pedido não encontrado');
+    }
+
+    // Verificar se e uma ordem BUY
+    if (order.orderType !== OrderType.BUY) {
+      throw new Error('Este metodo e apenas para ordens de compra (BUY)');
+    }
+
+    // Verificar se o usuário é o provedor
+    if (order.providerId !== providerId) {
+      throw new Error('Você não tem permissão para cancelar este pedido (não é o provedor)');
+    }
+
+    // Só permite cancelamento em status MATCHED
+    if (order.status !== OrderStatus.MATCHED) {
+      throw new Error('Este pedido não pode ser cancelado no status atual');
+    }
+
+    // Calcular penalidade
+    const { penaltyService } = await import('./penalty.service');
+    const { cancellationHistoryService } = await import('./cancellationHistory.service');
+    const { UserRole } = await import('../types/cancellation.types');
+
+    // Provedor é tratado como SELLER para fins de penalidade (quem tem o cripto)
+    const penalty = await penaltyService.calculateCancellationPenalty(providerId, UserRole.SELLER);
+
+    // Aplicar penalidade na reputação se necessário
+    let reputationBefore: number | undefined;
+    let reputationAfter: number | undefined;
+
+    if (penalty.shouldApplyPenalty) {
+      const result = await penaltyService.applyReputationPenalty(
+        providerId,
+        penalty.penaltyPoints,
+        `Cancelamento de ordem BUY como provedor: ${reason}`
+      );
+      reputationBefore = result.oldReputation;
+      reputationAfter = result.newReputation;
+    }
+
+    // Desbloquear colateral do provedor
+    if (order.collateralLocked && order.collateralLockedAmount && order.providerWalletId) {
+      try {
+        await WalletService.unlockBalance(
+          order.providerWalletId,
+          order.collateralLockedAmount,
+          orderId,
+          `Colateral desbloqueado - provedor cancelou ordem BUY`
+        );
+        console.log(`🔓 [BUY ORDER] Colateral desbloqueado: ${order.collateralLockedAmount} ${order.cryptoType}`);
+      } catch (error: any) {
+        console.error(`❌ Erro ao desbloquear colateral do provedor:`, error);
+      }
+    }
+
+    // Voltar pedido para PENDING (volta ao marketplace sem provedor)
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: OrderStatus.PENDING,
+        cancelledBy: providerId,
+        cancellationReason: reason,
+        cancellationNote: note,
+        // Limpar dados do provedor
+        providerId: null,
+        providerWalletId: null,
+        walletId: null,
+        orderData: JSON.stringify({}), // Limpar dados de pagamento
+        collateralSource: null,
+        collateralConfirmed: false,
+        collateralLocked: false,
+        collateralLockedAmount: null,
+        collateralUnlockedAt: new Date(),
+      },
+    });
+
+    // Criar registro no histórico
+    await cancellationHistoryService.create({
+      userId: providerId,
+      orderId,
+      role: UserRole.SELLER, // Provedor age como vendedor
+      reason: reason as any,
+      note,
+      penaltyApplied: penalty.shouldApplyPenalty,
+      penaltyPoints: penalty.penaltyPoints,
+      reputationBefore,
+      reputationAfter,
+      orderStatus: order.status,
+      orderValue: order.brlAmount,
+    });
+
+    // Deletar transaction se existir
+    const transactions = await this.getOrderTransactions(orderId);
+    if (transactions && transactions.length > 0) {
+      await prisma.transaction.delete({
+        where: { id: transactions[0].id },
+      });
+    }
+
+    console.log(`🔄 [BUY ORDER] ${orderId} voltou ao marketplace após cancelamento do provedor`);
+
+    // Enviar notificações
+    setImmediate(async () => {
+      try {
+        // Notificar o provedor
+        const providerMessage = penalty.shouldApplyPenalty
+          ? `Você cancelou o fornecimento de liquidez. Penalidade: -${penalty.penaltyPoints} pontos de reputação.`
+          : 'Você cancelou o fornecimento de liquidez. O pedido voltou ao marketplace.';
+
+        await notificationService.createNotification({
+          userId: providerId,
+          type: 'ORDER_STATUS_CHANGE',
+          category: 'ORDER',
+          title: penalty.shouldApplyPenalty ? '⚠️ Cancelamento com Penalidade' : '✅ Cancelamento Confirmado',
+          message: providerMessage,
+          actionUrl: `/orders/${orderId}`,
+          actionLabel: 'Ver Pedido',
+          relatedId: orderId,
+          relatedType: 'ORDER',
+          priority: penalty.shouldApplyPenalty ? 'HIGH' : 'NORMAL',
+        });
+
+        // Notificar o comprador (criador da ordem BUY)
+        await notificationService.createNotification({
+          userId: order.userId,
+          type: 'ORDER_STATUS_CHANGE',
+          category: 'ORDER',
+          title: '🔄 Provedor Cancelou',
+          message: 'O provedor cancelou o fornecimento de liquidez. Seu pedido voltou ao marketplace e está aguardando outro provedor.',
+          actionUrl: `/orders/${orderId}`,
+          actionLabel: 'Ver Pedido',
+          relatedId: orderId,
+          relatedType: 'ORDER',
+          priority: 'NORMAL',
+        });
+      } catch (error) {
+        console.error('Failed to send provider cancellation notifications:', error);
       }
     });
 

@@ -12,7 +12,8 @@ import CancellationBadge from '@/components/CancellationBadge';
 
 interface Order {
   id: string;
-  type: string;
+  orderType: string; // 'SELL' or 'BUY'
+  type: string; // Payment method: 'PIX' or 'BOLETO'
   status: string;
   cryptoType: string;
   cryptoNetwork: string;
@@ -48,6 +49,12 @@ export default function OrderPreviewPage() {
   const [error, setError] = useState('');
   const [accepting, setAccepting] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // BUY order acceptance - provider needs to enter PIX data
+  const [showBuyAcceptForm, setShowBuyAcceptForm] = useState(false);
+  const [providerPixKey, setProviderPixKey] = useState('');
+  const [providerPixKeyType, setProviderPixKeyType] = useState<'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM'>('CPF');
+  const [providerRecipientName, setProviderRecipientName] = useState('');
 
   useEffect(() => {
     fetchCurrentUser();
@@ -134,6 +141,55 @@ export default function OrderPreviewPage() {
     }
   };
 
+  // Handler for accepting BUY orders (provider provides liquidity)
+  const handleAcceptBuyOrder = async () => {
+    if (!providerPixKey || !providerRecipientName) {
+      alert('Preencha todos os campos obrigatórios');
+      return;
+    }
+
+    if (!confirm('Você confirma que deseja fornecer liquidez para este pedido? O colateral será bloqueado da sua carteira.')) {
+      return;
+    }
+
+    setAccepting(true);
+    setError('');
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('Você precisa estar logado');
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}/accept-buy`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          pixKey: providerPixKey,
+          pixKeyType: providerPixKeyType,
+          recipientName: providerRecipientName,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao aceitar ordem de compra');
+      }
+
+      alert('✅ Ordem aceita! Seu colateral foi bloqueado. Aguarde o comprador efetuar o pagamento PIX.');
+      router.push(`/orders/${orderId}`);
+    } catch (err: any) {
+      setError(err.message);
+      alert(err.message);
+    } finally {
+      setAccepting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
@@ -150,9 +206,15 @@ export default function OrderPreviewPage() {
     );
   }
 
-  const orderData = JSON.parse(order.orderData);
+  const orderData = order.orderData ? JSON.parse(order.orderData) : {};
   const paymentMethod = orderData.pixKey ? 'PIX' : 'BOLETO';
   const isOwnOrder = order.user.id === currentUserId;
+  const isBuyOrder = order.orderType === 'BUY';
+
+  // For BUY orders, calculate what the provider will deposit
+  const collateralAmount = isBuyOrder
+    ? (parseFloat(order.cryptoAmount) * 1.015).toFixed(8)
+    : null;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
@@ -193,8 +255,13 @@ export default function OrderPreviewPage() {
               <div className="flex justify-between items-start mb-6">
                 <div>
                   <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">
-                    {paymentMethod === 'PIX' ? 'Pagamento PIX' : 'Pagamento de Boleto'}
+                    {isBuyOrder ? 'Ordem de Compra' : (paymentMethod === 'PIX' ? 'Pagamento PIX' : 'Pagamento de Boleto')}
                   </h2>
+                  {isBuyOrder && (
+                    <span className="inline-block px-3 py-1 rounded-full text-sm font-semibold bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 mb-2">
+                      QUER COMPRAR CRIPTO
+                    </span>
+                  )}
                   <PresenceBadge
                     online={order.ownerOnline}
                     lastSeenAt={order.ownerLastSeenAt}
@@ -202,36 +269,67 @@ export default function OrderPreviewPage() {
                   />
                 </div>
                 <div className="text-right">
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(order.brlAmount)}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}
-                  </p>
+                  {isBuyOrder ? (
+                    <>
+                      <div className="flex items-center gap-2 justify-end">
+                        <CryptoIcon crypto={order.cryptoType as CryptoType} size={28} />
+                        <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                          {parseFloat(order.cryptoAmount).toFixed(8)}
+                        </p>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        {order.cryptoType} ({order.cryptoNetwork})
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(order.brlAmount)}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        {parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
 
               <div className="space-y-4">
-                <div>
-                  <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Dados do Pagamento</h3>
-                  {paymentMethod === 'PIX' ? (
-                    <>
-                      <p className="text-gray-800 dark:text-gray-300"><strong>Tipo de Chave:</strong> {orderData.pixKeyType}</p>
-                      <p className="text-gray-800 dark:text-gray-300"><strong>Chave PIX:</strong> {orderData.pixKey}</p>
-                      <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiário:</strong> {orderData.recipientName}</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-gray-800 dark:text-gray-300"><strong>Código de Barras:</strong></p>
-                      <p className="font-mono text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white p-2 rounded break-all">
-                        {orderData.barcode}
-                      </p>
-                      <p className="text-gray-800 dark:text-gray-300"><strong>Vencimento:</strong> {new Date(orderData.dueDate).toLocaleDateString()}</p>
-                      <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiário:</strong> {orderData.recipientName}</p>
-                    </>
-                  )}
-                </div>
+                {isBuyOrder ? (
+                  <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
+                    <h3 className="font-bold mb-2 text-blue-800 dark:text-blue-200">Como funciona:</h3>
+                    <ol className="list-decimal list-inside text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                      <li>Você fornece seus dados PIX para receber o pagamento</li>
+                      <li>Seu colateral ({collateralAmount} {order.cryptoType}) é bloqueado</li>
+                      <li>O comprador paga {formatBRL(order.brlAmount)} via PIX</li>
+                      <li>Você confirma o recebimento e a cripto é liberada</li>
+                      <li>Você recebe {formatBRL(order.brlAmount)} e fica com ~1% de lucro</li>
+                    </ol>
+                  </div>
+                ) : (
+                  <div>
+                    <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Dados do Pagamento</h3>
+                    {paymentMethod === 'PIX' ? (
+                      <>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Tipo de Chave:</strong> {orderData.pixKeyType}</p>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Chave PIX:</strong> {orderData.pixKey}</p>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiário:</strong> {orderData.recipientName}</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Código de Barras:</strong></p>
+                        <p className="font-mono text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white p-2 rounded break-all">
+                          {orderData.barcode}
+                        </p>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Vencimento:</strong> {new Date(orderData.dueDate).toLocaleDateString()}</p>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiário:</strong> {orderData.recipientName}</p>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 <div>
-                  <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Informações do Vendedor</h3>
+                  <h3 className="font-bold mb-4 text-gray-900 dark:text-white">
+                    {isBuyOrder ? 'Informações do Comprador' : 'Informações do Vendedor'}
+                  </h3>
                   <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                     <div className="flex items-start justify-between mb-3">
                       <div>
@@ -307,33 +405,66 @@ export default function OrderPreviewPage() {
             {/* Summary */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
               <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Resumo</h3>
-              <div className="space-y-3">
-                <div className="bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg p-3">
-                  <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">💸 VOCÊ PAGARÁ:</p>
-                  <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                    {formatBRL(order.brlAmount)}
-                  </p>
-                  <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
-                    Via {paymentMethod}
-                  </p>
-                </div>
-
-                <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3">
-                  <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">💰 VOCÊ RECEBERÁ:</p>
-                  <div className="flex items-center gap-2">
-                    <CryptoIcon crypto={order.cryptoType as CryptoType} size={24} />
-                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                      {(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward)).toFixed(8)}
+              {isBuyOrder ? (
+                <div className="space-y-3">
+                  <div className="bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg p-3">
+                    <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">🔒 SEU COLATERAL:</p>
+                    <div className="flex items-center gap-2">
+                      <CryptoIcon crypto={order.cryptoType as CryptoType} size={24} />
+                      <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                        {collateralAmount}
+                      </p>
+                    </div>
+                    <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                      {order.cryptoType} ({order.cryptoNetwork})
+                    </p>
+                    <p className="text-xs text-orange-700 dark:text-orange-400 mt-2">
+                      Inclui 1.5% de taxa da plataforma
                     </p>
                   </div>
-                  <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                    {order.cryptoType} ({order.cryptoNetwork})
-                  </p>
-                  <p className="text-xs text-green-700 dark:text-green-400 font-semibold mt-2">
-                    ✨ Inclui +{parseFloat(order.payerReward).toFixed(8)} de cashback (1%)
-                  </p>
+
+                  <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3">
+                    <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">💰 VOCÊ RECEBERÁ:</p>
+                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                      {formatBRL(order.brlAmount)}
+                    </p>
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                      Via PIX do comprador
+                    </p>
+                    <p className="text-xs text-green-700 dark:text-green-400 font-semibold mt-2">
+                      ✨ Lucro liquido: ~1% ({formatBRL((parseFloat(order.brlAmount) * 0.01).toFixed(2))})
+                    </p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg p-3">
+                    <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">💸 VOCÊ PAGARÁ:</p>
+                    <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                      {formatBRL(order.brlAmount)}
+                    </p>
+                    <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                      Via {paymentMethod}
+                    </p>
+                  </div>
+
+                  <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3">
+                    <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">💰 VOCÊ RECEBERÁ:</p>
+                    <div className="flex items-center gap-2">
+                      <CryptoIcon crypto={order.cryptoType as CryptoType} size={24} />
+                      <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                        {(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward)).toFixed(8)}
+                      </p>
+                    </div>
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                      {order.cryptoType} ({order.cryptoNetwork})
+                    </p>
+                    <p className="text-xs text-green-700 dark:text-green-400 font-semibold mt-2">
+                      ✨ Inclui +{parseFloat(order.payerReward).toFixed(8)} de cashback (1%)
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Action Button */}
@@ -346,6 +477,88 @@ export default function OrderPreviewPage() {
                 >
                   Seu Pedido - Não pode aceitar
                 </button>
+              ) : isBuyOrder ? (
+                // BUY order - show form to enter PIX data
+                showBuyAcceptForm ? (
+                  <div className="space-y-4">
+                    <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 mb-4">
+                      <p className="text-xs text-blue-700 dark:text-blue-300">
+                        Informe seus dados PIX para receber o pagamento do comprador.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Tipo de Chave PIX *
+                      </label>
+                      <select
+                        value={providerPixKeyType}
+                        onChange={(e) => setProviderPixKeyType(e.target.value as any)}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      >
+                        <option value="CPF">CPF</option>
+                        <option value="CNPJ">CNPJ</option>
+                        <option value="EMAIL">E-mail</option>
+                        <option value="PHONE">Telefone</option>
+                        <option value="RANDOM">Chave Aleatória</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Chave PIX *
+                      </label>
+                      <input
+                        type="text"
+                        value={providerPixKey}
+                        onChange={(e) => setProviderPixKey(e.target.value)}
+                        placeholder="Digite sua chave PIX"
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Nome do Beneficiário *
+                      </label>
+                      <input
+                        type="text"
+                        value={providerRecipientName}
+                        onChange={(e) => setProviderRecipientName(e.target.value)}
+                        placeholder="Nome completo para verificação"
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowBuyAcceptForm(false)}
+                        className="flex-1 py-2 px-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handleAcceptBuyOrder}
+                        disabled={accepting || !providerPixKey || !providerRecipientName}
+                        className="flex-1 py-2 px-4 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
+                      >
+                        {accepting ? 'Processando...' : 'Confirmar'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setShowBuyAcceptForm(true)}
+                      className="w-full py-3 px-4 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg mb-3"
+                    >
+                      💰 Fornecer Liquidez
+                    </button>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                      Você receberá {formatBRL(order.brlAmount)} via PIX
+                    </p>
+                  </>
+                )
               ) : (
                 <>
                   <button

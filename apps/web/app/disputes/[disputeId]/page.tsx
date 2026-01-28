@@ -255,10 +255,10 @@ export default function DisputeDetailPage() {
     <div className="container mx-auto px-4 py-8 max-w-5xl">
       {/* Breadcrumb */}
       <button
-        onClick={() => router.push('/disputes')}
+        onClick={() => router.push(isStaff() ? '/admin/disputes' : '/disputes')}
         className="text-blue-600 dark:text-blue-400 hover:underline mb-4"
       >
-        ← Voltar para minhas disputas
+        {isStaff() ? '← Voltar para painel de disputas' : '← Voltar para minhas disputas'}
       </button>
 
       {/* Header */}
@@ -284,19 +284,13 @@ export default function DisputeDetailPage() {
         {/* Order Info */}
         <div className="bg-gray-50 dark:bg-gray-900 rounded p-4 mb-4">
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-            Informações do Pedido
+            Informacoes do Pedido
           </h3>
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
             <div>
-              <span className="text-gray-600 dark:text-gray-400">ID do Pedido:</span>
+              <span className="text-gray-600 dark:text-gray-400">ID:</span>
               <span className="ml-2 font-mono text-gray-900 dark:text-white">
                 #{dispute.order.id.substring(0, 8)}
-              </span>
-            </div>
-            <div>
-              <span className="text-gray-600 dark:text-gray-400">Tipo:</span>
-              <span className="ml-2 font-semibold text-gray-900 dark:text-white">
-                {dispute.order.type === 'BUY' ? 'Compra' : 'Venda'}
               </span>
             </div>
             <div>
@@ -308,11 +302,83 @@ export default function DisputeDetailPage() {
             <div>
               <span className="text-gray-600 dark:text-gray-400">Cripto:</span>
               <span className="ml-2 font-semibold text-gray-900 dark:text-white">
-                {dispute.order.cryptoAmount} {dispute.order.cryptoType}
+                {parseFloat(dispute.order.cryptoAmount).toFixed(8)} {dispute.order.cryptoType}
               </span>
             </div>
           </div>
         </div>
+
+        {/* Partes Envolvidas - Visao Admin */}
+        {isStaff() && (
+          <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 mb-4">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+              Partes Envolvidas
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Vendedor de Cripto */}
+              {dispute.order.user && (
+                <div className="bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700 rounded-lg p-3">
+                  <div className="text-xs font-semibold text-purple-600 dark:text-purple-400 mb-2">
+                    VENDEDOR DE CRIPTO
+                  </div>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Nome:</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{dispute.order.user.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Email:</span>
+                      <span className="font-mono text-xs text-gray-900 dark:text-white">{dispute.order.user.email}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">ID:</span>
+                      <span className="font-mono text-xs text-gray-900 dark:text-white">{dispute.order.user.id.slice(0, 12)}...</span>
+                    </div>
+                  </div>
+                  {dispute.createdBy === dispute.order.user.id && (
+                    <div className="mt-2 text-xs text-red-600 dark:text-red-400 font-semibold">
+                      Abriu a disputa
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Pagador do PIX (Comprador) */}
+              {dispute.order.transactions?.[0]?.payer && (
+                <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3">
+                  <div className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2">
+                    PAGADOR DO PIX (Comprador)
+                  </div>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Nome:</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{dispute.order.transactions[0].payer.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Email:</span>
+                      <span className="font-mono text-xs text-gray-900 dark:text-white">{dispute.order.transactions[0].payer.email}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">ID:</span>
+                      <span className="font-mono text-xs text-gray-900 dark:text-white">{dispute.order.transactions[0].payer.id.slice(0, 12)}...</span>
+                    </div>
+                    {dispute.order.transactions[0].payerWalletAddress && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 dark:text-gray-400">Wallet:</span>
+                        <span className="font-mono text-xs text-gray-900 dark:text-white">{dispute.order.transactions[0].payerWalletAddress.slice(0, 12)}...</span>
+                      </div>
+                    )}
+                  </div>
+                  {dispute.createdBy === dispute.order.transactions[0].payer.id && (
+                    <div className="mt-2 text-xs text-red-600 dark:text-red-400 font-semibold">
+                      Abriu a disputa
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Description */}
         <div>
@@ -396,19 +462,29 @@ export default function DisputeDetailPage() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Tipo de Resolução
+                Tipo de Resolucao
               </label>
               <select
                 value={resolutionType}
                 onChange={(e) => setResolutionType(e.target.value)}
                 className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
               >
-                <option value="">Selecione...</option>
-                <option value="REFUND_BUYER">Reembolso ao Comprador</option>
-                <option value="PARTIAL_REFUND">Reembolso Parcial</option>
-                <option value="RELEASE_SELLER">Liberar para Vendedor</option>
-                <option value="NO_ACTION">Sem Ação</option>
+                <option value="">Selecione a decisao...</option>
+                <option value="RELEASE_TO_BUYER">Liberar Cripto para Pagador do PIX (comprovante valido)</option>
+                <option value="RETURN_TO_SELLER">Devolver Cripto ao Vendedor (comprovante invalido)</option>
+                <option value="CANCEL_NO_PENALTY">Cancelar Negociacao (sem penalidade)</option>
+                <option value="PENALTY_BUYER">Penalizar Pagador do PIX (fraude)</option>
+                <option value="PENALTY_SELLER">Penalizar Vendedor (ma-fe)</option>
               </select>
+              {resolutionType && (
+                <p className="mt-2 text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900 p-2 rounded">
+                  {resolutionType === 'RELEASE_TO_BUYER' && 'A cripto sera transferida para a carteira do pagador do PIX.'}
+                  {resolutionType === 'RETURN_TO_SELLER' && 'A cripto sera desbloqueada e devolvida ao vendedor.'}
+                  {resolutionType === 'CANCEL_NO_PENALTY' && 'A cripto sera desbloqueada para o vendedor. Nenhuma penalidade.'}
+                  {resolutionType === 'PENALTY_BUYER' && 'Cripto devolvida ao vendedor + penalidade ao comprador.'}
+                  {resolutionType === 'PENALTY_SELLER' && 'Cripto liberada ao comprador + penalidade ao vendedor.'}
+                </p>
+              )}
             </div>
 
             <div>
@@ -443,7 +519,7 @@ export default function DisputeDetailPage() {
       )}
 
       {/* Messages Thread */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden" style={{ height: '500px' }}>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow" style={{ minHeight: '500px', maxHeight: '700px', display: 'flex', flexDirection: 'column' }}>
         <div className="bg-gray-100 dark:bg-gray-700 px-6 py-3 border-b border-gray-200 dark:border-gray-600">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
             Histórico de Mensagens

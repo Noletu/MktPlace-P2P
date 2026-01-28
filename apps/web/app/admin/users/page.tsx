@@ -167,78 +167,66 @@ export default function UsersPage() {
           <table className="w-full">
             <thead className="bg-white dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Usuário</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">KYC</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Role</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Reputação</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Transações</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Cadastro</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Ações</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Usuário</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">KYC</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Role</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Rep.</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Trans.</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Cadastro</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
               {filteredUsers.map((user) => (
                 <tr key={user.id} className="hover:bg-gray-700/50 transition">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center space-x-3">
-                      <UserAvatar name={user.name} email={user.email} size="md" />
+                  <td className="px-4 py-2">
+                    <div className="flex items-center space-x-2">
+                      <UserAvatar name={user.name} email={user.email} size="sm" />
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           <p className="text-sm font-medium text-gray-900 dark:text-white">{user.name || 'Sem nome'}</p>
                           {user.accountFrozen && (
-                            <div className="flex flex-col gap-1">
-                              <span className="px-2 py-1 bg-red-600/20 text-red-300 rounded-full text-xs font-bold">
-                                🔒 BLOQUEADA
-                              </span>
-                              {user.frozenUntil && new Date(user.frozenUntil) > new Date() && (
-                                <span className="px-2 py-1 bg-yellow-600/20 text-yellow-300 rounded-full text-xs">
-                                  ⏰ até {new Date(user.frozenUntil).toLocaleString('pt-BR', {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })}
-                                </span>
-                              )}
-                            </div>
+                            <span className="px-1.5 py-0.5 bg-red-600/20 text-red-300 rounded text-xs font-bold">
+                              🔒
+                            </span>
                           )}
                         </div>
                         <p className="text-xs text-gray-600 dark:text-gray-400">{user.email}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-2 whitespace-nowrap">
                     <StatusBadge
                       status={user.kycLevel === 'NONE' ? 'Sem KYC' : user.kycLevel}
                       variant={getKYCBadgeVariant(user.kycLevel)}
                     />
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-2">
                     <StatusBadge status={user.role} variant={getRoleBadgeVariant(user.role)} />
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-2">
                     <span className="text-sm text-gray-900 dark:text-white font-semibold">{user.reputationScore}</span>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-2">
                     <span className="text-sm text-gray-700 dark:text-gray-300">{user.totalTransactions}</span>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-2">
                     <span className="text-xs text-gray-600 dark:text-gray-400">
                       {new Date(user.createdAt).toLocaleDateString('pt-BR')}
                     </span>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-wrap gap-2">
+                  <td className="px-4 py-2">
+                    <div className="flex gap-1">
                       {/* Ver Detalhes */}
                       <button
                         onClick={() => {
                           setSelectedUserId(user.id);
                           setShowDetailsModal(true);
                         }}
-                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition"
-                        title="Ver detalhes completos do usuário"
+                        className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition"
+                        title="Ver detalhes"
                       >
-                        👁️ Detalhes
+                        👁️
                       </button>
 
                       {/* Mudar Role */}
@@ -247,10 +235,10 @@ export default function UsersPage() {
                           setSelectedUser(user);
                           setShowChangeRoleModal(true);
                         }}
-                        className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm transition"
-                        title="Alterar role do usuário"
+                        className="p-2 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm transition"
+                        title="Alterar role"
                       >
-                        🔄 Role
+                        🔄
                       </button>
 
                       {/* Bloquear/Desbloquear */}
@@ -260,10 +248,10 @@ export default function UsersPage() {
                             setSelectedUser(user);
                             setShowUnfreezeModal(true);
                           }}
-                          className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition"
-                          title={`Bloqueada em: ${user.frozenAt ? new Date(user.frozenAt).toLocaleDateString('pt-BR') : ''}\nMotivo: ${user.frozenReason || 'N/A'}${user.frozenUntil ? `\nAuto-desbloqueio: ${new Date(user.frozenUntil).toLocaleString('pt-BR')}` : '\nTipo: Permanente (manual)'}`}
+                          className="p-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition"
+                          title={`Desbloquear\nBloqueada em: ${user.frozenAt ? new Date(user.frozenAt).toLocaleDateString('pt-BR') : ''}\nMotivo: ${user.frozenReason || 'N/A'}${user.frozenUntil ? `\nAuto-desbloqueio: ${new Date(user.frozenUntil).toLocaleString('pt-BR')}` : ''}`}
                         >
-                          🔓 Desbloquear
+                          🔓
                         </button>
                       ) : (
                         <button
@@ -271,10 +259,10 @@ export default function UsersPage() {
                             setSelectedUser(user);
                             setShowFreezeModal(true);
                           }}
-                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition"
+                          className="p-2 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition"
                           title="Bloquear conta"
                         >
-                          🔒 Bloquear
+                          🔒
                         </button>
                       )}
                     </div>

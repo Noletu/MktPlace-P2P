@@ -104,9 +104,22 @@ export class ChatService {
 
     // Criar novo chat
     // Chat só é criado após pedido ser aceito (MATCHED+)
-    // Usa transaction.payerId para identificar o comprador
-    const participant1Id = order.userId; // Owner (vendedor)
-    const participant2Id = transaction ? transaction.payerId : userId; // Payer (comprador)
+    // Para BUY orders: owner é comprador, provider é vendedor
+    // Para SELL orders: owner é vendedor, payer é comprador
+    const isBuyOrder = order.orderType === 'BUY';
+
+    let participant1Id: string;
+    let participant2Id: string;
+
+    if (isBuyOrder) {
+      // BUY: owner (comprador) + provider (vendedor/provedor de liquidez)
+      participant1Id = order.userId;
+      participant2Id = order.providerId!;
+    } else {
+      // SELL: owner (vendedor) + payer (comprador)
+      participant1Id = order.userId;
+      participant2Id = transaction ? transaction.payerId : userId;
+    }
 
     // Garantir que não está criando chat consigo mesmo
     if (participant1Id === participant2Id) {
@@ -180,6 +193,12 @@ export class ChatService {
 
     if (!chat) {
       throw new Error('Chat não encontrado');
+    }
+
+    // Bloquear envio se pedido está finalizado (exceto mensagens de sistema)
+    const finalStatuses = ['COMPLETED', 'CANCELLED', 'DISPUTED'];
+    if (chat.order && finalStatuses.includes(chat.order.status) && input.type !== 'SYSTEM') {
+      throw new Error('Não é possível enviar mensagens em pedidos finalizados');
     }
 
     // Verificar se sender é participante
