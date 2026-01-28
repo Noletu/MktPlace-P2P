@@ -192,36 +192,32 @@ export default function CryptoPriceCard({
 
   return (
     <div className="relative">
-      {/* Mini Card - Layout Horizontal Compacto */}
+      {/* Card de Preço */}
       <div
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
-        className={`${colors.bg} border-2 ${colors.border} rounded-md px-2 py-1.5 shadow-sm hover:shadow-md transition-all cursor-pointer`}
+        className={`${colors.bg} border ${colors.border} rounded-md px-2 py-1 shadow-sm hover:shadow-md transition-all cursor-pointer`}
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           {/* Ícone */}
           <div className={`${colors.iconBg} rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0`}>
             <span className={`text-sm ${colors.iconText}`}>{icon}</span>
           </div>
 
-          {/* Informações (2 colunas) */}
-          <div className="flex gap-2 items-center">
-            {/* Coluna 1: Symbol + Price */}
-            <div className="min-w-[50px]">
-              <p className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 leading-tight">{symbol}</p>
-              <p className={`text-xs font-bold ${colors.priceText} leading-tight`}>{formatPrice(price)}</p>
+          {/* Preço e Taxa */}
+          <div className="flex flex-col">
+            <div className="flex items-baseline gap-1">
+              <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400">{symbol}</span>
+              <span className={`text-xs font-bold ${colors.priceText}`}>{formatPrice(price)}</span>
             </div>
-
-            {/* Separador */}
-            <div className="w-px h-7 bg-gray-300 dark:bg-gray-600"></div>
-
-            {/* Coluna 2: Taxa */}
-            <div className="min-w-[70px]">
-              <p className="text-[10px] font-medium text-gray-600 dark:text-gray-400 leading-tight">Taxa de rede</p>
-              <p className="text-[10px] font-bold text-gray-700 dark:text-gray-200 leading-tight mt-0.5 truncate">
-                {getMainFee()}
-              </p>
-            </div>
+            {symbol === 'ETH' ? (
+              <div className="flex gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+                <span>L1 {formatFee((fees as ETHFees).l1.estimatedUSD)}</span>
+                <span className="text-green-600 dark:text-green-400">L2 {formatFee((fees as ETHFees).l2.estimatedUSD)}</span>
+              </div>
+            ) : (
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">{getMainFee()}</p>
+            )}
           </div>
         </div>
       </div>

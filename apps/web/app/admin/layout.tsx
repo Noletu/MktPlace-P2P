@@ -108,22 +108,22 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       {/* Admin Header */}
       <header className="bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900 border-b border-gray-300 dark:border-gray-700 shadow-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-3 items-center py-4 gap-4">
+          <div className="flex items-center justify-between py-3 gap-2">
             {/* LEFT: Logo clicável + Badge */}
-            <div className="flex items-center space-x-4 justify-start">
+            <div className="flex items-center gap-2 flex-shrink-0">
               {/* Logo clicável - leva para homepage mantendo login */}
               <button
                 onClick={() => router.push('/')}
                 className="flex items-center gap-2 hover:opacity-80 transition-opacity"
               >
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">MP</span>
+                <div className="w-7 h-7 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold text-xs">MP</span>
                 </div>
-                <span className="text-lg font-bold text-gray-900 dark:text-white">MktPlace P2P</span>
+                <span className="text-sm font-bold text-gray-900 dark:text-white hidden xl:block">MktPlace</span>
               </button>
 
               {/* Badge ADMIN/MASTER/SUPPORT/GERENTE */}
-              <span className={`px-3 py-1 border rounded-full text-xs font-semibold ${
+              <span className={`px-2 py-0.5 border rounded-full text-[10px] font-semibold whitespace-nowrap ${
                 userRole === 'MASTER'
                   ? 'bg-purple-600/20 border-purple-500/50 text-purple-600 dark:text-purple-400'
                   : userRole === 'ADMIN'
@@ -132,22 +132,20 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                   ? 'bg-green-600/20 border-green-500/50 text-green-600 dark:text-green-400'
                   : 'bg-orange-600/20 border-orange-500/50 text-orange-600 dark:text-orange-400'
               }`}>
-                {userRole === 'MASTER' ? '👑 MASTER'
-                 : userRole === 'ADMIN' ? '⚡ ADMINISTRADOR'
-                 : userRole === 'GERENTE' ? '📊 GERENTE'
-                 : '🎧 SUPORTE'}
-                {' '}
-                <span className="opacity-70">(Nv. {userLevel})</span>
+                {userRole === 'MASTER' ? '👑 Master'
+                 : userRole === 'ADMIN' ? '⚡ Admin'
+                 : userRole === 'GERENTE' ? '📊 Gerente'
+                 : '🎧 Suporte'}
               </span>
             </div>
 
             {/* CENTER: Crypto Price Cards */}
-            <div className="flex justify-center">
+            <div className="flex justify-center flex-1 min-w-0">
               <CryptoPriceCards />
             </div>
 
             {/* RIGHT: Notificações, Tema, Perfil */}
-            <div className="flex items-center justify-end gap-3">
+            <div className="flex items-center justify-end gap-2 flex-shrink-0">
               <NotificationBell />
               <ThemeToggle />
 

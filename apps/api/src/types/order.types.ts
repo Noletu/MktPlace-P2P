@@ -67,3 +67,30 @@ export const FEE_CONFIG = {
   TOTAL_FEE_PERCENTAGE: 0.025, // 2.5%
   TIMEOUT_HOURS: 24, // Horas para timeout
 };
+
+// Configurações específicas para ordens BUY
+// Em ordens BUY: comprador paga 2.5% de markup, provedor deposita crypto + 1.5% fee
+// Provedor recebe BRL com 2.5% extra, paga 1.5% fee em crypto = ~1% lucro líquido
+export const BUY_ORDER_CONFIG = {
+  BRL_MARKUP_PERCENTAGE: 0.025, // 2.5% markup no preço BRL
+  PROVIDER_COLLATERAL_FEE: 0.015, // 1.5% que provedor deposita extra (platform fee)
+};
+
+// Input para criação de ordem BUY (comprador não tem crypto)
+export interface CreateBuyOrderInput {
+  userId: string;
+  cryptoType: string;
+  cryptoNetwork: string;
+  cryptoAmount: string; // Quanto crypto quer comprar
+  customExpirationHours?: number;
+  manualCancelOnly?: boolean;
+}
+
+// Input para provedor aceitar ordem BUY
+export interface AcceptBuyOrderInput {
+  orderId: string;
+  providerId: string;
+  pixKey: string;
+  pixKeyType: 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM';
+  recipientName: string;
+}

@@ -16,7 +16,8 @@ import { CancellationReason } from '@/types/cancellation';
 
 interface Order {
   id: string;
-  type: string;
+  orderType: string; // 'SELL' or 'BUY'
+  type: string; // Payment method: 'PIX' or 'BOLETO'
   status: string;
   cryptoType: string;
   cryptoNetwork: string;
@@ -29,6 +30,14 @@ interface Order {
   createdAt: string;
   timeoutAt: string;
   user: {
+    id: string;
+    name: string;
+    email: string;
+    reputationScore: number;
+  };
+  // BUY order fields - provider is the liquidity provider who accepts
+  providerId?: string;
+  provider?: {
     id: string;
     name: string;
     email: string;
@@ -91,6 +100,13 @@ export default function OrderDetailsPage() {
 
   // Edit order state
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // BUY order acceptance state (for providers)
+  const [showAcceptBuyModal, setShowAcceptBuyModal] = useState(false);
+  const [acceptingBuyOrder, setAcceptingBuyOrder] = useState(false);
+  const [providerPixKey, setProviderPixKey] = useState('');
+  const [providerPixKeyType, setProviderPixKeyType] = useState<'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM'>('CPF');
+  const [providerRecipientName, setProviderRecipientName] = useState('');
 
   // Parse orderData - useMemo to recalculate when order changes
   const orderData = useMemo(() => {
@@ -602,6 +618,95 @@ export default function OrderDetailsPage() {
     }
   };
 
+  // Handler para aceitar ordem BUY (provider fornece liquidez)
+  const handleAcceptBuyOrder = async () => {
+    if (!providerPixKey || !providerRecipientName) {
+      alert('Por favor, preencha todos os campos');
+      return;
+    }
+
+    setAcceptingBuyOrder(true);
+    setError('');
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('Voce precisa estar logado');
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}/accept-buy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          pixKey: providerPixKey,
+          pixKeyType: providerPixKeyType,
+          recipientName: providerRecipientName,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Erro ao aceitar ordem');
+      }
+
+      alert('Ordem aceita com sucesso! Seu colateral foi bloqueado. Aguarde o comprador efetuar o pagamento.');
+      setShowAcceptBuyModal(false);
+      await fetchOrder();
+    } catch (err: any) {
+      setError(err.message);
+      alert(err.message);
+    } finally {
+      setAcceptingBuyOrder(false);
+    }
+  };
+
+  // Handler para provider cancelar ordem BUY
+  const handleProviderCancelOrder = async (reason: CancellationReason, note: string) => {
+    setCancelling(true);
+    setError('');
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('Voce precisa estar logado');
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}/cancel-by-provider`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reason, note }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao cancelar ordem');
+      }
+
+      const message = data.penaltyApplied
+        ? `Ordem cancelada! Penalidade: -${data.penaltyPoints} pontos de reputacao.`
+        : 'Ordem cancelada com sucesso!';
+
+      alert(message);
+      setShowCancelModal(false);
+      await fetchOrder();
+      router.push('/orders/my-orders');
+    } catch (err: any) {
+      setError(err.message);
+      alert(err.message);
+      throw err;
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const handleSubmitReview = async (reviewData: ReviewData) => {
     try {
       const token = localStorage.getItem('accessToken');
@@ -670,31 +775,37 @@ export default function OrderDetailsPage() {
 
   const transaction = order.transactions[0];
 
-  // Detectar método de pagamento a partir do orderData
-  const paymentMethod = orderData.pixKey ? 'PIX' : 'BOLETO';
+  // Detectar tipo de ordem: BUY ou SELL (usando campo orderType)
+  const isBuyOrder = order.orderType === 'BUY';
+
+  // Detectar metodo de pagamento a partir do orderData (pode ser null para BUY orders PENDING)
+  const paymentMethod = orderData?.pixKey ? 'PIX' : (orderData?.barcode ? 'BOLETO' : 'PIX');
 
   // currentUserId now comes from useState (loaded in useEffect)
   const isCreator = order.user.id === currentUserId;
   const isPayer = transaction?.payer?.id === currentUserId;
+  // Para BUY orders: provider e quem aceita a ordem e fornece liquidez
+  const isProvider = isBuyOrder && order.providerId === currentUserId;
 
-  // Debug: mostrar informações detalhadas no console
-  console.log('🔍 Debug Order Details:', {
+  // Debug: mostrar informacoes detalhadas no console
+  console.log('Debug Order Details:', {
     orderId: order.id,
+    orderType: order.orderType,
+    paymentMethod: order.type,
     orderStatus: order.status,
     orderUserId: order.user.id,
-    orderUserIdType: typeof order.user.id,
+    providerId: order.providerId,
     currentUserId,
-    currentUserIdType: typeof currentUserId,
     isCreator,
     isPayer,
+    isProvider,
+    isBuyOrder,
     transaction: transaction ? {
       id: transaction.id,
       status: transaction.status,
       payerId: transaction.payer?.id,
       hasComprovante: !!transaction.comprovanteData,
     } : null,
-    canCancel: isCreator && (order.status === 'PENDING' || order.status === 'MATCHED'),
-    shouldShowConfirmButton: isCreator && (order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING'),
   });
 
   // Funções auxiliares para o sistema de abas
@@ -761,7 +872,9 @@ export default function OrderDetailsPage() {
                 <div className="flex justify-between items-start mb-6">
                   <div>
                     <h2 className="text-2xl font-bold mb-1 text-gray-900 dark:text-white">
-                      {paymentMethod === 'PIX' ? 'Pagamento PIX' : 'Pagamento de Boleto'}
+                      {isBuyOrder
+                        ? 'Ordem de Compra'
+                        : (paymentMethod === 'PIX' ? 'Pagamento PIX' : 'Pagamento de Boleto')}
                     </h2>
                     <div className="flex items-center gap-2 mb-3">
                       <p className="text-sm text-gray-600 dark:text-gray-400 font-mono">
@@ -803,37 +916,66 @@ export default function OrderDetailsPage() {
                 </div>
 
                 <div className="space-y-4">
-                  <div>
-                    <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Dados do Pagamento</h3>
-                    {paymentMethod === 'PIX' ? (
-                      <>
-                        <p className="text-gray-800 dark:text-gray-300"><strong>Tipo de Chave:</strong> {orderData.pixKeyType}</p>
-                        <p className="text-gray-800 dark:text-gray-300"><strong>Chave PIX:</strong> {orderData.pixKey}</p>
-                        <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiário:</strong> {orderData.recipientName}</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-gray-800 dark:text-gray-300"><strong>Código de Barras:</strong></p>
-                        <p className="font-mono text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white p-2 rounded break-all">
-                          {orderData.barcode}
-                        </p>
-                        <p className="text-gray-800 dark:text-gray-300"><strong>Vencimento:</strong> {new Date(orderData.dueDate).toLocaleDateString()}</p>
-                        <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiário:</strong> {orderData.recipientName}</p>
-                      </>
-                    )}
-                  </div>
-
-                  <div>
-                    <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Vendedor</h3>
-                    <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {order.user.name}</p>
-                    <p className="text-gray-800 dark:text-gray-300"><strong>Reputação:</strong> {order.user.reputationScore}/100</p>
-                  </div>
-
-                  {transaction && (
-                    <div>
-                      <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Pagador</h3>
-                      <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {transaction.payer.name}</p>
+                  {/* Dados do Pagamento - Condicional para BUY orders */}
+                  {isBuyOrder && order.status === 'PENDING' ? (
+                    <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4">
+                      <h3 className="font-bold mb-2 text-yellow-800 dark:text-yellow-200">Aguardando Provedor</h3>
+                      <p className="text-yellow-700 dark:text-yellow-300 text-sm">
+                        Esta ordem aguarda um provedor de liquidez que ira fornecer os dados de pagamento PIX.
+                      </p>
                     </div>
+                  ) : orderData ? (
+                    <div>
+                      <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Dados do Pagamento</h3>
+                      {orderData.pixKey ? (
+                        <>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Tipo de Chave:</strong> {orderData.pixKeyType}</p>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Chave PIX:</strong> {orderData.pixKey}</p>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiario:</strong> {orderData.recipientName}</p>
+                        </>
+                      ) : orderData.barcode ? (
+                        <>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Codigo de Barras:</strong></p>
+                          <p className="font-mono text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white p-2 rounded break-all">
+                            {orderData.barcode}
+                          </p>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Vencimento:</strong> {new Date(orderData.dueDate).toLocaleDateString()}</p>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiario:</strong> {orderData.recipientName}</p>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {/* Participantes da Transacao */}
+                  {isBuyOrder ? (
+                    <>
+                      <div>
+                        <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Comprador (Criador)</h3>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {order.user.name}</p>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Reputacao:</strong> {order.user.reputationScore}/100</p>
+                      </div>
+                      {order.provider && (
+                        <div>
+                          <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Provedor (Vendedor)</h3>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {order.provider.name}</p>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Reputacao:</strong> {order.provider.reputationScore}/100</p>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Vendedor</h3>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {order.user.name}</p>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Reputacao:</strong> {order.user.reputationScore}/100</p>
+                      </div>
+                      {transaction && (
+                        <div>
+                          <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Pagador</h3>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {transaction.payer.name}</p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -931,137 +1073,307 @@ export default function OrderDetailsPage() {
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
                 <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Resumo Financeiro</h3>
                 <div className="space-y-3">
-                  {isCreator ? (
+                  {/* === RESUMO PARA BUY ORDERS === */}
+                  {isBuyOrder ? (
                     <>
-                      {/* CRIADOR: Pediu BRL, depositou cripto como colateral */}
-                      <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
-                        <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">💰 VOCÊ RECEBERÁ EM BRL:</p>
-                        <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                          {formatBRL(order.brlAmount)}
-                        </p>
-                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                          Quando alguém pagar seu {paymentMethod}
-                        </p>
-                      </div>
+                      {isCreator ? (
+                        <>
+                          {/* COMPRADOR (criador da ordem BUY): Paga BRL, recebe cripto */}
+                          <div className="bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg p-3">
+                            <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">VOCE PAGARA EM BRL:</p>
+                            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                              {formatBRL(order.brlAmount)}
+                            </p>
+                            <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                              Via PIX para o provedor
+                            </p>
+                          </div>
 
-                      <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-3 mt-3">
-                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase mb-2">Sobre o Colateral:</p>
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <p className="text-sm text-gray-600 dark:text-gray-400">Valor depositado</p>
-                            <p className="font-semibold text-gray-900 dark:text-white">{parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}</p>
+                          <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
+                            <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">VOCE RECEBERA EM CRIPTO:</p>
+                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                              {parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}
+                            </p>
+                            <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                              Direto na sua carteira da plataforma
+                            </p>
                           </div>
-                          <div className="flex justify-between items-center">
-                            <p className="text-sm text-gray-600 dark:text-gray-400">Taxa total (2.5%)</p>
-                            <p className="text-red-600 dark:text-red-400 text-sm">-{parseFloat(order.totalFee).toFixed(8)} {order.cryptoType}</p>
-                          </div>
-                          <div className="text-xs text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 p-2 rounded mt-2 space-y-1">
-                            <p>• 1.5% vai para a plataforma</p>
-                            <p>• 1% vai como cashback para quem pagar</p>
-                          </div>
-                        </div>
 
-                        <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded p-2 mt-3">
-                          <p className="text-xs text-yellow-900 dark:text-yellow-200 font-semibold">
-                            ⚠️ O colateral NÃO será devolvido
-                          </p>
-                          <p className="text-xs text-yellow-800 dark:text-yellow-300 mt-1">
-                            Ele será transferido para quem pagar seu {paymentMethod}. Você receberá os {formatBRL(order.brlAmount)} em BRL.
-                          </p>
-                        </div>
-                      </div>
+                          <div className="text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 p-2 rounded mt-2">
+                            <p>Taxa de 2.5% ja inclusa no valor em BRL</p>
+                          </div>
+                        </>
+                      ) : isProvider ? (
+                        <>
+                          {/* PROVEDOR (quem aceita ordem BUY): Deposita cripto, recebe BRL */}
+                          <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
+                            <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">VOCE RECEBERA EM BRL:</p>
+                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                              {formatBRL(order.brlAmount)}
+                            </p>
+                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                              Quando o comprador efetuar o pagamento
+                            </p>
+                          </div>
+
+                          <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-3 mt-3">
+                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase mb-2">Seu Colateral:</p>
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <p className="text-sm text-gray-600 dark:text-gray-400">Cripto para comprador</p>
+                                <p className="font-semibold text-gray-900 dark:text-white">{parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}</p>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <p className="text-sm text-gray-600 dark:text-gray-400">Taxa plataforma (1.5%)</p>
+                                <p className="text-red-600 dark:text-red-400 text-sm">-{parseFloat(order.platformFee).toFixed(8)} {order.cryptoType}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-green-50 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded p-2 mt-3">
+                            <p className="text-xs text-green-900 dark:text-green-200 font-semibold">
+                              Seu lucro: ~1% sobre o valor em BRL
+                            </p>
+                            <p className="text-xs text-green-800 dark:text-green-300 mt-1">
+                              O markup de 2.5% no BRL cobre a taxa + seu lucro
+                            </p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {/* Visitante vendo ordem BUY */}
+                          <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
+                            <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">ORDEM DE COMPRA:</p>
+                            <p className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                              {parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}
+                            </p>
+                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                              por {formatBRL(order.brlAmount)}
+                            </p>
+                          </div>
+
+                          {order.status === 'PENDING' && (
+                            <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
+                              <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">PROVEDOR GANHA:</p>
+                              <p className="text-sm text-green-800 dark:text-green-200">
+                                ~1% de lucro ao fornecer liquidez
+                              </p>
+                              <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                                Deposite {(parseFloat(order.cryptoAmount) * 1.015).toFixed(8)} {order.cryptoType} e receba {formatBRL(order.brlAmount)}
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </>
                   ) : (
                     <>
-                      {/* PAGADOR: Pagará BRL, receberá cripto */}
-                      <div className="bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg p-3">
-                        <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">💸 VOCÊ PAGARÁ EM BRL:</p>
-                        <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                          {formatBRL(order.brlAmount)}
-                        </p>
-                        <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
-                          Via {paymentMethod}
-                        </p>
-                      </div>
+                      {/* === RESUMO PARA SELL ORDERS (existente) === */}
+                      {isCreator ? (
+                        <>
+                          {/* CRIADOR: Pediu BRL, depositou cripto como colateral */}
+                          <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
+                            <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">VOCE RECEBERA EM BRL:</p>
+                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                              {formatBRL(order.brlAmount)}
+                            </p>
+                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                              Quando alguem pagar seu {paymentMethod}
+                            </p>
+                          </div>
 
-                      <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
-                        <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">💰 VOCÊ RECEBERÁ EM CRIPTO:</p>
-                        <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                          {(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward)).toFixed(8)} {order.cryptoType}
-                        </p>
-                        <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                          ✨ Inclui +{parseFloat(order.payerReward).toFixed(8)} de cashback (1%)
-                        </p>
-                      </div>
+                          <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-3 mt-3">
+                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase mb-2">Sobre o Colateral:</p>
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <p className="text-sm text-gray-600 dark:text-gray-400">Valor depositado</p>
+                                <p className="font-semibold text-gray-900 dark:text-white">{parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}</p>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <p className="text-sm text-gray-600 dark:text-gray-400">Taxa total (2.5%)</p>
+                                <p className="text-red-600 dark:text-red-400 text-sm">-{parseFloat(order.totalFee).toFixed(8)} {order.cryptoType}</p>
+                              </div>
+                              <div className="text-xs text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 p-2 rounded mt-2 space-y-1">
+                                <p>1.5% vai para a plataforma</p>
+                                <p>1% vai como cashback para quem pagar</p>
+                              </div>
+                            </div>
+
+                            <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded p-2 mt-3">
+                              <p className="text-xs text-yellow-900 dark:text-yellow-200 font-semibold">
+                                O colateral NAO sera devolvido
+                              </p>
+                              <p className="text-xs text-yellow-800 dark:text-yellow-300 mt-1">
+                                Ele sera transferido para quem pagar seu {paymentMethod}. Voce recebera os {formatBRL(order.brlAmount)} em BRL.
+                              </p>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {/* PAGADOR: Pagara BRL, recebera cripto */}
+                          <div className="bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg p-3">
+                            <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">VOCE PAGARA EM BRL:</p>
+                            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                              {formatBRL(order.brlAmount)}
+                            </p>
+                            <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                              Via {paymentMethod}
+                            </p>
+                          </div>
+
+                          <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
+                            <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">VOCE RECEBERA EM CRIPTO:</p>
+                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                              {(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward || '0')).toFixed(8)} {order.cryptoType}
+                            </p>
+                            <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                              Inclui +{parseFloat(order.payerReward || '0').toFixed(8)} de cashback (1%)
+                            </p>
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
                 </div>
               </div>
 
-              {/* Ações */}
+              {/* Acoes */}
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Ações</h3>
+                <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Acoes</h3>
                 <div className="space-y-2">
-                  {/* Confirmar Pagamento Feito - Pagador no status MATCHED */}
-                  {!isCreator && order.status === 'MATCHED' && (
-                    <button
-                      onClick={() => setShowPaymentConfirmModal(true)}
-                      disabled={confirmingPayment}
-                      className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
-                    >
-                      {confirmingPayment ? 'Confirmando...' : '✅ Confirmo Pagamento Feito'}
-                    </button>
+                  {/* === ACOES PARA BUY ORDERS === */}
+                  {isBuyOrder && (
+                    <>
+                      {/* Aceitar Ordem BUY - Para provedores em ordem PENDING */}
+                      {order.status === 'PENDING' && !isCreator && currentUserId && (
+                        <button
+                          onClick={() => setShowAcceptBuyModal(true)}
+                          className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg"
+                        >
+                          Fornecer Liquidez
+                        </button>
+                      )}
+
+                      {/* Confirmar Pagamento Feito - Comprador (criador) no status MATCHED */}
+                      {isCreator && order.status === 'MATCHED' && (
+                        <button
+                          onClick={() => setShowPaymentConfirmModal(true)}
+                          disabled={confirmingPayment}
+                          className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
+                        >
+                          {confirmingPayment ? 'Confirmando...' : 'Confirmo Pagamento Feito'}
+                        </button>
+                      )}
+
+                      {/* Confirmar Pagamento Recebido - Provedor apos comprovante enviado */}
+                      {isProvider && (order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
+                        <button
+                          onClick={handleConfirmPaymentReceived}
+                          disabled={confirmingReceived}
+                          className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
+                        >
+                          {confirmingReceived ? 'Confirmando...' : 'Confirmar Pagamento Recebido'}
+                        </button>
+                      )}
+
+                      {/* Cancelar Ordem BUY - Criador (comprador) em PENDING */}
+                      {isCreator && order.status === 'PENDING' && (
+                        <div>
+                          <button
+                            onClick={() => setShowCancelModal(true)}
+                            className="w-full px-4 py-2 bg-orange-600 dark:bg-orange-700 hover:bg-orange-700 dark:hover:bg-orange-800 text-white font-semibold rounded-lg"
+                          >
+                            Cancelar Ordem
+                          </button>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                            Cancelar antes de um provedor aceitar
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Cancelar como Provedor - Provedor em MATCHED */}
+                      {isProvider && order.status === 'MATCHED' && (
+                        <div>
+                          <button
+                            onClick={() => setShowCancelModal(true)}
+                            className="w-full px-4 py-2 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg"
+                          >
+                            Cancelar Aceite
+                          </button>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                            Desistir de fornecer liquidez
+                          </p>
+                        </div>
+                      )}
+                    </>
                   )}
 
-                  {/* Cancelar Aceite - Pagador no status MATCHED (antes do pagamento) */}
-                  {isPayer && order.status === 'MATCHED' && (
-                    <div>
-                      <button
-                        onClick={() => setShowPayerCancelModal(true)}
-                        className="w-full px-4 py-2 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg"
-                      >
-                        ❌ Cancelar Aceite
-                      </button>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-                        Desistir deste pedido (sem penalidade)
-                      </p>
-                    </div>
-                  )}
+                  {/* === ACOES PARA SELL ORDERS (existente) === */}
+                  {!isBuyOrder && (
+                    <>
+                      {/* Confirmar Pagamento Feito - Pagador no status MATCHED */}
+                      {!isCreator && order.status === 'MATCHED' && (
+                        <button
+                          onClick={() => setShowPaymentConfirmModal(true)}
+                          disabled={confirmingPayment}
+                          className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
+                        >
+                          {confirmingPayment ? 'Confirmando...' : 'Confirmo Pagamento Feito'}
+                        </button>
+                      )}
 
-                  {/* Confirmar Pagamento Recebido - Vendedor após comprovante enviado */}
-                  {isCreator && (order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
-                    <button
-                      onClick={handleConfirmPaymentReceived}
-                      disabled={confirmingReceived}
-                      className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
-                    >
-                      {confirmingReceived ? 'Confirmando...' : '✅ Confirmar Pagamento Recebido'}
-                    </button>
-                  )}
+                      {/* Cancelar Aceite - Pagador no status MATCHED (antes do pagamento) */}
+                      {isPayer && order.status === 'MATCHED' && (
+                        <div>
+                          <button
+                            onClick={() => setShowPayerCancelModal(true)}
+                            className="w-full px-4 py-2 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg"
+                          >
+                            Cancelar Aceite
+                          </button>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                            Desistir deste pedido (sem penalidade)
+                          </p>
+                        </div>
+                      )}
 
-                  {/* Editar Pedido - Disponível para criador em status PENDING */}
-                  {isCreator && order.status === 'PENDING' && (
-                    <button
-                      onClick={() => setShowEditModal(true)}
-                      className="w-full px-4 py-2 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg"
-                    >
-                      ✏️ Editar Pedido
-                    </button>
-                  )}
+                      {/* Confirmar Pagamento Recebido - Vendedor apos comprovante enviado */}
+                      {isCreator && (order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
+                        <button
+                          onClick={handleConfirmPaymentReceived}
+                          disabled={confirmingReceived}
+                          className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
+                        >
+                          {confirmingReceived ? 'Confirmando...' : 'Confirmar Pagamento Recebido'}
+                        </button>
+                      )}
 
-                  {/* Cancelar Pedido - Disponível para criador em status PENDING ou MATCHED (antes do pagamento) */}
-                  {isCreator && (order.status === 'PENDING' || order.status === 'MATCHED') && (
-                    <div>
-                      <button
-                        onClick={() => setShowCancelModal(true)}
-                        className="w-full px-4 py-2 bg-orange-600 dark:bg-orange-700 hover:bg-orange-700 dark:hover:bg-orange-800 text-white font-semibold rounded-lg"
-                      >
-                        ⚠️ Cancelar Pedido
-                      </button>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-                        Taxa de rede será cobrada para devolver colateral
-                      </p>
-                    </div>
+                      {/* Editar Pedido - Disponivel para criador em status PENDING */}
+                      {isCreator && order.status === 'PENDING' && (
+                        <button
+                          onClick={() => setShowEditModal(true)}
+                          className="w-full px-4 py-2 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg"
+                        >
+                          Editar Pedido
+                        </button>
+                      )}
+
+                      {/* Cancelar Pedido - Disponivel para criador em status PENDING ou MATCHED (antes do pagamento) */}
+                      {isCreator && (order.status === 'PENDING' || order.status === 'MATCHED') && (
+                        <div>
+                          <button
+                            onClick={() => setShowCancelModal(true)}
+                            className="w-full px-4 py-2 bg-orange-600 dark:bg-orange-700 hover:bg-orange-700 dark:hover:bg-orange-800 text-white font-semibold rounded-lg"
+                          >
+                            Cancelar Pedido
+                          </button>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                            Taxa de rede sera cobrada para devolver colateral
+                          </p>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {/* Abrir Disputa */}
@@ -1184,31 +1496,53 @@ export default function OrderDetailsPage() {
         )}
 
         {/* Banner de Identificacao de Papel */}
-        {order && currentUserId && (isCreator || isPayer) && (
+        {order && currentUserId && (isCreator || isPayer || isProvider) && (
           <div className={`mb-6 p-4 rounded-lg border-2 ${
-            isPayer
-              ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700'
-              : 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700'
+            isBuyOrder
+              ? (isCreator
+                  ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700'
+                  : 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700')
+              : (isPayer
+                  ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700'
+                  : 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700')
           }`}>
             <div className="flex items-center gap-3">
-              <span className="text-3xl">{isPayer ? '🛒' : '💰'}</span>
+              <span className="text-3xl">
+                {isBuyOrder
+                  ? (isCreator ? '🛒' : '💰')
+                  : (isPayer ? '🛒' : '💰')}
+              </span>
               <div>
                 <h2 className={`text-xl font-bold ${
-                  isPayer
-                    ? 'text-blue-800 dark:text-blue-200'
-                    : 'text-green-800 dark:text-green-200'
+                  isBuyOrder
+                    ? (isCreator
+                        ? 'text-blue-800 dark:text-blue-200'
+                        : 'text-green-800 dark:text-green-200')
+                    : (isPayer
+                        ? 'text-blue-800 dark:text-blue-200'
+                        : 'text-green-800 dark:text-green-200')
                 }`}>
-                  {isPayer ? 'VOCE E O COMPRADOR' : 'VOCE E O VENDEDOR'}
+                  {isBuyOrder
+                    ? (isCreator ? 'VOCE E O COMPRADOR' : 'VOCE E O PROVEDOR (VENDEDOR)')
+                    : (isPayer ? 'VOCE E O COMPRADOR' : 'VOCE E O VENDEDOR')}
                 </h2>
                 <p className={`text-sm ${
-                  isPayer
-                    ? 'text-blue-700 dark:text-blue-300'
-                    : 'text-green-700 dark:text-green-300'
+                  isBuyOrder
+                    ? (isCreator
+                        ? 'text-blue-700 dark:text-blue-300'
+                        : 'text-green-700 dark:text-green-300')
+                    : (isPayer
+                        ? 'text-blue-700 dark:text-blue-300'
+                        : 'text-green-700 dark:text-green-300')
                 }`}>
-                  {isPayer
-                    ? `Voce paga ${formatBRL(order.brlAmount)} no ${paymentMethod} e recebe ${(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward)).toFixed(8)} ${order.cryptoType} (inclui 1% cashback)`
-                    : `Voce recebera ${formatBRL(order.brlAmount)} via ${paymentMethod}. Seu colateral de ${(parseFloat(order.cryptoAmount) + parseFloat(order.totalFee)).toFixed(8)} ${order.cryptoType} sera liberado (inclui 2.5% fee: 1.5% plataforma + 1% cashback)`
-                  }
+                  {isBuyOrder
+                    ? (isCreator
+                        ? `Voce paga ${formatBRL(order.brlAmount)} via PIX e recebe ${parseFloat(order.cryptoAmount).toFixed(8)} ${order.cryptoType}`
+                        : `Voce fornece liquidez e recebe ${formatBRL(order.brlAmount)} apos o comprador pagar`)
+                    : (isPayer
+                        ? `Voce paga ${formatBRL(order.brlAmount)} no ${paymentMethod} e recebe ${(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward || '0')).toFixed(8)} ${order.cryptoType} (inclui 1% cashback)`
+                        : `Voce recebera ${formatBRL(order.brlAmount)} via ${paymentMethod}. Seu colateral de ${(parseFloat(order.cryptoAmount) + parseFloat(order.totalFee)).toFixed(8)} ${order.cryptoType} sera liberado`)
+                    }
                 </p>
               </div>
             </div>
@@ -1397,19 +1731,114 @@ export default function OrderDetailsPage() {
         onConfirm={handleEditOrder}
         orderType={paymentMethod as 'PIX' | 'BOLETO'}
         currentData={{
-          customExpirationHours: order.customExpirationHours,
+          customExpirationHours: (order as any).customExpirationHours,
           ...(paymentMethod === 'PIX' ? {
-            pixKey: orderData.pixKey,
-            pixKeyType: orderData.pixKeyType,
-            recipientName: orderData.recipientName,
+            pixKey: orderData?.pixKey,
+            pixKeyType: orderData?.pixKeyType,
+            recipientName: orderData?.recipientName,
           } : {
-            barcode: orderData.barcode,
-            dueDate: orderData.dueDate,
-            recipientName: orderData.recipientName,
-            recipientDocument: orderData.recipientDocument,
+            barcode: orderData?.barcode,
+            dueDate: orderData?.dueDate,
+            recipientName: orderData?.recipientName,
+            recipientDocument: orderData?.recipientDocument,
           }),
         }}
       />
+
+      {/* Modal para Aceitar Ordem BUY (Provedor) */}
+      {showAcceptBuyModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Fornecer Liquidez</h3>
+
+            <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-4">
+              <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
+                <strong>Voce esta aceitando fornecer:</strong>
+              </p>
+              <p className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                {parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}
+              </p>
+              <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                + {(parseFloat(order.cryptoAmount) * 0.015).toFixed(8)} {order.cryptoType} de taxa (1.5%)
+              </p>
+              <p className="text-sm text-blue-800 dark:text-blue-200 mt-3">
+                <strong>Voce recebera:</strong> {formatBRL(order.brlAmount)}
+              </p>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Tipo de Chave PIX
+                </label>
+                <select
+                  value={providerPixKeyType}
+                  onChange={(e) => setProviderPixKeyType(e.target.value as any)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value="CPF">CPF</option>
+                  <option value="CNPJ">CNPJ</option>
+                  <option value="EMAIL">Email</option>
+                  <option value="PHONE">Telefone</option>
+                  <option value="RANDOM">Chave Aleatoria</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Chave PIX (para receber o pagamento)
+                </label>
+                <input
+                  type="text"
+                  value={providerPixKey}
+                  onChange={(e) => setProviderPixKey(e.target.value)}
+                  placeholder="Digite sua chave PIX"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Nome do Beneficiario
+                </label>
+                <input
+                  type="text"
+                  value={providerRecipientName}
+                  onChange={(e) => setProviderRecipientName(e.target.value)}
+                  placeholder="Seu nome completo"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+            </div>
+
+            <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3 mb-4">
+              <p className="text-xs text-yellow-800 dark:text-yellow-200">
+                <strong>Atencao:</strong> Ao confirmar, seu colateral de {(parseFloat(order.cryptoAmount) * 1.015).toFixed(8)} {order.cryptoType} sera bloqueado ate o comprador efetuar o pagamento.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowAcceptBuyModal(false);
+                  setProviderPixKey('');
+                  setProviderRecipientName('');
+                }}
+                className="flex-1 px-4 py-2 bg-gray-300 dark:bg-gray-700 hover:bg-gray-400 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAcceptBuyOrder}
+                disabled={acceptingBuyOrder || !providerPixKey || !providerRecipientName}
+                className="flex-1 px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
+              >
+                {acceptingBuyOrder ? 'Processando...' : 'Confirmar e Bloquear Colateral'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

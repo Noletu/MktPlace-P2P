@@ -327,13 +327,22 @@ export class TransactionController {
       const { prisma } = await import('../utils/prisma');
       const order = await prisma.order.findUnique({
         where: { id: transaction.orderId },
-        select: { userId: true },
+        select: { userId: true, orderType: true, providerId: true },
       });
 
-      // SECURITY: Verificar se usuário é o vendedor (dono do pedido)
-      if (order?.userId !== userId) {
+      // SECURITY: Verificar se usuário pode confirmar recebimento
+      // SELL orders: dono do pedido (vendedor) confirma
+      // BUY orders: provedor (quem forneceu liquidez) confirma
+      const isBuyOrder = order?.orderType === 'BUY';
+      const canConfirm = isBuyOrder
+        ? order?.providerId === userId  // BUY: provedor confirma
+        : order?.userId === userId;      // SELL: dono confirma
+
+      if (!canConfirm) {
         return res.status(403).json({
-          error: 'Apenas o vendedor pode confirmar o recebimento do pagamento',
+          error: isBuyOrder
+            ? 'Apenas o provedor de liquidez pode confirmar o recebimento do pagamento'
+            : 'Apenas o vendedor pode confirmar o recebimento do pagamento',
         });
       }
 

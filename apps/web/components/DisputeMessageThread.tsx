@@ -116,7 +116,7 @@ export default function DisputeMessageThread({
 
       {/* Input de nova mensagem */}
       {canSendMessages && onSendMessage && (
-        <div className="border-t border-gray-200 dark:border-gray-700 px-4 pt-4 pb-0">
+        <div className="border-t border-gray-200 dark:border-gray-700 px-4 py-4 flex-shrink-0">
           <div className="flex gap-2 pb-4">
             <textarea
               value={newMessage}

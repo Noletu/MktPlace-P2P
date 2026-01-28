@@ -35,7 +35,7 @@ export default function CryptoPriceCards() {
 
   // Desktop: Show all 3 cards side by side
   const DesktopView = () => (
-    <div className="hidden lg:flex items-center gap-3">
+    <div className="hidden lg:flex items-center gap-2">
       <CryptoPriceCard
         symbol="BTC"
         icon="₿"

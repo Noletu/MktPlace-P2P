@@ -39,9 +39,9 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
       if (filters?.isRead !== undefined) params.append('isRead', filters.isRead.toString());
       if (filters?.priority) params.append('priority', filters.priority);
 
-      const response = await fetch(\`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/notifications?\${params.toString()}\`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/notifications?${params.toString()}`, {
         headers: {
-          'Authorization': \`Bearer \${token}\`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 
@@ -65,7 +65,7 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
 
       const response = await fetch('http://localhost:3001/api/v1/notifications/unread-count', {
         headers: {
-          'Authorization': \`Bearer \${token}\`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 
@@ -83,10 +83,10 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
       const token = localStorage.getItem('accessToken');
       if (!token) return;
 
-      const response = await fetch(\`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/notifications/\${notificationId}/read\`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/notifications/${notificationId}/read`, {
         method: 'POST',
         headers: {
-          'Authorization': \`Bearer \${token}\`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 
@@ -110,7 +110,7 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
       const response = await fetch('http://localhost:3001/api/v1/notifications/mark-all-read', {
         method: 'POST',
         headers: {
-          'Authorization': \`Bearer \${token}\`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 
@@ -129,10 +129,10 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
       const token = localStorage.getItem('accessToken');
       if (!token) return;
 
-      const response = await fetch(\`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/notifications/\${notificationId}\`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/notifications/${notificationId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': \`Bearer \${token}\`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 
@@ -158,7 +158,7 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
       const response = await fetch('http://localhost:3001/api/v1/notifications/delete-all-read', {
         method: 'DELETE',
         headers: {
-          'Authorization': \`Bearer \${token}\`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 

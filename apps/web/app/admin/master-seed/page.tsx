@@ -36,6 +36,7 @@ export default function MasterSeedAdminPage() {
   const [encryptedSeed, setEncryptedSeed] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
 
   useEffect(() => {
     fetchStatus();
@@ -74,7 +75,7 @@ export default function MasterSeedAdminPage() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ twoFactorCode }),
       });
 
       const data = await response.json();
@@ -83,6 +84,7 @@ export default function MasterSeedAdminPage() {
         setMnemonic(data.data.mnemonic);
         setEncryptedSeed(data.data.encryptedSeed);
         setSuccess('Master seed gerada com sucesso!');
+        setTwoFactorCode('');
       } else {
         setError(data.error || 'Erro ao gerar master seed');
       }
@@ -104,7 +106,7 @@ export default function MasterSeedAdminPage() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ mnemonic: mnemonicInput }),
+        body: JSON.stringify({ mnemonic: mnemonicInput, twoFactorCode }),
       });
 
       const data = await response.json();
@@ -113,6 +115,7 @@ export default function MasterSeedAdminPage() {
         setEncryptedSeed(data.data.encryptedSeed);
         setSuccess('Master seed recuperada com sucesso!');
         setShowRecoverModal(false);
+        setTwoFactorCode('');
         fetchStatus();
       } else {
         setError(data.error || 'Erro ao recuperar master seed');
@@ -331,16 +334,34 @@ export default function MasterSeedAdminPage() {
                   </ul>
                 </div>
 
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Código 2FA (do seu app autenticador)
+                  </label>
+                  <input
+                    type="text"
+                    value={twoFactorCode}
+                    onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="000000"
+                    className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white text-center text-2xl tracking-widest font-mono"
+                    maxLength={6}
+                  />
+                </div>
+
                 <div className="flex justify-end gap-4">
                   <button
-                    onClick={() => setShowGenerateModal(false)}
+                    onClick={() => {
+                      setShowGenerateModal(false);
+                      setTwoFactorCode('');
+                    }}
                     className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
                   >
                     Cancelar
                   </button>
                   <button
                     onClick={handleGenerate}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                    disabled={twoFactorCode.length !== 6}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Gerar Seed
                   </button>
@@ -419,6 +440,20 @@ export default function MasterSeedAdminPage() {
               rows={4}
             />
 
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Código 2FA (do seu app autenticador)
+              </label>
+              <input
+                type="text"
+                value={twoFactorCode}
+                onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white text-center text-2xl tracking-widest font-mono"
+                maxLength={6}
+              />
+            </div>
+
             {encryptedSeed && (
               <div className="bg-gray-900 rounded-lg p-4 mb-4">
                 <p className="text-sm text-gray-400 mb-2">Encrypted Seed recuperado (adicione no .env):</p>
@@ -440,6 +475,7 @@ export default function MasterSeedAdminPage() {
                   setShowRecoverModal(false);
                   setMnemonicInput('');
                   setEncryptedSeed('');
+                  setTwoFactorCode('');
                 }}
                 className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
               >
@@ -447,7 +483,7 @@ export default function MasterSeedAdminPage() {
               </button>
               <button
                 onClick={handleRecover}
-                disabled={!mnemonicInput.trim()}
+                disabled={!mnemonicInput.trim() || twoFactorCode.length !== 6}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Recuperar

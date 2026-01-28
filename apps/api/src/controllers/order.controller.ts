@@ -19,9 +19,10 @@ const PixDataSchema = z.object({
   recipientName: z.string().min(3, 'Nome do beneficiário é obrigatório'),
 });
 
-const CreateOrderSchema = z.object({
-  type: z.nativeEnum(OrderType),
-  paymentMethod: z.nativeEnum(PaymentMethod).optional(), // Método de pagamento (PIX ou Boleto)
+// Schema para ordens SELL (criador fornece dados de pagamento)
+const CreateSellOrderSchema = z.object({
+  type: z.literal(OrderType.SELL),
+  paymentMethod: z.nativeEnum(PaymentMethod).optional(),
   cryptoType: z.string().min(1, 'Tipo de criptomoeda é obrigatório'),
   cryptoNetwork: z.string().min(1, 'Rede blockchain é obrigatória'),
   cryptoAmount: z.string()
@@ -31,9 +32,35 @@ const CreateOrderSchema = z.object({
     .min(1, 'Valor em BRL é obrigatório')
     .refine((val) => parseFloat(val) > 0, 'Valor em BRL deve ser maior que zero'),
   orderData: z.union([BoletoDataSchema, PixDataSchema]),
-  collateralAddressId: z.string().optional(), // ID do colateral confirmado
-  customExpirationHours: z.number().int().min(1).max(720).optional(), // Tempo de expiração customizado (1-720 horas = 1-30 dias)
-  manualCancelOnly: z.boolean().optional(), // Se true, expira após 6 meses ao invés de prazo padrão/customizado
+  collateralAddressId: z.string().optional(),
+  customExpirationHours: z.number().int().min(1).max(720).optional(),
+  manualCancelOnly: z.boolean().optional(),
+});
+
+// Schema para ordens BUY (criador NÃO fornece dados de pagamento - provedor fornecerá)
+const CreateBuyOrderSchema = z.object({
+  type: z.literal(OrderType.BUY),
+  cryptoType: z.string().min(1, 'Tipo de criptomoeda é obrigatório'),
+  cryptoNetwork: z.string().min(1, 'Rede blockchain é obrigatória'),
+  cryptoAmount: z.string()
+    .min(1, 'Valor em criptomoeda é obrigatório')
+    .refine((val) => parseFloat(val) > 0, 'Valor em criptomoeda deve ser maior que zero'),
+  // brlAmount é calculado automaticamente pelo sistema para BUY orders
+  customExpirationHours: z.number().int().min(1).max(720).optional(),
+  manualCancelOnly: z.boolean().optional(),
+});
+
+// Schema discriminado que valida diferentemente baseado no tipo
+const CreateOrderSchema = z.discriminatedUnion('type', [
+  CreateSellOrderSchema,
+  CreateBuyOrderSchema,
+]);
+
+// Schema para provedor aceitar ordem BUY
+const AcceptBuyOrderSchema = z.object({
+  pixKey: z.string().min(3, 'Chave PIX é obrigatória'),
+  pixKeyType: z.enum(['CPF', 'CNPJ', 'EMAIL', 'PHONE', 'RANDOM']),
+  recipientName: z.string().min(3, 'Nome do beneficiário é obrigatório'),
 });
 
 export class OrderController {
@@ -58,10 +85,25 @@ export class OrderController {
 
       const validatedData = CreateOrderSchema.parse(req.body);
 
-      const result = await orderService.createOrder({
-        userId,
-        ...validatedData,
-      });
+      let result;
+
+      // BUY orders usam método específico (não requer colateral nem dados de pagamento)
+      if (validatedData.type === OrderType.BUY) {
+        result = await orderService.createBuyOrder({
+          userId,
+          cryptoType: validatedData.cryptoType,
+          cryptoNetwork: validatedData.cryptoNetwork,
+          cryptoAmount: validatedData.cryptoAmount,
+          customExpirationHours: validatedData.customExpirationHours,
+          manualCancelOnly: validatedData.manualCancelOnly,
+        });
+      } else {
+        // SELL orders usam método existente
+        result = await orderService.createOrder({
+          userId,
+          ...validatedData,
+        } as any);
+      }
 
       // Verificar se é necessário depósito
       if ('requiresDeposit' in result && result.requiresDeposit) {
@@ -139,10 +181,13 @@ export class OrderController {
     try {
       const userId = req.user?.userId;
 
-      // Excluir pedidos do próprio usuário
-      const orders = await orderService.getAvailableOrders(userId);
+      // Filtro por tipo de ordem (BUY, SELL, ou ALL)
+      const { type } = req.query;
+      const orderType = type === 'BUY' || type === 'SELL' ? type : 'ALL';
 
-      console.log(`📊 Marketplace: userId=${userId}, found ${orders.length} orders`);
+      const orders = await orderService.getAvailableOrders(userId, orderType);
+
+      console.log(`📊 Marketplace: userId=${userId}, type=${orderType}, found ${orders.length} orders`);
 
       res.json({
         success: true,
@@ -196,13 +241,14 @@ export class OrderController {
       // SECURITY: Verificar se usuário tem permissão para ver este pedido
       const isOwner = order.userId === userId;
       const isPayer = transactions.some((t: Transaction) => t.payerId === userId);
+      const isProvider = order.providerId === userId; // BUY orders: provedor de liquidez
       const isAdmin = req.user?.role === 'ADMIN';
       const isMarketplaceOrder = ['PENDING', 'IN_NEGOTIATION'].includes(order.status);
 
       // Permitir acesso se:
-      // 1. É owner/payer/admin (sempre)
+      // 1. É owner/payer/provider/admin (sempre)
       // 2. Pedido está no marketplace (PENDING ou IN_NEGOTIATION) - qualquer usuário pode ver
-      if (!isOwner && !isPayer && !isAdmin && !isMarketplaceOrder) {
+      if (!isOwner && !isPayer && !isProvider && !isAdmin && !isMarketplaceOrder) {
         return res.status(403).json({ error: 'Acesso negado' });
       }
 
@@ -509,6 +555,105 @@ export class OrderController {
     } catch (error: any) {
       res.status(500).json({
         error: error.message || 'Erro ao buscar estatísticas anti-spam',
+      });
+    }
+  }
+
+  /**
+   * Provedor aceita ordem BUY (fornece liquidez)
+   * POST /orders/:orderId/accept-buy
+   */
+  async acceptBuyOrder(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { orderId } = req.params;
+      const validatedData = AcceptBuyOrderSchema.parse(req.body);
+
+      const order = await orderService.acceptBuyOrder({
+        orderId,
+        providerId: userId,
+        ...validatedData,
+      });
+
+      // SECURITY: Audit log - BUY order accepted
+      auditLogService.logFromRequest(
+        req,
+        'BUY_ORDER_ACCEPTED',
+        AUDIT_RESOURCES.ORDER,
+        orderId,
+        { providerId: userId, pixKey: validatedData.pixKey }
+      );
+
+      res.json({
+        success: true,
+        data: order,
+        message: 'Você aceitou fornecer liquidez! Aguardando pagamento do comprador.',
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Dados inválidos',
+          details: error.errors,
+        });
+      }
+
+      res.status(400).json({
+        error: error.message || 'Erro ao aceitar ordem de compra',
+      });
+    }
+  }
+
+  /**
+   * Provedor cancela ordem BUY (desiste de fornecer liquidez)
+   * POST /orders/:orderId/cancel-by-provider
+   */
+  async cancelOrderByProvider(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { orderId } = req.params;
+      const { reason, note } = req.body;
+
+      // Validar inputs obrigatórios
+      if (!reason || typeof reason !== 'string') {
+        return res.status(400).json({ error: 'Motivo do cancelamento é obrigatório' });
+      }
+
+      if (!note || typeof note !== 'string' || note.trim().length < 20) {
+        return res.status(400).json({
+          error: 'Por favor, forneça uma justificativa com pelo menos 20 caracteres',
+        });
+      }
+
+      const result = await orderService.cancelOrderByProvider(orderId, userId, reason, note);
+
+      // SECURITY: Audit log - provider cancelled
+      auditLogService.logFromRequest(
+        req,
+        'BUY_ORDER_CANCELLED_BY_PROVIDER',
+        AUDIT_RESOURCES.ORDER,
+        orderId,
+        { reason, penaltyApplied: result.penaltyApplied },
+        true
+      );
+
+      res.json({
+        success: true,
+        message: result.message,
+        penaltyApplied: result.penaltyApplied,
+        penaltyPoints: result.penaltyPoints,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Erro ao cancelar pedido',
       });
     }
   }

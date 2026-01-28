@@ -12,7 +12,8 @@ interface Balance {
 
 interface Price {
   crypto: string;
-  brl: number;
+  brlPrice: string;
+  usdPrice?: string;
 }
 
 export default function CollateralSummaryWidget() {
@@ -52,7 +53,7 @@ export default function CollateralSummaryWidget() {
       const priceMap: Record<string, number> = {};
 
       data.data.forEach((p: Price) => {
-        priceMap[p.crypto] = p.brl;
+        priceMap[p.crypto] = parseFloat(p.brlPrice) || 0;
       });
 
       setPrices(priceMap);

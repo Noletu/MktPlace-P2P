@@ -107,29 +107,29 @@ export default function AppHeader() {
   return (
     <header className="sticky top-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-3 items-center h-14 gap-4">
+        <div className="flex items-center justify-between h-14 gap-2">
           {/* Left: Logo & Brand */}
-          <div className="flex justify-start">
+          <div className="flex items-center flex-shrink-0">
             <button
               onClick={() => router.push('/')}
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-shrink-0"
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
             >
-              <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">MP</span>
+              <div className="w-7 h-7 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-xs">MP</span>
               </div>
-              <span className="text-lg font-bold text-gray-900 dark:text-white hidden sm:block">
+              <span className="text-sm font-bold text-gray-900 dark:text-white hidden xl:block">
                 MktPlace P2P
               </span>
             </button>
           </div>
 
           {/* Center: Crypto Price Cards - SEMPRE visível */}
-          <div className="flex justify-center">
+          <div className="flex justify-center flex-1 min-w-0">
             <CryptoPriceCards />
           </div>
 
           {/* Right: Actions */}
-          <div className="flex items-center justify-end gap-3">
+          <div className="flex items-center justify-end gap-2 flex-shrink-0">
             {/* NotificationBell apenas quando logado - mounted state previne hydration error */}
             {mounted && isLoggedIn && <NotificationBell />}
 

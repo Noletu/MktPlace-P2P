@@ -6,7 +6,8 @@ import { DisputeCategory, CATEGORY_LABELS } from '@/types/dispute';
 
 interface Order {
   id: string;
-  type: 'BUY' | 'SELL';
+  orderType: string; // 'SELL' or 'BUY'
+  type: string; // Payment method: 'PIX' or 'BOLETO'
   status: string;
   brlAmount: string;
   cryptoAmount: string;
@@ -119,7 +120,7 @@ export default function NewDisputePage() {
     // If user is the order owner (buyer for BUY orders, seller for SELL orders)
     const isOrderOwner = order.userId === currentUserId;
 
-    if (order.type === 'BUY') {
+    if (order.orderType === 'BUY') {
       return isOrderOwner ? getBuyerCategories() : getSellerCategories();
     } else {
       return isOrderOwner ? getSellerCategories() : getBuyerCategories();
@@ -258,7 +259,7 @@ export default function NewDisputePage() {
           <div>
             <span className="text-blue-700 dark:text-blue-300">Tipo:</span>
             <span className="ml-2 font-semibold text-blue-900 dark:text-blue-100">
-              {order.type === 'BUY' ? 'Compra' : 'Venda'}
+              {order.orderType === 'BUY' ? 'Compra' : 'Venda'}
             </span>
           </div>
           <div>
