@@ -320,24 +320,37 @@ export class TransactionService {
 
           if (!platformWallet) {
             console.log(`⚠️ Platform wallet not found for ${completedOrder.cryptoType}/${completedOrder.cryptoNetwork} - creating...`);
-            // Criar carteira da plataforma se não existir
+            // Derivar endereco da plataforma
             const { address, privateKey, derivationPath } = DerivationService.derivePlatformWallet(
               completedOrder.cryptoType,
               completedOrder.cryptoNetwork
             );
-            const encryptedPrivateKey = KeyManagementService.encryptPrivateKey(privateKey, 'PLATFORM');
 
-            platformWallet = await tx.platformWallet.create({
-              data: {
-                cryptoType: completedOrder.cryptoType,
-                network: completedOrder.cryptoNetwork,
-                address,
-                derivationPath,
-                encryptedPrivateKey,
-                balance: '0',
-                isActive: true,
-              },
+            // Verificar se ja existe uma wallet com esse endereco (pode ter sido criada para outra crypto/rede)
+            const existingByAddress = await tx.platformWallet.findFirst({
+              where: { address },
             });
+
+            if (existingByAddress) {
+              // Usar a wallet existente
+              console.log(`✅ Found existing platform wallet by address: ${address}`);
+              platformWallet = existingByAddress;
+            } else {
+              // Criar nova wallet
+              const encryptedPrivateKey = KeyManagementService.encryptPrivateKey(privateKey, 'PLATFORM');
+              platformWallet = await tx.platformWallet.create({
+                data: {
+                  cryptoType: completedOrder.cryptoType,
+                  network: completedOrder.cryptoNetwork,
+                  address,
+                  derivationPath,
+                  encryptedPrivateKey,
+                  balance: '0',
+                  isActive: true,
+                },
+              });
+              console.log(`✅ Created new platform wallet: ${address}`);
+            }
           }
 
           // Deduzir platform fee do vendedor (já foi removido do locked, agora remover do balance)
@@ -643,6 +656,9 @@ export class TransactionService {
 
   /**
    * Atualizar reputação do usuário
+   *
+   * Nova formula: +10 pontos por transacao bem-sucedida, maximo 100
+   * Transacoes mal-sucedidas nao alteram a reputacao
    */
   async updateUserReputation(userId: string, success: boolean): Promise<void> {
     const user = await prisma.user.findUnique({
@@ -656,16 +672,18 @@ export class TransactionService {
       ? user.successfulTransactions + 1
       : user.successfulTransactions;
 
-    // Calcular novo score (0-100)
-    const successRate = newSuccessfulTransactions / newTotalTransactions;
-    const reputationScore = Math.round(successRate * 100);
+    // Nova formula: +10 pontos por transacao bem-sucedida, max 100
+    // Transacoes mal-sucedidas nao alteram a reputacao
+    const newReputation = success
+      ? Math.min(100, user.reputationScore + 10)
+      : user.reputationScore;
 
     await prisma.user.update({
       where: { id: userId },
       data: {
         totalTransactions: newTotalTransactions,
         successfulTransactions: newSuccessfulTransactions,
-        reputationScore,
+        reputationScore: newReputation,
       },
     });
   }

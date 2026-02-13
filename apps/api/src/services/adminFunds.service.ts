@@ -1,6 +1,13 @@
 import { PrismaClient } from '@prisma/client';
 import BigNumber from 'bignumber.js';
 import { notificationService } from './notification.service';
+import {
+  LockCategory,
+  LockCategoryLabels,
+  LockedBalancesFilters,
+  LockedWalletInfo,
+  LockHistoryEntry,
+} from '../types/adminLock.types';
 
 const prisma = new PrismaClient();
 
@@ -958,6 +965,455 @@ export class AdminFundsService {
         totalUserWallets: usersFunds.summary.totalUserWallets,
         totalUsers: usersFunds.summary.totalUsers,
         cryptosSupported: Object.keys(totalByCrypto).length,
+      },
+    };
+  }
+
+  /**
+   * ========================================
+   * LOCKED BALANCES: Gestão de saldos bloqueados
+   * ========================================
+   */
+
+  /**
+   * Listar carteiras com saldo bloqueado
+   * Usado para identificar saldos órfãos ou gerenciar bloqueios manuais
+   */
+  static async getLockedBalances(filters?: LockedBalancesFilters): Promise<{
+    success: boolean;
+    data: {
+      wallets: LockedWalletInfo[];
+      summary: {
+        totalWallets: number;
+        totalLockedAmount: Record<string, string>;
+      };
+    };
+  }> {
+    // Construir filtros
+    const where: any = {
+      lockedBalance: {
+        not: '0',
+      },
+    };
+
+    if (filters?.cryptoType) {
+      where.cryptoType = filters.cryptoType;
+    }
+
+    if (filters?.network) {
+      where.network = filters.network;
+    }
+
+    if (filters?.userId) {
+      where.userId = filters.userId;
+    }
+
+    // Buscar carteiras com saldo bloqueado
+    const wallets = await prisma.userWallet.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+          },
+        },
+        transactions: {
+          where: {
+            type: {
+              in: ['LOCK', 'UNLOCK', 'ADMIN_LOCK', 'ADMIN_UNLOCK'],
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 10,
+        },
+        ordersAsCollateral: {
+          where: {
+            status: {
+              in: ['PENDING', 'MATCHED', 'IN_NEGOTIATION', 'PAYMENT_SENT', 'VALIDATING'],
+            },
+          },
+          select: {
+            id: true,
+          },
+        },
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    });
+
+    // Filtrar por valor mínimo se especificado
+    let filteredWallets = wallets;
+    if (filters?.minAmount) {
+      const minBN = new BigNumber(filters.minAmount);
+      filteredWallets = wallets.filter((w) =>
+        new BigNumber(w.lockedBalance).gte(minBN)
+      );
+    }
+
+    // Mapear para formato de resposta
+    const mappedWallets: LockedWalletInfo[] = filteredWallets.map((wallet) => {
+      // Encontrar última transação de lock
+      const lastLockTx = wallet.transactions.find(
+        (tx) => tx.type === 'LOCK' || tx.type === 'ADMIN_LOCK'
+      );
+
+      // Mapear histórico
+      const lockHistory: LockHistoryEntry[] = wallet.transactions.map((tx) => {
+        let category: LockCategory | null = null;
+        if (tx.metadata) {
+          try {
+            const meta = JSON.parse(tx.metadata);
+            category = meta.category || null;
+          } catch {
+            // Ignorar erro de parse
+          }
+        }
+
+        return {
+          id: tx.id,
+          type: tx.type,
+          amount: tx.amount,
+          category,
+          reason: tx.description || tx.adminReason,
+          adminUserId: tx.adminUserId,
+          adminEmail: null, // Seria necessário join adicional
+          orderId: tx.orderId,
+          createdAt: tx.createdAt,
+        };
+      });
+
+      return {
+        walletId: wallet.id,
+        userId: wallet.userId,
+        userEmail: wallet.user.email,
+        userName: wallet.user.name,
+        cryptoType: wallet.cryptoType,
+        network: wallet.network,
+        address: wallet.address,
+        balance: wallet.balance,
+        lockedBalance: wallet.lockedBalance,
+        availableBalance: wallet.availableBalance,
+        lastLockDate: lastLockTx?.createdAt || null,
+        hasActiveOrder: wallet.ordersAsCollateral.length > 0,
+        lockHistory,
+      };
+    });
+
+    // Calcular totais por crypto
+    const totalLockedAmount: Record<string, string> = {};
+    for (const wallet of filteredWallets) {
+      const key = wallet.cryptoType;
+      if (!totalLockedAmount[key]) {
+        totalLockedAmount[key] = '0';
+      }
+      totalLockedAmount[key] = new BigNumber(totalLockedAmount[key])
+        .plus(wallet.lockedBalance)
+        .toString();
+    }
+
+    return {
+      success: true,
+      data: {
+        wallets: mappedWallets,
+        summary: {
+          totalWallets: mappedWallets.length,
+          totalLockedAmount,
+        },
+      },
+    };
+  }
+
+  /**
+   * Bloquear saldo manualmente (Admin)
+   * Move valor de availableBalance para lockedBalance SEM orderId
+   */
+  static async adminLockBalance(params: {
+    walletId: string;
+    amount: string;
+    category: LockCategory;
+    reason: string;
+    adminUserId: string;
+  }) {
+    const { walletId, amount, category, reason, adminUserId } = params;
+
+    // Validar amount
+    const amountBN = new BigNumber(amount);
+    if (amountBN.isNaN() || amountBN.lte(0)) {
+      throw new Error('Valor inválido. Deve ser um número positivo.');
+    }
+
+    // Validar reason
+    if (!reason || reason.trim().length < 20) {
+      throw new Error('Justificativa deve ter pelo menos 20 caracteres.');
+    }
+
+    // Validar category
+    if (!Object.values(LockCategory).includes(category)) {
+      throw new Error('Categoria de bloqueio inválida.');
+    }
+
+    // Buscar carteira
+    const wallet = await prisma.userWallet.findUnique({
+      where: { id: walletId },
+      include: { user: true },
+    });
+
+    if (!wallet) {
+      throw new Error('Carteira não encontrada');
+    }
+
+    // Verificar saldo disponível suficiente
+    const availableBN = new BigNumber(wallet.availableBalance);
+    if (availableBN.lt(amountBN)) {
+      throw new Error(
+        `Saldo disponível insuficiente. Disponível: ${wallet.availableBalance} ${wallet.cryptoType}`
+      );
+    }
+
+    // Calcular novos saldos
+    const newAvailableBalance = availableBN.minus(amountBN).toString();
+    const newLockedBalance = new BigNumber(wallet.lockedBalance)
+      .plus(amountBN)
+      .toString();
+
+    // Executar em transação
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Atualizar carteira
+      const updated = await tx.userWallet.update({
+        where: { id: walletId },
+        data: {
+          availableBalance: newAvailableBalance,
+          lockedBalance: newLockedBalance,
+        },
+      });
+
+      // 2. Criar transação de bloqueio
+      await tx.walletTransaction.create({
+        data: {
+          walletId,
+          userId: wallet.userId,
+          type: 'ADMIN_LOCK',
+          amount: amount,
+          balanceBefore: wallet.balance,
+          balanceAfter: wallet.balance, // Balance total não muda
+          lockedBefore: wallet.lockedBalance,
+          lockedAfter: newLockedBalance,
+          adminUserId,
+          adminReason: reason,
+          description: `Bloqueio administrativo: ${LockCategoryLabels[category]}`,
+          metadata: JSON.stringify({
+            category,
+            lockedAmount: amount,
+            timestamp: new Date().toISOString(),
+          }),
+        },
+      });
+
+      // 3. Audit log
+      await tx.auditLog.create({
+        data: {
+          userId: adminUserId,
+          action: 'ADMIN_LOCK_BALANCE',
+          resource: 'WALLET',
+          resourceId: walletId,
+          description: `Admin bloqueou ${amount} ${wallet.cryptoType} de ${wallet.user.email}`,
+          metadata: JSON.stringify({
+            walletId,
+            targetUserId: wallet.userId,
+            amount,
+            category,
+            reason,
+            previousAvailable: wallet.availableBalance,
+            previousLocked: wallet.lockedBalance,
+            newAvailable: newAvailableBalance,
+            newLocked: newLockedBalance,
+          }),
+          success: true,
+        },
+      });
+
+      return updated;
+    });
+
+    // Notificar usuário
+    try {
+      await notificationService.createNotification({
+        userId: wallet.userId,
+        type: 'BALANCE_LOCKED',
+        category: 'WALLET',
+        title: '🔒 Saldo Bloqueado',
+        message: `${amount} ${wallet.cryptoType} foi bloqueado em sua carteira. Motivo: ${LockCategoryLabels[category]} - ${reason}`,
+        priority: 'HIGH',
+        actionUrl: '/wallets',
+        actionLabel: 'Ver Carteiras',
+      });
+      console.log(`✅ [AdminLock] Notificação criada para usuário ${wallet.userId}`);
+    } catch (notifError: any) {
+      console.error('❌ [AdminLock] Erro ao criar notificação:', notifError.message);
+    }
+
+    return {
+      success: true,
+      message: 'Saldo bloqueado com sucesso',
+      data: {
+        walletId,
+        user: wallet.user.email,
+        cryptoType: wallet.cryptoType,
+        network: wallet.network,
+        lockedAmount: amount,
+        category,
+        newLockedBalance,
+        newAvailableBalance,
+      },
+    };
+  }
+
+  /**
+   * Desbloquear saldo manualmente (Admin)
+   * Move valor de lockedBalance para availableBalance SEM orderId
+   */
+  static async adminUnlockBalance(params: {
+    walletId: string;
+    amount: string;
+    category: LockCategory;
+    reason: string;
+    adminUserId: string;
+  }) {
+    const { walletId, amount, category, reason, adminUserId } = params;
+
+    // Validar amount
+    const amountBN = new BigNumber(amount);
+    if (amountBN.isNaN() || amountBN.lte(0)) {
+      throw new Error('Valor inválido. Deve ser um número positivo.');
+    }
+
+    // Validar reason
+    if (!reason || reason.trim().length < 20) {
+      throw new Error('Justificativa deve ter pelo menos 20 caracteres.');
+    }
+
+    // Validar category
+    if (!Object.values(LockCategory).includes(category)) {
+      throw new Error('Categoria de desbloqueio inválida.');
+    }
+
+    // Buscar carteira
+    const wallet = await prisma.userWallet.findUnique({
+      where: { id: walletId },
+      include: { user: true },
+    });
+
+    if (!wallet) {
+      throw new Error('Carteira não encontrada');
+    }
+
+    // Verificar saldo bloqueado suficiente
+    const lockedBN = new BigNumber(wallet.lockedBalance);
+    if (lockedBN.lt(amountBN)) {
+      throw new Error(
+        `Saldo bloqueado insuficiente. Bloqueado: ${wallet.lockedBalance} ${wallet.cryptoType}`
+      );
+    }
+
+    // Calcular novos saldos
+    const newLockedBalance = lockedBN.minus(amountBN).toString();
+    const newAvailableBalance = new BigNumber(wallet.availableBalance)
+      .plus(amountBN)
+      .toString();
+
+    // Executar em transação
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Atualizar carteira
+      const updated = await tx.userWallet.update({
+        where: { id: walletId },
+        data: {
+          availableBalance: newAvailableBalance,
+          lockedBalance: newLockedBalance,
+        },
+      });
+
+      // 2. Criar transação de desbloqueio
+      await tx.walletTransaction.create({
+        data: {
+          walletId,
+          userId: wallet.userId,
+          type: 'ADMIN_UNLOCK',
+          amount: amount,
+          balanceBefore: wallet.balance,
+          balanceAfter: wallet.balance, // Balance total não muda
+          lockedBefore: wallet.lockedBalance,
+          lockedAfter: newLockedBalance,
+          adminUserId,
+          adminReason: reason,
+          description: `Desbloqueio administrativo: ${LockCategoryLabels[category]}`,
+          metadata: JSON.stringify({
+            category,
+            unlockedAmount: amount,
+            timestamp: new Date().toISOString(),
+          }),
+        },
+      });
+
+      // 3. Audit log
+      await tx.auditLog.create({
+        data: {
+          userId: adminUserId,
+          action: 'ADMIN_UNLOCK_BALANCE',
+          resource: 'WALLET',
+          resourceId: walletId,
+          description: `Admin desbloqueou ${amount} ${wallet.cryptoType} de ${wallet.user.email}`,
+          metadata: JSON.stringify({
+            walletId,
+            targetUserId: wallet.userId,
+            amount,
+            category,
+            reason,
+            previousAvailable: wallet.availableBalance,
+            previousLocked: wallet.lockedBalance,
+            newAvailable: newAvailableBalance,
+            newLocked: newLockedBalance,
+          }),
+          success: true,
+        },
+      });
+
+      return updated;
+    });
+
+    // Notificar usuário
+    try {
+      await notificationService.createNotification({
+        userId: wallet.userId,
+        type: 'BALANCE_UNLOCKED',
+        category: 'WALLET',
+        title: '🔓 Saldo Desbloqueado',
+        message: `${amount} ${wallet.cryptoType} foi desbloqueado em sua carteira. Motivo: ${LockCategoryLabels[category]} - ${reason}`,
+        priority: 'NORMAL',
+        actionUrl: '/wallets',
+        actionLabel: 'Ver Carteiras',
+      });
+      console.log(`✅ [AdminUnlock] Notificação criada para usuário ${wallet.userId}`);
+    } catch (notifError: any) {
+      console.error('❌ [AdminUnlock] Erro ao criar notificação:', notifError.message);
+    }
+
+    return {
+      success: true,
+      message: 'Saldo desbloqueado com sucesso',
+      data: {
+        walletId,
+        user: wallet.user.email,
+        cryptoType: wallet.cryptoType,
+        network: wallet.network,
+        unlockedAmount: amount,
+        category,
+        newLockedBalance,
+        newAvailableBalance,
       },
     };
   }

@@ -8,9 +8,11 @@ export interface ChatMessage {
   chatId: string;
   senderId: string;
   message?: string; // Mensagens antigas (não criptografadas)
-  encryptedContent?: string; // Mensagens novas (criptografadas)
+  encryptedContent?: string; // Criptografado para o DESTINATÁRIO
+  encryptedForSender?: string; // Criptografado para o REMETENTE (E2E correto)
   isEncrypted?: boolean; // Flag de criptografia
-  iv?: string; // Initialization Vector
+  iv?: string; // IV para encryptedContent (destinatário)
+  ivForSender?: string; // IV para encryptedForSender (remetente)
   type: string;
   attachmentUrl?: string;
   attachmentType?: string;
@@ -134,16 +136,14 @@ export function useChat(chatId?: string, options?: UseChatOptions) {
 
   // Descriptografar mensagem
   const decryptMessageContent = useCallback(async (msg: ChatMessage): Promise<ChatMessage> => {
-    if (!msg.isEncrypted || !msg.encryptedContent || !msg.iv) {
+    if (!msg.isEncrypted) {
       // Mensagem não criptografada (retrocompatibilidade)
       return { ...msg, decryptedMessage: msg.message };
     }
 
-    // NOVO: Se é própria mensagem, buscar texto puro do cache
-    const ownMessage = ownMessagesRef.current.get(msg.id);
-    if (ownMessage) {
-      console.log('[Chat] Using cached plaintext for own message:', msg.id.slice(0, 8));
-      return { ...msg, decryptedMessage: ownMessage };
+    // Verificar se tenho algum conteúdo criptografado
+    if (!msg.encryptedContent && !msg.encryptedForSender) {
+      return { ...msg, decryptedMessage: msg.message };
     }
 
     if (!privateKeyRef.current) {
@@ -151,10 +151,39 @@ export function useChat(chatId?: string, options?: UseChatOptions) {
       return { ...msg, decryptedMessage: '🔒 Mensagem criptografada' };
     }
 
+    // Determinar se sou o remetente ou destinatário
+    const userStr = localStorage.getItem('user');
+    const currentUser = userStr ? JSON.parse(userStr) : null;
+    const isMine = currentUser && msg.senderId === currentUser.id;
+
+    // Escolher a versão criptografada correta e seu IV:
+    // - Se sou o remetente: usar encryptedForSender + ivForSender
+    // - Se sou o destinatário: usar encryptedContent + iv
+    const contentToDecrypt = isMine ? msg.encryptedForSender : msg.encryptedContent;
+    const ivToUse = isMine ? msg.ivForSender : msg.iv;
+
+    if (!contentToDecrypt || !ivToUse) {
+      // Fallback: tentar a outra versão ou mensagem em texto
+      console.warn('[Chat] No encrypted content/IV for my role, trying fallback');
+      if (msg.encryptedContent && msg.iv) {
+        try {
+          const decrypted = await encryptionUtils.decryptMessage(
+            msg.encryptedContent,
+            msg.iv,
+            privateKeyRef.current
+          );
+          return { ...msg, decryptedMessage: decrypted };
+        } catch {
+          // Não conseguiu descriptografar
+        }
+      }
+      return { ...msg, decryptedMessage: msg.message || '🔒 Mensagem criptografada' };
+    }
+
     try {
       const decrypted = await encryptionUtils.decryptMessage(
-        msg.encryptedContent,
-        msg.iv,
+        contentToDecrypt,
+        ivToUse,
         privateKeyRef.current
       );
       return { ...msg, decryptedMessage: decrypted };
@@ -321,24 +350,30 @@ export function useChat(chatId?: string, options?: UseChatOptions) {
     if (!message.trim() && !attachment) return;
 
     try {
-      // Tentar criptografar se possível
-      if (encryptionEnabled && recipientPublicKeyRef.current && !attachment) {
-        const encrypted = await encryptionUtils.encryptMessage(
+      // Tentar criptografar se possível (precisa das duas chaves: minha e do destinatário)
+      if (encryptionEnabled && recipientPublicKeyRef.current && publicKeyRef.current && !attachment) {
+        // Criptografar para o DESTINATÁRIO (ele vai usar sua chave privada para ler)
+        const encryptedForRecipient = await encryptionUtils.encryptMessage(
           message.trim(),
           recipientPublicKeyRef.current
         );
 
-        // Guardar texto puro temporariamente (será associado ao ID quando mensagem voltar do servidor)
-        pendingMessageRef.current = message.trim();
+        // Criptografar para MIM MESMO (vou usar minha chave privada para ler no histórico)
+        const encryptedForMe = await encryptionUtils.encryptMessage(
+          message.trim(),
+          publicKeyRef.current
+        );
 
         socket.emit('message:send', {
           chatId,
-          encryptedContent: encrypted.encryptedContent,
+          encryptedContent: encryptedForRecipient.encryptedContent, // Para destinatário
+          encryptedForSender: encryptedForMe.encryptedContent, // Para mim (remetente)
           isEncrypted: true,
-          iv: encrypted.iv,
+          iv: encryptedForRecipient.iv, // IV para destinatário
+          ivForSender: encryptedForMe.iv, // IV para remetente
         });
 
-        console.log('🔐 Sent encrypted message');
+        console.log('🔐 Sent E2E encrypted message (for both parties)');
       } else {
         // Fallback para mensagem não criptografada
         socket.emit('message:send', {

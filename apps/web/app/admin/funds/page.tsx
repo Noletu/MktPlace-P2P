@@ -8,6 +8,7 @@ import { Toast } from '@/components/admin/ToastNotification';
 import PartnersView from '@/components/admin/funds/PartnersView';
 import UsersView from '@/components/admin/funds/UsersView';
 import TotalView from '@/components/admin/funds/TotalView';
+import LockedBalancesView from '@/components/admin/funds/LockedBalancesView';
 
 interface DashboardData {
   totalCustody: {
@@ -46,7 +47,7 @@ export default function AdminFundsPage() {
   const router = useRouter();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'partners' | 'users' | 'total' | 'freeze' | 'transfer' | 'adjust' | 'audit' | 'analytics'>('partners');
+  const [activeTab, setActiveTab] = useState<'partners' | 'users' | 'total' | 'locked' | 'freeze' | 'transfer' | 'adjust' | 'audit' | 'analytics'>('partners');
 
   // Freeze/Unfreeze states
   const [freezeUserId, setFreezeUserId] = useState('');
@@ -457,6 +458,16 @@ export default function AdminFundsPage() {
             🌍 Total
           </button>
           <button
+            onClick={() => setActiveTab('locked')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
+              activeTab === 'locked'
+                ? 'border-orange-500 text-orange-400'
+                : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
+            }`}
+          >
+            🔒 Saldos Bloqueados
+          </button>
+          <button
             onClick={() => setActiveTab('freeze')}
             className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
               activeTab === 'freeze'
@@ -522,6 +533,11 @@ export default function AdminFundsPage() {
       {/* FASE 5/7: Total View */}
       {activeTab === 'total' && (
         <TotalView />
+      )}
+
+      {/* Locked Balances View */}
+      {activeTab === 'locked' && (
+        <LockedBalancesView />
       )}
 
       {/* Dashboard Tab (OLD - DEPRECATED) */}

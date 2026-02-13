@@ -11,7 +11,7 @@ import {
   CreateBuyOrderInput,
   AcceptBuyOrderInput
 } from '../types/order.types';
-import { kycService } from './kyc.service';
+import { limitService } from './limit.service';
 import { WalletService } from './wallet.service';
 import { priceService } from './price.service';
 import { boletoOCRService } from './boleto-ocr.service';
@@ -157,16 +157,19 @@ export class OrderService {
    * Validar dados do pedido
    */
   async validateOrderCreation(input: CreateOrderInput): Promise<void> {
-    // Validar KYC level e limite
-    const canTransact = await kycService.canUserTransact(
+    // Validar limite diario baseado em reputacao
+    const limitCheck = await limitService.canUserTransact(
       input.userId,
       parseFloat(input.brlAmount)
     );
 
-    if (!canTransact) {
-      const limit = await kycService.getTransactionLimit(input.userId);
+    if (!limitCheck.allowed) {
       throw new Error(
-        `Valor excede seu limite de transação (R$ ${limit}). Complete um nível KYC superior.`
+        `Valor excede seu limite diario. ` +
+        `Limite: R$ ${limitCheck.dailyLimit.toFixed(2)}, ` +
+        `Usado hoje: R$ ${limitCheck.dailyUsed.toFixed(2)}, ` +
+        `Disponivel: R$ ${limitCheck.remaining.toFixed(2)}. ` +
+        `Complete mais transacoes para aumentar seu limite.`
       );
     }
 
@@ -502,14 +505,17 @@ export class OrderService {
   async createBuyOrder(input: CreateBuyOrderInput): Promise<Order> {
     console.log(`📝 [BUY ORDER] Creating - userId: ${input.userId}, crypto: ${input.cryptoType}/${input.cryptoNetwork}, amount: ${input.cryptoAmount}`);
 
-    // Validar KYC e limites (usando o brlAmount calculado)
+    // Validar limite diario baseado em reputacao (usando o brlAmount calculado)
     const brlAmount = await this.calculateBuyOrderBrlAmount(input.cryptoAmount, input.cryptoType);
-    const canTransact = await kycService.canUserTransact(input.userId, parseFloat(brlAmount));
+    const limitCheck = await limitService.canUserTransact(input.userId, parseFloat(brlAmount));
 
-    if (!canTransact) {
-      const limit = await kycService.getTransactionLimit(input.userId);
+    if (!limitCheck.allowed) {
       throw new Error(
-        `Valor excede seu limite de transação (R$ ${limit}). Complete um nível KYC superior.`
+        `Valor excede seu limite diario. ` +
+        `Limite: R$ ${limitCheck.dailyLimit.toFixed(2)}, ` +
+        `Usado hoje: R$ ${limitCheck.dailyUsed.toFixed(2)}, ` +
+        `Disponivel: R$ ${limitCheck.remaining.toFixed(2)}. ` +
+        `Complete mais transacoes para aumentar seu limite.`
       );
     }
 
@@ -657,16 +663,19 @@ export class OrderService {
         throw new Error('Este pedido expirou');
       }
 
-      // Verificar KYC do provedor
-      const canTransact = await kycService.canUserTransact(
+      // Verificar limite diario do provedor (baseado em reputacao)
+      const limitCheck = await limitService.canUserTransact(
         input.providerId,
         parseFloat(order.brlAmount)
       );
 
-      if (!canTransact) {
-        const limit = await kycService.getTransactionLimit(input.providerId);
+      if (!limitCheck.allowed) {
         throw new Error(
-          `Valor excede seu limite de transação (R$ ${limit}). Complete um nível KYC superior.`
+          `Valor excede seu limite diario. ` +
+          `Limite: R$ ${limitCheck.dailyLimit.toFixed(2)}, ` +
+          `Usado hoje: R$ ${limitCheck.dailyUsed.toFixed(2)}, ` +
+          `Disponivel: R$ ${limitCheck.remaining.toFixed(2)}. ` +
+          `Complete mais transacoes para aumentar seu limite.`
         );
       }
 
@@ -844,60 +853,75 @@ export class OrderService {
    * A validação de não aceitar próprio pedido é feita no matchOrder()/acceptBuyOrder()
    */
   async getAvailableOrders(excludeUserId?: string, orderTypeFilter?: 'BUY' | 'SELL' | 'ALL'): Promise<Order[]> {
-    // Construir filtro baseado no tipo de ordem (usando campo orderType)
-    let typeFilter: any = {};
+    // Condições base para todos os filtros
+    const baseConditions = {
+      status: OrderStatus.PENDING, // Apenas pedidos pendentes
+      timeoutAt: { gt: new Date() }, // Não expirados
+    };
+
+    // Construir where clause baseado no tipo de ordem
+    let whereClause: any;
 
     if (orderTypeFilter === 'BUY') {
       // BUY orders: aguardando provedor (sem colateral confirmado)
-      typeFilter = {
-        orderType: OrderType.BUY,
-        // BUY orders nao precisam de colateral confirmado - o provedor deposita ao aceitar
+      whereClause = {
+        ...baseConditions,
+        orderType: 'BUY',
       };
     } else if (orderTypeFilter === 'SELL') {
       // SELL orders: com colateral confirmado
-      typeFilter = {
-        orderType: OrderType.SELL,
+      whereClause = {
+        ...baseConditions,
+        orderType: 'SELL',
         collateralConfirmed: true,
       };
     } else {
-      // ALL: Mostrar ambos os tipos
+      // ALL: Mostrar ambos os tipos usando AND com OR corretamente
       // SELL: precisa ter colateral confirmado
       // BUY: nao precisa (provedor deposita ao aceitar)
-      typeFilter = {
-        OR: [
-          { orderType: OrderType.SELL, collateralConfirmed: true },
-          { orderType: OrderType.BUY },
+      whereClause = {
+        AND: [
+          baseConditions,
+          {
+            OR: [
+              { orderType: 'SELL', collateralConfirmed: true },
+              { orderType: 'BUY' },
+            ],
+          },
         ],
       };
     }
 
-    const orders = await prisma.order.findMany({
-      where: {
-        status: OrderStatus.PENDING, // Apenas pedidos pendentes
-        timeoutAt: { gt: new Date() }, // Não expirados
-        ...typeFilter,
-      },
-      orderBy: [
-        { ownerOnline: 'desc' }, // Online primeiro
-        { ownerLastSeenAt: 'desc' }, // Mais recente primeiro
-        { createdAt: 'desc' }, // Mais novo primeiro
-      ],
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            reputationScore: true,
-            totalTransactions: true,
-            successfulTransactions: true,
+    try {
+      console.log('📊 Marketplace query whereClause:', JSON.stringify(whereClause, null, 2));
+
+      const orders = await prisma.order.findMany({
+        where: whereClause,
+        orderBy: [
+          { ownerOnline: 'desc' }, // Online primeiro
+          { ownerLastSeenAt: 'desc' }, // Mais recente primeiro
+          { createdAt: 'desc' }, // Mais novo primeiro
+        ],
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              reputationScore: true,
+              totalTransactions: true,
+              successfulTransactions: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    console.log(`📊 Marketplace: found ${orders.length} orders (type filter: ${orderTypeFilter || 'ALL'})`);
-
-    return orders;
+      console.log(`📊 Marketplace: found ${orders.length} orders (type filter: ${orderTypeFilter || 'ALL'})`);
+      return orders;
+    } catch (error: any) {
+      console.error('❌ Marketplace query error:', error.message);
+      console.error('❌ Full error:', error);
+      throw error;
+    }
   }
 
   /**
@@ -1033,16 +1057,19 @@ export class OrderService {
         throw new Error('Este pedido expirou');
       }
 
-      // Verificar limite KYC do pagador
-      const canTransact = await kycService.canUserTransact(
+      // Verificar limite diario do pagador (baseado em reputacao)
+      const limitCheck = await limitService.canUserTransact(
         payerId,
         parseFloat(order.brlAmount)
       );
 
-      if (!canTransact) {
-        const limit = await kycService.getTransactionLimit(payerId);
+      if (!limitCheck.allowed) {
         throw new Error(
-          `Valor excede seu limite de transação (R$ ${limit}). Complete um nível KYC superior.`
+          `Valor excede seu limite diario. ` +
+          `Limite: R$ ${limitCheck.dailyLimit.toFixed(2)}, ` +
+          `Usado hoje: R$ ${limitCheck.dailyUsed.toFixed(2)}, ` +
+          `Disponivel: R$ ${limitCheck.remaining.toFixed(2)}. ` +
+          `Complete mais transacoes para aumentar seu limite.`
         );
       }
 
@@ -1366,6 +1393,7 @@ export class OrderService {
     }
 
     // Voltar pedido para PENDING (volta ao marketplace)
+    // Resetar timeoutAt para a expiração original do pedido
     await prisma.order.update({
       where: { id: orderId },
       data: {
@@ -1373,6 +1401,7 @@ export class OrderService {
         cancelledBy: payerId,
         cancellationReason: reason,
         cancellationNote: note,
+        timeoutAt: this.calculateTimeoutAt(order.customExpirationHours ?? undefined, order.manualCancelOnly ?? undefined),
       },
     });
 
@@ -1516,6 +1545,7 @@ export class OrderService {
     }
 
     // Voltar pedido para PENDING (volta ao marketplace sem provedor)
+    // Resetar timeoutAt para a expiração original do pedido
     await prisma.order.update({
       where: { id: orderId },
       data: {
@@ -1533,6 +1563,7 @@ export class OrderService {
         collateralLocked: false,
         collateralLockedAmount: null,
         collateralUnlockedAt: new Date(),
+        timeoutAt: this.calculateTimeoutAt(order.customExpirationHours ?? undefined, order.manualCancelOnly ?? undefined),
       },
     });
 

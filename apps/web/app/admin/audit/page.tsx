@@ -184,8 +184,8 @@ export default function AuditLogPage() {
               <option value="LOGIN">Login</option>
               <option value="LOGOUT">Logout</option>
               <option value="CREATE_ORDER">Criar Pedido</option>
-              <option value="APPROVE_KYC">Aprovar KYC</option>
-              <option value="REJECT_KYC">Rejeitar KYC</option>
+              <option value="FREEZE_ACCOUNT">Bloquear Conta</option>
+              <option value="UNFREEZE_ACCOUNT">Desbloquear Conta</option>
             </select>
           </div>
           <div>

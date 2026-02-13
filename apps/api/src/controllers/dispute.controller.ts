@@ -24,6 +24,7 @@ const CreateDisputeSchema = z.object({
 const AddMessageSchema = z.object({
   message: z.string().min(1, 'Mensagem não pode ser vazia'),
   attachments: z.array(z.string().url()).optional(),
+  visibleTo: z.string().optional(),
 });
 
 const RespondDisputeSchema = z.object({
@@ -278,8 +279,9 @@ export class DisputeController {
       const isCreator = dispute.createdBy === userId;
       const isOrderOwner = dispute.order.userId === userId;
       const isPayer = dispute.order.transactions.some(t => t.payerId === userId);
+      const isProvider = (dispute.order as any).providerId === userId;
 
-      if (!isStaff && !isCreator && !isOrderOwner && !isPayer) {
+      if (!isStaff && !isCreator && !isOrderOwner && !isPayer && !isProvider) {
         return res.status(403).json({
           success: false,
           error: 'Você não tem permissão para visualizar esta disputa',

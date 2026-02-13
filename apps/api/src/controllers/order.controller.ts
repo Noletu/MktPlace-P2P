@@ -21,7 +21,7 @@ const PixDataSchema = z.object({
 
 // Schema para ordens SELL (criador fornece dados de pagamento)
 const CreateSellOrderSchema = z.object({
-  type: z.literal(OrderType.SELL),
+  type: z.literal('SELL'),
   paymentMethod: z.nativeEnum(PaymentMethod).optional(),
   cryptoType: z.string().min(1, 'Tipo de criptomoeda é obrigatório'),
   cryptoNetwork: z.string().min(1, 'Rede blockchain é obrigatória'),
@@ -39,7 +39,7 @@ const CreateSellOrderSchema = z.object({
 
 // Schema para ordens BUY (criador NÃO fornece dados de pagamento - provedor fornecerá)
 const CreateBuyOrderSchema = z.object({
-  type: z.literal(OrderType.BUY),
+  type: z.literal('BUY'),
   cryptoType: z.string().min(1, 'Tipo de criptomoeda é obrigatório'),
   cryptoNetwork: z.string().min(1, 'Rede blockchain é obrigatória'),
   cryptoAmount: z.string()
@@ -88,7 +88,7 @@ export class OrderController {
       let result;
 
       // BUY orders usam método específico (não requer colateral nem dados de pagamento)
-      if (validatedData.type === OrderType.BUY) {
+      if (validatedData.type === 'BUY') {
         result = await orderService.createBuyOrder({
           userId,
           cryptoType: validatedData.cryptoType,

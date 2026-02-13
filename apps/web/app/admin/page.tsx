@@ -21,7 +21,7 @@ interface DashboardStats {
   transactions: {
     total: number;
   };
-  kyc: {
+  disputes: {
     pending: number;
   };
   volume: {
@@ -153,15 +153,15 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Pending KYC */}
+        {/* Pending Disputes */}
         <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-6">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-orange-600/20 border border-orange-500/30 rounded-full flex items-center justify-center">
-              <span className="text-xl">🔍</span>
+              <span className="text-xl">⚖️</span>
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">KYC Pendentes</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.kyc.pending}</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Disputas Pendentes</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.disputes?.pending || 0}</p>
             </div>
           </div>
         </div>

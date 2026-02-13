@@ -12,7 +12,6 @@ interface User {
   id: string;
   email: string;
   name?: string;
-  kycLevel: string;
   role: string;
   level?: number;
   reputationScore: number;
@@ -29,7 +28,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('ALL');
-  const [filterKYC, setFilterKYC] = useState('ALL');
+  const [filterReputation, setFilterReputation] = useState('ALL');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [showFreezeModal, setShowFreezeModal] = useState(false);
@@ -60,14 +59,26 @@ export default function UsersPage() {
     const matchSearch = user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                        user.name?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchRole = filterRole === 'ALL' || user.role === filterRole;
-    const matchKYC = filterKYC === 'ALL' || user.kycLevel === filterKYC;
-    return matchSearch && matchRole && matchKYC;
+    const matchReputation = filterReputation === 'ALL' ||
+      (filterReputation === 'NEW' && user.reputationScore === 0) ||
+      (filterReputation === 'LOW' && user.reputationScore > 0 && user.reputationScore < 30) ||
+      (filterReputation === 'MID' && user.reputationScore >= 30 && user.reputationScore < 70) ||
+      (filterReputation === 'HIGH' && user.reputationScore >= 70);
+    return matchSearch && matchRole && matchReputation;
   });
 
-  const getKYCBadgeVariant = (level: string) => {
-    if (level === 'NONE') return 'default';
-    if (level === 'LEVEL_1' || level === 'LEVEL_2') return 'warning';
+  const getReputationBadgeVariant = (score: number) => {
+    if (score === 0) return 'default';
+    if (score < 30) return 'warning';
+    if (score < 70) return 'info';
     return 'success';
+  };
+
+  const getReputationLabel = (score: number) => {
+    if (score === 0) return 'Novo';
+    if (score < 30) return 'Iniciante';
+    if (score < 70) return 'Regular';
+    return 'Experiente';
   };
 
   const getRoleBadgeVariant = (role: string) => {
@@ -98,9 +109,9 @@ export default function UsersPage() {
           <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">{users.length}</p>
         </div>
         <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-6">
-          <p className="text-sm text-gray-600 dark:text-gray-400">KYC Completo</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Alta Reputacao (70+)</p>
           <p className="text-3xl font-bold text-green-400 mt-2">
-            {users.filter(u => u.kycLevel === 'LEVEL_4').length}
+            {users.filter(u => u.reputationScore >= 70).length}
           </p>
         </div>
         <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-6">
@@ -110,9 +121,9 @@ export default function UsersPage() {
           </p>
         </div>
         <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-6">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Sem KYC</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Novos (Rep. 0)</p>
           <p className="text-3xl font-bold text-yellow-400 mt-2">
-            {users.filter(u => u.kycLevel === 'NONE').length}
+            {users.filter(u => u.reputationScore === 0).length}
           </p>
         </div>
       </div>
@@ -144,18 +155,17 @@ export default function UsersPage() {
             </select>
           </div>
           <div>
-            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">KYC Level</label>
+            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Reputacao</label>
             <select
-              value={filterKYC}
-              onChange={(e) => setFilterKYC(e.target.value)}
+              value={filterReputation}
+              onChange={(e) => setFilterReputation(e.target.value)}
               className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-600 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="ALL">Todos</option>
-              <option value="NONE">Sem KYC</option>
-              <option value="LEVEL_1">Level 1</option>
-              <option value="LEVEL_2">Level 2</option>
-              <option value="LEVEL_3">Level 3</option>
-              <option value="LEVEL_4">Level 4</option>
+              <option value="NEW">Novos (0)</option>
+              <option value="LOW">Baixa (1-29)</option>
+              <option value="MID">Media (30-69)</option>
+              <option value="HIGH">Alta (70+)</option>
             </select>
           </div>
         </div>
@@ -167,13 +177,13 @@ export default function UsersPage() {
           <table className="w-full">
             <thead className="bg-white dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Usuário</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">KYC</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Usuario</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Reputacao</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Limite</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Role</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Rep.</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Trans.</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Cadastro</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Ações</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Acoes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
@@ -197,15 +207,17 @@ export default function UsersPage() {
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap">
                     <StatusBadge
-                      status={user.kycLevel === 'NONE' ? 'Sem KYC' : user.kycLevel}
-                      variant={getKYCBadgeVariant(user.kycLevel)}
+                      status={`${user.reputationScore}/100 - ${getReputationLabel(user.reputationScore)}`}
+                      variant={getReputationBadgeVariant(user.reputationScore)}
                     />
                   </td>
                   <td className="px-4 py-2">
-                    <StatusBadge status={user.role} variant={getRoleBadgeVariant(user.role)} />
+                    <span className="text-sm text-gray-900 dark:text-white font-semibold">
+                      R$ {(1000 + user.reputationScore * 100).toLocaleString('pt-BR')}
+                    </span>
                   </td>
                   <td className="px-4 py-2">
-                    <span className="text-sm text-gray-900 dark:text-white font-semibold">{user.reputationScore}</span>
+                    <StatusBadge status={user.role} variant={getRoleBadgeVariant(user.role)} />
                   </td>
                   <td className="px-4 py-2">
                     <span className="text-sm text-gray-700 dark:text-gray-300">{user.totalTransactions}</span>

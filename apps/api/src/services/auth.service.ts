@@ -54,7 +54,6 @@ export class AuthService {
         email: input.email,
         password: hashedPassword,
         name: input.name,
-        kycLevel: "NONE",
         roleId: userRole.id,
         legacyRole: 'USER',
       },
@@ -204,22 +203,6 @@ export class AuthService {
             level: true,
           }
         },
-        kycVerification: {
-          select: {
-            fullName: true,
-            cpf: true,
-            phone: true,
-            phoneVerified: true,
-            dateOfBirth: true,
-            addressStreet: true,
-            addressNumber: true,
-            addressComplement: true,
-            addressNeighborhood: true,
-            addressCity: true,
-            addressState: true,
-            addressZipCode: true,
-          },
-        },
       },
     });
 
@@ -232,14 +215,10 @@ export class AuthService {
 
     const { password, role: roleObject, ...userWithoutPassword } = user;
 
-    // Adicionar CPF e telefone diretamente no objeto user (compatibilidade com frontend)
     return {
       ...userWithoutPassword,
       role: userRole, // Role como string (MASTER, ADMIN, etc)
       level: user.role?.level || 0, // Level do role (SUPPORT=40, GERENTE=60, ADMIN=80, MASTER=100)
-      cpf: user.kycVerification?.cpf || null,
-      phone: user.kycVerification?.phone || null,
-      kycVerification: user.kycVerification,
       has2FA: user.twoFactorEnabled, // Mapear para compatibilidade com SecurityBanner
       // ADMIN CONTROLS: Bloqueio (incluir para frontend exibir banner)
       accountFrozen: user.accountFrozen,
@@ -256,13 +235,9 @@ export class AuthService {
   }
 
   async getUserByCpf(cpf: string): Promise<User | null> {
-    // CPF está em KYCVerification, não em User
-    const kycRecord = await prisma.kYCVerification.findUnique({
+    return await prisma.user.findFirst({
       where: { cpf },
-      include: { user: true },
     });
-
-    return kycRecord?.user || null;
   }
 
   async updateProfile(userId: string, data: {
@@ -283,41 +258,19 @@ export class AuthService {
       }
     }
 
-    // Atualizar usuário
+    // Atualizar usuario
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: {
         ...(data.name && { name: data.name }),
         ...(data.email && { email: data.email }),
       },
-      include: {
-        kycVerification: {
-          select: {
-            fullName: true,
-            cpf: true,
-            phone: true,
-            phoneVerified: true,
-            dateOfBirth: true,
-            addressStreet: true,
-            addressNumber: true,
-            addressComplement: true,
-            addressNeighborhood: true,
-            addressCity: true,
-            addressState: true,
-            addressZipCode: true,
-          },
-        },
-      },
     });
 
     const { password, ...userWithoutPassword } = updatedUser;
 
-    // Adicionar CPF e telefone diretamente no objeto user (compatibilidade com frontend)
     return {
       ...userWithoutPassword,
-      cpf: updatedUser.kycVerification?.cpf || null,
-      phone: updatedUser.kycVerification?.phone || null,
-      kycVerification: updatedUser.kycVerification,
     };
   }
 }

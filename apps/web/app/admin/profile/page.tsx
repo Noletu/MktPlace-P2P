@@ -148,7 +148,7 @@ export default function AdminProfilePage() {
             </div>
             <div className="flex items-center gap-3 p-4 bg-green-600/10 border border-green-600/30 rounded-lg">
               <span className="text-2xl text-green-400">✓</span>
-              <span className="text-gray-200">Gerenciar KYC</span>
+              <span className="text-gray-200">Gerenciar Disputas</span>
             </div>
             <div className="flex items-center gap-3 p-4 bg-green-600/10 border border-green-600/30 rounded-lg">
               <span className="text-2xl text-green-400">✓</span>

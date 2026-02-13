@@ -15,23 +15,15 @@ interface UserDetails {
     cpf?: string;
     phone?: string;
     role: string;
-    kycLevel: string;
     reputationScore: number;
+    totalTransactions: number;
+    successfulTransactions: number;
     accountFrozen: boolean;
     frozenReason?: string;
     frozenAt?: string;
     frozenUntil?: string;
     createdAt: string;
     lastLoginAt?: string;
-    kycData?: {
-      address?: string;
-      city?: string;
-      state?: string;
-      zipCode?: string;
-      country?: string;
-      documentType?: string;
-      documentNumber?: string;
-    };
   };
   balances: Array<{
     cryptocurrency: string;
@@ -231,7 +223,7 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                     {details.user.role}
                   </span>
                   <span className="px-4 py-2 bg-white/20 backdrop-blur-sm rounded-full text-sm font-bold block">
-                    KYC: {details.user.kycLevel}
+                    Rep: {details.user.reputationScore}/100
                   </span>
                 </div>
               </div>
@@ -330,45 +322,6 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                       </div>
                     </div>
                   </div>
-
-                  {/* Endereço */}
-                  {details.user.kycData && (
-                    <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4">
-                      <h5 className="font-bold text-gray-900 dark:text-white mb-4">📍 Endereço</h5>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="col-span-2">
-                          <p className="text-sm text-gray-600 dark:text-gray-400">Logradouro</p>
-                          <p className="text-lg font-medium text-gray-900 dark:text-white">
-                            {details.user.kycData.address || 'N/A'}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">Cidade</p>
-                          <p className="text-lg font-medium text-gray-900 dark:text-white">
-                            {details.user.kycData.city || 'N/A'}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">Estado</p>
-                          <p className="text-lg font-medium text-gray-900 dark:text-white">
-                            {details.user.kycData.state || 'N/A'}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">CEP</p>
-                          <p className="text-lg font-medium text-gray-900 dark:text-white">
-                            {details.user.kycData.zipCode || 'N/A'}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">País</p>
-                          <p className="text-lg font-medium text-gray-900 dark:text-white">
-                            {details.user.kycData.country || 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
                   {/* Status da Conta */}
                   <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4">
@@ -729,8 +682,8 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                       <div className="flex items-start gap-2">
                         <span className="text-green-500 text-xl">✓</span>
                         <div>
-                          <p className="font-bold text-gray-900 dark:text-white text-sm">Dados KYC</p>
-                          <p className="text-xs text-gray-600 dark:text-gray-400">Documentos, verificações</p>
+                          <p className="font-bold text-gray-900 dark:text-white text-sm">Reputacao e Limites</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400">Baseado em transacoes</p>
                         </div>
                       </div>
                       <div className="flex items-start gap-2">

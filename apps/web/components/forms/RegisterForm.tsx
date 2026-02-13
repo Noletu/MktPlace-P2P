@@ -291,12 +291,12 @@ export default function RegisterForm() {
       </button>
 
       <div className="p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs text-gray-600 dark:text-gray-400">
-        <p className="mb-2"><strong>Após o cadastro:</strong></p>
+        <p className="mb-2"><strong>Apos o cadastro:</strong></p>
         <ul className="list-disc list-inside space-y-1">
           <li>✅ Use a plataforma imediatamente (limite: R$ 1.000/dia)</li>
-          <li>📈 Complete o KYC quando quiser para aumentar limites</li>
-          <li>🔒 KYC Level 1 (CPF + Telefone) → R$ 10.000/dia</li>
-          <li>🚀 Níveis superiores disponíveis para limites maiores</li>
+          <li>📈 Complete transacoes para aumentar sua reputacao</li>
+          <li>⭐ Cada transacao = +10 pontos de reputacao</li>
+          <li>🚀 Reputacao 100 = limite de R$ 11.000/dia</li>
         </ul>
       </div>
 

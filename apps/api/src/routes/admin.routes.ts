@@ -73,17 +73,6 @@ router.get('/audit-logs/stats', supportMiddleware, adminController.getAuditStats
 router.get('/audit-logs/export', supportMiddleware, adminController.exportAuditLogs.bind(adminController));
 
 /**
- * OPERACIONAL: Gestão de KYC - Visualização (SUPPORT + GERENTE + ADMIN + MASTER)
- * ADMINISTRATIVO: Aprovação/Rejeição (GERENTE + ADMIN + MASTER)
- */
-router.get('/kyc', supportMiddleware, adminController.listPendingKYC.bind(adminController));
-router.get('/kyc/stats', supportMiddleware, adminController.getKYCStats.bind(adminController));
-router.get('/kyc/:userId', supportMiddleware, adminController.getKYCVerification.bind(adminController));
-// SECURITY: Aprovação/Rejeição de KYC com rate limiting
-router.post('/kyc/:userId/approve', managerMiddleware, adminActionLimiter, adminController.approveKYC.bind(adminController));
-router.post('/kyc/:userId/reject', managerMiddleware, adminActionLimiter, adminController.rejectKYC.bind(adminController));
-
-/**
  * OPERACIONAL: Dispute Analytics (SUPPORT + GERENTE + ADMIN + MASTER)
  */
 router.get('/disputes/analytics', supportMiddleware, disputeController.getDisputeAnalytics.bind(disputeController));

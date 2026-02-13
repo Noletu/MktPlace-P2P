@@ -192,7 +192,7 @@ export class AdminService {
       totalUsers,
       totalOrders,
       totalTransactions,
-      pendingKYC,
+      pendingDisputes,
       activeOrders,
       completedOrders,
       recentUsers,
@@ -207,10 +207,10 @@ export class AdminService {
       // Total de transações
       prisma.transaction.count(),
 
-      // KYC pendentes
-      prisma.user.count({
+      // Disputas pendentes
+      prisma.order.count({
         where: {
-          kycLevel: 'NONE',
+          status: 'DISPUTED',
         },
       }),
 
@@ -273,8 +273,8 @@ export class AdminService {
       transactions: {
         total: totalTransactions,
       },
-      kyc: {
-        pending: pendingKYC,
+      disputes: {
+        pending: pendingDisputes,
       },
       volume: {
         totalBRL: totalVolume.toFixed(2),
@@ -289,13 +289,11 @@ export class AdminService {
    */
 
   async getUsers(filters?: {
-    kycLevel?: string;
     role?: string;
     search?: string;
   }) {
     const users = await prisma.user.findMany({
       where: {
-        kycLevel: filters?.kycLevel,
         legacyRole: filters?.role, // RBAC: Usar legacyRole temporariamente para filtro
         OR: filters?.search
           ? [
@@ -311,7 +309,6 @@ export class AdminService {
         id: true,
         email: true,
         name: true,
-        kycLevel: true,
         legacyRole: true,
         reputationScore: true,
         totalTransactions: true,
@@ -346,7 +343,6 @@ export class AdminService {
   async updateUser(
     userId: string,
     data: {
-      kycLevel?: string;
       role?: string;
     },
     adminId: string
@@ -433,7 +429,6 @@ export class AdminService {
         data: {
           roleId: newRoleRecord.id,
           legacyRole: data.role,
-          ...(data.kycLevel && { kycLevel: data.kycLevel }),
         },
       });
 
@@ -478,7 +473,7 @@ export class AdminService {
       return user;
     }
 
-    // Se não está mudando role, apenas aplica outras mudanças (kycLevel, etc)
+    // Se não está mudando role, apenas aplica outras mudanças
     const user = await prisma.user.update({
       where: { id: userId },
       data,
@@ -853,22 +848,6 @@ export class AdminService {
             name: true,
           },
         },
-        kycVerification: {
-          select: {
-            cpf: true,
-            phone: true,
-            addressStreet: true,
-            addressNumber: true,
-            addressCity: true,
-            addressState: true,
-            addressZipCode: true,
-            addressComplement: true,
-            addressNeighborhood: true,
-            documentType: true,
-            documentNumber: true,
-            approvedAt: true,
-          },
-        },
       },
     });
 
@@ -1169,8 +1148,10 @@ export class AdminService {
         email: user.email,
         name: user.name,
         role: userRole, // RBAC: Role como string (MASTER, ADMIN, etc)
-        kycLevel: user.kycLevel,
         reputationScore: user.reputationScore,
+        totalTransactions: user.totalTransactions,
+        successfulTransactions: user.successfulTransactions,
+        dailyLimit: 1000 + (user.reputationScore * 100),
         twoFactorEnabled: user.twoFactorEnabled,
         accountFrozen: user.accountFrozen,
         frozenReason: user.frozenReason,
@@ -1178,18 +1159,8 @@ export class AdminService {
         frozenUntil: user.frozenUntil,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
-        // Dados KYC
-        cpf: user.kycVerification?.cpf,
-        phone: user.kycVerification?.phone,
-        kycData: user.kycVerification ? {
-          address: user.kycVerification.addressStreet,
-          city: user.kycVerification.addressCity,
-          state: user.kycVerification.addressState,
-          zipCode: user.kycVerification.addressZipCode,
-          documentType: user.kycVerification.documentType,
-          documentNumber: user.kycVerification.documentNumber,
-          approvedAt: user.kycVerification.approvedAt,
-        } : undefined,
+        cpf: user.cpf || null,
+        phone: user.phone || null,
       },
 
       // Saldos por criptomoeda
@@ -1378,16 +1349,7 @@ export class AdminService {
       });
     }
 
-    // Flag 3: KYC não verificado
-    if (userDetails.user.kycLevel === 'NONE') {
-      suspiciousActivityFlags.push({
-        type: 'NO_KYC',
-        severity: 'MEDIUM',
-        description: 'Usuário sem verificação KYC',
-      });
-    }
-
-    // Flag 4: Reputação baixa
+    // Flag 3: Reputação baixa
     if (userDetails.user.reputationScore < 50) {
       suspiciousActivityFlags.push({
         type: 'LOW_REPUTATION',
@@ -1426,15 +1388,14 @@ export class AdminService {
         name: userDetails.user.name,
         cpf: userDetails.user.cpf,
         phone: userDetails.user.phone,
-        role: userDetails.user.role, // Já vem como string de getUserDetails()
-        kycLevel: userDetails.user.kycLevel,
+        role: userDetails.user.role,
         reputationScore: userDetails.user.reputationScore,
+        dailyLimit: userDetails.user.dailyLimit,
         accountStatus: userDetails.user.accountFrozen ? 'FROZEN' : 'ACTIVE',
         frozenReason: userDetails.user.frozenReason,
         frozenAt: userDetails.user.frozenAt,
         frozenUntil: userDetails.user.frozenUntil,
         createdAt: userDetails.user.createdAt,
-        kycData: userDetails.user.kycData,
       },
 
       // Carteiras e saldos
