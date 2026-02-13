@@ -439,7 +439,6 @@ export class AuthController {
         successfulTransactions: user.successfulTransactions,
         totalCancellations: user.totalCancellations,
         recentCancellations: user.recentCancellations,
-        kycLevel: user.kycLevel,
         createdAt: user.createdAt,
       };
 

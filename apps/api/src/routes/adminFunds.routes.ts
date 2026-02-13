@@ -91,6 +91,42 @@ router.post(
 );
 
 /**
+ * OPERACIONAL: Locked Balances (GERENTE + ADMIN + MASTER)
+ * Listar carteiras com saldo bloqueado
+ */
+router.get(
+  '/locked-balances',
+  managerMiddleware,
+  adminFundsController.getLockedBalances.bind(adminFundsController)
+);
+
+/**
+ * FINANCEIRO CRÍTICO: Lock Balance (APENAS MASTER)
+ * Bloquear saldo manualmente - Rate limiting restritivo
+ * TODO: Reabilitar require2FAMiddleware quando 2FA estiver configurado
+ */
+router.post(
+  '/lock-balance',
+  financialOperationsMiddleware,
+  // require2FAMiddleware, // Desabilitado temporariamente
+  financialOperationsLimiter,
+  adminFundsController.lockBalance.bind(adminFundsController)
+);
+
+/**
+ * FINANCEIRO CRÍTICO: Unlock Balance (APENAS MASTER)
+ * Desbloquear saldo manualmente - Rate limiting restritivo
+ * TODO: Reabilitar require2FAMiddleware quando 2FA estiver configurado
+ */
+router.post(
+  '/unlock-balance',
+  financialOperationsMiddleware,
+  // require2FAMiddleware, // Desabilitado temporariamente
+  financialOperationsLimiter,
+  adminFundsController.unlockBalance.bind(adminFundsController)
+);
+
+/**
  * OPERACIONAL: Audit Log & Reports (GERENTE + ADMIN + MASTER)
  */
 router.get(

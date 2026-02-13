@@ -17,9 +17,8 @@ model User {
   email    String  @unique
   password String
   name     String?
-
-  // KYC - NONE, LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4
-  kycLevel String @default("NONE")
+  cpf      String? @unique
+  phone    String?
 
   // Reputation
   reputationScore        Int @default(0)
@@ -82,9 +81,6 @@ model User {
   chatsAsParticipant1 Chat[]        @relation("ChatParticipant1")
   chatsAsParticipant2 Chat[]        @relation("ChatParticipant2")
   chatMessages        ChatMessage[] @relation("ChatMessageSender")
-
-  // KYC Verification (1:1 relationship)
-  kycVerification KYCVerification?
 
   // Encryption Keys (1:1 relationship)
   userKeys UserKeys?
@@ -637,11 +633,15 @@ model DisputeMessage {
   // Se é mensagem do sistema/admin
   isAdminMessage Boolean @default(false)
 
+  // Chat privado: userId destinatário (null = visível para todos)
+  visibleTo String?
+
   createdAt DateTime @default(now())
 
   @@index([disputeId])
   @@index([authorId])
   @@index([createdAt])
+  @@index([visibleTo])
 }
 
 // ============================================
@@ -805,9 +805,11 @@ model ChatMessage {
   message String? // Mensagens antigas (sem criptografia)
 
   // Criptografia end-to-end
-  encryptedContent String? // Mensagens novas (criptografadas)
-  isEncrypted      Boolean @default(false) // Flag de controle
-  iv               String? // Initialization Vector para AES-GCM
+  encryptedContent       String? // Criptografado para o DESTINATÁRIO (chave pública do recipient)
+  encryptedForSender     String? // Criptografado para o REMETENTE (chave pública do sender)
+  isEncrypted            Boolean @default(false) // Flag de controle
+  iv                     String? // IV para encryptedContent (destinatário)
+  ivForSender            String? // IV para encryptedForSender (remetente)
 
   // Anexos (URLs de imagens)
   attachments    String? // JSON array de URLs (retrocompatibilidade)
@@ -861,94 +863,6 @@ model ChatArchive {
   @@index([expiresAt])
   @@index([isDeleted])
   @@index([archivedAt])
-}
-
-// Sistema completo de KYC Verification (Progressive Disclosure)
-model KYCVerification {
-  id String @id @default(cuid())
-
-  // Relacionamento 1:1 com User
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // Status da verificação: PENDING, APPROVED, REJECTED
-  status String @default("PENDING")
-
-  // Nível atual de KYC submetido: LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4
-  level String
-
-  // --- LEVEL 1: Dados básicos (CPF + Telefone + Nome completo) ---
-  fullName        String?
-  cpf             String?   @unique
-  phone           String?
-  phoneVerified   Boolean   @default(false)
-  phoneVerifiedAt DateTime?
-
-  // --- LEVEL 2: Endereço + Data de Nascimento ---
-  dateOfBirth DateTime?
-
-  addressStreet       String?
-  addressNumber       String?
-  addressComplement   String?
-  addressNeighborhood String?
-  addressCity         String?
-  addressState        String? // UF
-  addressZipCode      String?
-
-  // --- LEVEL 3: Documento + Selfie + Liveness ---
-  documentType     String? // RG, CNH
-  documentNumber   String?
-  documentFrontUrl String?
-  documentBackUrl  String?
-
-  selfieUrl        String?
-  livenessScore    Float?
-  livenessVerified Boolean @default(false)
-
-  // --- LEVEL 4: Comprovante de Residência ---
-  proofOfResidenceUrl  String?
-  proofOfResidenceType String? // CONTA_LUZ, CONTA_AGUA, CONTA_TELEFONE, EXTRATO_BANCARIO
-
-  // Metadados de revisão
-  reviewedBy      String? // ID do admin que aprovou/rejeitou
-  reviewedAt      DateTime?
-  rejectionReason String?
-
-  // Timestamps
-  submittedAt DateTime  @default(now())
-  approvedAt  DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([status])
-  @@index([level])
-  @@index([cpf])
-  @@index([submittedAt])
-}
-
-// Códigos de verificação de telefone
-model PhoneVerificationCode {
-  id String @id @default(cuid())
-
-  phone String
-  code  String // Código de 6 dígitos
-
-  // Status: PENDING, VERIFIED, EXPIRED, USED
-  status String @default("PENDING")
-
-  attempts Int @default(0) // Tentativas de verificação
-
-  expiresAt  DateTime
-  verifiedAt DateTime?
-
-  createdAt DateTime @default(now())
-
-  @@index([phone])
-  @@index([code])
-  @@index([status])
-  @@index([expiresAt])
 }
 
 // Chaves de criptografia end-to-end para chat

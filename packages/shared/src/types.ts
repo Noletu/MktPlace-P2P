@@ -1,13 +1,5 @@
 // Shared types entre frontend e backend
 
-export enum KYCLevel {
-  NONE = 'NONE',
-  LEVEL_1 = 'LEVEL_1', // CPF + Email (R$ 10k/dia)
-  LEVEL_2 = 'LEVEL_2', // + Selfie + Prova endereço (R$ 50k/dia)
-  LEVEL_3 = 'LEVEL_3', // + Renda + Banco (R$ 100k/dia)
-  LEVEL_4 = 'LEVEL_4', // Enhanced Due Diligence (sem limite)
-}
-
 export enum UserRole {
   USER = 'USER',
   ADMIN = 'ADMIN',
@@ -67,7 +59,6 @@ export interface User {
   email: string;
   cpf: string;
   name?: string;
-  kycLevel: KYCLevel;
   reputationScore: number;
   role: UserRole;
   createdAt: string;

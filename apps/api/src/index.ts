@@ -5,7 +5,6 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';
-import kycRoutes from './routes/kyc.routes';
 import priceRoutes from './routes/price.routes';
 import walletRoutes from './routes/wallet.routes';
 import orderRoutes from './routes/order.routes';
@@ -164,7 +163,6 @@ app.get('/api/v1', (req: Request, res: Response) => {
     endpoints: {
       auth: '/api/v1/auth',
       '2fa': '/api/v1/2fa',
-      kyc: '/api/v1/kyc',
       prices: '/api/v1/prices',
       wallets: '/api/v1/wallets',
       orders: '/api/v1/orders',
@@ -187,9 +185,6 @@ app.use('/api/v1/auth', authRoutes);
 
 // 2FA routes
 app.use('/api/v1/2fa', twoFactorRoutes);
-
-// KYC routes
-app.use('/api/v1/kyc', kycRoutes);
 
 // Price routes
 app.use('/api/v1/prices', priceRoutes);

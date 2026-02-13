@@ -35,6 +35,7 @@ export interface AddMessageInput {
   message: string;
   attachments?: string[];
   isAdminMessage?: boolean;
+  visibleTo?: string; // userId destinatário (para mensagens privadas de staff)
 }
 
 export interface ResolveDisputeInput {
@@ -64,8 +65,9 @@ export class DisputeService {
     // Verificar se usuário é parte do pedido
     const isOrderOwner = order.userId === input.createdBy;
     const isPayer = order.transactions.some(t => t.payerId === input.createdBy);
+    const isProvider = order.providerId === input.createdBy;
 
-    if (!isOrderOwner && !isPayer) {
+    if (!isOrderOwner && !isPayer && !isProvider) {
       throw new Error('Você não tem permissão para criar disputa neste pedido');
     }
 
@@ -148,9 +150,14 @@ export class DisputeService {
     setImmediate(async () => {
       try {
         // Identificar a outra parte (counterparty)
-        const counterpartyId = isOrderOwner
-          ? order.transactions[0]?.payerId
-          : order.userId;
+        let counterpartyId: string | null | undefined;
+        if (isProvider) {
+          counterpartyId = order.userId;
+        } else if (isOrderOwner) {
+          counterpartyId = order.providerId || order.transactions[0]?.payerId;
+        } else {
+          counterpartyId = order.userId;
+        }
 
         if (counterpartyId) {
           await notificationService.notifyDisputeCreated(
@@ -190,13 +197,19 @@ export class DisputeService {
       throw new Error('Disputa não encontrada');
     }
 
-    // Validar que usuário é a outra parte (não o criador)
-    const transaction = dispute.order.transactions[0];
-    const otherPartyId =
-      dispute.createdBy === dispute.order.userId ? transaction?.payerId : dispute.order.userId;
+    // Validar que usuario e a outra parte (nao o criador)
+    const order = dispute.order;
 
-    if (userId !== otherPartyId) {
-      throw new Error('Apenas a outra parte pode responder à disputa');
+    if (dispute.createdBy === userId) {
+      throw new Error('Voce nao pode responder a sua propria disputa');
+    }
+
+    const isOrderOwner = order.userId === userId;
+    const isPayer = order.transactions.some(t => t.payerId === userId);
+    const isProvider = order.providerId === userId;
+
+    if (!isOrderOwner && !isPayer && !isProvider) {
+      throw new Error('Apenas a outra parte pode responder a disputa');
     }
 
     // Validar status
@@ -207,7 +220,7 @@ export class DisputeService {
     // Validar deadline (24h)
     const timeSinceCreated = Date.now() - dispute.createdAt.getTime();
     if (timeSinceCreated > DISPUTE_DEADLINES.RESPONSE_TIME) {
-      throw new Error('Prazo para responder expirou (24h)');
+      throw new Error('Prazo para responder expirou (48h)');
     }
 
     // Validar campos
@@ -303,6 +316,7 @@ export class DisputeService {
 
     const isOrderOwner = order.userId === input.authorId;
     const isPayer = order.transactions.some(t => t.payerId === input.authorId);
+    const isProvider = order.providerId === input.authorId;
 
     // Buscar usuário para verificar se é staff (SUPPORT+)
     const user = await prisma.user.findUnique({
@@ -320,7 +334,7 @@ export class DisputeService {
     const userLevel = user?.role?.level || 0;
     const isStaff = userLevel >= 40; // SUPPORT+ pode adicionar mensagens como staff
 
-    if (!isOrderOwner && !isPayer && !isStaff) {
+    if (!isOrderOwner && !isPayer && !isProvider && !isStaff) {
       throw new Error('Você não tem permissão para adicionar mensagens nesta disputa');
     }
 
@@ -332,6 +346,7 @@ export class DisputeService {
         message: input.message,
         attachments: input.attachments ? JSON.stringify(input.attachments) : null,
         isAdminMessage: input.isAdminMessage || isStaff,
+        visibleTo: isStaff ? (input.visibleTo || null) : null,
       },
       include: {
         author: {
@@ -345,12 +360,39 @@ export class DisputeService {
       },
     });
 
-    // Se for staff adicionando mensagem, mudar status para UNDER_REVIEW
-    if (isStaff && dispute.status === 'OPEN') {
+    // Transicionar OPEN → UNDER_REVIEW quando:
+    // 1. Staff adiciona mensagem, OU
+    // 2. A outra parte (não o criador da disputa) envia mensagem pela primeira vez
+    const isOtherParty = !isStaff && input.authorId !== dispute.createdBy;
+
+    if (dispute.status === 'OPEN' && (isStaff || isOtherParty)) {
       await prisma.dispute.update({
         where: { id: input.disputeId },
         data: { status: 'UNDER_REVIEW' },
       });
+
+      // Se for a outra parte respondendo, notificar criador e admins
+      if (isOtherParty) {
+        setImmediate(async () => {
+          try {
+            await notificationService.createNotification({
+              userId: dispute.createdBy,
+              type: 'DISPUTE_RESPONDED',
+              category: 'DISPUTE',
+              title: '💬 Resposta Recebida',
+              message: 'A outra parte respondeu à disputa. Nossa equipe está analisando o caso.',
+              actionUrl: `/disputes/${input.disputeId}`,
+              actionLabel: 'Ver Disputa',
+              relatedId: input.disputeId,
+              relatedType: 'DISPUTE',
+              priority: 'HIGH',
+            });
+            await this.notifyAdmins(input.disputeId, 'Disputa precisa de análise');
+          } catch (err) {
+            console.error('Failed to send dispute response notifications:', err);
+          }
+        });
+      }
     }
 
     // Capturar valor de isStaff para usar no callback assíncrono
@@ -361,13 +403,22 @@ export class DisputeService {
       try {
         const isOrderOwner = order.userId === input.authorId;
         const isPayer = order.transactions.some(t => t.payerId === input.authorId);
+        const isProvider = order.providerId === input.authorId;
 
         // Notificar a outra parte (não o autor da mensagem)
-        const recipientId = isOrderOwner
-          ? order.transactions[0]?.payerId
-          : isPayer
-          ? order.userId
-          : null;
+        let recipientId: string | null | undefined;
+        if (isAdmin && input.visibleTo) {
+          // Staff enviando mensagem privada → notificar o destinatário
+          recipientId = input.visibleTo;
+        } else if (isProvider) {
+          recipientId = order.userId;
+        } else if (isOrderOwner) {
+          recipientId = order.providerId || order.transactions[0]?.payerId;
+        } else if (isPayer) {
+          recipientId = order.userId;
+        } else {
+          recipientId = null;
+        }
 
         if (recipientId) {
           await notificationService.notifyDisputeMessage(
@@ -499,22 +550,31 @@ export class DisputeService {
     });
 
     if (order) {
-      const sellerId = order.userId;
-      const buyerId = order.transactions[0]?.payerId;
+      // Identificar vendedor/comprador baseado no tipo de ordem (BUY vs SELL)
+      const isBuyOrder = order.orderType === 'BUY';
+      const transaction = order.transactions[0];
+
+      const sellerId = isBuyOrder ? order.providerId : order.userId;
+      const buyerId = isBuyOrder ? order.userId : transaction?.payerId;
+      const sellerWalletId = isBuyOrder ? order.providerWalletId : order.walletId;
+
+      logger.info(`[DISPUTE] Resolução: orderType=${order.orderType}, sellerId=${sellerId}, buyerId=${buyerId}, sellerWalletId=${sellerWalletId}`);
 
       // ═══════════════════════════════════════════════════════════════════════
       // TRANSFERENCIA DE CRIPTO BASEADA NA RESOLUCAO
       // ═══════════════════════════════════════════════════════════════════════
-      if (order.walletId) {
+      if (sellerWalletId) {
         // Usar BigNumber para evitar erros de precisao de ponto flutuante
         const cryptoAmountBN = new BigNumber(order.cryptoAmount);
-        const payerRewardBN = new BigNumber(order.payerReward || '0');
+        const payerRewardBN = isBuyOrder
+          ? new BigNumber('0') // BUY orders: sem cashback
+          : new BigNumber(order.payerReward || '0'); // SELL orders: cashback
         const totalAmountBN = cryptoAmountBN.plus(payerRewardBN);
-        const transaction = order.transactions[0];
+        const platformFeeBN = new BigNumber(order.platformFee || '0');
 
         // Buscar carteira do vendedor (onde esta o colateral bloqueado)
         const sellerWallet = await prisma.userWallet.findUnique({
-          where: { id: order.walletId },
+          where: { id: sellerWalletId },
         });
 
         if (sellerWallet) {
@@ -523,88 +583,259 @@ export class DisputeService {
           if (input.resolutionType === 'RELEASE_TO_BUYER' || input.resolutionType === 'PENALTY_SELLER') {
             // A FAVOR DO COMPRADOR: Transferir cripto do vendedor para o comprador
 
+            if (!buyerId) {
+              logger.error(`[DISPUTE] Comprador não identificado para disputa ${input.disputeId} (order ${order.id})`);
+              throw new Error('Buyer ID not found for dispute resolution');
+            }
+
             if (sellerLockedBalanceBN.lt(totalAmountBN)) {
-              logger.warn(`[DISPUTE] Saldo bloqueado insuficiente: ${sellerLockedBalanceBN.toFixed(8)} < ${totalAmountBN.toFixed(8)}`);
-            } else if (transaction?.payerId) {
-              // Buscar/criar carteira do comprador
-              let buyerWallet = await prisma.userWallet.findFirst({
+              logger.error(`[DISPUTE] Saldo bloqueado insuficiente: ${sellerLockedBalanceBN.toFixed(8)} < ${totalAmountBN.toFixed(8)}`);
+              throw new Error(`Insufficient locked balance for dispute resolution: ${sellerLockedBalanceBN.toFixed(8)} < ${totalAmountBN.toFixed(8)}`);
+            }
+
+            // Buscar/criar carteira do comprador
+            let buyerWallet = await prisma.userWallet.findFirst({
+              where: {
+                userId: buyerId,
+                cryptoType: order.cryptoType,
+                network: order.cryptoNetwork,
+              },
+            });
+
+            if (!buyerWallet) {
+              // Criar carteira para o comprador
+              const { address, privateKey, derivationPath } = DerivationService.deriveUserWallet(
+                buyerId,
+                order.cryptoType,
+                order.cryptoNetwork
+              );
+              const encryptedPrivateKey = KeyManagementService.encryptPrivateKey(privateKey, buyerId);
+
+              buyerWallet = await prisma.userWallet.create({
+                data: {
+                  userId: buyerId,
+                  cryptoType: order.cryptoType,
+                  network: order.cryptoNetwork,
+                  address,
+                  derivationPath,
+                  encryptedPrivateKey,
+                  balance: '0',
+                  availableBalance: '0',
+                  lockedBalance: '0',
+                  totalDeposited: '0',
+                  isActive: true,
+                  lastSyncedAt: new Date(),
+                },
+              });
+              logger.info(`[DISPUTE] Carteira criada para comprador: ${buyerWallet.address}`);
+            }
+
+            // Calcular novos saldos
+            const sellerNewLockedBN = sellerLockedBalanceBN.minus(totalAmountBN);
+            const sellerNewBalanceBN = new BigNumber(sellerWallet.balance).minus(totalAmountBN);
+            const buyerNewBalanceBN = new BigNumber(buyerWallet.balance).plus(totalAmountBN);
+            const buyerNewAvailableBN = new BigNumber(buyerWallet.availableBalance).plus(totalAmountBN);
+
+            // Deduzir do vendedor (lockedBalance e balance)
+            await prisma.userWallet.update({
+              where: { id: sellerWallet.id },
+              data: {
+                balance: sellerNewBalanceBN.toFixed(8),
+                lockedBalance: sellerNewLockedBN.toFixed(8),
+              },
+            });
+
+            // Creditar no comprador (availableBalance e balance)
+            await prisma.userWallet.update({
+              where: { id: buyerWallet.id },
+              data: {
+                balance: buyerNewBalanceBN.toFixed(8),
+                availableBalance: buyerNewAvailableBN.toFixed(8),
+              },
+            });
+
+            // Registrar WalletTransaction DEDUCT (vendedor)
+            await prisma.walletTransaction.create({
+              data: {
+                walletId: sellerWallet.id,
+                userId: sellerWallet.userId,
+                orderId: order.id,
+                type: 'DEDUCT',
+                amount: totalAmountBN.toFixed(8),
+                balanceBefore: sellerWallet.balance,
+                balanceAfter: sellerNewBalanceBN.toFixed(8),
+                lockedBefore: sellerWallet.lockedBalance,
+                lockedAfter: sellerNewLockedBN.toFixed(8),
+                description: `Disputa resolvida - Cripto transferida ao comprador (Order ${order.id})`,
+                metadata: JSON.stringify({
+                  disputeId: input.disputeId,
+                  resolutionType: input.resolutionType,
+                  buyerId,
+                  buyerWalletId: buyerWallet.id,
+                }),
+              },
+            });
+
+            // Registrar WalletTransaction CREDIT (comprador)
+            await prisma.walletTransaction.create({
+              data: {
+                walletId: buyerWallet.id,
+                userId: buyerWallet.userId,
+                orderId: order.id,
+                type: 'CREDIT',
+                amount: totalAmountBN.toFixed(8),
+                balanceBefore: buyerWallet.balance,
+                balanceAfter: buyerNewBalanceBN.toFixed(8),
+                description: `Disputa resolvida - Cripto recebida do vendedor (Order ${order.id})`,
+                metadata: JSON.stringify({
+                  disputeId: input.disputeId,
+                  resolutionType: input.resolutionType,
+                  sellerId,
+                  sellerWalletId: sellerWallet.id,
+                }),
+              },
+            });
+
+            // Transferir platform fee para carteira da plataforma
+            if (platformFeeBN.gt(0)) {
+              let platformWallet = await prisma.platformWallet.findFirst({
                 where: {
-                  userId: transaction.payerId,
                   cryptoType: order.cryptoType,
                   network: order.cryptoNetwork,
                 },
               });
 
-              if (!buyerWallet) {
-                // Criar carteira para o comprador
-                const { address, privateKey, derivationPath } = DerivationService.deriveUserWallet(
-                  transaction.payerId,
+              if (!platformWallet) {
+                const { address, privateKey, derivationPath } = DerivationService.derivePlatformWallet(
                   order.cryptoType,
                   order.cryptoNetwork
                 );
-                const encryptedPrivateKey = KeyManagementService.encryptPrivateKey(privateKey, transaction.payerId);
-
-                buyerWallet = await prisma.userWallet.create({
-                  data: {
-                    userId: transaction.payerId,
-                    cryptoType: order.cryptoType,
-                    network: order.cryptoNetwork,
-                    address,
-                    derivationPath,
-                    encryptedPrivateKey,
-                    balance: '0',
-                    availableBalance: '0',
-                    lockedBalance: '0',
-                    totalDeposited: '0',
-                    isActive: true,
-                    lastSyncedAt: new Date(),
-                  },
+                const existingByAddress = await prisma.platformWallet.findFirst({
+                  where: { address },
                 });
-                logger.info(`[DISPUTE] Carteira criada para comprador: ${buyerWallet.address}`);
+                if (existingByAddress) {
+                  platformWallet = existingByAddress;
+                } else {
+                  const encryptedPrivateKey = KeyManagementService.encryptPrivateKey(privateKey, 'PLATFORM');
+                  platformWallet = await prisma.platformWallet.create({
+                    data: {
+                      cryptoType: order.cryptoType,
+                      network: order.cryptoNetwork,
+                      address,
+                      derivationPath,
+                      encryptedPrivateKey,
+                      balance: '0',
+                      isActive: true,
+                    },
+                  });
+                }
               }
 
-              // Deduzir do vendedor (lockedBalance e balance)
-              await prisma.userWallet.update({
-                where: { id: sellerWallet.id },
-                data: {
-                  balance: new BigNumber(sellerWallet.balance).minus(totalAmountBN).toFixed(8),
-                  lockedBalance: sellerLockedBalanceBN.minus(totalAmountBN).toFixed(8),
-                },
-              });
+              // Deduzir fee adicional do vendedor (locked → platform)
+              const sellerAfterFeeWallet = await prisma.userWallet.findUnique({ where: { id: sellerWallet.id } });
+              if (sellerAfterFeeWallet) {
+                const sellerBalanceBeforeFee = new BigNumber(sellerAfterFeeWallet.balance);
+                const sellerLockedBeforeFee = new BigNumber(sellerAfterFeeWallet.lockedBalance);
+                const sellerBalanceAfterFee = sellerBalanceBeforeFee.minus(platformFeeBN);
+                const sellerLockedAfterFee = sellerLockedBeforeFee.minus(platformFeeBN);
 
-              // Creditar no comprador (availableBalance e balance)
-              await prisma.userWallet.update({
-                where: { id: buyerWallet.id },
-                data: {
-                  balance: new BigNumber(buyerWallet.balance).plus(totalAmountBN).toFixed(8),
-                  availableBalance: new BigNumber(buyerWallet.availableBalance).plus(totalAmountBN).toFixed(8),
-                },
-              });
+                await prisma.userWallet.update({
+                  where: { id: sellerWallet.id },
+                  data: {
+                    balance: sellerBalanceAfterFee.toFixed(8),
+                    lockedBalance: sellerLockedAfterFee.toFixed(8),
+                  },
+                });
 
-              // Marcar pedido como transferido
-              await prisma.order.update({
-                where: { id: order.id },
-                data: {
-                  cryptoTransferred: true,
-                  cryptoTransferredAt: new Date(),
-                  cryptoTransferredTo: transaction.payerId,
-                  collateralLocked: false,
-                  collateralUnlockedAt: new Date(),
-                },
-              });
+                // Creditar na carteira da plataforma
+                const platformNewBalance = new BigNumber(platformWallet.balance).plus(platformFeeBN);
+                const currentTotalFees = new BigNumber(platformWallet.totalFeesCollected || '0');
 
-              logger.info(`[DISPUTE] Cripto transferida para comprador: ${totalAmountBN.toFixed(8)} ${order.cryptoType}`);
+                await prisma.platformWallet.update({
+                  where: { id: platformWallet.id },
+                  data: {
+                    balance: platformNewBalance.toFixed(8),
+                    totalFeesCollected: currentTotalFees.plus(platformFeeBN).toFixed(8),
+                  },
+                });
+
+                // Registrar WalletTransaction PLATFORM_FEE
+                await prisma.walletTransaction.create({
+                  data: {
+                    walletId: sellerWallet.id,
+                    userId: sellerWallet.userId,
+                    orderId: order.id,
+                    type: 'PLATFORM_FEE',
+                    amount: platformFeeBN.toFixed(8),
+                    balanceBefore: sellerBalanceBeforeFee.toFixed(8),
+                    balanceAfter: sellerBalanceAfterFee.toFixed(8),
+                    lockedBefore: sellerLockedBeforeFee.toFixed(8),
+                    lockedAfter: sellerLockedAfterFee.toFixed(8),
+                    description: `Disputa resolvida - Platform fee (Order ${order.id})`,
+                    metadata: JSON.stringify({
+                      disputeId: input.disputeId,
+                      platformWalletId: platformWallet.id,
+                      platformFee: platformFeeBN.toFixed(8),
+                    }),
+                  },
+                });
+
+                logger.info(`[DISPUTE] Platform fee transferida: ${platformFeeBN.toFixed(8)} ${order.cryptoType}`);
+              }
             }
+
+            // Marcar pedido como transferido
+            await prisma.order.update({
+              where: { id: order.id },
+              data: {
+                cryptoTransferred: true,
+                cryptoTransferredAt: new Date(),
+                cryptoTransferredTo: buyerId,
+                collateralLocked: false,
+                collateralUnlockedAt: new Date(),
+              },
+            });
+
+            logger.info(`[DISPUTE] Cripto transferida para comprador: ${totalAmountBN.toFixed(8)} ${order.cryptoType}`);
 
           } else if (input.resolutionType === 'RETURN_TO_SELLER' || input.resolutionType === 'PENALTY_BUYER' || input.resolutionType === 'CANCEL_NO_PENALTY') {
             // A FAVOR DO VENDEDOR ou CANCELAMENTO: Desbloquear cripto para o vendedor
+            // Usar collateralLockedAmount (valor exato que foi travado), como faz o cancelamento normal
+            const collateralLockedBN = new BigNumber(order.collateralLockedAmount || '0');
+            const totalToUnlock = collateralLockedBN.gt(0)
+              ? collateralLockedBN
+              : (isBuyOrder ? totalAmountBN.plus(platformFeeBN) : totalAmountBN);  // fallback para ordens antigas
+            const amountToUnlock = sellerLockedBalanceBN.lt(totalToUnlock) ? sellerLockedBalanceBN : totalToUnlock;
+
+            const sellerNewLockedBN = sellerLockedBalanceBN.minus(amountToUnlock);
+            const sellerNewAvailableBN = new BigNumber(sellerWallet.availableBalance).plus(amountToUnlock);
 
             // Mover de lockedBalance para availableBalance
             await prisma.userWallet.update({
               where: { id: sellerWallet.id },
               data: {
-                lockedBalance: sellerLockedBalanceBN.minus(totalAmountBN).toFixed(8),
-                availableBalance: new BigNumber(sellerWallet.availableBalance).plus(totalAmountBN).toFixed(8),
+                lockedBalance: sellerNewLockedBN.toFixed(8),
+                availableBalance: sellerNewAvailableBN.toFixed(8),
+              },
+            });
+
+            // Registrar WalletTransaction UNLOCK
+            await prisma.walletTransaction.create({
+              data: {
+                walletId: sellerWallet.id,
+                userId: sellerWallet.userId,
+                orderId: order.id,
+                type: 'UNLOCK',
+                amount: amountToUnlock.toFixed(8),
+                balanceBefore: sellerWallet.balance,
+                balanceAfter: sellerWallet.balance, // balance total não muda, só locked→available
+                lockedBefore: sellerWallet.lockedBalance,
+                lockedAfter: sellerNewLockedBN.toFixed(8),
+                description: `Disputa resolvida - Colateral desbloqueado (Order ${order.id})`,
+                metadata: JSON.stringify({
+                  disputeId: input.disputeId,
+                  resolutionType: input.resolutionType,
+                }),
               },
             });
 
@@ -619,7 +850,7 @@ export class DisputeService {
             });
 
             const action = input.resolutionType === 'CANCEL_NO_PENALTY' ? 'Cancelamento' : 'Devolvida ao vendedor';
-            logger.info(`[DISPUTE] ${action}: ${totalAmountBN.toFixed(8)} ${order.cryptoType}`);
+            logger.info(`[DISPUTE] ${action}: ${amountToUnlock.toFixed(8)} ${order.cryptoType}`);
           }
         }
       }
@@ -630,24 +861,29 @@ export class DisputeService {
       if (input.resolutionType === 'RELEASE_TO_BUYER' || input.resolutionType === 'PENALTY_SELLER') {
         // Penalidade para vendedor (disputa perdida)
         if (sellerId) {
-          const currentReputation = order.user.reputationScore;
-          const penaltyPoints = DISPUTE_REPUTATION.LOSE_PENALTY; // -20
-          const newReputation = Math.max(0, currentReputation + penaltyPoints);
+          const seller = isBuyOrder
+            ? await prisma.user.findUnique({ where: { id: sellerId }, select: { reputationScore: true } })
+            : order.user;
 
-          await prisma.user.update({
-            where: { id: sellerId },
-            data: { reputationScore: newReputation },
-          });
+          if (seller) {
+            const currentReputation = seller.reputationScore;
+            const penaltyPoints = DISPUTE_REPUTATION.LOSE_PENALTY; // -20
+            const newReputation = Math.max(0, currentReputation + penaltyPoints);
 
-          logger.info(`[DISPUTE PENALTY] Vendedor ${sellerId}: ${currentReputation} → ${newReputation} (${penaltyPoints} pts)`);
+            await prisma.user.update({
+              where: { id: sellerId },
+              data: { reputationScore: newReputation },
+            });
+
+            logger.info(`[DISPUTE PENALTY] Vendedor ${sellerId}: ${currentReputation} → ${newReputation} (${penaltyPoints} pts)`);
+          }
         }
       } else if (input.resolutionType === 'RETURN_TO_SELLER' || input.resolutionType === 'PENALTY_BUYER') {
         // Penalidade para comprador (disputa perdida)
         if (buyerId) {
-          const buyer = await prisma.user.findUnique({
-            where: { id: buyerId },
-            select: { reputationScore: true },
-          });
+          const buyer = isBuyOrder
+            ? order.user // BUY: order.userId = comprador
+            : await prisma.user.findUnique({ where: { id: buyerId }, select: { reputationScore: true } });
 
           if (buyer) {
             const currentReputation = buyer.reputationScore;
@@ -790,6 +1026,15 @@ export class DisputeService {
 
     if (!dispute) return null;
 
+    // Incluir dados do provider para ordens BUY
+    if (dispute.order.providerId) {
+      const provider = await prisma.user.findUnique({
+        where: { id: dispute.order.providerId },
+        select: { id: true, name: true, email: true },
+      });
+      (dispute.order as any).provider = provider;
+    }
+
     // Filtrar mensagens por privacidade
     if (requesterId) {
       // Verificar se requester é staff (SUPPORT+ level >= 40)
@@ -801,10 +1046,16 @@ export class DisputeService {
       const isStaff = (requester?.role?.level || 0) >= 40;
 
       if (!isStaff) {
-        // Usuário normal: ver apenas suas próprias mensagens + mensagens de admin/staff
-        dispute.messages = dispute.messages.filter(
-          (msg) => msg.authorId === requesterId || msg.isAdminMessage
-        );
+        // Usuário normal: ver suas próprias mensagens + mensagens de admin destinadas a ele
+        dispute.messages = dispute.messages.filter((msg) => {
+          // Mensagens do próprio usuário
+          if (msg.authorId === requesterId) return true;
+          // Mensagens de admin: só se visibleTo é null (para todos) ou para este usuário
+          if (msg.isAdminMessage) {
+            return !msg.visibleTo || msg.visibleTo === requesterId;
+          }
+          return false;
+        });
       }
       // Staff vê todas as mensagens (sem filtro)
     }
@@ -822,6 +1073,7 @@ export class DisputeService {
           { createdBy: userId },
           { order: { userId: userId } },
           { order: { transactions: { some: { payerId: userId } } } },
+          { order: { providerId: userId } },
         ],
       },
       include: {
@@ -836,10 +1088,25 @@ export class DisputeService {
           select: {
             id: true,
             type: true,
+            orderType: true,
             status: true,
             brlAmount: true,
             cryptoAmount: true,
             cryptoType: true,
+            userId: true,
+            providerId: true,
+            user: {
+              select: { id: true, name: true },
+            },
+            transactions: {
+              select: {
+                payerId: true,
+                payer: {
+                  select: { id: true, name: true },
+                },
+              },
+              take: 1,
+            },
           },
         },
         _count: {
@@ -853,7 +1120,23 @@ export class DisputeService {
       },
     });
 
-    return disputes;
+    // Buscar nomes dos providers (providerId nao tem relacao Prisma)
+    const providerIds = [...new Set(disputes.map(d => d.order.providerId).filter(Boolean))] as string[];
+    const providers = providerIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: providerIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const providerMap = Object.fromEntries(providers.map(p => [p.id, p.name]));
+
+    return disputes.map(d => ({
+      ...d,
+      order: {
+        ...d.order,
+        providerName: d.order.providerId ? providerMap[d.order.providerId] || null : null,
+      },
+    }));
   }
 
   /**

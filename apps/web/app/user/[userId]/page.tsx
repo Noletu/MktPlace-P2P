@@ -15,7 +15,6 @@ interface PublicProfile {
   successfulTransactions: number;
   totalCancellations: number;
   recentCancellations: number;
-  kycLevel: number;
   createdAt: string;
 }
 
@@ -183,10 +182,10 @@ export default function PublicUserProfilePage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Shield className={`${profile.kycLevel > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`} size={24} />
+                <Shield className={`${profile.reputationScore >= 50 ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`} size={24} />
                 <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">KYC Level</p>
-                  <p className="font-bold text-gray-900 dark:text-white">{profile.kycLevel}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Limite Diario</p>
+                  <p className="font-bold text-gray-900 dark:text-white">R$ {(1000 + profile.reputationScore * 100).toLocaleString('pt-BR')}</p>
                 </div>
               </div>
             </div>

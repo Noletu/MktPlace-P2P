@@ -9,7 +9,7 @@ export enum TicketCategory {
   ACCOUNT_ISSUE = 'ACCOUNT_ISSUE',
   PAYMENT_ISSUE = 'PAYMENT_ISSUE',
   TECHNICAL_ISSUE = 'TECHNICAL_ISSUE',
-  KYC_ISSUE = 'KYC_ISSUE',
+  LIMIT_ISSUE = 'LIMIT_ISSUE',
   WALLET_ISSUE = 'WALLET_ISSUE',
   QUESTION = 'QUESTION',
   FEATURE_REQUEST = 'FEATURE_REQUEST',
@@ -34,11 +34,11 @@ export const STATUS_LABELS: Record<TicketStatus, string> = {
 export const CATEGORY_LABELS: Record<TicketCategory, string> = {
   [TicketCategory.ACCOUNT_ISSUE]: 'Problema com Conta',
   [TicketCategory.PAYMENT_ISSUE]: 'Problema com Pagamento',
-  [TicketCategory.TECHNICAL_ISSUE]: 'Problema Técnico',
-  [TicketCategory.KYC_ISSUE]: 'Problema com KYC',
+  [TicketCategory.TECHNICAL_ISSUE]: 'Problema Tecnico',
+  [TicketCategory.LIMIT_ISSUE]: 'Problema com Limites',
   [TicketCategory.WALLET_ISSUE]: 'Problema com Carteira',
-  [TicketCategory.QUESTION]: 'Dúvida',
-  [TicketCategory.FEATURE_REQUEST]: 'Sugestão de Funcionalidade',
+  [TicketCategory.QUESTION]: 'Duvida',
+  [TicketCategory.FEATURE_REQUEST]: 'Sugestao de Funcionalidade',
   [TicketCategory.OTHER]: 'Outro',
 };
 

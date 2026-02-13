@@ -39,23 +39,27 @@ export interface Dispute {
   order: {
     id: string;
     type: string;
+    orderType?: string;
     brlAmount: string;
     cryptoAmount: string;
     cryptoType: string;
-    // Vendedor de cripto (criador do anuncio)
+    userId?: string;
+    providerId?: string;
+    providerName?: string;
+    // Dono da ordem
     user?: {
       id: string;
       name: string;
-      email: string;
+      email?: string;
     };
     // Transacoes com dados do pagador do PIX
     transactions?: Array<{
-      id: string;
+      id?: string;
       payerId: string;
       payer?: {
         id: string;
         name: string;
-        email: string;
+        email?: string;
       };
       payerWalletAddress?: string;
     }>;
@@ -71,6 +75,7 @@ export interface DisputeMessage {
   message: string;
   attachments?: string;
   isAdminMessage: boolean;
+  visibleTo?: string;
   createdAt: string;
   author: {
     id: string;

@@ -6,8 +6,9 @@ import { DisputeMessage } from '@/types/dispute';
 interface DisputeMessageThreadProps {
   messages: DisputeMessage[];
   currentUserId: string;
-  onSendMessage?: (message: string, attachments?: File[]) => Promise<void>;
+  onSendMessage?: (message: string, attachments?: File[], visibleTo?: string) => Promise<void>;
   canSendMessages?: boolean;
+  visibleTo?: string;
 }
 
 export default function DisputeMessageThread({
@@ -15,6 +16,7 @@ export default function DisputeMessageThread({
   currentUserId,
   onSendMessage,
   canSendMessages = true,
+  visibleTo,
 }: DisputeMessageThreadProps) {
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -24,7 +26,7 @@ export default function DisputeMessageThread({
 
     setSending(true);
     try {
-      await onSendMessage(newMessage);
+      await onSendMessage(newMessage, undefined, visibleTo);
       setNewMessage('');
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error);
@@ -45,7 +47,7 @@ export default function DisputeMessageThread({
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Thread de mensagens */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
@@ -68,6 +70,8 @@ export default function DisputeMessageThread({
                       ? 'bg-blue-100 dark:bg-blue-900 border-2 border-blue-300 dark:border-blue-700'
                       : isCurrentUser
                       ? 'bg-green-100 dark:bg-green-900'
+                      : visibleTo
+                      ? 'bg-green-100 dark:bg-green-900'
                       : 'bg-gray-100 dark:bg-gray-800'
                   }`}
                 >
@@ -75,7 +79,7 @@ export default function DisputeMessageThread({
                   <div className="flex items-center gap-2 mb-1">
                     {isAdmin && <span className="text-blue-600 dark:text-blue-400 font-semibold">🛡️ Plataforma</span>}
                     {!isAdmin && (
-                      <span className={`text-sm font-semibold ${isCurrentUser ? 'text-green-700 dark:text-green-300' : 'text-gray-700 dark:text-gray-300'}`}>
+                      <span className={`text-sm font-semibold ${isCurrentUser || visibleTo ? 'text-green-700 dark:text-green-300' : 'text-gray-700 dark:text-gray-300'}`}>
                         {isCurrentUser ? 'Você' : msg.author.name}
                       </span>
                     )}

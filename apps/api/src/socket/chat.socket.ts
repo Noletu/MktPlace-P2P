@@ -15,9 +15,11 @@ interface JoinChatPayload {
 interface SendMessagePayload {
   chatId: string;
   message?: string; // Para mensagens não criptografadas
-  encryptedContent?: string; // Para mensagens criptografadas
+  encryptedContent?: string; // Criptografado para o DESTINATÁRIO
+  encryptedForSender?: string; // Criptografado para o REMETENTE (E2E correto)
   isEncrypted?: boolean; // Flag de criptografia
-  iv?: string; // Initialization Vector para AES-GCM
+  iv?: string; // IV para encryptedContent (destinatário)
+  ivForSender?: string; // IV para encryptedForSender (remetente)
   attachments?: string[]; // Retrocompatibilidade
   attachmentUrl?: string; // URL do anexo (novo formato)
   attachmentType?: string; // Tipo MIME do anexo
@@ -130,16 +132,18 @@ export class ChatSocketServer {
       // Enviar mensagem
       socket.on('message:send', async (payload: SendMessagePayload) => {
         try {
-          const { chatId, message, encryptedContent, isEncrypted, iv, attachments, attachmentUrl, attachmentType } = payload;
+          const { chatId, message, encryptedContent, encryptedForSender, isEncrypted, iv, ivForSender, attachments, attachmentUrl, attachmentType } = payload;
 
-          // Enviar mensagem via serviço (suporta formato híbrido)
+          // Enviar mensagem via serviço (suporta formato híbrido com E2E para ambos)
           const newMessage = await chatService.sendMessage({
             chatId,
             senderId: socket.userId!,
             message,
             encryptedContent,
+            encryptedForSender,
             isEncrypted,
             iv,
+            ivForSender,
             attachments,
             attachmentUrl,
             attachmentType,

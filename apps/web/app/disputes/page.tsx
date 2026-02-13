@@ -4,6 +4,45 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Dispute, STATUS_LABELS, CATEGORY_LABELS } from '@/types/dispute';
 
+function getParties(dispute: Dispute) {
+  const order = dispute.order;
+  const creatorId = dispute.createdBy;
+  const creatorName = dispute.creator.name || 'Usuario';
+  const isBuy = order.orderType === 'BUY';
+
+  const orderOwnerName = order.user?.name || 'Usuario';
+  const payerName = order.transactions?.[0]?.payer?.name || 'Usuario';
+  const providerName = order.providerName || 'Provedor';
+
+  let creatorRole: string;
+  let counterpartyName: string;
+  let counterpartyRole: string;
+
+  if (creatorId === order.userId) {
+    // Creator da disputa = dono da ordem
+    creatorRole = isBuy ? 'Comprador' : 'Vendedor';
+    if (isBuy) {
+      counterpartyName = providerName;
+      counterpartyRole = 'Provedor';
+    } else {
+      counterpartyName = payerName;
+      counterpartyRole = 'Comprador';
+    }
+  } else if (creatorId === order.providerId) {
+    // Creator da disputa = provider (BUY orders)
+    creatorRole = 'Provedor';
+    counterpartyName = orderOwnerName;
+    counterpartyRole = 'Comprador';
+  } else {
+    // Creator da disputa = payer/comprador
+    creatorRole = 'Comprador';
+    counterpartyName = orderOwnerName;
+    counterpartyRole = isBuy ? 'Comprador' : 'Vendedor';
+  }
+
+  return { creatorName, creatorRole, counterpartyName, counterpartyRole };
+}
+
 export default function DisputesPage() {
   const router = useRouter();
   const [disputes, setDisputes] = useState<Dispute[]>([]);
@@ -85,65 +124,105 @@ export default function DisputesPage() {
       {disputes.length === 0 ? (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
           <p className="text-gray-600 dark:text-gray-400">
-            Você não tem nenhuma disputa aberta
+            Voce nao tem nenhuma disputa aberta
           </p>
         </div>
       ) : (
         <div className="space-y-4">
-          {disputes.map((dispute) => (
-            <div
-              key={dispute.id}
-              onClick={() => router.push(`/disputes/${dispute.id}`)}
-              className="bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg transition-shadow cursor-pointer p-6"
-            >
-              {/* Cabeçalho */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-                    {dispute.title}
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {CATEGORY_LABELS[dispute.category as keyof typeof CATEGORY_LABELS]}
-                  </p>
-                </div>
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(
-                    dispute.status
-                  )}`}
-                >
-                  {STATUS_LABELS[dispute.status as keyof typeof STATUS_LABELS]}
-                </span>
-              </div>
+          {disputes.map((dispute) => {
+            const parties = getParties(dispute);
+            const messageCount = (dispute as any)._count?.messages ?? dispute.messages?.length ?? 0;
 
-              {/* Info do pedido */}
-              <div className="bg-gray-50 dark:bg-gray-900 rounded p-3 mb-4">
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-gray-600 dark:text-gray-400">Pedido:</span>
-                    <span className="ml-2 font-mono text-gray-900 dark:text-white">
-                      #{dispute.order.id.substring(0, 8)}
-                    </span>
+            return (
+              <div
+                key={dispute.id}
+                onClick={() => router.push(`/disputes/${dispute.id}`)}
+                className="bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg transition-shadow cursor-pointer p-6"
+              >
+                {/* Cabecalho */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                      {dispute.title}
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      {CATEGORY_LABELS[dispute.category as keyof typeof CATEGORY_LABELS]}
+                    </p>
                   </div>
-                  <div>
-                    <span className="text-gray-600 dark:text-gray-400">Valor:</span>
-                    <span className="ml-2 font-semibold text-gray-900 dark:text-white">
-                      R$ {parseFloat(dispute.order.brlAmount).toFixed(2)}
-                    </span>
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ml-3 ${getStatusColor(
+                      dispute.status
+                    )}`}
+                  >
+                    {STATUS_LABELS[dispute.status as keyof typeof STATUS_LABELS]}
+                  </span>
+                </div>
+
+                {/* Info do pedido + partes */}
+                <div className="bg-gray-50 dark:bg-gray-900 rounded p-3 mb-4 space-y-2">
+                  {/* Partes envolvidas */}
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400">Aberta por: </span>
+                      <span className="font-medium text-gray-900 dark:text-white">
+                        {parties.creatorName}
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
+                        ({parties.creatorRole})
+                      </span>
+                    </div>
+                    <span className="hidden sm:inline text-gray-400">→</span>
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400">Contra: </span>
+                      <span className="font-medium text-gray-900 dark:text-white">
+                        {parties.counterpartyName}
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
+                        ({parties.counterpartyRole})
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Pedido e valor */}
+                  <div className="flex items-center gap-4 text-sm border-t border-gray-200 dark:border-gray-700 pt-2">
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400">Pedido: </span>
+                      <span className="font-mono text-gray-900 dark:text-white">
+                        #{dispute.order.id.substring(0, 8)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400">Valor: </span>
+                      <span className="font-semibold text-gray-900 dark:text-white">
+                        R$ {parseFloat(dispute.order.brlAmount).toFixed(2)}
+                      </span>
+                    </div>
+                    {dispute.order.orderType && (
+                      <div>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          dispute.order.orderType === 'BUY'
+                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                            : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                        }`}>
+                          {dispute.order.orderType === 'BUY' ? 'Compra' : 'Venda'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
 
-              {/* Footer */}
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600 dark:text-gray-400">
-                  {dispute.messages?.length || 0} mensagens
-                </span>
-                <span className="text-gray-500 dark:text-gray-500">
-                  {new Date(dispute.createdAt).toLocaleDateString('pt-BR')}
-                </span>
+                {/* Footer */}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">
+                    {messageCount} mensagens
+                  </span>
+                  <span className="text-gray-500 dark:text-gray-500">
+                    {new Date(dispute.createdAt).toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

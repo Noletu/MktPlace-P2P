@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import ChatWindow from '@/components/chat/ChatWindow';
 import ChatHistoryViewer from '@/components/chat/ChatHistoryViewer';
@@ -72,6 +73,7 @@ export default function OrderDetailsPage() {
   const [uploadingProof, setUploadingProof] = useState(false);
   const [proofImage, setProofImage] = useState<string>('');
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelAsProvider, setCancelAsProvider] = useState(false); // Flag para cancelamento do provedor em BUY orders
   const [cancelling, setCancelling] = useState(false);
   const [confirmingReceived, setConfirmingReceived] = useState(false);
   const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
@@ -107,6 +109,17 @@ export default function OrderDetailsPage() {
   const [providerPixKey, setProviderPixKey] = useState('');
   const [providerPixKeyType, setProviderPixKeyType] = useState<'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM'>('CPF');
   const [providerRecipientName, setProviderRecipientName] = useState('');
+
+  // Provider balance check states (for BUY order acceptance)
+  const [providerBalance, setProviderBalance] = useState<{
+    available: string;
+    locked: string;
+    total: string;
+    address?: string;
+  } | null>(null);
+  const [loadingProviderBalance, setLoadingProviderBalance] = useState(false);
+  const [requiredCollateral, setRequiredCollateral] = useState<string>('0');
+  const [showProviderDepositQR, setShowProviderDepositQR] = useState(false);
 
   // Parse orderData - useMemo to recalculate when order changes
   const orderData = useMemo(() => {
@@ -371,8 +384,13 @@ export default function OrderDetailsPage() {
       return true; // Removida restrição de 24h para facilitar testes
     }
 
-    // Vendedor/Criador pode abrir após receber comprovante (PAYMENT_SENT ou VALIDATING)
+    // Vendedor/Criador pode abrir após receber comprovante (PAYMENT_SENT ou VALIDATING) - SELL orders
     if (isCreator && (order?.status === 'PAYMENT_SENT' || order?.status === 'VALIDATING')) {
+      return true;
+    }
+
+    // Provedor pode abrir após receber comprovante (PAYMENT_SENT ou VALIDATING) - BUY orders
+    if (isProvider && (order?.status === 'PAYMENT_SENT' || order?.status === 'VALIDATING')) {
       return true;
     }
 
@@ -696,6 +714,7 @@ export default function OrderDetailsPage() {
 
       alert(message);
       setShowCancelModal(false);
+      setCancelAsProvider(false);
       await fetchOrder();
       router.push('/orders/my-orders');
     } catch (err: any) {
@@ -706,6 +725,93 @@ export default function OrderDetailsPage() {
       setCancelling(false);
     }
   };
+
+  // Buscar saldo do provedor para ordem BUY
+  const fetchProviderBalance = useCallback(async () => {
+    if (!order) return;
+
+    setLoadingProviderBalance(true);
+    try {
+      const token = localStorage.getItem('accessToken');
+
+      // Calcular colateral: cryptoAmount + 1.5% fee
+      const cryptoAmt = parseFloat(order.cryptoAmount);
+      const required = (cryptoAmt * 1.015).toFixed(8);
+      setRequiredCollateral(required);
+
+      // Buscar saldo na rede da ordem
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/collateral-balance/${order.cryptoType}/${order.cryptoNetwork}`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+
+      const data = await response.json();
+      if (data.success && data.data.balance) {
+        setProviderBalance({
+          available: data.data.balance.availableBalance || '0',
+          locked: data.data.balance.lockedBalance || '0',
+          total: data.data.balance.balance || '0',
+          address: data.data.balance.address,
+        });
+      } else {
+        // Nao tem carteira ainda
+        setProviderBalance({ available: '0', locked: '0', total: '0' });
+      }
+    } catch (error) {
+      console.error('Erro ao buscar saldo:', error);
+      setProviderBalance({ available: '0', locked: '0', total: '0' });
+    } finally {
+      setLoadingProviderBalance(false);
+    }
+  }, [order]);
+
+  // Inicializar carteira do provedor (se nao existir)
+  const initializeProviderWallet = async () => {
+    if (!order) return;
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/collateral-balance/deposit`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            cryptoType: order.cryptoType,
+            network: order.cryptoNetwork,
+          }),
+        }
+      );
+
+      const data = await response.json();
+      if (data.success) {
+        setProviderBalance(prev => ({
+          ...prev!,
+          address: data.data.depositAddress.address,
+        }));
+      }
+    } catch (error) {
+      console.error('Erro ao criar carteira:', error);
+    }
+  };
+
+  // Handler para abrir modal de aceitar ordem BUY
+  const handleOpenAcceptBuyModal = () => {
+    setShowAcceptBuyModal(true);
+    setShowProviderDepositQR(false);
+    fetchProviderBalance();
+  };
+
+  // Polling do saldo do provedor quando QR Code esta visivel
+  useEffect(() => {
+    if (!showProviderDepositQR || !providerBalance?.address) return;
+
+    const interval = setInterval(fetchProviderBalance, 15000);
+    return () => clearInterval(interval);
+  }, [showProviderDepositQR, providerBalance?.address, fetchProviderBalance]);
 
   const handleSubmitReview = async (reviewData: ReviewData) => {
     try {
@@ -1248,7 +1354,7 @@ export default function OrderDetailsPage() {
                       {/* Aceitar Ordem BUY - Para provedores em ordem PENDING */}
                       {order.status === 'PENDING' && !isCreator && currentUserId && (
                         <button
-                          onClick={() => setShowAcceptBuyModal(true)}
+                          onClick={handleOpenAcceptBuyModal}
                           className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg"
                         >
                           Fornecer Liquidez
@@ -1296,7 +1402,10 @@ export default function OrderDetailsPage() {
                       {isProvider && order.status === 'MATCHED' && (
                         <div>
                           <button
-                            onClick={() => setShowCancelModal(true)}
+                            onClick={() => {
+                              setCancelAsProvider(true);
+                              setShowCancelModal(true);
+                            }}
                             className="w-full px-4 py-2 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg"
                           >
                             Cancelar Aceite
@@ -1590,9 +1699,12 @@ export default function OrderDetailsPage() {
       {/* Modal de Cancelamento Unificado */}
       <CancellationModal
         isOpen={showCancelModal}
-        onClose={() => setShowCancelModal(false)}
-        onConfirm={handleCancelOrder}
-        isSeller={true}
+        onClose={() => {
+          setShowCancelModal(false);
+          setCancelAsProvider(false);
+        }}
+        onConfirm={cancelAsProvider ? handleProviderCancelOrder : handleCancelOrder}
+        isSeller={!cancelAsProvider}
         orderId={orderId as string}
       />
 
@@ -1745,12 +1857,13 @@ export default function OrderDetailsPage() {
         }}
       />
 
-      {/* Modal para Aceitar Ordem BUY (Provedor) */}
+      {/* Modal para Aceitar Ordem BUY (Provedor) - Com verificacao de saldo */}
       {showAcceptBuyModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Fornecer Liquidez</h3>
 
+            {/* Info da Ordem */}
             <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-4">
               <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
                 <strong>Voce esta aceitando fornecer:</strong>
@@ -1762,79 +1875,224 @@ export default function OrderDetailsPage() {
                 + {(parseFloat(order.cryptoAmount) * 0.015).toFixed(8)} {order.cryptoType} de taxa (1.5%)
               </p>
               <p className="text-sm text-blue-800 dark:text-blue-200 mt-3">
+                <strong>Colateral necessario:</strong> {requiredCollateral} {order.cryptoType}
+              </p>
+              <p className="text-sm text-blue-800 dark:text-blue-200 mt-1">
                 <strong>Voce recebera:</strong> {formatBRL(order.brlAmount)}
               </p>
             </div>
 
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Tipo de Chave PIX
-                </label>
-                <select
-                  value={providerPixKeyType}
-                  onChange={(e) => setProviderPixKeyType(e.target.value as any)}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                >
-                  <option value="CPF">CPF</option>
-                  <option value="CNPJ">CNPJ</option>
-                  <option value="EMAIL">Email</option>
-                  <option value="PHONE">Telefone</option>
-                  <option value="RANDOM">Chave Aleatoria</option>
-                </select>
+            {/* Loading */}
+            {loadingProviderBalance ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-4"></div>
+                <p className="text-gray-600 dark:text-gray-400">Verificando seu saldo...</p>
               </div>
+            ) : providerBalance ? (
+              <>
+                {/* Card de Saldo */}
+                {parseFloat(providerBalance.available) >= parseFloat(requiredCollateral) ? (
+                  /* Saldo Suficiente */
+                  <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-4 mb-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-2xl">✅</span>
+                      <h4 className="font-bold text-green-800 dark:text-green-200">Saldo Disponivel</h4>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-sm">
+                      <div>
+                        <p className="text-green-700 dark:text-green-300 text-xs">Total</p>
+                        <p className="font-mono font-bold text-green-900 dark:text-green-100">
+                          {parseFloat(providerBalance.total).toFixed(8)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-green-700 dark:text-green-300 text-xs">Disponivel</p>
+                        <p className="font-mono font-bold text-green-900 dark:text-green-100">
+                          {parseFloat(providerBalance.available).toFixed(8)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-green-700 dark:text-green-300 text-xs">Bloqueado</p>
+                        <p className="font-mono font-bold text-yellow-700 dark:text-yellow-400">
+                          {parseFloat(providerBalance.locked).toFixed(8)}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-2">
+                      Rede: {order.cryptoNetwork}
+                    </p>
+                  </div>
+                ) : (
+                  /* Saldo Insuficiente */
+                  <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg p-4 mb-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-2xl">⚠️</span>
+                      <h4 className="font-bold text-red-800 dark:text-red-200">Saldo Insuficiente</h4>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-sm mb-3">
+                      <div>
+                        <p className="text-red-700 dark:text-red-300 text-xs">Total</p>
+                        <p className="font-mono font-bold text-red-900 dark:text-red-100">
+                          {parseFloat(providerBalance.total).toFixed(8)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-red-700 dark:text-red-300 text-xs">Disponivel</p>
+                        <p className="font-mono font-bold text-red-900 dark:text-red-100">
+                          {parseFloat(providerBalance.available).toFixed(8)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-red-700 dark:text-red-300 text-xs">Necessario</p>
+                        <p className="font-mono font-bold text-red-900 dark:text-red-100">
+                          {requiredCollateral}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-sm text-red-700 dark:text-red-300">
+                      Faltam: <strong>{(parseFloat(requiredCollateral) - parseFloat(providerBalance.available)).toFixed(8)} {order.cryptoType}</strong>
+                    </p>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Chave PIX (para receber o pagamento)
-                </label>
-                <input
-                  type="text"
-                  value={providerPixKey}
-                  onChange={(e) => setProviderPixKey(e.target.value)}
-                  placeholder="Digite sua chave PIX"
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
-              </div>
+                    {!showProviderDepositQR ? (
+                      <button
+                        onClick={async () => {
+                          if (!providerBalance.address) {
+                            await initializeProviderWallet();
+                          }
+                          setShowProviderDepositQR(true);
+                        }}
+                        className="w-full mt-3 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg"
+                      >
+                        Depositar {order.cryptoType}
+                      </button>
+                    ) : (
+                      /* QR Code para Deposito */
+                      <div className="mt-4 bg-white dark:bg-gray-700 rounded-lg p-4">
+                        <p className="text-sm text-center text-gray-700 dark:text-gray-300 mb-3">
+                          Deposite {order.cryptoType} no endereco abaixo ({order.cryptoNetwork})
+                        </p>
+                        {providerBalance.address ? (
+                          <>
+                            <div className="flex justify-center mb-3">
+                              <div className="bg-white p-3 rounded-lg">
+                                <QRCodeSVG value={providerBalance.address} size={180} />
+                              </div>
+                            </div>
+                            <div className="bg-gray-100 dark:bg-gray-600 rounded p-2">
+                              <p className="font-mono text-xs break-all text-center text-gray-800 dark:text-gray-200">
+                                {providerBalance.address}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(providerBalance.address!);
+                                alert('Endereco copiado!');
+                              }}
+                              className="w-full mt-2 px-3 py-1 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 text-sm rounded"
+                            >
+                              Copiar Endereco
+                            </button>
+                            <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-3">
+                              Atualizando saldo automaticamente a cada 15s...
+                            </p>
+                            <button
+                              onClick={fetchProviderBalance}
+                              className="w-full mt-2 px-3 py-1 bg-blue-100 dark:bg-blue-900 hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-300 text-sm rounded"
+                            >
+                              Atualizar Agora
+                            </button>
+                          </>
+                        ) : (
+                          <div className="text-center py-4">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto mb-2"></div>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Gerando endereco...</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Nome do Beneficiario
-                </label>
-                <input
-                  type="text"
-                  value={providerRecipientName}
-                  onChange={(e) => setProviderRecipientName(e.target.value)}
-                  placeholder="Seu nome completo"
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
-              </div>
-            </div>
+                {/* Formulario PIX - So mostra se tiver saldo suficiente */}
+                {parseFloat(providerBalance.available) >= parseFloat(requiredCollateral) && (
+                  <>
+                    <div className="space-y-4 mb-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Tipo de Chave PIX
+                        </label>
+                        <select
+                          value={providerPixKeyType}
+                          onChange={(e) => setProviderPixKeyType(e.target.value as any)}
+                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        >
+                          <option value="CPF">CPF</option>
+                          <option value="CNPJ">CNPJ</option>
+                          <option value="EMAIL">Email</option>
+                          <option value="PHONE">Telefone</option>
+                          <option value="RANDOM">Chave Aleatoria</option>
+                        </select>
+                      </div>
 
-            <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3 mb-4">
-              <p className="text-xs text-yellow-800 dark:text-yellow-200">
-                <strong>Atencao:</strong> Ao confirmar, seu colateral de {(parseFloat(order.cryptoAmount) * 1.015).toFixed(8)} {order.cryptoType} sera bloqueado ate o comprador efetuar o pagamento.
-              </p>
-            </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Chave PIX (para receber o pagamento)
+                        </label>
+                        <input
+                          type="text"
+                          value={providerPixKey}
+                          onChange={(e) => setProviderPixKey(e.target.value)}
+                          placeholder="Digite sua chave PIX"
+                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Nome do Beneficiario
+                        </label>
+                        <input
+                          type="text"
+                          value={providerRecipientName}
+                          onChange={(e) => setProviderRecipientName(e.target.value)}
+                          placeholder="Seu nome completo"
+                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3 mb-4">
+                      <p className="text-xs text-yellow-800 dark:text-yellow-200">
+                        <strong>Atencao:</strong> Ao confirmar, seu colateral de {requiredCollateral} {order.cryptoType} sera bloqueado ate o comprador efetuar o pagamento.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : null}
 
             <div className="flex gap-3">
               <button
                 onClick={() => {
                   setShowAcceptBuyModal(false);
+                  setShowProviderDepositQR(false);
                   setProviderPixKey('');
                   setProviderRecipientName('');
+                  setProviderBalance(null);
                 }}
                 className="flex-1 px-4 py-2 bg-gray-300 dark:bg-gray-700 hover:bg-gray-400 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg"
               >
                 Cancelar
               </button>
-              <button
-                onClick={handleAcceptBuyOrder}
-                disabled={acceptingBuyOrder || !providerPixKey || !providerRecipientName}
-                className="flex-1 px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
-              >
-                {acceptingBuyOrder ? 'Processando...' : 'Confirmar e Bloquear Colateral'}
-              </button>
+              {providerBalance && parseFloat(providerBalance.available) >= parseFloat(requiredCollateral) && (
+                <button
+                  onClick={handleAcceptBuyOrder}
+                  disabled={acceptingBuyOrder || !providerPixKey || !providerRecipientName}
+                  className="flex-1 px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
+                >
+                  {acceptingBuyOrder ? 'Processando...' : 'Confirmar e Bloquear Colateral'}
+                </button>
+              )}
             </div>
           </div>
         </div>

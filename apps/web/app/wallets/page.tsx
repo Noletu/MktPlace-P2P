@@ -266,6 +266,7 @@ export default function WalletsPage() {
     switch (type) {
       case 'DEPOSIT':
       case 'UNLOCK':
+      case 'CREDIT':
         return 'text-green-600 dark:text-green-400';
       case 'WITHDRAWAL':
       case 'DEDUCT':
@@ -525,7 +526,7 @@ export default function WalletsPage() {
                               </div>
                             </div>
                             <span className={`font-bold text-lg ${getTransactionColor(tx.type)}`}>
-                              {tx.type === 'DEPOSIT' || tx.type === 'UNLOCK' ? '+' : '-'}
+                              {tx.type === 'DEPOSIT' || tx.type === 'UNLOCK' || tx.type === 'CREDIT' ? '+' : '-'}
                               {parseFloat(tx.amount).toFixed(8)}
                             </span>
                           </div>

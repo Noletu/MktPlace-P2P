@@ -43,7 +43,7 @@ export default function NotificationsPage() {
     DISPUTE: AlertCircle,
     REVIEW: Star,
     WALLET: Wallet,
-    KYC: UserCheck,
+    LIMIT: UserCheck,
     SYSTEM: Bell,
   };
 
@@ -144,9 +144,9 @@ export default function NotificationsPage() {
                     <option value="ORDER">Pedidos</option>
                     <option value="TRANSACTION">Transações</option>
                     <option value="DISPUTE">Disputas</option>
-                    <option value="REVIEW">Avaliações</option>
+                    <option value="REVIEW">Avaliacoes</option>
                     <option value="WALLET">Carteira</option>
-                    <option value="KYC">KYC</option>
+                    <option value="LIMIT">Limites</option>
                     <option value="SYSTEM">Sistema</option>
                   </select>
                 </div>

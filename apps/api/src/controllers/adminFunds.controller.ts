@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { AdminFundsService } from '../services/adminFunds.service';
+import { LockCategory } from '../types/adminLock.types';
 
 /**
  * Admin Funds Controller
@@ -320,6 +321,133 @@ export class AdminFundsController {
       res.status(500).json({
         success: false,
         error: 'Erro ao buscar transações',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/funds/locked-balances
+   * Listar carteiras com saldo bloqueado
+   *
+   * Query params: cryptoType, network, userId, minAmount
+   * Requires: GERENTE+ role
+   */
+  async getLockedBalances(req: Request, res: Response): Promise<void> {
+    try {
+      const { cryptoType, network, userId, minAmount } = req.query;
+
+      const result = await AdminFundsService.getLockedBalances({
+        cryptoType: cryptoType as string,
+        network: network as string,
+        userId: userId as string,
+        minAmount: minAmount as string,
+      });
+
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] getLockedBalances error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar saldos bloqueados',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/funds/lock-balance
+   * Bloquear saldo manualmente
+   *
+   * Body: { walletId, amount, category, reason }
+   * Requires: MASTER role + 2FA
+   */
+  async lockBalance(req: Request, res: Response): Promise<void> {
+    try {
+      const { walletId, amount, category, reason } = req.body;
+      const adminUserId = (req as any).user.id;
+
+      // Validar campos obrigatórios
+      if (!walletId || !amount || !category || !reason) {
+        res.status(400).json({
+          success: false,
+          error: 'walletId, amount, category e reason são obrigatórios',
+        });
+        return;
+      }
+
+      // Validar category
+      if (!Object.values(LockCategory).includes(category)) {
+        res.status(400).json({
+          success: false,
+          error: `Categoria inválida. Valores válidos: ${Object.values(LockCategory).join(', ')}`,
+        });
+        return;
+      }
+
+      const result = await AdminFundsService.adminLockBalance({
+        walletId,
+        amount,
+        category,
+        reason,
+        adminUserId,
+      });
+
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] lockBalance error:', error);
+      res.status(400).json({
+        success: false,
+        error: 'Erro ao bloquear saldo',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/funds/unlock-balance
+   * Desbloquear saldo manualmente
+   *
+   * Body: { walletId, amount, category, reason }
+   * Requires: MASTER role + 2FA
+   */
+  async unlockBalance(req: Request, res: Response): Promise<void> {
+    try {
+      const { walletId, amount, category, reason } = req.body;
+      const adminUserId = (req as any).user.id;
+
+      // Validar campos obrigatórios
+      if (!walletId || !amount || !category || !reason) {
+        res.status(400).json({
+          success: false,
+          error: 'walletId, amount, category e reason são obrigatórios',
+        });
+        return;
+      }
+
+      // Validar category
+      if (!Object.values(LockCategory).includes(category)) {
+        res.status(400).json({
+          success: false,
+          error: `Categoria inválida. Valores válidos: ${Object.values(LockCategory).join(', ')}`,
+        });
+        return;
+      }
+
+      const result = await AdminFundsService.adminUnlockBalance({
+        walletId,
+        amount,
+        category,
+        reason,
+        adminUserId,
+      });
+
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] unlockBalance error:', error);
+      res.status(400).json({
+        success: false,
+        error: 'Erro ao desbloquear saldo',
         message: (error as Error).message,
       });
     }

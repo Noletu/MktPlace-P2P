@@ -16,7 +16,6 @@ interface User {
   email: string;
   name?: string;
   cpf: string;
-  kycLevel: string;
   reputationScore: number;
   role: string;
   // ADMIN CONTROLS: Bloqueio
@@ -68,26 +67,19 @@ export default function DashboardPage() {
     }
   };
 
-  const getKYCDisplay = (level: string) => {
-    const labels: Record<string, string> = {
-      'NONE': 'Nível 0 - Email Verificado',
-      'LEVEL_1': 'Nível 1 - CPF Verificado',
-      'LEVEL_2': 'Nível 2 - Identidade Verificada',
-      'LEVEL_3': 'Nível 3 - Verificação Avançada',
-      'LEVEL_4': 'Nível 4 - Conta Empresarial',
-    };
-    return labels[level] || labels['NONE'];
+  // Calcula limite diario baseado em reputacao
+  // Formula: 1000 + (reputationScore * 100) BRL
+  const getDailyLimit = (reputationScore: number) => {
+    const limit = 1000 + (reputationScore * 100);
+    return `R$ ${limit.toLocaleString('pt-BR')}/dia`;
   };
 
-  const getKYCLimit = (level: string) => {
-    const limits: Record<string, string> = {
-      'NONE': 'R$ 1.000/dia',
-      'LEVEL_1': 'R$ 10.000/dia',
-      'LEVEL_2': 'R$ 50.000/dia',
-      'LEVEL_3': 'R$ 100.000/dia',
-      'LEVEL_4': 'Ilimitado',
-    };
-    return limits[level] || limits['NONE'];
+  const getReputationDisplay = (score: number) => {
+    if (score === 0) return 'Novo Usuario';
+    if (score < 30) return 'Iniciante';
+    if (score < 60) return 'Regular';
+    if (score < 90) return 'Experiente';
+    return 'Veterano';
   };
 
   if (loading) {
@@ -134,10 +126,10 @@ export default function DashboardPage() {
             </div>
             <div className="bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 px-4 py-3 rounded-lg border border-blue-200 dark:border-blue-800">
               <p className="text-sm text-blue-800 dark:text-blue-200 font-semibold">
-                🎖️ {getKYCDisplay(user.kycLevel)}
+                ⭐ Reputacao: {user.reputationScore}/100 - {getReputationDisplay(user.reputationScore)}
               </p>
               <p className="text-xs text-blue-600 dark:text-blue-300">
-                Limite: {getKYCLimit(user.kycLevel)}
+                Limite: {getDailyLimit(user.reputationScore)}
               </p>
             </div>
           </div>

@@ -14,9 +14,11 @@ export interface SendMessageInput {
   chatId: string;
   senderId: string;
   message?: string; // Optional para mensagens antigas/não criptografadas
-  encryptedContent?: string; // Para mensagens criptografadas
+  encryptedContent?: string; // Criptografado para o DESTINATÁRIO
+  encryptedForSender?: string; // Criptografado para o REMETENTE (E2E correto)
   isEncrypted?: boolean; // Flag de criptografia
-  iv?: string; // Initialization Vector para AES-GCM
+  iv?: string; // IV para encryptedContent (destinatário)
+  ivForSender?: string; // IV para encryptedForSender (remetente)
   attachments?: string[]; // Retrocompatibilidade
   attachmentUrl?: string; // URL do anexo (novo formato)
   attachmentType?: string; // Tipo MIME do anexo
@@ -53,14 +55,21 @@ export class ChatService {
     const transaction = order.transactions[0];
     const isPayer = transaction?.payerId === userId;
 
-    // Permitir acesso apenas se é owner ou payer de um pedido já aceito (MATCHED)
+    // Para BUY orders: provider é quem aceita (providerId)
+    const isBuyOrder = order.orderType === 'BUY';
+    const isProvider = isBuyOrder && order.providerId === userId;
+
+    // Permitir acesso se é owner, payer ou provider
     // Chat só deve estar disponível APÓS aceitar o pedido
-    if (!isOrderOwner && !isPayer) {
+    if (!isOrderOwner && !isPayer && !isProvider) {
       throw new Error('Chat disponível apenas após aceitar o pedido');
     }
 
-    // Impedir owner de criar chat com ele mesmo
-    if (isOrderOwner && !isPayer && !transaction) {
+    // Impedir owner de criar chat ANTES de alguém aceitar
+    // Para SELL: precisa ter transaction (alguém aceitou)
+    // Para BUY: precisa ter provider (alguém aceitou)
+    const orderWasAccepted = isBuyOrder ? !!order.providerId : !!transaction;
+    if (isOrderOwner && !orderWasAccepted) {
       throw new Error('Chat não disponível para seu próprio pedido');
     }
 
@@ -106,7 +115,6 @@ export class ChatService {
     // Chat só é criado após pedido ser aceito (MATCHED+)
     // Para BUY orders: owner é comprador, provider é vendedor
     // Para SELL orders: owner é vendedor, payer é comprador
-    const isBuyOrder = order.orderType === 'BUY';
 
     let participant1Id: string;
     let participant2Id: string;
@@ -217,10 +225,12 @@ export class ChatService {
         senderId: input.senderId,
         // Mensagem não criptografada (retrocompatibilidade)
         message: input.message || null,
-        // Mensagem criptografada (E2E)
-        encryptedContent: input.encryptedContent || null,
+        // Mensagem criptografada (E2E) - duas versões para ambos participantes
+        encryptedContent: input.encryptedContent || null, // Para destinatário
+        encryptedForSender: input.encryptedForSender || null, // Para remetente
         isEncrypted: input.isEncrypted || false,
-        iv: input.iv || null,
+        iv: input.iv || null, // IV para destinatário
+        ivForSender: input.ivForSender || null, // IV para remetente
         // Anexos
         attachments: input.attachments ? JSON.stringify(input.attachments) : null,
         attachmentUrl: input.attachmentUrl || null,

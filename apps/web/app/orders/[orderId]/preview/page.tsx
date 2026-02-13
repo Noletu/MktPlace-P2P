@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useRouter, useParams } from 'next/navigation';
 import PresenceBadge from '@/components/PresenceBadge';
 import { formatBRL } from '@/utils/formatters';
@@ -55,6 +56,18 @@ export default function OrderPreviewPage() {
   const [providerPixKey, setProviderPixKey] = useState('');
   const [providerPixKeyType, setProviderPixKeyType] = useState<'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM'>('CPF');
   const [providerRecipientName, setProviderRecipientName] = useState('');
+
+  // Provider balance states (for BUY order collateral check)
+  const [providerBalance, setProviderBalance] = useState<{
+    id?: string;
+    available: string;
+    locked: string;
+    total: string;
+    address?: string;
+  } | null>(null);
+  const [loadingProviderBalance, setLoadingProviderBalance] = useState(false);
+  const [showDepositQR, setShowDepositQR] = useState(false);
+  const [simulatingDeposit, setSimulatingDeposit] = useState(false);
 
   useEffect(() => {
     fetchCurrentUser();
@@ -189,6 +202,119 @@ export default function OrderPreviewPage() {
       setAccepting(false);
     }
   };
+
+  // Fetch provider balance for BUY order collateral check
+  const fetchProviderBalance = useCallback(async () => {
+    if (!order) return;
+
+    setLoadingProviderBalance(true);
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/collateral-balance/${order.cryptoType}/${order.cryptoNetwork}`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+
+      const data = await response.json();
+      if (data.success && data.data.balance) {
+        setProviderBalance({
+          id: data.data.balance.id,
+          available: data.data.balance.availableBalance || '0',
+          locked: data.data.balance.lockedBalance || '0',
+          total: data.data.balance.balance || '0',
+          address: data.data.balance.address,
+        });
+      } else {
+        setProviderBalance({ available: '0', locked: '0', total: '0' });
+      }
+    } catch (error) {
+      console.error('Erro ao buscar saldo:', error);
+      setProviderBalance({ available: '0', locked: '0', total: '0' });
+    } finally {
+      setLoadingProviderBalance(false);
+    }
+  }, [order]);
+
+  // Initialize provider wallet if it doesn't exist
+  const initializeProviderWallet = async () => {
+    if (!order) return;
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/collateral-balance/deposit`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            cryptoType: order.cryptoType,
+            network: order.cryptoNetwork,
+          }),
+        }
+      );
+      const data = await response.json();
+      if (data.success) {
+        setProviderBalance(prev => ({
+          ...prev!,
+          address: data.data.depositAddress.address,
+        }));
+      }
+    } catch (error) {
+      console.error('Erro ao criar carteira:', error);
+    }
+  };
+
+  // Simulate deposit for testing
+  const handleSimulateDeposit = async () => {
+    if (!providerBalance?.id || !collateralAmount) return;
+
+    setSimulatingDeposit(true);
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/collateral-balance/simulate-deposit/${providerBalance.id}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            amount: collateralAmount,
+          }),
+        }
+      );
+
+      const data = await response.json();
+      if (data.success) {
+        alert('✅ Deposito simulado com sucesso! Atualizando saldo...');
+        await fetchProviderBalance();
+      } else {
+        alert(data.message || 'Erro ao simular deposito');
+      }
+    } catch (error: any) {
+      console.error('Erro ao simular deposito:', error);
+      alert('Erro ao simular deposito');
+    } finally {
+      setSimulatingDeposit(false);
+    }
+  };
+
+  // Handler to open BUY form with balance check
+  const handleOpenBuyForm = () => {
+    setShowBuyAcceptForm(true);
+    setShowDepositQR(false);
+    fetchProviderBalance();
+  };
+
+  // Polling for balance updates when deposit QR is visible
+  useEffect(() => {
+    if (!showDepositQR || !providerBalance?.address) return;
+    const interval = setInterval(fetchProviderBalance, 15000);
+    return () => clearInterval(interval);
+  }, [showDepositQR, providerBalance?.address, fetchProviderBalance]);
 
   if (loading) {
     return (
@@ -408,7 +534,7 @@ export default function OrderPreviewPage() {
               {isBuyOrder ? (
                 <div className="space-y-3">
                   <div className="bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg p-3">
-                    <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">🔒 SEU COLATERAL:</p>
+                    <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">🔒 COLATERAL NECESSARIO:</p>
                     <div className="flex items-center gap-2">
                       <CryptoIcon crypto={order.cryptoType as CryptoType} size={24} />
                       <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
@@ -478,84 +604,247 @@ export default function OrderPreviewPage() {
                   Seu Pedido - Não pode aceitar
                 </button>
               ) : isBuyOrder ? (
-                // BUY order - show form to enter PIX data
+                // BUY order - show form with balance check
                 showBuyAcceptForm ? (
                   <div className="space-y-4">
-                    <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 mb-4">
-                      <p className="text-xs text-blue-700 dark:text-blue-300">
-                        Informe seus dados PIX para receber o pagamento do comprador.
-                      </p>
-                    </div>
+                    {/* Loading state */}
+                    {loadingProviderBalance ? (
+                      <div className="flex flex-col items-center py-6">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Verificando saldo...</p>
+                      </div>
+                    ) : providerBalance && parseFloat(providerBalance.available) >= parseFloat(collateralAmount || '0') ? (
+                      /* SUFFICIENT BALANCE - show PIX form */
+                      <>
+                        <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3">
+                          <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">✅ Saldo Disponivel</p>
+                          <p className="font-mono text-lg text-green-800 dark:text-green-200">
+                            {parseFloat(providerBalance.available).toFixed(8)} {order.cryptoType}
+                          </p>
+                          <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                            Necessario: {collateralAmount} {order.cryptoType}
+                          </p>
+                        </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Tipo de Chave PIX *
-                      </label>
-                      <select
-                        value={providerPixKeyType}
-                        onChange={(e) => setProviderPixKeyType(e.target.value as any)}
-                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                      >
-                        <option value="CPF">CPF</option>
-                        <option value="CNPJ">CNPJ</option>
-                        <option value="EMAIL">E-mail</option>
-                        <option value="PHONE">Telefone</option>
-                        <option value="RANDOM">Chave Aleatória</option>
-                      </select>
-                    </div>
+                        <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
+                          <p className="text-xs text-blue-700 dark:text-blue-300">
+                            Informe seus dados PIX para receber o pagamento do comprador.
+                          </p>
+                        </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Chave PIX *
-                      </label>
-                      <input
-                        type="text"
-                        value={providerPixKey}
-                        onChange={(e) => setProviderPixKey(e.target.value)}
-                        placeholder="Digite sua chave PIX"
-                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                      />
-                    </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Tipo de Chave PIX *
+                          </label>
+                          <select
+                            value={providerPixKeyType}
+                            onChange={(e) => setProviderPixKeyType(e.target.value as any)}
+                            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                          >
+                            <option value="CPF">CPF</option>
+                            <option value="CNPJ">CNPJ</option>
+                            <option value="EMAIL">E-mail</option>
+                            <option value="PHONE">Telefone</option>
+                            <option value="RANDOM">Chave Aleatoria</option>
+                          </select>
+                        </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Nome do Beneficiário *
-                      </label>
-                      <input
-                        type="text"
-                        value={providerRecipientName}
-                        onChange={(e) => setProviderRecipientName(e.target.value)}
-                        placeholder="Nome completo para verificação"
-                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                      />
-                    </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Chave PIX *
+                          </label>
+                          <input
+                            type="text"
+                            value={providerPixKey}
+                            onChange={(e) => setProviderPixKey(e.target.value)}
+                            placeholder="Digite sua chave PIX"
+                            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                          />
+                        </div>
 
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setShowBuyAcceptForm(false)}
-                        className="flex-1 py-2 px-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        onClick={handleAcceptBuyOrder}
-                        disabled={accepting || !providerPixKey || !providerRecipientName}
-                        className="flex-1 py-2 px-4 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
-                      >
-                        {accepting ? 'Processando...' : 'Confirmar'}
-                      </button>
-                    </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Nome do Beneficiario *
+                          </label>
+                          <input
+                            type="text"
+                            value={providerRecipientName}
+                            onChange={(e) => setProviderRecipientName(e.target.value)}
+                            placeholder="Nome completo para verificacao"
+                            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                          />
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => { setShowBuyAcceptForm(false); setShowDepositQR(false); }}
+                            className="flex-1 py-2 px-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg"
+                          >
+                            Voltar
+                          </button>
+                          <button
+                            onClick={handleAcceptBuyOrder}
+                            disabled={accepting || !providerPixKey || !providerRecipientName}
+                            className="flex-1 py-2 px-4 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
+                          >
+                            {accepting ? 'Processando...' : 'Confirmar'}
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      /* INSUFFICIENT BALANCE - show deposit option */
+                      <div className="space-y-3">
+                        <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg p-3">
+                          <p className="text-xs text-red-700 dark:text-red-300 font-semibold mb-2">⚠️ Saldo Insuficiente</p>
+                          <div className="space-y-1 text-sm">
+                            <p className="text-red-800 dark:text-red-200">
+                              <span className="text-red-600 dark:text-red-400">Disponivel:</span>{' '}
+                              <span className="font-mono">{providerBalance ? parseFloat(providerBalance.available).toFixed(8) : '0.00000000'}</span> {order.cryptoType}
+                            </p>
+                            <p className="text-red-800 dark:text-red-200">
+                              <span className="text-red-600 dark:text-red-400">Necessario:</span>{' '}
+                              <span className="font-mono">{collateralAmount}</span> {order.cryptoType}
+                            </p>
+                            <p className="text-red-800 dark:text-red-200 font-semibold mt-2">
+                              Faltam: <span className="font-mono">{(parseFloat(collateralAmount || '0') - parseFloat(providerBalance?.available || '0')).toFixed(8)}</span> {order.cryptoType}
+                            </p>
+                          </div>
+                        </div>
+
+                        {!showDepositQR ? (
+                          <button
+                            onClick={async () => {
+                              if (!providerBalance?.address) {
+                                await initializeProviderWallet();
+                              }
+                              setShowDepositQR(true);
+                            }}
+                            className="w-full py-2 px-4 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg"
+                          >
+                            Depositar {order.cryptoType}
+                          </button>
+                        ) : (
+                          /* QR Code for deposit - Layout igual a via de venda */
+                          <div className="space-y-4">
+                            {/* Titulo */}
+                            <div className="text-center">
+                              <h3 className="text-xl font-bold text-gray-900 dark:text-white">Deposite o Colateral</h3>
+                              <p className="text-sm text-gray-600 dark:text-gray-300">
+                                Envie {collateralAmount} {order.cryptoType} para o endereco abaixo
+                              </p>
+                            </div>
+
+                            {/* Timer/Status */}
+                            <div className="bg-yellow-50 dark:bg-yellow-900/30 border-2 border-yellow-400 dark:border-yellow-600 rounded-lg p-3 text-center">
+                              <p className="text-sm text-yellow-800 dark:text-yellow-200">Atualizando saldo automaticamente a cada 15s</p>
+                            </div>
+
+                            {providerBalance?.address ? (
+                              <>
+                                {/* Endereco + Copiar */}
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    Endereco de deposito ({order.cryptoNetwork}):
+                                  </label>
+                                  <div className="flex gap-2">
+                                    <input
+                                      type="text"
+                                      value={providerBalance.address}
+                                      readOnly
+                                      className="flex-1 px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg font-mono text-xs bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                                    />
+                                    <button
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(providerBalance.address!);
+                                        alert('Endereco copiado!');
+                                      }}
+                                      className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-800"
+                                    >
+                                      📋 Copiar
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* QR Code grande */}
+                                <div className="flex flex-col items-center">
+                                  <div className="bg-white border-4 border-gray-300 dark:border-gray-600 p-4 rounded-lg shadow-lg">
+                                    <QRCodeSVG
+                                      value={providerBalance.address}
+                                      size={200}
+                                      level="H"
+                                      includeMargin={true}
+                                      bgColor="#ffffff"
+                                      fgColor="#000000"
+                                    />
+                                  </div>
+                                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-3 text-center">
+                                    Escaneie o QR Code com sua carteira de {order.cryptoType}
+                                  </p>
+                                </div>
+
+                                {/* Instrucoes */}
+                                <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
+                                  <h4 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">📌 Instrucoes:</h4>
+                                  <ol className="text-sm text-blue-800 dark:text-blue-300 space-y-1 list-decimal list-inside">
+                                    <li>Envie exatamente {collateralAmount} {order.cryptoType}</li>
+                                    <li>Use a rede {order.cryptoNetwork}</li>
+                                    <li>Apos deposito, clique em "Atualizar Saldo"</li>
+                                    <li>Quando saldo suficiente, preencha os dados PIX</li>
+                                  </ol>
+                                </div>
+
+                                {/* Botao Atualizar */}
+                                <button
+                                  onClick={fetchProviderBalance}
+                                  className="w-full py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg"
+                                >
+                                  🔄 Atualizar Saldo
+                                </button>
+
+                                {/* Botao Simular Deposito (Teste) */}
+                                {providerBalance?.id && (
+                                  <div className="bg-green-50 dark:bg-green-900/30 border-2 border-green-300 dark:border-green-700 rounded-lg p-3">
+                                    <p className="text-xs text-green-800 dark:text-green-200 mb-2 text-center">
+                                      <strong>⚡ Ambiente de Teste</strong>
+                                    </p>
+                                    <button
+                                      onClick={handleSimulateDeposit}
+                                      disabled={simulatingDeposit}
+                                      className="w-full py-3 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-bold rounded-lg disabled:opacity-50"
+                                    >
+                                      {simulatingDeposit ? '🔄 Simulando...' : `⚡ SIMULAR DEPOSITO (${collateralAmount} ${order.cryptoType})`}
+                                    </button>
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <div className="text-center py-8">
+                                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-orange-600 mx-auto mb-3"></div>
+                                <p className="text-gray-600 dark:text-gray-400">Gerando endereco de deposito...</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <button
+                          onClick={() => { setShowBuyAcceptForm(false); setShowDepositQR(false); }}
+                          className="w-full py-2 px-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg"
+                        >
+                          Voltar
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <>
                     <button
-                      onClick={() => setShowBuyAcceptForm(true)}
+                      onClick={handleOpenBuyForm}
                       className="w-full py-3 px-4 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg mb-3"
                     >
                       💰 Fornecer Liquidez
                     </button>
                     <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                      Você receberá {formatBRL(order.brlAmount)} via PIX
+                      Voce recebera {formatBRL(order.brlAmount)} via PIX
                     </p>
                   </>
                 )

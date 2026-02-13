@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { notificationService } from '../services/notification.service';
+import { WalletService } from '../services/wallet.service';
 
 const prisma = new PrismaClient();
 
@@ -78,17 +79,48 @@ class OrderExpirationWorker {
       if (order.status === 'MATCHED') {
         console.log(`⏰ MATCHED order expired: ${order.id} - Returning to marketplace`);
 
+        // Desbloquear colateral do provedor (para ordens BUY)
+        // Em ordens BUY, o provedor bloqueia colateral ao aceitar
+        if (order.orderType === 'BUY' && order.collateralLocked && order.collateralLockedAmount && order.providerWalletId) {
+          try {
+            await WalletService.unlockBalance(
+              order.providerWalletId,
+              order.collateralLockedAmount,
+              order.id,
+              `Colateral desbloqueado - ordem BUY expirou sem pagamento`
+            );
+            console.log(`🔓 [BUY ORDER] Colateral do provedor desbloqueado: ${order.collateralLockedAmount} ${order.cryptoType}`);
+          } catch (error: any) {
+            console.error(`❌ Erro ao desbloquear colateral do provedor:`, error);
+          }
+        }
+
         // Resetar timeout para 24 horas (disponível novamente no marketplace)
         const newTimeout = new Date();
         newTimeout.setHours(newTimeout.getHours() + 24);
 
-        // Retornar para PENDING
+        // Retornar para PENDING e limpar dados do provedor (para ordens BUY)
+        const updateData: any = {
+          status: 'PENDING',
+          timeoutAt: newTimeout,
+        };
+
+        // Se for ordem BUY, limpar dados do provedor
+        if (order.orderType === 'BUY') {
+          updateData.providerId = null;
+          updateData.providerWalletId = null;
+          updateData.walletId = null;
+          updateData.orderData = JSON.stringify({});
+          updateData.collateralSource = null;
+          updateData.collateralConfirmed = false;
+          updateData.collateralLocked = false;
+          updateData.collateralLockedAmount = null;
+          updateData.collateralUnlockedAt = new Date();
+        }
+
         await prisma.order.update({
           where: { id: order.id },
-          data: {
-            status: 'PENDING',
-            timeoutAt: newTimeout,
-          },
+          data: updateData,
         });
 
         // Deletar transações associadas
