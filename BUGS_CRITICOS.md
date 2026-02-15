@@ -6,12 +6,35 @@ Este arquivo lista todos os bugs críticos conhecidos que estão sendo trabalhad
 
 ## 🔴 Bugs Ativos
 
-*Nenhum bug crítico ativo no momento.*
+*Nenhum bug critico ativo no momento.*
 
-**Última verificação**: 19/12/2025 - 23:00
-**Status do sistema**: 🟢 **ESTÁVEL E PRONTO PARA PRODUÇÃO**
+**Ultima verificacao**: 15/02/2026
+**Status do sistema**: 🟢 **ESTAVEL**
 
-**Trabalhos recentes realizados** (19/12/2025):
+### Bug Corrigido Nesta Sessao (15/02/2026)
+
+#### ✅ ReferenceError: effectiveBuyCryptoAmount before initialization
+**Status**: ✅ RESOLVIDO
+**Severidade**: 🔴 CRITICA (pagina nao carregava)
+
+**Descricao**: Apos implementar o swap BRL/CRYPTO para ordens BUY, a pagina `/orders/create` crashava com erro de referencia.
+
+**Causa**: Os memos `buyCalculatedCrypto` e `effectiveBuyCryptoAmount` foram definidos DEPOIS do memo `cryptoAmount` que os referenciava na dependency array. JavaScript `const` com `useMemo` nao permite acesso antes da inicializacao (temporal dead zone).
+
+**Solucao**: Reordenar os memos — mover `buyCalculatedCrypto` e `effectiveBuyCryptoAmount` ANTES de `cryptoAmount`.
+
+**Arquivo**: `apps/web/app/orders/create/page.tsx`
+
+**Licao**: Ao adicionar memos interdependentes em React, sempre verificar a ordem de declaracao. Memos referenciados em dependency arrays devem ser declarados primeiro.
+
+---
+
+**Trabalhos recentes realizados** (15/02/2026):
+- ✅ **Swap BRL/CRYPTO em ordens BUY** implementado com sucesso
+- ✅ **Bug de referencia circular** corrigido (reordenacao de memos)
+- 📋 **Historico de Reputacao** planejado (aguardando implementacao)
+
+**Trabalhos anteriores** (19/12/2025):
 - ✅ **Edição de pedidos não salvava** corrigida completamente
   - Backend detecta corretamente PIX vs BOLETO pelos dados (não mais por `order.type`)
   - Todas as edições agora são processadas e salvas no banco
@@ -619,7 +642,7 @@ Field 'matchedAt' not found in Order model
 
 ---
 
-**Última atualização**: 14/12/2025
+**Ultima atualizacao**: 15/02/2026
 
 ---
 

@@ -30,6 +30,14 @@ export default function CreateOrderPage() {
   // BUY order specific - user inputs crypto amount directly
   const [buyCryptoAmount, setBuyCryptoAmount] = useState('');
 
+  // SELL order - swap input currency (BRL or CRYPTO)
+  const [inputCurrency, setInputCurrency] = useState<'BRL' | 'CRYPTO'>('BRL');
+  const [sellCryptoInput, setSellCryptoInput] = useState('');
+
+  // BUY order - swap input currency (CRYPTO default, or BRL)
+  const [buyInputCurrency, setBuyInputCurrency] = useState<'BRL' | 'CRYPTO'>('CRYPTO');
+  const [buyBrlInput, setBuyBrlInput] = useState('');
+
   // PIX fields
   const [pixKey, setPixKey] = useState('');
   const [pixKeyType, setPixKeyType] = useState<'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM'>('CPF');
@@ -351,11 +359,38 @@ export default function CreateOrderPage() {
     }
   };
 
+  // BUY: calcular crypto quando input é BRL
+  const buyCalculatedCrypto = useMemo(() => {
+    if (buyInputCurrency !== 'BRL' || !buyBrlInput || !prices[crypto]) return '0';
+    const brl = parseFloat(buyBrlInput);
+    const price = parseFloat(prices[crypto]);
+    if (isNaN(brl) || isNaN(price) || price === 0 || brl <= 0) return '0';
+    const decimals = (crypto === 'USDC' || crypto === 'USDT') ? 2 : 8;
+    // BRL inclui markup de 2.5%, então crypto = brl / price / 1.025
+    return (brl / price / 1.025).toFixed(decimals);
+  }, [buyBrlInput, crypto, prices, buyInputCurrency]);
+
+  // BUY: valor efetivo de crypto para submit e resumo
+  const effectiveBuyCryptoAmount = useMemo(() => {
+    if (buyInputCurrency === 'BRL') return buyCalculatedCrypto;
+    return buyCryptoAmount;
+  }, [buyInputCurrency, buyCalculatedCrypto, buyCryptoAmount]);
+
   // Calcular valor em crypto (reativo com useMemo) - para ordens SELL
   const cryptoAmount = useMemo(() => {
     if (orderMode === 'BUY') {
-      return buyCryptoAmount || '0';
+      return effectiveBuyCryptoAmount || '0';
     }
+    const decimals = (crypto === 'USDC' || crypto === 'USDT') ? 2 : 8;
+    // Modo CRYPTO: user digitou o valor em crypto diretamente
+    if (inputCurrency === 'CRYPTO') {
+      if (!sellCryptoInput || parseFloat(sellCryptoInput) <= 0) return '0';
+      // O valor bruto que o backend espera (inclui taxa de 2.5%)
+      // User digita quanto quer vender, sistema adiciona a taxa
+      const cryptoVal = parseFloat(sellCryptoInput);
+      return (cryptoVal / 0.975).toFixed(decimals);
+    }
+    // Modo BRL (padrão)
     if (!brlAmount || !prices[crypto]) {
       console.log(`⚠️ Cannot calculate: brlAmount=${brlAmount}, crypto=${crypto}, price=${prices[crypto]}`);
       return '0';
@@ -365,20 +400,22 @@ export default function CreateOrderPage() {
     if (isNaN(brl) || isNaN(price) || price === 0) {
       return '0';
     }
-    // USDC e USDT: 2 casas decimais, BTC: 8 casas decimais
-    const decimals = (crypto === 'USDC' || crypto === 'USDT') ? 2 : 8;
     // Incluir 2.5% de taxa: divide por 0.975 para que o valor líquido seja o desejado
     const result = (brl / price / 0.975).toFixed(decimals);
     console.log(`💱 Converting R$${brl} with ${crypto} @ ${price}: ${result} ${crypto}`);
     return result;
-  }, [brlAmount, crypto, prices, orderMode, buyCryptoAmount]);
+  }, [brlAmount, crypto, prices, orderMode, effectiveBuyCryptoAmount, inputCurrency, sellCryptoInput]);
 
   // Calcular valor em BRL para ordens BUY (com markup de 2.5%)
   const buyBrlAmount = useMemo(() => {
-    if (orderMode !== 'BUY' || !buyCryptoAmount || !prices[crypto]) {
+    if (orderMode !== 'BUY' || !effectiveBuyCryptoAmount || effectiveBuyCryptoAmount === '0' || !prices[crypto]) {
       return '0';
     }
-    const cryptoAmt = parseFloat(buyCryptoAmount);
+    // Se input é BRL, usar o valor digitado diretamente
+    if (buyInputCurrency === 'BRL') {
+      return buyBrlInput || '0';
+    }
+    const cryptoAmt = parseFloat(effectiveBuyCryptoAmount);
     const price = parseFloat(prices[crypto]);
     if (isNaN(cryptoAmt) || isNaN(price) || price === 0 || cryptoAmt <= 0) {
       return '0';
@@ -387,7 +424,25 @@ export default function CreateOrderPage() {
     const brlBase = cryptoAmt * price;
     const brlWithMarkup = brlBase * 1.025;
     return brlWithMarkup.toFixed(2);
-  }, [buyCryptoAmount, crypto, prices, orderMode]);
+  }, [effectiveBuyCryptoAmount, crypto, prices, orderMode, buyInputCurrency, buyBrlInput]);
+
+  // Calcular BRL quando input é em crypto (SELL mode)
+  const calculatedBrl = useMemo(() => {
+    if (inputCurrency !== 'CRYPTO' || !sellCryptoInput || !prices[crypto]) return '0';
+    const cryptoVal = parseFloat(sellCryptoInput);
+    const price = parseFloat(prices[crypto]);
+    if (isNaN(cryptoVal) || isNaN(price) || price === 0 || cryptoVal <= 0) return '0';
+    // Valor líquido em BRL que o vendedor vai receber (crypto * price)
+    // sellCryptoInput é o valor líquido de crypto, o BRL correspondente é direto
+    return (cryptoVal * price).toFixed(2);
+  }, [sellCryptoInput, crypto, prices, inputCurrency]);
+
+  // brlAmount efetivo para SELL orders (usado no submit e resumo)
+  const effectiveBrlAmount = useMemo(() => {
+    if (orderMode !== 'SELL') return brlAmount;
+    if (inputCurrency === 'CRYPTO') return calculatedBrl;
+    return brlAmount;
+  }, [orderMode, inputCurrency, calculatedBrl, brlAmount]);
 
   // Calcular taxas (reativo com useMemo)
   const fees = useMemo(() => {
@@ -438,7 +493,7 @@ export default function CreateOrderPage() {
       // ============ BUY ORDER FLOW ============
       if (orderMode === 'BUY') {
         // Validações para ordem BUY
-        if (!buyCryptoAmount || parseFloat(buyCryptoAmount) <= 0) {
+        if (!effectiveBuyCryptoAmount || parseFloat(effectiveBuyCryptoAmount) <= 0) {
           throw new Error('Quantidade de cripto deve ser maior que zero');
         }
 
@@ -447,7 +502,7 @@ export default function CreateOrderPage() {
         }
 
         console.log('✅ Criando ordem BUY:', {
-          cryptoAmount: buyCryptoAmount,
+          cryptoAmount: effectiveBuyCryptoAmount,
           brlAmount: buyBrlAmount,
           crypto,
           network,
@@ -468,7 +523,7 @@ export default function CreateOrderPage() {
             type: 'BUY',
             cryptoType: crypto,
             cryptoNetwork: network,
-            cryptoAmount: buyCryptoAmount,
+            cryptoAmount: effectiveBuyCryptoAmount,
             ...expirationFields,
           }),
         });
@@ -492,7 +547,8 @@ export default function CreateOrderPage() {
 
       // ============ SELL ORDER FLOW (existing logic) ============
       // Validações básicas antes de enviar
-      if (!brlAmount || parseFloat(brlAmount) <= 0) {
+      const submitBrlAmount = effectiveBrlAmount;
+      if (!submitBrlAmount || parseFloat(submitBrlAmount) <= 0) {
         throw new Error('Valor em BRL deve ser maior que zero');
       }
 
@@ -505,7 +561,7 @@ export default function CreateOrderPage() {
       }
 
       console.log('✅ Validações básicas passaram:', {
-        brlAmount,
+        brlAmount: submitBrlAmount,
         cryptoAmount,
         crypto,
         network,
@@ -601,7 +657,7 @@ export default function CreateOrderPage() {
         cryptoType: crypto,
         cryptoNetwork: network,
         cryptoAmount,
-        brlAmount,
+        brlAmount: submitBrlAmount,
         orderData: orderType === 'PIX' ? {
           pixKey,
           pixKeyType,
@@ -774,7 +830,7 @@ export default function CreateOrderPage() {
           cryptoType: crypto,
           cryptoNetwork: network,
           cryptoAmount,
-          brlAmount,
+          brlAmount: effectiveBrlAmount,
           orderData: orderType === 'PIX' ? {
             pixKey,
             pixKeyType,
@@ -851,7 +907,7 @@ export default function CreateOrderPage() {
         cryptoType: crypto,
         cryptoNetwork: network,
         cryptoAmount,
-        brlAmount,
+        brlAmount: effectiveBrlAmount,
         orderData: orderType === 'PIX' ? {
           pixKey,
           pixKeyType,
@@ -1222,21 +1278,64 @@ export default function CreateOrderPage() {
                     </select>
                   </div>
 
-                  {/* Quantidade de Cripto */}
+                  {/* Quantidade - com swap BRL/CRYPTO */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Quantidade de {crypto} que voce quer comprar
+                      {buyInputCurrency === 'CRYPTO'
+                        ? `Quantidade de ${crypto} que voce quer comprar`
+                        : 'Valor em BRL que voce quer gastar'}
                     </label>
-                    <input
-                      type="number"
-                      value={buyCryptoAmount}
-                      onChange={(e) => setBuyCryptoAmount(e.target.value)}
-                      placeholder={crypto === 'BTC' ? '0.001' : '100'}
-                      step={crypto === 'BTC' ? '0.00000001' : '0.01'}
-                      min="0"
-                      required
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    />
+
+                    {buyInputCurrency === 'CRYPTO' ? (
+                      <input
+                        type="number"
+                        value={buyCryptoAmount}
+                        onChange={(e) => setBuyCryptoAmount(e.target.value)}
+                        placeholder={crypto === 'BTC' ? '0.001' : '100'}
+                        step={crypto === 'BTC' ? '0.00000001' : '0.01'}
+                        min="0"
+                        required
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        value={buyBrlInput}
+                        onChange={(e) => setBuyBrlInput(e.target.value)}
+                        placeholder="0.00"
+                        step="0.01"
+                        min="0"
+                        required
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                    )}
+
+                    {/* Botao swap BRL <-> CRYPTO */}
+                    <div className="flex justify-center my-2">
+                      <button
+                        type="button"
+                        onClick={() => setBuyInputCurrency(prev => prev === 'CRYPTO' ? 'BRL' : 'CRYPTO')}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full transition-all text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >
+                        <span>{buyInputCurrency === 'CRYPTO' ? crypto : 'BRL'}</span>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                        <span>{buyInputCurrency === 'CRYPTO' ? 'BRL' : crypto}</span>
+                      </button>
+                    </div>
+
+                    {/* Valor calculado */}
+                    {buyInputCurrency === 'CRYPTO' ? (
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        = {formatBRL(buyBrlAmount)}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        = {buyCalculatedCrypto} {crypto}
+                      </p>
+                    )}
+
                     {prices[crypto] && (
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                         Cotacao atual: 1 {crypto} = {formatBRL(prices[crypto].toString())}
@@ -1244,7 +1343,7 @@ export default function CreateOrderPage() {
                     )}
                   </div>
 
-                  {/* Valor em BRL calculado */}
+                  {/* Valor detalhado */}
                   {buyBrlAmount !== '0' && (
                     <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 border-2 border-blue-300 dark:border-blue-700 rounded-lg p-4">
                       <div className="flex justify-between items-center mb-2">
@@ -1255,7 +1354,7 @@ export default function CreateOrderPage() {
                       </div>
                       <div className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
                         <div className="flex justify-between">
-                          <span>Valor base ({buyCryptoAmount} {crypto}):</span>
+                          <span>Valor base ({effectiveBuyCryptoAmount} {crypto}):</span>
                           <span>{formatBRL((parseFloat(buyBrlAmount) / 1.025).toFixed(2))}</span>
                         </div>
                         <div className="flex justify-between">
@@ -1293,7 +1392,7 @@ export default function CreateOrderPage() {
 
                   <button
                     type="submit"
-                    disabled={loading || accountStatus?.frozen || !buyCryptoAmount || parseFloat(buyCryptoAmount) <= 0}
+                    disabled={loading || accountStatus?.frozen || !effectiveBuyCryptoAmount || parseFloat(effectiveBuyCryptoAmount) <= 0}
                     className={`w-full py-3 px-4 font-semibold rounded-lg disabled:opacity-50 ${
                       accountStatus?.frozen
                         ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed text-gray-200'
@@ -1304,7 +1403,7 @@ export default function CreateOrderPage() {
                       ? 'Conta Suspensa'
                       : loading
                         ? 'Criando ordem...'
-                        : `Criar Ordem de Compra de ${buyCryptoAmount || '0'} ${crypto}`}
+                        : `Criar Ordem de Compra de ${effectiveBuyCryptoAmount || '0'} ${crypto}`}
                   </button>
                 </>
               )}
@@ -1405,25 +1504,65 @@ export default function CreateOrderPage() {
                 </div>
               )}
 
-              {/* Valor em BRL */}
+              {/* Valor - com swap BRL/CRYPTO */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Valor em BRL
-                  {orderType === 'BOLETO' && barcodeValid && <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">(preenchido automaticamente)</span>}
+                  {inputCurrency === 'BRL' ? 'Valor em BRL' : `Valor em ${crypto}`}
+                  {orderType === 'BOLETO' && barcodeValid && inputCurrency === 'BRL' && <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">(preenchido automaticamente)</span>}
                 </label>
-                <input
-                  type="number"
-                  value={brlAmount}
-                  onChange={(e) => setBrlAmount(e.target.value)}
-                  placeholder="0.00"
-                  step="0.01"
-                  min="10"
-                  required
-                  readOnly={orderType === 'BOLETO' && barcodeValid === true}
-                  className={`w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white ${
-                    orderType === 'BOLETO' && barcodeValid === true ? 'bg-gray-100 dark:bg-gray-700' : 'bg-white dark:bg-gray-700'
-                  }`}
-                />
+
+                {inputCurrency === 'BRL' ? (
+                  <input
+                    type="number"
+                    value={brlAmount}
+                    onChange={(e) => setBrlAmount(e.target.value)}
+                    placeholder="0.00"
+                    step="0.01"
+                    min="10"
+                    required
+                    readOnly={orderType === 'BOLETO' && barcodeValid === true}
+                    className={`w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white ${
+                      orderType === 'BOLETO' && barcodeValid === true ? 'bg-gray-100 dark:bg-gray-700' : 'bg-white dark:bg-gray-700'
+                    }`}
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    value={sellCryptoInput}
+                    onChange={(e) => setSellCryptoInput(e.target.value)}
+                    placeholder={crypto === 'BTC' ? '0.00000000' : '0.00'}
+                    step={crypto === 'BTC' ? '0.00000001' : '0.01'}
+                    min="0"
+                    required
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white bg-white dark:bg-gray-700"
+                  />
+                )}
+
+                {/* Botão swap BRL ↔ CRYPTO */}
+                <div className="flex justify-center my-2">
+                  <button
+                    type="button"
+                    onClick={() => setInputCurrency(prev => prev === 'BRL' ? 'CRYPTO' : 'BRL')}
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full transition-all text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    <span>{inputCurrency === 'BRL' ? 'BRL' : crypto}</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                    </svg>
+                    <span>{inputCurrency === 'BRL' ? crypto : 'BRL'}</span>
+                  </button>
+                </div>
+
+                {/* Valor calculado */}
+                {inputCurrency === 'BRL' ? (
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    = {cryptoAmount} {crypto}
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    = {formatBRL(calculatedBrl)}
+                  </p>
+                )}
 
                 {/* Cotação USD/BRL */}
                 {(crypto === 'USDC' || crypto === 'USDT') && currentRate && (
@@ -1647,7 +1786,7 @@ export default function CreateOrderPage() {
                   <div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">Voce quer comprar</p>
                     <p className="text-xl font-bold text-gray-900 dark:text-white">
-                      {buyCryptoAmount || '0'} {crypto}
+                      {effectiveBuyCryptoAmount || '0'} {crypto}
                     </p>
                   </div>
 
@@ -1666,7 +1805,7 @@ export default function CreateOrderPage() {
                   <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3">
                     <p className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">Voce recebe:</p>
                     <p className="text-lg font-bold text-green-700 dark:text-green-300">
-                      {buyCryptoAmount || '0'} {crypto}
+                      {effectiveBuyCryptoAmount || '0'} {crypto}
                     </p>
                     <p className="text-xs text-green-600 dark:text-green-400 mt-1">
                       Direto na sua carteira da plataforma!
@@ -1727,7 +1866,7 @@ export default function CreateOrderPage() {
 
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Valor do {orderType === 'PIX' ? 'PIX' : 'boleto'}</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(brlAmount || '0')}</p>
+                <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(effectiveBrlAmount || '0')}</p>
               </div>
 
               <div>
@@ -1822,7 +1961,7 @@ export default function CreateOrderPage() {
               <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
                 <p className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">Voce recebe:</p>
                 <p className="text-xs text-green-700 dark:text-green-300">
-                  Seu {orderType === 'PIX' ? 'PIX' : 'boleto'} de {formatBRL(brlAmount || '0')} pago!
+                  Seu {orderType === 'PIX' ? 'PIX' : 'boleto'} de {formatBRL(effectiveBrlAmount || '0')} pago!
                 </p>
               </div>
               </>

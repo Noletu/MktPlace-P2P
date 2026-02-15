@@ -7,6 +7,36 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [4.2.0] - 2026-02-15
+
+### Adicionado
+
+#### Swap BRL/CRYPTO em Ordens BUY
+- **Funcionalidade**: Ordens BUY agora suportam input em BRL alem de crypto
+- **Antes**: Usuario so podia digitar quantidade em crypto (ex: 0.001 BTC)
+- **Depois**: Usuario pode alternar entre digitar em crypto OU em BRL (ex: R$ 500)
+- **Botao swap**: Pill com setas identico ao existente nas ordens SELL
+- **Calculos**:
+  - Crypto -> BRL: `cryptoAmount * price * 1.025` (2.5% markup)
+  - BRL -> Crypto: `brlAmount / price / 1.025` (reverso com markup)
+  - Decimais: 8 para BTC, 2 para USDC/USDT
+- **States adicionados**: `buyInputCurrency`, `buyBrlInput` (separados do SELL)
+- **Memos adicionados**: `buyCalculatedCrypto`, `effectiveBuyCryptoAmount`
+- **Arquivo modificado**: `apps/web/app/orders/create/page.tsx`
+
+### Em Desenvolvimento
+
+#### Historico de Reputacao (Planejado)
+- **Objetivo**: Mostrar ao usuario um historico detalhado de pontos ganhos/perdidos
+- **Status**: Plano aprovado, implementacao pendente
+- **Escopo**:
+  - Novo model `ReputationHistory` no Prisma (change, previous, current, reason, referenceId)
+  - Registro automatico em `transaction.service.ts` (+10 por transacao) e `dispute.service.ts` (-20 por disputa perdida)
+  - Novo endpoint `GET /auth/reputation-history`
+  - Nova secao visual no perfil (`/profile`) com timeline de alteracoes
+
+---
+
 ## [4.1.3] - 2026-01-17
 
 ### Corrigido
