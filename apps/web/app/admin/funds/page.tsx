@@ -106,7 +106,7 @@ export default function AdminFundsPage() {
     }
 
     try {
-      const response = await fetch('http://localhost:3001/api/v1/admin/funds/dashboard', {
+      const response = await fetch('http://localhost:3002/api/v1/admin/funds/dashboard', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -134,7 +134,7 @@ export default function AdminFundsPage() {
 
     const token = localStorage.getItem('accessToken');
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/admin/funds/users/${searchUserId}/wallets`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/admin/funds/users/${searchUserId}/wallets`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -166,7 +166,7 @@ export default function AdminFundsPage() {
     const token = localStorage.getItem('accessToken');
 
     try {
-      const response = await fetch('http://localhost:3001/api/v1/admin/funds/freeze', {
+      const response = await fetch('http://localhost:3002/api/v1/admin/funds/freeze', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -210,7 +210,7 @@ export default function AdminFundsPage() {
     const token = localStorage.getItem('accessToken');
 
     try {
-      const response = await fetch('http://localhost:3001/api/v1/admin/funds/unfreeze', {
+      const response = await fetch('http://localhost:3002/api/v1/admin/funds/unfreeze', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -252,7 +252,7 @@ export default function AdminFundsPage() {
     const token = localStorage.getItem('accessToken');
 
     try {
-      const response = await fetch('http://localhost:3001/api/v1/admin/funds/internal-transfer', {
+      const response = await fetch('http://localhost:3002/api/v1/admin/funds/internal-transfer', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -309,7 +309,7 @@ export default function AdminFundsPage() {
     const token = localStorage.getItem('accessToken');
 
     try {
-      const response = await fetch('http://localhost:3001/api/v1/admin/funds/adjust-balance', {
+      const response = await fetch('http://localhost:3002/api/v1/admin/funds/adjust-balance', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -353,7 +353,7 @@ export default function AdminFundsPage() {
       if (auditFilters.endDate) params.append('endDate', auditFilters.endDate);
       if (auditFilters.limit) params.append('limit', auditFilters.limit);
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/admin/funds/audit-log?${params.toString()}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/admin/funds/audit-log?${params.toString()}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },

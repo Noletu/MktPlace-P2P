@@ -38,7 +38,7 @@ export default function AdminTicketDetailPage() {
       setLoading(true);
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch(`http://localhost:3001/api/v1/support/${ticketId}`, {
+      const response = await fetch(`http://localhost:3002/api/v1/support/${ticketId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -70,7 +70,7 @@ export default function AdminTicketDetailPage() {
       setSending(true);
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch(`http://localhost:3001/api/v1/support/${ticketId}/messages`, {
+      const response = await fetch(`http://localhost:3002/api/v1/support/${ticketId}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -109,7 +109,7 @@ export default function AdminTicketDetailPage() {
       setResolving(true);
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch(`http://localhost:3001/api/v1/support/${ticketId}/resolve`, {
+      const response = await fetch(`http://localhost:3002/api/v1/support/${ticketId}/resolve`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

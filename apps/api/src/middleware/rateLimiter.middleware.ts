@@ -115,6 +115,16 @@ export const twoFactorLimiter = rateLimit({
   handler: rateLimitHandler,
 });
 
+// SECURITY: Rate limiter para redefinição de senha (prevenir abuso)
+export const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 3, // 3 tentativas por 15 minutos
+  message: 'Muitas tentativas de redefinicao de senha. Tente novamente em 15 minutos.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: rateLimitHandler,
+});
+
 // SECURITY: Rate limiter para operações financeiras críticas (MASTER only)
 // Mais restritivo que adminActionLimiter devido à natureza crítica das operações
 export const financialOperationsLimiter = rateLimit({

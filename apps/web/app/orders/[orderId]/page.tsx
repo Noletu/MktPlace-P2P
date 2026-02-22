@@ -179,7 +179,7 @@ export default function OrderDetailsPage() {
         return;
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/orders/${orderId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -213,7 +213,7 @@ export default function OrderDetailsPage() {
         return;
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/chat/order/${orderId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/chat/order/${orderId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -235,7 +235,7 @@ export default function OrderDetailsPage() {
       const token = localStorage.getItem('accessToken');
       if (!token) return;
 
-      const response = await fetch('http://localhost:3001/api/v1/disputes/my-disputes', {
+      const response = await fetch('http://localhost:3002/api/v1/disputes/my-disputes', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -270,7 +270,7 @@ export default function OrderDetailsPage() {
         const token = localStorage.getItem('accessToken');
         if (!token) return;
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/reviews/can-review/${orderId}`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/reviews/can-review/${orderId}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -345,7 +345,7 @@ export default function OrderDetailsPage() {
         throw new Error('Você precisa estar logado');
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/transactions/submit-proof', {
+      const response = await fetch('http://localhost:3002/api/v1/transactions/submit-proof', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -425,7 +425,7 @@ export default function OrderDetailsPage() {
         throw new Error('Transação não encontrada');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/transactions/${transaction.id}/confirm-received`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/transactions/${transaction.id}/confirm-received`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -471,7 +471,7 @@ export default function OrderDetailsPage() {
       }
 
       // 1. Confirmar que o pagamento foi feito
-      const confirmResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/transactions/${transaction.id}/confirm-payment-made`, {
+      const confirmResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/transactions/${transaction.id}/confirm-payment-made`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -485,7 +485,7 @@ export default function OrderDetailsPage() {
       }
 
       // 2. Enviar o comprovante
-      const proofResponse = await fetch('http://localhost:3001/api/v1/transactions/submit-proof', {
+      const proofResponse = await fetch('http://localhost:3002/api/v1/transactions/submit-proof', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -526,7 +526,7 @@ export default function OrderDetailsPage() {
         throw new Error('Você precisa estar logado');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/orders/${orderId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -560,7 +560,7 @@ export default function OrderDetailsPage() {
         throw new Error('Você precisa estar logado');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}/cancel`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/orders/${orderId}/cancel`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -603,7 +603,7 @@ export default function OrderDetailsPage() {
         throw new Error('Você precisa estar logado');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}/cancel-by-payer`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/orders/${orderId}/cancel-by-payer`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -652,7 +652,7 @@ export default function OrderDetailsPage() {
         throw new Error('Voce precisa estar logado');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}/accept-buy`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/orders/${orderId}/accept-buy`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -693,7 +693,7 @@ export default function OrderDetailsPage() {
         throw new Error('Voce precisa estar logado');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}/cancel-by-provider`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/orders/${orderId}/cancel-by-provider`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -741,7 +741,7 @@ export default function OrderDetailsPage() {
 
       // Buscar saldo na rede da ordem
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/collateral-balance/${order.cryptoType}/${order.cryptoNetwork}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral-balance/${order.cryptoType}/${order.cryptoNetwork}`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       );
 
@@ -772,7 +772,7 @@ export default function OrderDetailsPage() {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/collateral-balance/deposit`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral-balance/deposit`,
         {
           method: 'POST',
           headers: {
@@ -834,7 +834,7 @@ export default function OrderDetailsPage() {
         comment: reviewData.comment,
       };
 
-      const response = await fetch('http://localhost:3001/api/v1/reviews', {
+      const response = await fetch('http://localhost:3002/api/v1/reviews', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

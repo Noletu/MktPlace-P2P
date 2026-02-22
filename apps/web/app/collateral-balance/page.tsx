@@ -78,6 +78,9 @@ export default function CollateralBalancePage() {
   // Estado de expandido para cards agregados
   const [expandedCrypto, setExpandedCrypto] = useState<string | null>(null);
 
+  // Preços para conversão BRL
+  const [prices, setPrices] = useState<Record<string, number>>({});
+
   // Wizard de depósito
   const [wizardOpen, setWizardOpen] = useState(false);
 
@@ -95,6 +98,7 @@ export default function CollateralBalancePage() {
   useEffect(() => {
     fetchWallets();
     fetchTransactions();
+    fetchPrices();
   }, []);
 
   const fetchWallets = async () => {
@@ -105,7 +109,7 @@ export default function CollateralBalancePage() {
         return;
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/wallets', {
+      const response = await fetch('http://localhost:3002/api/v1/wallets', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -134,7 +138,7 @@ export default function CollateralBalancePage() {
       for (const wallet of wallets) {
         try {
           const response = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/wallets/${wallet.id}/transactions?limit=50`,
+            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/wallets/${wallet.id}/transactions?limit=50`,
             {
               headers: {
                 'Authorization': `Bearer ${token}`,
@@ -162,6 +166,21 @@ export default function CollateralBalancePage() {
     }
   };
 
+  const fetchPrices = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1'}/prices`);
+      if (!response.ok) return;
+      const data = await response.json();
+      const priceMap: Record<string, number> = {};
+      data.data.forEach((p: { crypto: string; brlPrice: string }) => {
+        priceMap[p.crypto] = parseFloat(p.brlPrice) || 0;
+      });
+      setPrices(priceMap);
+    } catch (error) {
+      console.error('Error fetching prices:', error);
+    }
+  };
+
   const handleAddTestBalance = async () => {
     if (!testBalanceModal.walletId || !testAmount) return;
 
@@ -174,7 +193,7 @@ export default function CollateralBalancePage() {
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/wallets/${testBalanceModal.walletId}/test-balance`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/wallets/${testBalanceModal.walletId}/test-balance`,
         {
           method: 'POST',
           headers: {
@@ -245,11 +264,15 @@ export default function CollateralBalancePage() {
     alert('Endereço copiado!');
   };
 
-  // Calcular totais
+  // Formatar valor em BRL
+  const formatBRL = (value: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+
+  // Calcular totais convertidos para BRL
   const totals = {
-    totalBalance: wallets.reduce((sum, w) => sum + parseFloat(w.balance), 0).toFixed(8),
-    totalAvailable: wallets.reduce((sum, w) => sum + parseFloat(w.availableBalance), 0).toFixed(8),
-    totalLocked: wallets.reduce((sum, w) => sum + parseFloat(w.lockedBalance), 0).toFixed(8),
+    totalAvailable: wallets.reduce((sum, w) => sum + parseFloat(w.availableBalance) * (prices[w.cryptoType] || 0), 0),
+    totalLocked: wallets.reduce((sum, w) => sum + parseFloat(w.lockedBalance) * (prices[w.cryptoType] || 0), 0),
+    totalBalance: wallets.reduce((sum, w) => sum + parseFloat(w.balance) * (prices[w.cryptoType] || 0), 0),
   };
 
   // Agrupar wallets por crypto
@@ -377,21 +400,21 @@ export default function CollateralBalancePage() {
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Disponível</p>
               <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                {totals.totalAvailable}
+                {formatBRL(totals.totalAvailable)}
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">Pode ser usado em pedidos</p>
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Bloqueado</p>
               <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
-                {totals.totalLocked}
+                {formatBRL(totals.totalLocked)}
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">Em uso em pedidos ativos</p>
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Saldo Total</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {totals.totalBalance}
+                {formatBRL(totals.totalBalance)}
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">Disponível + Bloqueado</p>
             </div>

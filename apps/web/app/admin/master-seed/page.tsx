@@ -45,7 +45,7 @@ export default function MasterSeedAdminPage() {
   const fetchStatus = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/v1/admin/master-seed/status', {
+      const response = await fetch('http://localhost:3002/api/v1/admin/master-seed/status', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -69,7 +69,7 @@ export default function MasterSeedAdminPage() {
       setSuccess('');
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch('http://localhost:3001/api/v1/admin/master-seed/generate', {
+      const response = await fetch('http://localhost:3002/api/v1/admin/master-seed/generate', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -100,7 +100,7 @@ export default function MasterSeedAdminPage() {
       setSuccess('');
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch('http://localhost:3001/api/v1/admin/master-seed/recover', {
+      const response = await fetch('http://localhost:3002/api/v1/admin/master-seed/recover', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

@@ -41,7 +41,7 @@ export default function ProfilePage() {
       try {
         // Buscar perfil do usuário
         const token = localStorage.getItem('accessToken');
-        const profileRes = await fetch('http://localhost:3001/api/v1/auth/me', {
+        const profileRes = await fetch('http://localhost:3002/api/v1/auth/me', {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -66,7 +66,7 @@ export default function ProfilePage() {
         // Buscar estatísticas de avaliações
         try {
           console.log('[DEBUG] Buscando reviews para userId:', userData.id);
-          const reviewRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/reviews/user/${userData.id}/stats`, {
+          const reviewRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/reviews/user/${userData.id}/stats`, {
             headers: {
               Authorization: `Bearer ${token}`,
             },
@@ -91,10 +91,10 @@ export default function ProfilePage() {
         // Buscar cupons (ativo e públicos)
         try {
           const [activeRes, publicRes] = await Promise.all([
-            fetch('http://localhost:3001/api/v1/coupons/active', {
+            fetch('http://localhost:3002/api/v1/coupons/active', {
               headers: { Authorization: `Bearer ${token}` },
             }),
-            fetch('http://localhost:3001/api/v1/coupons/public', {
+            fetch('http://localhost:3002/api/v1/coupons/public', {
               headers: { Authorization: `Bearer ${token}` },
             }),
           ]);
@@ -140,7 +140,7 @@ export default function ProfilePage() {
       setEditError('');
 
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/v1/auth/profile', {
+      const response = await fetch('http://localhost:3002/api/v1/auth/profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -172,7 +172,7 @@ export default function ProfilePage() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/v1/coupons/activate', {
+      const response = await fetch('http://localhost:3002/api/v1/coupons/activate', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -192,10 +192,10 @@ export default function ProfilePage() {
       // Refresh coupon data
       const token2 = localStorage.getItem('accessToken');
       const [activeRes, publicRes] = await Promise.all([
-        fetch('http://localhost:3001/api/v1/coupons/active', {
+        fetch('http://localhost:3002/api/v1/coupons/active', {
           headers: { Authorization: `Bearer ${token2}` },
         }),
-        fetch('http://localhost:3001/api/v1/coupons/public', {
+        fetch('http://localhost:3002/api/v1/coupons/public', {
           headers: { Authorization: `Bearer ${token2}` },
         }),
       ]);
@@ -225,7 +225,7 @@ export default function ProfilePage() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/v1/coupons/deactivate', {
+      const response = await fetch('http://localhost:3002/api/v1/coupons/deactivate', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -237,10 +237,10 @@ export default function ProfilePage() {
 
       // Refresh coupon data
       const [activeRes, publicRes] = await Promise.all([
-        fetch('http://localhost:3001/api/v1/coupons/active', {
+        fetch('http://localhost:3002/api/v1/coupons/active', {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch('http://localhost:3001/api/v1/coupons/public', {
+        fetch('http://localhost:3002/api/v1/coupons/public', {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);

@@ -51,7 +51,7 @@ export default function FreezeAccountModal({ user, onClose, onSuccess }: FreezeA
         body.duration = duration;
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/admin/funds/freeze', {
+      const response = await fetch('http://localhost:3002/api/v1/admin/funds/freeze', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

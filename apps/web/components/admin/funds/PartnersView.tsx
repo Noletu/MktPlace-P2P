@@ -39,7 +39,7 @@ export default function PartnersView() {
   const loadData = async () => {
     const token = localStorage.getItem('accessToken');
     try {
-      const response = await fetch('http://localhost:3001/api/v1/admin/funds/partners', {
+      const response = await fetch('http://localhost:3002/api/v1/admin/funds/partners', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },

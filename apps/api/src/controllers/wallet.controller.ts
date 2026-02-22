@@ -68,6 +68,13 @@ export class WalletController {
         return res.status(401).json({error: 'Unauthorized'});
       }
 
+      // AUTO-RECALCULO: corrigir inconsistências de lockedBalance antes de retornar
+      try {
+        await WalletService.recalculateLockedBalance(userId);
+      } catch (recalcError) {
+        console.error('⚠️ Auto-recalculo falhou em /wallets:', recalcError);
+      }
+
       const wallets = await WalletService.getUserWallets(userId);
 
       res.json({

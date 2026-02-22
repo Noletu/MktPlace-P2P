@@ -1,4 +1,5 @@
 import { PrismaClient, User } from '@prisma/client';
+import crypto from 'crypto';
 import { hashPassword, comparePassword } from '../utils/bcrypt';
 import { generateToken } from '../utils/jwt';
 import { refreshTokenService } from './refreshToken.service';
@@ -237,6 +238,72 @@ export class AuthService {
   async getUserByCpf(cpf: string): Promise<User | null> {
     return await prisma.user.findFirst({
       where: { cpf },
+    });
+  }
+
+  // PASSWORD RESET: Generate token and store hash in DB
+  async requestPasswordReset(email: string): Promise<string | null> {
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      return null; // Anti-enumeration: controller always returns success
+    }
+
+    // Generate raw token
+    const rawToken = crypto.randomBytes(32).toString('hex');
+
+    // Store SHA-256 hash of token (if DB leaks, tokens are not exposed)
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    // Set expiration: 1 hour from now
+    const expires = new Date(Date.now() + 60 * 60 * 1000);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: hashedToken,
+        passwordResetExpires: expires,
+      },
+    });
+
+    return rawToken; // Raw token goes in the email
+  }
+
+  // PASSWORD RESET: Validate token and set new password
+  async resetPassword(email: string, token: string, newPassword: string): Promise<void> {
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user || !user.passwordResetToken || !user.passwordResetExpires) {
+      throw new Error('Token invalido ou expirado');
+    }
+
+    // Compare SHA-256 hash
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    if (hashedToken !== user.passwordResetToken) {
+      throw new Error('Token invalido ou expirado');
+    }
+
+    // Check expiration
+    if (new Date() > user.passwordResetExpires) {
+      throw new Error('Token invalido ou expirado');
+    }
+
+    // Hash new password with bcrypt
+    const hashedPassword = await hashPassword(newPassword);
+
+    // Update password and clear reset fields (single-use token)
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+      },
     });
   }
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Dispute, STATUS_LABELS, CATEGORY_LABELS } from '@/types/dispute';
+import AppHeader from '@/components/AppHeader';
 
 function getParties(dispute: Dispute) {
   const order = dispute.order;
@@ -60,7 +61,7 @@ export default function DisputesPage() {
         return;
       }
 
-      const res = await fetch('http://localhost:3001/api/v1/disputes/my-disputes', {
+      const res = await fetch('http://localhost:3002/api/v1/disputes/my-disputes', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -94,13 +95,18 @@ export default function DisputesPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center">Carregando disputas...</div>
-      </div>
+      <>
+        <AppHeader />
+        <div className="container mx-auto px-4 py-8">
+          <div className="text-center">Carregando disputas...</div>
+        </div>
+      </>
     );
   }
 
   return (
+    <>
+    <AppHeader />
     <div className="container mx-auto px-4 py-8">
       {/* Breadcrumb */}
       <button
@@ -226,5 +232,6 @@ export default function DisputesPage() {
         </div>
       )}
     </div>
+    </>
   );
 }

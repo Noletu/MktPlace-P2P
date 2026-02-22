@@ -4,9 +4,9 @@
  */
 
 export const API_CONFIG = {
-  baseUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1',
+  baseUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1',
   // Extrair base URL sem /api/v1 para WebSocket
-  wsBaseUrl: (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1').replace(/\/api\/v1$/, ''),
+  wsBaseUrl: (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1').replace(/\/api\/v1$/, ''),
 } as const;
 
 /**

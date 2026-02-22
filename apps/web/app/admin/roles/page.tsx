@@ -40,7 +40,7 @@ export default function RolesPage() {
       setLoading(true);
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch('http://localhost:3001/api/v1/roles', {
+      const response = await fetch('http://localhost:3002/api/v1/roles', {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -74,7 +74,7 @@ export default function RolesPage() {
     try {
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch(`http://localhost:3001/api/v1/roles/${roleId}`, {
+      const response = await fetch(`http://localhost:3002/api/v1/roles/${roleId}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -99,7 +99,7 @@ export default function RolesPage() {
     try {
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch(`http://localhost:3001/api/v1/roles/${role.id}`, {
+      const response = await fetch(`http://localhost:3002/api/v1/roles/${role.id}`, {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${token}`,

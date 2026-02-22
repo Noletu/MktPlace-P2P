@@ -45,7 +45,7 @@ export default function EditRolePermissionsModal({ role, onClose, onSuccess }: E
       try {
         const token = localStorage.getItem('accessToken');
 
-        const response = await fetch('http://localhost:3001/api/v1/roles/permissions/all', {
+        const response = await fetch('http://localhost:3002/api/v1/roles/permissions/all', {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -118,7 +118,7 @@ export default function EditRolePermissionsModal({ role, onClose, onSuccess }: E
     try {
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch(`http://localhost:3001/api/v1/roles/${role.id}/permissions`, {
+      const response = await fetch(`http://localhost:3002/api/v1/roles/${role.id}/permissions`, {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${token}`,

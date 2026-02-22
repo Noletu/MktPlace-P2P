@@ -36,7 +36,7 @@ export default function CancelOrderModal({ order, onClose, onSuccess }: CancelOr
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:3001/api/v1/admin/orders/${order.id}/cancel`, {
+      const response = await fetch(`http://localhost:3002/api/v1/admin/orders/${order.id}/cancel`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

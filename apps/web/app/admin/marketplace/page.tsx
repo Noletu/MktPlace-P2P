@@ -52,7 +52,7 @@ export default function MarketplacePage() {
       const token = localStorage.getItem('accessToken');
       if (!token) return;
 
-      const response = await fetch('http://localhost:3001/api/v1/auth/me', {
+      const response = await fetch('http://localhost:3002/api/v1/auth/me', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -76,7 +76,7 @@ export default function MarketplacePage() {
         return;
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/orders/marketplace', {
+      const response = await fetch('http://localhost:3002/api/v1/orders/marketplace', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },

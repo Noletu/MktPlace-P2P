@@ -38,7 +38,7 @@ export default function AppHeader() {
 
   const fetchUser = async (token: string) => {
     try {
-      const response = await fetch('http://localhost:3001/api/v1/auth/me', {
+      const response = await fetch('http://localhost:3002/api/v1/auth/me', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -64,7 +64,7 @@ export default function AppHeader() {
       const token = localStorage.getItem('accessToken');
       const refreshToken = localStorage.getItem('refreshToken');
 
-      await fetch('http://localhost:3001/api/v1/auth/logout', {
+      await fetch('http://localhost:3002/api/v1/auth/logout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

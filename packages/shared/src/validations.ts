@@ -40,7 +40,7 @@ export const cpfSchema = z
   .refine(validateCPF, 'CPF inválido (dígitos verificadores incorretos)');
 
 // SECURITY: Política de senha forte
-const strongPasswordSchema = z
+export const strongPasswordSchema = z
   .string()
   .min(8, 'Senha deve ter no mínimo 8 caracteres')
   .regex(/[A-Z]/, 'Senha deve conter pelo menos uma letra maiúscula')
@@ -59,6 +59,17 @@ export const registerSchema = z.object({
   email: z.string().email('Email inválido'),
   password: strongPasswordSchema, // SECURITY: Usar política de senha forte
   name: z.string().optional(),
+});
+
+// Password reset schemas
+export const forgotPasswordSchema = z.object({
+  email: z.string().email('Email invalido'),
+});
+
+export const resetPasswordSchema = z.object({
+  email: z.string().email('Email invalido'),
+  token: z.string().min(1, 'Token e obrigatorio'),
+  newPassword: strongPasswordSchema,
 });
 
 // Order schemas

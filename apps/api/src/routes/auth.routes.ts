@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authController } from '../controllers/auth.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
-import { authLimiter, registerLimiter } from '../middleware/rateLimiter.middleware';
+import { authLimiter, registerLimiter, forgotPasswordLimiter } from '../middleware/rateLimiter.middleware';
 import { optionalRecaptchaMiddleware } from '../middleware/recaptcha.middleware';
 
 const router = Router();
@@ -68,5 +68,19 @@ router.get('/check-cpf', (req, res) => authController.checkCpf(req, res));
  * @access  Public
  */
 router.get('/public-profile/:userId', (req, res) => authController.getPublicProfile(req, res));
+
+/**
+ * @route   POST /api/v1/auth/forgot-password
+ * @desc    Solicitar redefinicao de senha
+ * @access  Public
+ */
+router.post('/forgot-password', forgotPasswordLimiter, (req, res) => authController.forgotPassword(req, res));
+
+/**
+ * @route   POST /api/v1/auth/reset-password
+ * @desc    Redefinir senha com token
+ * @access  Public
+ */
+router.post('/reset-password', forgotPasswordLimiter, (req, res) => authController.resetPassword(req, res));
 
 export default router;

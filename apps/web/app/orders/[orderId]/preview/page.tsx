@@ -81,7 +81,7 @@ export default function OrderPreviewPage() {
       const token = localStorage.getItem('accessToken');
       if (!token) return;
 
-      const response = await fetch('http://localhost:3001/api/v1/auth/me', {
+      const response = await fetch('http://localhost:3002/api/v1/auth/me', {
         headers: { 'Authorization': `Bearer ${token}` },
       });
 
@@ -102,7 +102,7 @@ export default function OrderPreviewPage() {
         return;
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/orders/${orderId}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
 
@@ -133,7 +133,7 @@ export default function OrderPreviewPage() {
         throw new Error('Você precisa estar logado');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}/match`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/orders/${orderId}/match`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
       });
@@ -174,7 +174,7 @@ export default function OrderPreviewPage() {
         throw new Error('Você precisa estar logado');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}/accept-buy`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/orders/${orderId}/accept-buy`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -211,7 +211,7 @@ export default function OrderPreviewPage() {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/collateral-balance/${order.cryptoType}/${order.cryptoNetwork}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral-balance/${order.cryptoType}/${order.cryptoNetwork}`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       );
 
@@ -241,7 +241,7 @@ export default function OrderPreviewPage() {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/collateral-balance/deposit`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral-balance/deposit`,
         {
           method: 'POST',
           headers: {
@@ -274,7 +274,7 @@ export default function OrderPreviewPage() {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/collateral-balance/simulate-deposit/${providerBalance.id}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral-balance/simulate-deposit/${providerBalance.id}`,
         {
           method: 'POST',
           headers: {

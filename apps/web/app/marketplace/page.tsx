@@ -59,7 +59,7 @@ export default function MarketplacePage() {
       const token = localStorage.getItem('accessToken');
       if (!token) return;
 
-      const response = await fetch('http://localhost:3001/api/v1/auth/me', {
+      const response = await fetch('http://localhost:3002/api/v1/auth/me', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -85,7 +85,7 @@ export default function MarketplacePage() {
 
       // Passar filtro de tipo de ordem para a API
       const typeParam = orderTypeFilter !== 'ALL' ? `?type=${orderTypeFilter}` : '';
-      const response = await fetch(`http://localhost:3001/api/v1/orders/marketplace${typeParam}`, {
+      const response = await fetch(`http://localhost:3002/api/v1/orders/marketplace${typeParam}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },

@@ -31,7 +31,7 @@ export default function AdminSecurityPage() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/v1/2fa/status', {
+      const response = await fetch('http://localhost:3002/api/v1/2fa/status', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -57,7 +57,7 @@ export default function AdminSecurityPage() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/v1/2fa/generate', {
+      const response = await fetch('http://localhost:3002/api/v1/2fa/generate', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -87,7 +87,7 @@ export default function AdminSecurityPage() {
 
     try {
       const accessToken = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/v1/2fa/enable', {
+      const response = await fetch('http://localhost:3002/api/v1/2fa/enable', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -126,7 +126,7 @@ export default function AdminSecurityPage() {
 
     try {
       const accessToken = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/v1/2fa/disable', {
+      const response = await fetch('http://localhost:3002/api/v1/2fa/disable', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -158,7 +158,7 @@ export default function AdminSecurityPage() {
 
     try {
       const accessToken = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/v1/2fa/regenerate-backup-codes', {
+      const response = await fetch('http://localhost:3002/api/v1/2fa/regenerate-backup-codes', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,

@@ -143,8 +143,8 @@ app.use('/api/', apiLimiter);
 app.use(cookieParser(process.env.COOKIE_SECRET || process.env.JWT_SECRET));
 
 // SECURITY: Limitar tamanho de payload (prevenir DoS)
-app.use(express.json({ limit: '10mb' })); // Max 10MB para uploads de imagens
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '15mb' })); // Max 15MB para uploads de imagens (base64 tem ~33% overhead)
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {

@@ -44,6 +44,10 @@ model User {
   twoFactorTempSecret  String? // Secret temporário durante setup
   twoFactorBackupCodes String? // JSON array de códigos hasheados
 
+  // PASSWORD RESET
+  passwordResetToken   String?
+  passwordResetExpires DateTime?
+
   // ADMIN CONTROLS: Account Freeze (Congelamento de conta)
   accountFrozen Boolean   @default(false) // Se conta está congelada
   frozenReason  String? // Motivo do congelamento

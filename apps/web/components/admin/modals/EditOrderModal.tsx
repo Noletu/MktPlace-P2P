@@ -61,7 +61,7 @@ export default function EditOrderModal({ order, onClose, onSuccess }: EditOrderM
       if (status !== order.status) updates.status = status;
       if (notes.trim()) updates.notes = notes.trim();
 
-      const response = await fetch(`http://localhost:3001/api/v1/admin/orders/${order.id}/edit`, {
+      const response = await fetch(`http://localhost:3002/api/v1/admin/orders/${order.id}/edit`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,

@@ -129,7 +129,7 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:3001/api/v1/admin/users/${userId}/details`, {
+      const response = await fetch(`http://localhost:3002/api/v1/admin/users/${userId}/details`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -724,7 +724,7 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                         onClick={async () => {
                           try {
                             const token = localStorage.getItem('accessToken');
-                            const response = await fetch(`http://localhost:3001/api/v1/admin/users/${userId}/authority-report`, {
+                            const response = await fetch(`http://localhost:3002/api/v1/admin/users/${userId}/authority-report`, {
                               headers: { 'Authorization': `Bearer ${token}` },
                             });
                             const data = await response.json();

@@ -31,7 +31,7 @@ export default function AuditLogPage() {
   const fetchLogs = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3001/api/v1/admin/audit-logs?limit=100', {
+      const res = await fetch('http://localhost:3002/api/v1/admin/audit-logs?limit=100', {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       const data = await res.json();
@@ -72,7 +72,7 @@ export default function AuditLogPage() {
       }
 
       // Fazer requisição
-      const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/admin/audit-logs/export?${params.toString()}`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1'}/admin/audit-logs/export?${params.toString()}`;
 
       const response = await fetch(url, {
         method: 'GET',

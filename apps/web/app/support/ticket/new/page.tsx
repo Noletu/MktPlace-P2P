@@ -41,7 +41,7 @@ export default function NewTicketPage() {
       setLoading(true);
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch('http://localhost:3001/api/v1/support', {
+      const response = await fetch('http://localhost:3002/api/v1/support', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

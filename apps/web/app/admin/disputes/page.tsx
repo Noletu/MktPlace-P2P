@@ -61,7 +61,7 @@ export default function AdminDisputesPage() {
         return;
       }
 
-      const res = await fetch('http://localhost:3001/api/v1/disputes', {
+      const res = await fetch('http://localhost:3002/api/v1/disputes', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -89,7 +89,7 @@ export default function AdminDisputesPage() {
       const token = localStorage.getItem('accessToken');
       if (!token) return;
 
-      const res = await fetch('http://localhost:3001/api/v1/disputes/stats', {
+      const res = await fetch('http://localhost:3002/api/v1/disputes/stats', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -118,7 +118,7 @@ export default function AdminDisputesPage() {
         return;
       }
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/disputes/${resolvingId}/resolve`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/disputes/${resolvingId}/resolve`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

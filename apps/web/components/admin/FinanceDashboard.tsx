@@ -27,7 +27,7 @@ export default function FinanceDashboard() {
   const fetchStats = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3001/api/v1/admin/finance/stats', {
+      const res = await fetch('http://localhost:3002/api/v1/admin/finance/stats', {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       const data = await res.json();
