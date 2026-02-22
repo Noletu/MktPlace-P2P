@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Dispute, DisputeMessage, STATUS_LABELS, CATEGORY_LABELS, DisputeStatus } from '@/types/dispute';
 import DisputeMessageThread from '@/components/DisputeMessageThread';
 import EvidenceGallery from '@/components/admin/EvidenceGallery';
+import AppHeader from '@/components/AppHeader';
 
 export default function DisputeDetailPage() {
   const params = useParams();
@@ -33,7 +34,7 @@ export default function DisputeDetailPage() {
         return;
       }
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/disputes/${disputeId}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/disputes/${disputeId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -57,7 +58,7 @@ export default function DisputeDetailPage() {
       const token = localStorage.getItem('accessToken');
       if (!token) return;
 
-      const res = await fetch('http://localhost:3001/api/v1/auth/me', {
+      const res = await fetch('http://localhost:3002/api/v1/auth/me', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -72,11 +73,11 @@ export default function DisputeDetailPage() {
     }
   };
 
-  const handleSendMessage = async (message: string, _attachments?: File[], visibleTo?: string) => {
+  const handleSendMessage = async (message: string, attachments?: File[], visibleTo?: string) => {
     try {
       const token = localStorage.getItem('accessToken');
       if (!token) {
-        alert('Você precisa estar logado');
+        alert('Voce precisa estar logado');
         router.push('/login');
         return;
       }
@@ -86,7 +87,20 @@ export default function DisputeDetailPage() {
         body.visibleTo = visibleTo;
       }
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/disputes/${disputeId}/messages`, {
+      // Convert File[] to base64 strings
+      if (attachments && attachments.length > 0) {
+        const base64Promises = attachments.map((file) => {
+          return new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+        });
+        body.attachments = await Promise.all(base64Promises);
+      }
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/disputes/${disputeId}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -98,7 +112,7 @@ export default function DisputeDetailPage() {
       if (data.success) {
         await fetchDispute(); // Reload to show new message
       } else {
-        alert(data.message || 'Erro ao enviar mensagem');
+        alert(data.error || data.message || 'Erro ao enviar mensagem');
       }
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error);
@@ -120,7 +134,7 @@ export default function DisputeDetailPage() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/disputes/${disputeId}/resolve`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/disputes/${disputeId}/resolve`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -236,7 +250,7 @@ export default function DisputeDetailPage() {
   // Setar aba ativa quando dispute carrega (apenas para staff)
   useEffect(() => {
     if (isStaff() && disputeParties.length > 0 && !activeTab) {
-      setActiveTab(disputeParties[0].id);
+      setActiveTab('BROADCAST');
     }
   }, [disputeParties, userLevel]);
 
@@ -244,6 +258,11 @@ export default function DisputeDetailPage() {
   const filteredMessages = useMemo((): DisputeMessage[] => {
     if (!dispute?.messages) return [];
     if (!isStaff() || !activeTab) return dispute.messages;
+
+    if (activeTab === 'BROADCAST') {
+      // Broadcast tab: show all messages for full context
+      return dispute.messages;
+    }
 
     return dispute.messages.filter((msg) => {
       // Mensagens do usuário da aba ativa
@@ -256,21 +275,29 @@ export default function DisputeDetailPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center">Carregando disputa...</div>
-      </div>
+      <>
+        <AppHeader />
+        <div className="container mx-auto px-4 py-8">
+          <div className="text-center">Carregando disputa...</div>
+        </div>
+      </>
     );
   }
 
   if (!dispute) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center">Disputa não encontrada</div>
-      </div>
+      <>
+        <AppHeader />
+        <div className="container mx-auto px-4 py-8">
+          <div className="text-center">Disputa não encontrada</div>
+        </div>
+      </>
     );
   }
 
   return (
+    <>
+    <AppHeader />
     <div className="container mx-auto px-4 py-8 max-w-5xl">
       {/* Breadcrumb */}
       <button
@@ -336,6 +363,51 @@ export default function DisputeDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Partes Envolvidas - Visao Usuario */}
+        {!isStaff() && currentUserId && (
+          <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-4">
+            <h3 className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-3">
+              Partes da Disputa
+            </h3>
+            {/* Mensagem personalizada */}
+            <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
+              {dispute.createdBy === currentUserId ? (
+                <>Voce abriu esta disputa contra <strong>{
+                  seller && seller.id !== currentUserId ? seller.name || 'Vendedor' :
+                  buyer && buyer.id !== currentUserId ? buyer.name || 'Comprador' : 'a contraparte'
+                }</strong></>
+              ) : (
+                <><strong>{dispute.creator.name}</strong> abriu esta disputa contra voce</>
+              )}
+            </p>
+            {/* Partes com roles */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {seller && (
+                <div className="bg-white dark:bg-gray-800 rounded p-3 border border-blue-100 dark:border-blue-800">
+                  <div className="text-xs font-semibold text-purple-600 dark:text-purple-400 mb-1">Vendedor</div>
+                  <div className="text-sm font-medium text-gray-900 dark:text-white">
+                    {seller.id === currentUserId ? 'Voce' : seller.name || 'Vendedor'}
+                  </div>
+                  {dispute.createdBy === seller.id && (
+                    <span className="text-xs text-red-500 dark:text-red-400">Abriu a disputa</span>
+                  )}
+                </div>
+              )}
+              {buyer && (
+                <div className="bg-white dark:bg-gray-800 rounded p-3 border border-blue-100 dark:border-blue-800">
+                  <div className="text-xs font-semibold text-green-600 dark:text-green-400 mb-1">Comprador</div>
+                  <div className="text-sm font-medium text-gray-900 dark:text-white">
+                    {buyer.id === currentUserId ? 'Voce' : buyer.name || 'Comprador'}
+                  </div>
+                  {dispute.createdBy === buyer.id && (
+                    <span className="text-xs text-red-500 dark:text-red-400">Abriu a disputa</span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Partes Envolvidas - Visao Admin */}
         {isStaff() && (
@@ -427,7 +499,7 @@ export default function DisputeDetailPage() {
         {(dispute.status === DisputeStatus.RESOLVED_BUYER || dispute.status === DisputeStatus.RESOLVED_SELLER) && dispute.resolution && (
           <div className="mt-4 p-4 bg-green-50 dark:bg-green-900 border border-green-200 dark:border-green-700 rounded">
             <h3 className="text-sm font-semibold text-green-800 dark:text-green-200 mb-2">
-              ✅ Resolução
+              Resolucao
             </h3>
             <p className="text-sm text-green-700 dark:text-green-300 whitespace-pre-wrap">
               {dispute.resolution}
@@ -437,15 +509,91 @@ export default function DisputeDetailPage() {
                 Resolvida em: {new Date(dispute.resolvedAt).toLocaleString('pt-BR')}
               </p>
             )}
+
+            {/* Badge de resultado para o usuario */}
+            {!isStaff() && currentUserId && (() => {
+              const winnerId = dispute.status === DisputeStatus.RESOLVED_BUYER ? buyer?.id : seller?.id;
+              const isWinner = currentUserId === winnerId;
+              return (
+                <div className={`mt-3 px-4 py-2 rounded-lg text-sm font-semibold text-center ${
+                  isWinner
+                    ? 'bg-green-200 dark:bg-green-800 text-green-900 dark:text-green-100 border border-green-300 dark:border-green-600'
+                    : 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-700'
+                }`}>
+                  {isWinner
+                    ? 'A disputa foi decidida a seu favor.'
+                    : 'A disputa foi decidida a favor da outra parte.'
+                  }
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
 
-      {/* Botão Resolver para GERENTE+ */}
+      {/* Messages Thread */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow" style={{ minHeight: '500px', maxHeight: '700px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="bg-gray-100 dark:bg-gray-700 px-6 py-3 border-b border-gray-200 dark:border-gray-600">
+          {/* Staff: abas para cada parte */}
+          {isStaff() && disputeParties.length >= 2 ? (
+            <div>
+              <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
+                Canais de Comunicacao
+              </h2>
+              <div className="flex gap-1 flex-wrap">
+                <button
+                  onClick={() => setActiveTab('BROADCAST')}
+                  className={`px-4 py-2 text-sm font-medium rounded-t-lg transition ${
+                    activeTab === 'BROADCAST'
+                      ? 'bg-amber-50 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 border-b-2 border-amber-500'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  Chat com Todos
+                </button>
+                {disputeParties.map((party) => (
+                  <button
+                    key={party.id}
+                    onClick={() => setActiveTab(party.id)}
+                    className={`px-4 py-2 text-sm font-medium rounded-t-lg transition ${
+                      activeTab === party.id
+                        ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 border-b-2 border-blue-600'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    {party.name}
+                    <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">
+                      ({party.role})
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {activeTab === 'BROADCAST' && (
+                <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                  Mensagens enviadas aqui serao visiveis para ambas as partes.
+                </p>
+              )}
+            </div>
+          ) : (
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Histórico de Mensagens
+            </h2>
+          )}
+        </div>
+        <DisputeMessageThread
+          messages={isStaff() ? filteredMessages : (dispute.messages || [])}
+          currentUserId={currentUserId}
+          onSendMessage={canSendMessages() ? handleSendMessage : undefined}
+          canSendMessages={canSendMessages()}
+          visibleTo={isStaff() && activeTab && activeTab !== 'BROADCAST' ? activeTab : undefined}
+        />
+      </div>
+
+      {/* Botao Resolver para GERENTE+ */}
       {canResolve() && (
-        <div className="bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-700 rounded-lg p-6 mb-6">
+        <div className="bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-700 rounded-lg p-6 mt-6">
           <h2 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-3">
-            👨‍⚖️ Resolver Disputa (Gerente/Admin)
+            Resolver Disputa (Gerente/Admin)
           </h2>
           <p className="text-sm text-blue-800 dark:text-blue-200 mb-4">
             Como gerente, você pode resolver esta disputa tomando uma decisão final.
@@ -510,53 +658,11 @@ export default function DisputeDetailPage() {
         </div>
       )}
 
-      {/* Messages Thread */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow" style={{ minHeight: '500px', maxHeight: '700px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div className="bg-gray-100 dark:bg-gray-700 px-6 py-3 border-b border-gray-200 dark:border-gray-600">
-          {/* Staff: abas para cada parte */}
-          {isStaff() && disputeParties.length >= 2 ? (
-            <div>
-              <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
-                Chat Privado com cada parte
-              </h2>
-              <div className="flex gap-1">
-                {disputeParties.map((party) => (
-                  <button
-                    key={party.id}
-                    onClick={() => setActiveTab(party.id)}
-                    className={`px-4 py-2 text-sm font-medium rounded-t-lg transition ${
-                      activeTab === party.id
-                        ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 border-b-2 border-blue-600'
-                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                    }`}
-                  >
-                    {party.name}
-                    <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">
-                      ({party.role})
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Histórico de Mensagens
-            </h2>
-          )}
-        </div>
-        <DisputeMessageThread
-          messages={isStaff() ? filteredMessages : (dispute.messages || [])}
-          currentUserId={currentUserId}
-          onSendMessage={canSendMessages() ? handleSendMessage : undefined}
-          canSendMessages={canSendMessages()}
-          visibleTo={isStaff() && activeTab ? activeTab : undefined}
-        />
-      </div>
-
       {/* Info Footer */}
       <div className="mt-6 text-sm text-gray-600 dark:text-gray-400 text-center">
         Disputa criada em {new Date(dispute.createdAt).toLocaleString('pt-BR')} por {dispute.creator.name}
       </div>
     </div>
+    </>
   );
 }
