@@ -55,31 +55,39 @@ export interface CryptoData {
 }
 
 /**
- * Fetch cryptocurrency prices from CoinGecko
+ * Fetch cryptocurrency prices via backend API (avoids CORS issues with CoinGecko)
  */
 export async function fetchCryptoPrices(): Promise<CryptoPrices> {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1';
+
   try {
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,solana,ethereum&vs_currencies=usd',
-      {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
-      }
-    );
+    const response = await fetch(`${API_URL}/prices`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
 
     if (!response.ok) {
-      throw new Error(`CoinGecko API error: ${response.status}`);
+      throw new Error(`Price API error: ${response.status}`);
     }
 
-    const data = await response.json();
+    const json = await response.json();
 
-    return {
-      btc: data.bitcoin?.usd || 0,
-      sol: data.solana?.usd || 0,
-      eth: data.ethereum?.usd || 0,
-    };
+    if (!json.success || !json.data) {
+      throw new Error('Invalid price response');
+    }
+
+    const prices: CryptoPrices = { btc: 0, sol: 0, eth: 0 };
+
+    for (const item of json.data) {
+      const usd = parseFloat(item.usdPrice) || 0;
+      if (item.crypto === 'BTC') prices.btc = usd;
+      else if (item.crypto === 'SOL') prices.sol = usd;
+      else if (item.crypto === 'ETH') prices.eth = usd;
+    }
+
+    return prices;
   } catch (error) {
     console.error('Error fetching crypto prices:', error);
     // Return fallback values

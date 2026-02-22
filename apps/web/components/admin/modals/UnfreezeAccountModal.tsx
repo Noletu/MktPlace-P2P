@@ -26,7 +26,7 @@ export default function UnfreezeAccountModal({ user, onClose, onSuccess }: Unfre
       const token = localStorage.getItem('accessToken');
       const adminUserId = localStorage.getItem('userId');
 
-      const response = await fetch('http://localhost:3001/api/v1/admin/funds/unfreeze', {
+      const response = await fetch('http://localhost:3002/api/v1/admin/funds/unfreeze', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

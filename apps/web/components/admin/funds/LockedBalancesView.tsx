@@ -86,7 +86,7 @@ export default function LockedBalancesView() {
       if (filters.userId) params.append('userId', filters.userId);
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/admin/funds/locked-balances?${params.toString()}`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1'}/admin/funds/locked-balances?${params.toString()}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,

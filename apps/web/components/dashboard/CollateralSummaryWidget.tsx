@@ -31,7 +31,7 @@ export default function CollateralSummaryWidget() {
   const fetchBalances = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/v1/collateral-balance', {
+      const response = await fetch('http://localhost:3002/api/v1/collateral-balance', {
         headers: { 'Authorization': `Bearer ${token}` },
       });
 
@@ -46,7 +46,7 @@ export default function CollateralSummaryWidget() {
 
   const fetchPrices = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/v1/prices');
+      const response = await fetch('http://localhost:3002/api/v1/prices');
       if (!response.ok) throw new Error('Erro ao buscar cotações');
 
       const data = await response.json();
@@ -107,11 +107,9 @@ export default function CollateralSummaryWidget() {
   return (
     <div className="space-y-4">
       {/* Título */}
-      <div className="flex justify-between items-center mb-2">
-        <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-          💰 Saldo de Colateral
-        </h3>
-      </div>
+      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+        💰 Saldo de Colateral
+      </h3>
 
       {/* Card: Saldo Disponível */}
       <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">

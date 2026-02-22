@@ -88,7 +88,7 @@ export function useChat(chatId?: string, options?: UseChatOptions) {
         const token = localStorage.getItem('accessToken');
         const publicKeyExported = await encryptionUtils.exportPublicKey(publicKey);
 
-        await fetch('http://localhost:3001/api/v1/keys/public-key', {
+        await fetch('http://localhost:3002/api/v1/keys/public-key', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -115,7 +115,7 @@ export function useChat(chatId?: string, options?: UseChatOptions) {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/keys/public-key/${recipientId}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/keys/public-key/${recipientId}`,
         {
           headers: { 'Authorization': `Bearer ${token}` },
         }
@@ -296,7 +296,7 @@ export function useChat(chatId?: string, options?: UseChatOptions) {
       const userStr = localStorage.getItem('user');
       const currentUser = userStr ? JSON.parse(userStr) : null;
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/chat/${chatId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/chat/${chatId}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
 
@@ -406,7 +406,7 @@ export function useChat(chatId?: string, options?: UseChatOptions) {
     try {
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/chat/${chatId}/history`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/chat/${chatId}/history`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
 

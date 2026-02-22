@@ -26,7 +26,7 @@ export default function WorkersControlPage() {
   const fetchWorkerStatus = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3001/api/v1/workers/balance-sync/status', {
+      const res = await fetch('http://localhost:3002/api/v1/workers/balance-sync/status', {
         headers: { 'Authorization': `Bearer ${token}` },
       });
 
@@ -49,7 +49,7 @@ export default function WorkersControlPage() {
     setActionLoading(true);
     try {
       const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3001/api/v1/workers/balance-sync/start', {
+      const res = await fetch('http://localhost:3002/api/v1/workers/balance-sync/start', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -79,7 +79,7 @@ export default function WorkersControlPage() {
     setActionLoading(true);
     try {
       const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3001/api/v1/workers/balance-sync/stop', {
+      const res = await fetch('http://localhost:3002/api/v1/workers/balance-sync/stop', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -111,7 +111,7 @@ export default function WorkersControlPage() {
     setActionLoading(true);
     try {
       const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3001/api/v1/workers/balance-sync/toggle', {
+      const res = await fetch('http://localhost:3002/api/v1/workers/balance-sync/toggle', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

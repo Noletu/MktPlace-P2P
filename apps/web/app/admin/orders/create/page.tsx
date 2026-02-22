@@ -92,7 +92,7 @@ export default function CreateOrderPage() {
           return;
         }
 
-        const response = await fetch('http://localhost:3001/api/v1/boleto/validate', {
+        const response = await fetch('http://localhost:3002/api/v1/boleto/validate', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -166,7 +166,7 @@ export default function CreateOrderPage() {
       const formData = new FormData();
       formData.append('image', file);
 
-      const response = await fetch('http://localhost:3001/api/v1/boleto/extract', {
+      const response = await fetch('http://localhost:3002/api/v1/boleto/extract', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -217,7 +217,7 @@ export default function CreateOrderPage() {
 
   const fetchPrices = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/v1/prices');
+      const response = await fetch('http://localhost:3002/api/v1/prices');
       const data = await response.json();
       console.log('📊 Prices API response:', data);
       if (data.success) {
@@ -253,7 +253,7 @@ export default function CreateOrderPage() {
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/collateral-balance/${crypto}/${network}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral-balance/${crypto}/${network}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -349,7 +349,7 @@ export default function CreateOrderPage() {
       const requiredCollateral = parseFloat(cryptoAmount).toFixed(8);
 
       const checkBalanceResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/collateral-balance/check-sufficient/${crypto}/${network}/${requiredCollateral}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral-balance/check-sufficient/${crypto}/${network}/${requiredCollateral}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -396,7 +396,7 @@ export default function CreateOrderPage() {
         expectedAmount: cryptoAmount,
       });
 
-      const response = await fetch('http://localhost:3001/api/v1/collateral/generate', {
+      const response = await fetch('http://localhost:3002/api/v1/collateral/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -479,7 +479,7 @@ export default function CreateOrderPage() {
       try {
         const token = localStorage.getItem('accessToken');
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/collateral/${collateralAddress.id}/status`,
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral/${collateralAddress.id}/status`,
           {
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -514,7 +514,7 @@ export default function CreateOrderPage() {
       const pendingOrder = JSON.parse(pendingOrderData);
 
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/v1/orders', {
+      const response = await fetch('http://localhost:3002/api/v1/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -545,7 +545,7 @@ export default function CreateOrderPage() {
     try {
       const token = localStorage.getItem('accessToken');
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/collateral/${collateralAddress.id}/simulate-payment`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral/${collateralAddress.id}/simulate-payment`,
         {
           method: 'POST',
           headers: {
@@ -590,7 +590,7 @@ export default function CreateOrderPage() {
         ? { manualCancelOnly: true }
         : { customExpirationHours: expirationTime };
 
-      const createOrderResponse = await fetch('http://localhost:3001/api/v1/orders', {
+      const createOrderResponse = await fetch('http://localhost:3002/api/v1/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -648,7 +648,7 @@ export default function CreateOrderPage() {
       const token = localStorage.getItem('accessToken');
 
       // Gerar endereço de depósito para colateral
-      const response = await fetch('http://localhost:3001/api/v1/collateral/generate', {
+      const response = await fetch('http://localhost:3002/api/v1/collateral/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

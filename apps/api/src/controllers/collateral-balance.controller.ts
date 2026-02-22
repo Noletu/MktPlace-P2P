@@ -26,7 +26,18 @@ export class CollateralBalanceController {
         });
       }
 
-      // Buscar todas as carteiras do usuário
+      // AUTO-RECALCULO: corrigir inconsistências de lockedBalance antes de retornar
+      try {
+        const recalcResults = await WalletService.recalculateLockedBalance(userId);
+        const corrected = recalcResults.filter((r) => r.corrected);
+        if (corrected.length > 0) {
+          console.log(`🔧 Auto-recalculo corrigiu ${corrected.length} carteira(s) para user ${userId}`);
+        }
+      } catch (recalcError) {
+        console.error('⚠️ Auto-recalculo falhou (continuando com saldos existentes):', recalcError);
+      }
+
+      // Buscar carteiras (já corrigidas se o recalculo funcionou)
       const wallets = await WalletService.getUserWallets(userId);
 
       // Transformar para formato compatível com frontend

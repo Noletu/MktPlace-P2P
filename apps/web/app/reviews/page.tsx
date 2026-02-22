@@ -64,7 +64,7 @@ export default function ReviewsPage() {
       if (orderIdFilter) params.append('orderId', orderIdFilter);
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/reviews/user/${userId}?${params.toString()}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/reviews/user/${userId}?${params.toString()}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -92,7 +92,7 @@ export default function ReviewsPage() {
       const userData = JSON.parse(userDataStr);
       const userId = userData.id;
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/reviews/user/${userId}/stats`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/reviews/user/${userId}/stats`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 

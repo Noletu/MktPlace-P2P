@@ -42,7 +42,7 @@ export default function DashboardPage() {
         throw new Error('Token não encontrado');
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/auth/me', {
+      const response = await fetch('http://localhost:3002/api/v1/auth/me', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },

@@ -14,7 +14,7 @@ export function useUnreadChats() {
         return;
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/chat/unread-count', {
+      const response = await fetch('http://localhost:3002/api/v1/chat/unread-count', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },

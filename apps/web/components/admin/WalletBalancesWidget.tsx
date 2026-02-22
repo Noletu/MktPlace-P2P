@@ -22,7 +22,7 @@ export default function WalletBalancesWidget() {
   const fetchBalances = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3001/api/v1/admin/finance/wallet-balances', {
+      const res = await fetch('http://localhost:3002/api/v1/admin/finance/wallet-balances', {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       const data = await res.json();

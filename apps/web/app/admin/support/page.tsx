@@ -39,7 +39,7 @@ export default function AdminSupportPage() {
       setLoading(true);
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch('http://localhost:3001/api/v1/support', {
+      const response = await fetch('http://localhost:3002/api/v1/support', {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -65,7 +65,7 @@ export default function AdminSupportPage() {
     try {
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch('http://localhost:3001/api/v1/support/stats', {
+      const response = await fetch('http://localhost:3002/api/v1/support/stats', {
         headers: {
           Authorization: `Bearer ${token}`,
         },

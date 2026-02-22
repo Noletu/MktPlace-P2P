@@ -110,6 +110,12 @@ export default function LoginForm() {
         />
       </div>
 
+      <div className="text-right">
+        <a href="/forgot-password" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+          Esqueceu a senha?
+        </a>
+      </div>
+
       {/* Campo 2FA - Aparece apenas quando necessário */}
       {requiresTwoFactor && (
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">

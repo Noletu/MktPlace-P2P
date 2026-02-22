@@ -118,7 +118,7 @@ export default function ManageLockModal({
       const endpoint = isLock ? 'lock-balance' : 'unlock-balance';
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/admin/funds/${endpoint}`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1'}/admin/funds/${endpoint}`,
         {
           method: 'POST',
           headers: {

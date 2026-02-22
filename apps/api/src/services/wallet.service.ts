@@ -1,4 +1,5 @@
 import {PrismaClient} from '@prisma/client';
+import BigNumber from 'bignumber.js';
 import {DerivationService} from './hd-wallet/derivation.service';
 import {KeyManagementService} from './hd-wallet/key-management.service';
 import {BlockchainService} from './blockchain/blockchain.service';
@@ -151,6 +152,27 @@ export class WalletService {
       where: {userId},
       orderBy: {createdAt: 'desc'},
     });
+
+    // Fix: corrigir saldos bloqueados negativos diretamente (sempre invalido)
+    for (const wallet of wallets) {
+      const locked = parseFloat(wallet.lockedBalance);
+      if (locked < 0) {
+        const balance = parseFloat(wallet.balance);
+        const correctedAvailable = Math.max(0, balance).toString();
+        console.log(
+          `🚨 [FIX] Wallet ${wallet.id} (${wallet.cryptoType}) tem lockedBalance negativo: ${wallet.lockedBalance}. Corrigindo para 0.`
+        );
+        await prisma.userWallet.update({
+          where: { id: wallet.id },
+          data: {
+            lockedBalance: '0',
+            availableBalance: correctedAvailable,
+          },
+        });
+        wallet.lockedBalance = '0';
+        wallet.availableBalance = correctedAvailable;
+      }
+    }
 
     return wallets.map((w) => this.sanitizeWallet(w));
   }
@@ -718,6 +740,122 @@ export class WalletService {
         lastSyncedAt: new Date(),
       },
     });
+  }
+
+  /**
+   * Recalcula lockedBalance de todas as carteiras de um usuário
+   * baseando-se nos pedidos ativos com collateralLocked=true.
+   * Corrige inconsistências acumuladas por arredondamento.
+   */
+  static async recalculateLockedBalance(userId: string) {
+    const activeStatuses = ['PENDING', 'MATCHED', 'IN_NEGOTIATION', 'PAYMENT_SENT', 'VALIDATING', 'DISPUTED'];
+
+    const wallets = await prisma.userWallet.findMany({
+      where: { userId, isActive: true },
+    });
+
+    const results: Array<{ walletId: string; cryptoType: string; diff: string; corrected: boolean }> = [];
+
+    for (const wallet of wallets) {
+      try {
+        // Pedidos onde esta carteira é o colateral do criador
+        const lockedOrders = await prisma.order.findMany({
+          where: {
+            walletId: wallet.id,
+            collateralLocked: true,
+            status: { in: activeStatuses },
+          },
+          select: { id: true, collateralLockedAmount: true, status: true },
+        });
+
+        // Pedidos BUY onde este usuário é o provedor
+        const lockedBuyOrders = await prisma.order.findMany({
+          where: {
+            providerWalletId: wallet.id,
+            collateralLocked: true,
+            status: { in: activeStatuses },
+          },
+          select: { id: true, collateralLockedAmount: true, status: true },
+        });
+
+        const allLocked = [...lockedOrders, ...lockedBuyOrders];
+        let realLockedBN = allLocked.reduce(
+          (sum, order) => sum.plus(new BigNumber(order.collateralLockedAmount || '0')),
+          new BigNumber(0)
+        );
+
+        // Saldo bloqueado nunca pode ser negativo
+        if (realLockedBN.isNegative()) {
+          realLockedBN = new BigNumber(0);
+        }
+
+        const currentLockedBN = new BigNumber(wallet.lockedBalance);
+        const balanceBN = new BigNumber(wallet.balance);
+
+        console.log(
+          `🔍 [recalc] wallet ${wallet.cryptoType}: locked=${currentLockedBN.toFixed(8)}, realLocked=${realLockedBN.toFixed(8)}, orders=${allLocked.length}`
+        );
+
+        if (!currentLockedBN.eq(realLockedBN)) {
+          // Calcular novo available garantindo que nao ultrapasse o balance total
+          let newAvailable = balanceBN.minus(realLockedBN);
+          if (newAvailable.isNegative()) {
+            newAvailable = new BigNumber(0);
+          }
+
+          await prisma.$transaction([
+            prisma.userWallet.update({
+              where: { id: wallet.id },
+              data: {
+                lockedBalance: realLockedBN.toFixed(8),
+                availableBalance: newAvailable.toFixed(8),
+              },
+            }),
+            prisma.walletTransaction.create({
+              data: {
+                walletId: wallet.id,
+                userId,
+                type: 'ADMIN_ADJUSTMENT',
+                amount: currentLockedBN.minus(realLockedBN).abs().toFixed(8),
+                balanceBefore: wallet.balance,
+                balanceAfter: wallet.balance,
+                lockedBefore: wallet.lockedBalance,
+                lockedAfter: realLockedBN.toFixed(8),
+                description: `Auto-correcao saldo bloqueado: ${wallet.lockedBalance} -> ${realLockedBN.toFixed(8)} (${allLocked.length} pedidos ativos)`,
+              },
+            }),
+          ]);
+
+          console.log(
+            `🔧 CORRIGIDO wallet ${wallet.id} (${wallet.cryptoType}): locked ${wallet.lockedBalance} → ${realLockedBN.toFixed(8)}, available → ${newAvailable.toFixed(8)}`
+          );
+
+          results.push({
+            walletId: wallet.id,
+            cryptoType: wallet.cryptoType,
+            diff: currentLockedBN.minus(realLockedBN).toFixed(8),
+            corrected: true,
+          });
+        } else {
+          results.push({
+            walletId: wallet.id,
+            cryptoType: wallet.cryptoType,
+            diff: '0',
+            corrected: false,
+          });
+        }
+      } catch (walletError) {
+        console.error(`❌ Erro ao recalcular wallet ${wallet.id} (${wallet.cryptoType}):`, walletError);
+        results.push({
+          walletId: wallet.id,
+          cryptoType: wallet.cryptoType,
+          diff: '0',
+          corrected: false,
+        });
+      }
+    }
+
+    return results;
   }
 
   /**

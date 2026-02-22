@@ -33,7 +33,7 @@ export default function SupportPage() {
       setLoading(true);
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch('http://localhost:3001/api/v1/support/my-tickets', {
+      const response = await fetch('http://localhost:3002/api/v1/support/my-tickets', {
         headers: {
           Authorization: `Bearer ${token}`,
         },

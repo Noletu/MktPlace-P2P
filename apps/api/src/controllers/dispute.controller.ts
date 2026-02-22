@@ -22,10 +22,13 @@ const CreateDisputeSchema = z.object({
 });
 
 const AddMessageSchema = z.object({
-  message: z.string().min(1, 'Mensagem não pode ser vazia'),
-  attachments: z.array(z.string().url()).optional(),
+  message: z.string(),
+  attachments: z.array(z.string()).optional(),
   visibleTo: z.string().optional(),
-});
+}).refine(
+  (data) => data.message.trim().length > 0 || (data.attachments && data.attachments.length > 0),
+  { message: 'Mensagem ou anexo é obrigatório', path: ['message'] }
+);
 
 const RespondDisputeSchema = z.object({
   contestation: z.string().min(50, 'Contestação deve ter no mínimo 50 caracteres'),

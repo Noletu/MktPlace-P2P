@@ -54,7 +54,7 @@ export function useChats() {
         return;
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/chat', {
+      const response = await fetch('http://localhost:3002/api/v1/chat', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },

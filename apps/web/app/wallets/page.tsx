@@ -88,7 +88,7 @@ export default function WalletsPage() {
         return;
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/wallets', {
+      const response = await fetch('http://localhost:3002/api/v1/wallets', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -117,7 +117,7 @@ export default function WalletsPage() {
         return;
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/wallets', {
+      const response = await fetch('http://localhost:3002/api/v1/wallets', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -150,7 +150,7 @@ export default function WalletsPage() {
         return;
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/wallets/${walletId}/sync`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/wallets/${walletId}/sync`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -187,7 +187,7 @@ export default function WalletsPage() {
         return;
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/wallets/${walletId}/transactions`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/wallets/${walletId}/transactions`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -218,7 +218,7 @@ export default function WalletsPage() {
         return;
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/wallets/${testBalanceModal.walletId}/test-balance`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/wallets/${testBalanceModal.walletId}/test-balance`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

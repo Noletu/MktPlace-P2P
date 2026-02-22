@@ -53,7 +53,7 @@ export default function CancellationModal({
     try {
       setLoadingWarning(true);
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/v1/orders/cancellation/warning', {
+      const response = await fetch('http://localhost:3002/api/v1/orders/cancellation/warning', {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -73,7 +73,7 @@ export default function CancellationModal({
   const loadAntiSpamStats = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/v1/orders/anti-spam/stats', {
+      const response = await fetch('http://localhost:3002/api/v1/orders/anti-spam/stats', {
         headers: {
           Authorization: `Bearer ${token}`,
         },

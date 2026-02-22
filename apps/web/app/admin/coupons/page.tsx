@@ -72,10 +72,10 @@ export default function CouponsPage() {
       const token = localStorage.getItem('accessToken');
 
       const [couponsRes, statsRes] = await Promise.all([
-        fetch('http://localhost:3001/api/v1/coupons', {
+        fetch('http://localhost:3002/api/v1/coupons', {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch('http://localhost:3001/api/v1/coupons/stats', {
+        fetch('http://localhost:3002/api/v1/coupons/stats', {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
@@ -119,7 +119,7 @@ export default function CouponsPage() {
         }
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/coupons', {
+      const response = await fetch('http://localhost:3002/api/v1/coupons', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -166,7 +166,7 @@ export default function CouponsPage() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:3001/api/v1/coupons/${id}`, {
+      const response = await fetch(`http://localhost:3002/api/v1/coupons/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });

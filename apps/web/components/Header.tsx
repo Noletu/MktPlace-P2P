@@ -15,7 +15,12 @@ export default function Header() {
     '/orders/create',
     '/profile',
     '/wallets',
-    '/admin'
+    '/admin',
+    '/disputes',
+    '/login',
+    '/register',
+    '/forgot-password',
+    '/reset-password',
   ];
 
   const shouldHide = pagesWithOwnNavigation.some(page => pathname?.startsWith(page)) ||

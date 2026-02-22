@@ -36,7 +36,7 @@ export default function TwoFactorSetupPage() {
         return;
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/2fa/status', {
+      const response = await fetch('http://localhost:3002/api/v1/2fa/status', {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
         },
@@ -68,7 +68,7 @@ export default function TwoFactorSetupPage() {
         return;
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/2fa/generate', {
+      const response = await fetch('http://localhost:3002/api/v1/2fa/generate', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -109,7 +109,7 @@ export default function TwoFactorSetupPage() {
         return;
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/2fa/enable', {
+      const response = await fetch('http://localhost:3002/api/v1/2fa/enable', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -162,7 +162,7 @@ export default function TwoFactorSetupPage() {
         return;
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/2fa/disable', {
+      const response = await fetch('http://localhost:3002/api/v1/2fa/disable', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -207,7 +207,7 @@ export default function TwoFactorSetupPage() {
         return;
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/2fa/regenerate-backup-codes', {
+      const response = await fetch('http://localhost:3002/api/v1/2fa/regenerate-backup-codes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

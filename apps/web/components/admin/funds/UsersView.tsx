@@ -50,7 +50,7 @@ export default function UsersView() {
   const loadData = async () => {
     const token = localStorage.getItem('accessToken');
     try {
-      const response = await fetch('http://localhost:3001/api/v1/admin/funds/users-funds', {
+      const response = await fetch('http://localhost:3002/api/v1/admin/funds/users-funds', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },

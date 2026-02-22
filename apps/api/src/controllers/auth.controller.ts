@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import { authService } from '../services/auth.service';
-import { loginSchema, registerSchema } from '@mktplace/shared';
+import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema } from '@mktplace/shared';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from '../services/auditLog.service';
+import { emailService } from '../services/email.service';
 import { securityLogger } from '../utils/logger';
 import { setAccessTokenCookie, setRefreshTokenCookie, clearAuthCookies } from '../utils/cookies';
 
@@ -451,6 +452,72 @@ export class AuthController {
       res.status(500).json({
         success: false,
         error: 'Erro ao buscar perfil público',
+      });
+    }
+  }
+  // PASSWORD RESET: Request password reset email
+  async forgotPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { email } = forgotPasswordSchema.parse(req.body);
+
+      const rawToken = await authService.requestPasswordReset(email);
+
+      if (rawToken) {
+        try {
+          await emailService.sendPasswordResetEmail(email, rawToken);
+        } catch (emailError) {
+          console.error('[AUTH] Error sending reset email:', emailError);
+        }
+      }
+
+      // SECURITY: Always return success to prevent user enumeration
+      res.status(200).json({
+        success: true,
+        message: 'Se o email estiver cadastrado, voce recebera um link para redefinir sua senha.',
+      });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        res.status(400).json({
+          success: false,
+          error: 'Dados invalidos',
+          details: error.errors,
+        });
+        return;
+      }
+
+      console.error('[AUTH] Forgot password error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro ao processar solicitacao',
+      });
+    }
+  }
+
+  // PASSWORD RESET: Reset password with token
+  async resetPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { email, token, newPassword } = resetPasswordSchema.parse(req.body);
+
+      await authService.resetPassword(email, token, newPassword);
+
+      res.status(200).json({
+        success: true,
+        message: 'Senha redefinida com sucesso!',
+      });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        res.status(400).json({
+          success: false,
+          error: 'Dados invalidos',
+          details: error.errors,
+        });
+        return;
+      }
+
+      console.error('[AUTH] Reset password error:', error);
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao redefinir senha',
       });
     }
   }

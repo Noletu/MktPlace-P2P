@@ -75,7 +75,7 @@ export default function ChangeRoleModal({ user, onClose, onSuccess }: ChangeRole
     try {
       const token = localStorage.getItem('accessToken');
 
-      const response = await fetch(`http://localhost:3001/api/v1/admin/users/${user.id}`, {
+      const response = await fetch(`http://localhost:3002/api/v1/admin/users/${user.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,

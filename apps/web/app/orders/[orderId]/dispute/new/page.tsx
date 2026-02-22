@@ -56,7 +56,7 @@ export default function NewDisputePage() {
         return;
       }
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/orders/${orderId}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/orders/${orderId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -81,7 +81,7 @@ export default function NewDisputePage() {
       const token = localStorage.getItem('accessToken');
       if (!token) return;
 
-      const res = await fetch('http://localhost:3001/api/v1/auth/me', {
+      const res = await fetch('http://localhost:3002/api/v1/auth/me', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -183,7 +183,7 @@ export default function NewDisputePage() {
 
       const attachmentData = await Promise.all(attachmentPromises);
 
-      const res = await fetch('http://localhost:3001/api/v1/disputes', {
+      const res = await fetch('http://localhost:3002/api/v1/disputes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

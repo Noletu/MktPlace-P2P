@@ -26,7 +26,7 @@ export default function ChatHistoryViewer({ chatId }: ChatHistoryViewerProps) {
     const fetchArchiveStatus = async () => {
       try {
         const token = localStorage.getItem('accessToken');
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/chat/${chatId}/archive-status`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/chat/${chatId}/archive-status`, {
           headers: { 'Authorization': `Bearer ${token}` },
         });
 

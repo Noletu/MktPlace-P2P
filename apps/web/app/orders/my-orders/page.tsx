@@ -53,7 +53,7 @@ export default function MyOrdersPage() {
       // Enviar heartbeat para cada pedido online
       for (const order of onlineOrders) {
         try {
-          await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/presence/orders/${order.id}/heartbeat`, {
+          await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/presence/orders/${order.id}/heartbeat`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
           });
@@ -74,7 +74,7 @@ export default function MyOrdersPage() {
         return;
       }
 
-      const response = await fetch('http://localhost:3001/api/v1/orders/my-orders', {
+      const response = await fetch('http://localhost:3002/api/v1/orders/my-orders', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -101,7 +101,7 @@ export default function MyOrdersPage() {
         return;
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/presence/orders/${orderId}/toggle`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/presence/orders/${orderId}/toggle`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
