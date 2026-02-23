@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import AppHeader from '@/components/AppHeader';
 import {
   SupportTicket,
   TicketMessage,
@@ -135,6 +136,8 @@ export default function TicketDetailPage() {
   }
 
   return (
+    <>
+    <AppHeader />
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
@@ -256,5 +259,6 @@ export default function TicketDetailPage() {
         )}
       </div>
     </div>
+    </>
   );
 }
