@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import AppHeader from '@/components/AppHeader';
 import { TicketCategory, CATEGORY_LABELS } from '../../../../types/support';
 
 export default function NewTicketPage() {
@@ -71,6 +72,8 @@ export default function NewTicketPage() {
   };
 
   return (
+    <>
+    <AppHeader />
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
@@ -177,5 +180,6 @@ export default function NewTicketPage() {
         </form>
       </div>
     </div>
+    </>
   );
 }

@@ -1564,6 +1564,28 @@ export default function CreateOrderPage() {
                   </p>
                 )}
 
+                {/* Fee breakdown SELL */}
+                {cryptoAmount !== '0' && prices[crypto] && (
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 border-2 border-blue-300 dark:border-blue-700 rounded-lg p-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm text-blue-800 dark:text-blue-200">Voce vai receber:</span>
+                      <span className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                        {formatBRL((parseFloat(fees.netAmount) * parseFloat(prices[crypto])).toFixed(2))}
+                      </span>
+                    </div>
+                    <div className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                      <div className="flex justify-between">
+                        <span>Valor bruto ({cryptoAmount} {crypto}):</span>
+                        <span>{formatBRL((parseFloat(cryptoAmount) * parseFloat(prices[crypto])).toFixed(2))}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Taxa (2.5%):</span>
+                        <span>-{formatBRL((parseFloat(fees.totalFee) * parseFloat(prices[crypto])).toFixed(2))}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Cotação USD/BRL */}
                 {(crypto === 'USDC' || crypto === 'USDT') && currentRate && (
                   <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">

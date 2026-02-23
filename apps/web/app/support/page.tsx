@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import AppHeader from '@/components/AppHeader';
 import {
   SupportTicket,
   TicketStatus,
@@ -91,15 +92,10 @@ export default function SupportPage() {
   }
 
   return (
+    <>
+    <AppHeader />
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
       <div className="max-w-6xl mx-auto">
-        {/* Back Button */}
-        <div className="mb-6">
-          <button onClick={() => router.push('/')} className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-2">
-            ← Voltar ao Menu
-          </button>
-        </div>
-
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Meus Tickets de Suporte</h1>
@@ -206,5 +202,6 @@ export default function SupportPage() {
         )}
       </div>
     </div>
+    </>
   );
 }
