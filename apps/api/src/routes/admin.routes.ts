@@ -49,6 +49,12 @@ router.get('/users/:id/details', supportMiddleware, adminController.getUserDetai
 // SECURITY: Atualização de usuário (mudança de role) apenas ADMIN/MASTER
 router.put('/users/:id', adminMiddleware, adminActionLimiter, adminController.updateUser.bind(adminController));
 
+// Limite personalizado (ADMIN + MASTER)
+router.post('/users/:id/custom-limit', adminMiddleware, adminActionLimiter, adminController.setCustomLimit.bind(adminController));
+// Reputação: recalcular + breakdown (ADMIN + MASTER)
+router.post('/users/:id/recalculate-reputation', adminMiddleware, adminActionLimiter, adminController.recalculateReputation.bind(adminController));
+router.get('/users/:id/reputation-breakdown', supportMiddleware, adminController.getReputationBreakdown.bind(adminController));
+
 /**
  * FASE 2: Relatório para Autoridades (GERENTE + ADMIN + MASTER)
  */

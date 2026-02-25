@@ -208,6 +208,8 @@ export class PenaltyService {
     reason: string
   ): Promise<{ oldReputation: number; newReputation: number }> {
     try {
+      const { reputationService } = await import('./reputation.service');
+
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -222,20 +224,21 @@ export class PenaltyService {
       }
 
       const oldReputation = user.reputationScore;
-      const newReputation = Math.max(0, oldReputation - penaltyPoints);
 
-      // Atualizar reputação e contadores
+      // Atualizar SOMENTE contadores de cancelamento — reputacao sera recalculada
       await prisma.user.update({
         where: { id: userId },
         data: {
-          reputationScore: newReputation,
           totalCancellations: user.totalCancellations + 1,
           recentCancellations: user.recentCancellations + 1,
           lastCancellationAt: new Date(),
         },
       });
 
-      logger.info(`[PENALTY] Applied reputation penalty to user ${userId}:`, {
+      // Recalcular score composto (leva em conta cancelamentos recentes)
+      const newReputation = await reputationService.recalculateAndSave(userId);
+
+      logger.info(`[PENALTY] Applied cancellation penalty to user ${userId}:`, {
         reason,
         oldReputation,
         newReputation,

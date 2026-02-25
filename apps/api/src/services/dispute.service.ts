@@ -856,46 +856,21 @@ export class DisputeService {
       }
 
       // ═══════════════════════════════════════════════════════════════════════
-      // APLICAR PENALIDADES DE REPUTAÇÃO
+      // RECALCULAR REPUTACAO COMPOSTA PARA AMBAS AS PARTES
       // ═══════════════════════════════════════════════════════════════════════
-      if (input.resolutionType === 'RELEASE_TO_BUYER' || input.resolutionType === 'PENALTY_SELLER') {
-        // Penalidade para vendedor (disputa perdida)
-        if (sellerId) {
-          const seller = isBuyOrder
-            ? await prisma.user.findUnique({ where: { id: sellerId }, select: { reputationScore: true } })
-            : order.user;
+      // O ReputationService calcula disputas ganhas/perdidas automaticamente
+      // a partir dos status RESOLVED_BUYER/RESOLVED_SELLER
+      {
+        const { reputationService } = await import('./reputation.service');
 
-          if (seller) {
-            const currentReputation = seller.reputationScore;
-            const penaltyPoints = DISPUTE_REPUTATION.LOSE_PENALTY; // -20
-            const newReputation = Math.max(0, currentReputation + penaltyPoints);
-
-            await prisma.user.update({
-              where: { id: sellerId },
-              data: { reputationScore: newReputation },
-            });
-
-            logger.info(`[DISPUTE PENALTY] Vendedor ${sellerId}: ${currentReputation} → ${newReputation} (${penaltyPoints} pts)`);
+        if (input.resolutionType !== 'CANCEL_NO_PENALTY') {
+          if (sellerId) {
+            const newScore = await reputationService.recalculateAndSave(sellerId);
+            logger.info(`[DISPUTE REPUTATION] Vendedor ${sellerId}: recalculado → ${newScore}`);
           }
-        }
-      } else if (input.resolutionType === 'RETURN_TO_SELLER' || input.resolutionType === 'PENALTY_BUYER') {
-        // Penalidade para comprador (disputa perdida)
-        if (buyerId) {
-          const buyer = isBuyOrder
-            ? order.user // BUY: order.userId = comprador
-            : await prisma.user.findUnique({ where: { id: buyerId }, select: { reputationScore: true } });
-
-          if (buyer) {
-            const currentReputation = buyer.reputationScore;
-            const penaltyPoints = DISPUTE_REPUTATION.LOSE_PENALTY; // -20
-            const newReputation = Math.max(0, currentReputation + penaltyPoints);
-
-            await prisma.user.update({
-              where: { id: buyerId },
-              data: { reputationScore: newReputation },
-            });
-
-            logger.info(`[DISPUTE PENALTY] Comprador ${buyerId}: ${currentReputation} → ${newReputation} (${penaltyPoints} pts)`);
+          if (buyerId) {
+            const newScore = await reputationService.recalculateAndSave(buyerId);
+            logger.info(`[DISPUTE REPUTATION] Comprador ${buyerId}: recalculado → ${newScore}`);
           }
         }
       }

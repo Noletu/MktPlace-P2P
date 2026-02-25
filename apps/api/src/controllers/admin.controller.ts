@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { adminService } from '../services/admin.service';
 import { auditLogService } from '../services/auditLog.service';
+import { reputationService } from '../services/reputation.service';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { platformWalletService } from '../services/platformWallet.service';
@@ -644,6 +645,134 @@ export class AdminController {
       res.status(500).json({
         success: false,
         error: error.message || 'Erro ao exportar logs',
+      });
+    }
+  }
+
+  /**
+   * ============================================
+   * LIMITE PERSONALIZADO + REPUTAÇÃO
+   * ============================================
+   */
+
+  /**
+   * POST /admin/users/:id/custom-limit
+   * Define limite diario personalizado para usuario
+   */
+  async setCustomLimit(req: Request, res: Response) {
+    try {
+      const adminId = req.user?.userId;
+      if (!adminId) {
+        return res.status(401).json({ success: false, error: 'Não autorizado' });
+      }
+
+      const { id } = req.params;
+
+      const schema = z.object({
+        customDailyLimit: z.number().min(0).nullable(),
+        note: z.string().min(10, 'Nota deve ter no mínimo 10 caracteres'),
+      });
+
+      const validated = schema.parse(req.body);
+
+      const user = await adminService.setCustomDailyLimit(id, {
+        customDailyLimit: validated.customDailyLimit,
+        note: validated.note,
+        adminId,
+      });
+
+      // Audit log via request
+      await auditLogService.logFromRequest(
+        req,
+        'SET_CUSTOM_LIMIT',
+        'USER',
+        id,
+        {
+          customDailyLimit: validated.customDailyLimit,
+          note: validated.note,
+        }
+      );
+
+      res.json({
+        success: true,
+        data: user,
+        message: validated.customDailyLimit !== null
+          ? `Limite personalizado de R$ ${validated.customDailyLimit.toLocaleString('pt-BR')} definido`
+          : 'Limite resetado para fórmula automática',
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Dados inválidos',
+          details: error.errors,
+        });
+      }
+      console.error('Erro ao definir limite personalizado:', error);
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao definir limite personalizado',
+      });
+    }
+  }
+
+  /**
+   * POST /admin/users/:id/recalculate-reputation
+   * Força recálculo da reputação composta
+   */
+  async recalculateReputation(req: Request, res: Response) {
+    try {
+      const adminId = req.user?.userId;
+      if (!adminId) {
+        return res.status(401).json({ success: false, error: 'Não autorizado' });
+      }
+
+      const { id } = req.params;
+
+      const newScore = await reputationService.recalculateAndSave(id);
+
+      // Audit log
+      await auditLogService.logFromRequest(
+        req,
+        'RECALCULATE_REPUTATION',
+        'USER',
+        id,
+        { newScore }
+      );
+
+      res.json({
+        success: true,
+        data: { reputationScore: newScore },
+        message: `Reputação recalculada: ${newScore}/100`,
+      });
+    } catch (error: any) {
+      console.error('Erro ao recalcular reputação:', error);
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao recalcular reputação',
+      });
+    }
+  }
+
+  /**
+   * GET /admin/users/:id/reputation-breakdown
+   * Retorna breakdown detalhado da reputação composta
+   */
+  async getReputationBreakdown(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+
+      const breakdown = await reputationService.calculateCompositeScore(id);
+
+      res.json({
+        success: true,
+        data: breakdown,
+      });
+    } catch (error: any) {
+      console.error('Erro ao buscar breakdown de reputação:', error);
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao buscar breakdown de reputação',
       });
     }
   }

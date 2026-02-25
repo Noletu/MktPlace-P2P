@@ -318,6 +318,7 @@ export class AdminService {
         frozenReason: true,
         frozenAt: true,
         frozenUntil: true,
+        customDailyLimit: true,
         // RBAC: Incluir role relation
         role: {
           select: {
@@ -331,11 +332,19 @@ export class AdminService {
     // RBAC: Mapear para retornar role como string (compatibilidade frontend)
     return users.map(user => {
       const userRole = user.role?.slug?.toUpperCase() || user.legacyRole;
-      const { role: roleObject, legacyRole, ...rest } = user;
+      const { role: roleObject, legacyRole, customDailyLimit, ...rest } = user;
+
+      // Calcular limite real (custom ou formula)
+      const formulaLimit = 1000 + (user.reputationScore * 100);
+      const dailyLimit = customDailyLimit !== null && customDailyLimit !== undefined
+        ? customDailyLimit
+        : formulaLimit;
 
       return {
         ...rest,
-        role: userRole, // Role como string (MASTER, ADMIN, GERENTE, etc)
+        role: userRole,
+        customDailyLimit: customDailyLimit ?? undefined,
+        dailyLimit,
       };
     });
   }
@@ -492,6 +501,58 @@ export class AdminService {
     });
 
     return user;
+  }
+
+  /**
+   * Define limite diario personalizado para um usuario
+   * Se customDailyLimit === null, reseta para formula automatica
+   */
+  async setCustomDailyLimit(
+    userId: string,
+    data: {
+      customDailyLimit: number | null;
+      note: string;
+      adminId: string;
+    }
+  ) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { customDailyLimit: true, reputationScore: true },
+    });
+
+    if (!user) {
+      throw new Error('Usuário não encontrado');
+    }
+
+    const previousLimit = user.customDailyLimit !== null
+      ? user.customDailyLimit
+      : 1000 + (user.reputationScore * 100);
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        customDailyLimit: data.customDailyLimit,
+        customLimitSetBy: data.customDailyLimit !== null ? data.adminId : null,
+        customLimitSetAt: data.customDailyLimit !== null ? new Date() : null,
+        customLimitNote: data.customDailyLimit !== null ? data.note : null,
+      },
+    });
+
+    // Registrar acao admin
+    await this.logAdminAction({
+      adminId: data.adminId,
+      action: 'SET_CUSTOM_LIMIT',
+      resource: 'USER',
+      resourceId: userId,
+      metadata: JSON.stringify({
+        previousLimit,
+        newLimit: data.customDailyLimit,
+        isCustom: data.customDailyLimit !== null,
+        note: data.note,
+      }),
+    });
+
+    return updatedUser;
   }
 
   /**
@@ -1151,7 +1212,13 @@ export class AdminService {
         reputationScore: user.reputationScore,
         totalTransactions: user.totalTransactions,
         successfulTransactions: user.successfulTransactions,
-        dailyLimit: 1000 + (user.reputationScore * 100),
+        dailyLimit: (user.customDailyLimit !== null && user.customDailyLimit !== undefined)
+          ? user.customDailyLimit
+          : 1000 + (user.reputationScore * 100),
+        formulaLimit: 1000 + (user.reputationScore * 100),
+        customDailyLimit: user.customDailyLimit ?? undefined,
+        customLimitNote: user.customLimitNote ?? undefined,
+        customLimitSetAt: user.customLimitSetAt ?? undefined,
         twoFactorEnabled: user.twoFactorEnabled,
         accountFrozen: user.accountFrozen,
         frozenReason: user.frozenReason,
