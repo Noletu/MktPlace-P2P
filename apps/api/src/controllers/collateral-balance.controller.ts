@@ -305,7 +305,10 @@ export class CollateralBalanceController {
 
       if (!wallet) {
         // Criar nova carteira HD
-        wallet = await WalletService.createWallet(userId, cryptoType, network);
+        wallet = await WalletService.createWallet(userId, cryptoType, network, {
+          source: 'DEPOSIT_WIZARD',
+          details: { endpoint: 'POST /collateral-balance/deposit', trigger: 'deposit_wizard' },
+        });
       }
 
       // Retornar endereço para depósito

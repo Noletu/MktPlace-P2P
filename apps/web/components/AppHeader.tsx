@@ -97,7 +97,7 @@ export default function AppHeader() {
   const userNavigationLinks = [
     { name: 'Dashboard', path: '/dashboard' },
     { name: 'Marketplace', path: '/marketplace' },
-    { name: 'Carteiras', path: '/wallets' },
+    { name: 'Carteira', path: '/wallet' },
     { name: 'Meus Pedidos', path: '/orders/my-orders' },
     { name: 'Suporte', path: '/support' },
     { name: 'Perfil', path: '/profile' },

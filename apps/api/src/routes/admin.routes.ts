@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { adminController } from '../controllers/admin.controller';
 import { financeController } from '../controllers/finance.controller';
 import { disputeController } from '../controllers/dispute.controller';
+import { adminWithdrawalController } from '../controllers/admin-withdrawal.controller';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
 import { managerMiddleware } from '../middleware/manager.middleware';
 import { supportMiddleware } from '../middleware/support.middleware';
@@ -34,6 +35,10 @@ router.post('/platform-wallets/create-all', adminMiddleware, adminActionLimiter,
 router.post('/platform-wallets', adminMiddleware, adminActionLimiter, adminController.createPlatformWallet.bind(adminController));
 router.put('/platform-wallets/:id', adminMiddleware, adminActionLimiter, adminController.updatePlatformWallet.bind(adminController));
 router.delete('/platform-wallets/:id', adminMiddleware, adminActionLimiter, adminController.deletePlatformWallet.bind(adminController));
+// Transferências de platform wallets (hot → cold / externo)
+router.get('/platform-wallets/:id/transfers', adminMiddleware, adminController.getPlatformWalletTransfers.bind(adminController));
+router.get('/platform-wallets/:id/transfer-estimate', adminMiddleware, adminController.getPlatformWalletTransferEstimate.bind(adminController));
+router.post('/platform-wallets/:id/transfer', adminMiddleware, adminActionLimiter, adminController.requestPlatformWalletTransfer.bind(adminController));
 
 /**
  * OPERACIONAL: Gestão de Usuários - Visualização (SUPPORT + GERENTE + ADMIN + MASTER)
@@ -77,5 +82,14 @@ router.get('/audit-logs/export', supportMiddleware, adminController.exportAuditL
  */
 router.get('/disputes/analytics', supportMiddleware, disputeController.getDisputeAnalytics.bind(disputeController));
 router.get('/disputes/top-disputants', supportMiddleware, disputeController.getTopDisputants.bind(disputeController));
+
+/**
+ * ADMINISTRATIVO: Gestão de Saques (ADMIN + MASTER)
+ */
+router.get('/withdrawals/pending', adminMiddleware, adminWithdrawalController.getPendingWithdrawals.bind(adminWithdrawalController));
+router.get('/withdrawals/history', managerMiddleware, adminWithdrawalController.getWithdrawalHistory.bind(adminWithdrawalController));
+// SECURITY: Aprovação/rejeição com rate limiting
+router.post('/withdrawals/:id/approve', adminMiddleware, adminActionLimiter, adminWithdrawalController.approveWithdrawal.bind(adminWithdrawalController));
+router.post('/withdrawals/:id/reject', adminMiddleware, adminActionLimiter, adminWithdrawalController.rejectWithdrawal.bind(adminWithdrawalController));
 
 export default router;

@@ -27,6 +27,12 @@ router.post('/', walletController.createWallet.bind(walletController));
 // Listar todas carteiras do usuário
 router.get('/', walletController.getUserWallets.bind(walletController));
 
+// Listar saques do usuário (deve vir ANTES de /:id para não conflitar)
+router.get(
+  '/my-withdrawals',
+  walletController.getMyWithdrawals.bind(walletController)
+);
+
 // Buscar carteira por crypto e rede (deve vir ANTES de /:id para não conflitar)
 router.get(
   '/crypto/:cryptoType/network/:network',
@@ -52,6 +58,12 @@ router.post('/:id/sync', walletController.syncBalance.bind(walletController));
 router.post(
   '/:id/test-balance',
   walletController.addTestBalance.bind(walletController)
+);
+
+// Estimar custos de saque
+router.get(
+  '/:id/withdrawal-estimate',
+  walletController.getWithdrawalEstimate.bind(walletController)
 );
 
 // Solicitar saque

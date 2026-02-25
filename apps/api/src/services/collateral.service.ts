@@ -29,7 +29,10 @@ export class CollateralService {
 
     if (!wallet) {
       // Criar nova carteira HD
-      wallet = await WalletService.createWallet(userId, cryptoType, network);
+      wallet = await WalletService.createWallet(userId, cryptoType, network, {
+        source: 'COLLATERAL_GENERATE',
+        details: { endpoint: 'POST /collateral/generate', trigger: 'collateral_address' },
+      });
     }
 
     // Retornar no formato antigo para compatibilidade

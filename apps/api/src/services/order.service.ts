@@ -354,7 +354,8 @@ export class OrderService {
         const newWallet = await WalletService.createWallet(
           input.userId,
           input.cryptoType,
-          input.cryptoNetwork
+          input.cryptoNetwork,
+          { source: 'ORDER_SELL', details: { trigger: 'sell_order_creation' } }
         );
 
         console.log(`✅ Carteira HD criada: ${newWallet.address}`);
@@ -566,7 +567,8 @@ export class OrderService {
       buyerWallet = await WalletService.createWallet(
         input.userId,
         input.cryptoType,
-        input.cryptoNetwork
+        input.cryptoNetwork,
+        { source: 'ORDER_BUY', details: { trigger: 'buy_order_creation' } }
       );
       console.log(`✅ [BUY ORDER] Carteira criada: ${buyerWallet.address}`);
     }

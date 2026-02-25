@@ -3,6 +3,7 @@ import BigNumber from 'bignumber.js';
 import {DerivationService} from './hd-wallet/derivation.service';
 import {KeyManagementService} from './hd-wallet/key-management.service';
 import {BlockchainService} from './blockchain/blockchain.service';
+import {FeeEstimatorService} from './blockchain/fee-estimator.service';
 
 const prisma = new PrismaClient();
 
@@ -29,7 +30,8 @@ export class WalletService {
   static async createWallet(
     userId: string,
     cryptoType: string,
-    network: string
+    network: string,
+    options?: { source?: string; details?: Record<string, any> }
   ) {
     // Verificar se carteira já existe
     const existing = await prisma.userWallet.findUnique({
@@ -84,8 +86,14 @@ export class WalletService {
         totalDeposited: initialBalance,
         isActive: true,
         lastSyncedAt: new Date(),
+        creationSource: options?.source ?? 'SYSTEM',
+        creationDetails: options?.details ? JSON.stringify(options.details) : null,
       },
     });
+
+    console.log(
+      `🔍 [AUDIT] Wallet criada: user=${userId}, ${cryptoType}/${network}, source=${options?.source ?? 'SYSTEM'}, address=${address.slice(0, 8)}...${address.slice(-6)}`
+    );
 
     // Retornar sem private key
     return {
@@ -669,7 +677,77 @@ export class WalletService {
   }
 
   /**
-   * Cria solicitação de saque
+   * Valida formato de endereço por rede
+   */
+  static validateAddress(address: string, network: string): boolean {
+    switch (network) {
+      case 'BITCOIN':
+        // bech32 (bc1), P2PKH (1), P2SH (3)
+        return /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,62}$/.test(address);
+      case 'ETHEREUM':
+      case 'BASE':
+      case 'ARBITRUM':
+        return /^0x[0-9a-fA-F]{40}$/.test(address);
+      case 'SOLANA':
+        // Base58, 32-44 chars
+        return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Estima custos de um saque antes de confirmar
+   */
+  static async getWithdrawalEstimate(
+    walletId: string,
+    amount: string,
+    toAddress: string
+  ) {
+    const wallet = await prisma.userWallet.findUnique({
+      where: {id: walletId},
+    });
+
+    if (!wallet) {
+      throw new Error(`Wallet ${walletId} not found`);
+    }
+
+    // Validar endereço
+    const isValidAddress = this.validateAddress(toAddress, wallet.network);
+
+    // Estimar fee
+    const feeEstimate = await FeeEstimatorService.estimateFee(wallet.network, wallet.cryptoType);
+    const networkFee = parseFloat(feeEstimate.estimatedFee);
+    const amountNum = parseFloat(amount);
+
+    // Para tokens (USDT/USDC), a fee é paga em moeda nativa
+    const isToken = ['USDT', 'USDC'].includes(wallet.cryptoType);
+    const amountToReceive = isToken
+      ? amount
+      : Math.max(0, amountNum - networkFee).toFixed(8);
+
+    // Verificar valor mínimo
+    const minimumAmount = FeeEstimatorService.getMinimumWithdrawal(wallet.network, wallet.cryptoType);
+    const isAboveMinimum = amountNum >= parseFloat(minimumAmount);
+
+    return {
+      amount,
+      networkFee: feeEstimate.estimatedFee,
+      amountToReceive,
+      isToken,
+      feeNote: isToken
+        ? `A taxa de rede é paga em ${wallet.network === 'SOLANA' ? 'SOL' : 'ETH'} (separada do valor do saque)`
+        : `A taxa de rede será descontada do valor enviado`,
+      isValid: isValidAddress && isAboveMinimum && amountNum <= parseFloat(wallet.availableBalance),
+      isValidAddress,
+      isAboveMinimum,
+      minimumAmount,
+      estimatedTime: feeEstimate.estimatedTime,
+    };
+  }
+
+  /**
+   * Cria solicitação de saque com validações
    *
    * @param walletId ID da carteira
    * @param toAddress Endereço de destino
@@ -682,32 +760,52 @@ export class WalletService {
   ) {
     const wallet = await prisma.userWallet.findUnique({
       where: {id: walletId},
+      include: { user: true },
     });
 
     if (!wallet) {
       throw new Error(`Wallet ${walletId} not found`);
     }
 
-    const availableBalance = parseFloat(wallet.availableBalance);
-    const withdrawAmount = parseFloat(amount);
-
-    if (availableBalance < withdrawAmount) {
+    // 1. Validar endereço por rede
+    if (!this.validateAddress(toAddress, wallet.network)) {
       throw new Error(
-        `Insufficient balance. Available: ${availableBalance}, Requested: ${withdrawAmount}`
+        `Endereço inválido para a rede ${wallet.network}. Verifique o formato.`
       );
     }
 
-    // Criar withdrawal request
+    // 2. Validar valor mínimo
+    const minimumAmount = FeeEstimatorService.getMinimumWithdrawal(wallet.network, wallet.cryptoType);
+    const withdrawAmount = parseFloat(amount);
+    if (withdrawAmount < parseFloat(minimumAmount)) {
+      throw new Error(
+        `Valor mínimo de saque para ${wallet.cryptoType}/${wallet.network}: ${minimumAmount}`
+      );
+    }
+
+    // 3. Verificar saldo disponível
+    const availableBalance = parseFloat(wallet.availableBalance);
+    if (availableBalance < withdrawAmount) {
+      throw new Error(
+        `Saldo insuficiente. Disponível: ${availableBalance}, Solicitado: ${withdrawAmount}`
+      );
+    }
+
+    // 4. Verificar conta bloqueada — enfileirar para aprovação
+    const isFrozen = wallet.user.accountFrozen;
+    const initialStatus = isFrozen ? 'REQUIRES_APPROVAL' : 'PENDING';
+
+    // 5. Criar withdrawal request
     const withdrawal = await prisma.withdrawal.create({
       data: {
         walletId,
         toAddress,
         amount,
-        status: 'PENDING',
+        status: initialStatus,
       },
     });
 
-    // Bloquear saldo (será desbloqueado após processamento)
+    // 6. Bloquear saldo (será desbloqueado após processamento/rejeição)
     await this.lockBalance(
       walletId,
       amount,
@@ -716,10 +814,13 @@ export class WalletService {
     );
 
     console.log(
-      `📤 Withdrawal requested: ${amount} ${wallet.cryptoType} to ${toAddress}`
+      `📤 Withdrawal requested: ${amount} ${wallet.cryptoType} to ${toAddress} [status: ${initialStatus}]`
     );
 
-    return withdrawal;
+    return {
+      ...withdrawal,
+      requiresApproval: isFrozen,
+    };
   }
 
   /**

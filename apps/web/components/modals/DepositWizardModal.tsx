@@ -205,6 +205,12 @@ export default function DepositWizardModal({ isOpen, onClose }: DepositWizardMod
           {/* Step 2: Network Selector */}
           {state.step === 2 && state.selectedCrypto && (
             <div className="space-y-3">
+              {/* Aviso sobre auto-criação de carteira */}
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <p className="text-sm text-amber-800 dark:text-amber-400">
+                  ⚠️ Ao selecionar uma rede, uma carteira será criada automaticamente caso você ainda não tenha uma. O endereço gerado é permanente e vinculado à sua conta.
+                </p>
+              </div>
               {NETWORK_OPTIONS[state.selectedCrypto].map((network) => (
                 <button
                   key={network.value}
