@@ -3,9 +3,10 @@ import { prisma } from '../utils/prisma';
 /**
  * Service para gerenciar limites de transacao baseados em reputacao
  *
- * Formula: limite_diario = 1000 + (reputationScore * 100) BRL
+ * Formula padrao: limite_diario = 1000 + (reputationScore * 100) BRL
+ * Se customDailyLimit definido por admin: usa o override manual
  *
- * Exemplos:
+ * Exemplos (formula):
  * - Reputacao 0   -> Limite 1.000 BRL/dia
  * - Reputacao 10  -> Limite 2.000 BRL/dia
  * - Reputacao 50  -> Limite 6.000 BRL/dia
@@ -13,18 +14,30 @@ import { prisma } from '../utils/prisma';
  */
 class LimitService {
   /**
+   * Calcula limite pela formula padrao (sem override)
+   */
+  private calculateFormulaLimit(reputationScore: number): number {
+    return 1000 + (reputationScore * 100);
+  }
+
+  /**
    * Calcula limite diario baseado em reputacao do usuario
+   * Respeita customDailyLimit se definido por admin
    */
   async getDailyLimit(userId: string): Promise<number> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { reputationScore: true }
+      select: { reputationScore: true, customDailyLimit: true }
     });
 
-    if (!user) return 1000; // Limite padrao para usuario nao encontrado
+    if (!user) return 1000;
 
-    // Formula: 1000 + (reputacao * 100)
-    return 1000 + (user.reputationScore * 100);
+    // Se admin definiu limite personalizado, usar ele
+    if (user.customDailyLimit !== null && user.customDailyLimit !== undefined) {
+      return user.customDailyLimit;
+    }
+
+    return this.calculateFormulaLimit(user.reputationScore);
   }
 
   /**
@@ -119,14 +132,18 @@ class LimitService {
     dailyUsed: number;
     remaining: number;
     reputationScore: number;
+    isCustomLimit: boolean;
   }> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { reputationScore: true }
+      select: { reputationScore: true, customDailyLimit: true }
     });
 
     const reputationScore = user?.reputationScore || 0;
-    const dailyLimit = 1000 + (reputationScore * 100);
+    const isCustomLimit = user?.customDailyLimit !== null && user?.customDailyLimit !== undefined;
+    const dailyLimit = isCustomLimit
+      ? user!.customDailyLimit!
+      : this.calculateFormulaLimit(reputationScore);
     const dailyUsed = await this.getDailyVolume(userId);
     const remaining = Math.max(0, dailyLimit - dailyUsed);
 
@@ -136,6 +153,7 @@ class LimitService {
       dailyUsed,
       remaining,
       reputationScore,
+      isCustomLimit,
     };
   }
 
@@ -147,25 +165,45 @@ class LimitService {
     dailyUsed: number;
     remaining: number;
     reputationScore: number;
+    isCustomLimit: boolean;
+    customLimitNote?: string;
+    formulaLimit: number;
     nextMilestone: { reputation: number; limit: number } | null;
   }> {
-    const check = await this.canUserTransact(userId, 0);
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        reputationScore: true,
+        customDailyLimit: true,
+        customLimitNote: true,
+      }
+    });
+
+    const reputationScore = user?.reputationScore || 0;
+    const formulaLimit = this.calculateFormulaLimit(reputationScore);
+    const isCustomLimit = user?.customDailyLimit !== null && user?.customDailyLimit !== undefined;
+    const dailyLimit = isCustomLimit ? user!.customDailyLimit! : formulaLimit;
+    const dailyUsed = await this.getDailyVolume(userId);
+    const remaining = Math.max(0, dailyLimit - dailyUsed);
 
     // Calcular proximo milestone de reputacao
     let nextMilestone = null;
-    if (check.reputationScore < 100) {
-      const nextRep = Math.min(100, check.reputationScore + 10);
+    if (reputationScore < 100) {
+      const nextRep = Math.min(100, reputationScore + 10);
       nextMilestone = {
         reputation: nextRep,
-        limit: 1000 + (nextRep * 100),
+        limit: this.calculateFormulaLimit(nextRep),
       };
     }
 
     return {
-      dailyLimit: check.dailyLimit,
-      dailyUsed: check.dailyUsed,
-      remaining: check.remaining,
-      reputationScore: check.reputationScore,
+      dailyLimit,
+      dailyUsed,
+      remaining,
+      reputationScore,
+      isCustomLimit,
+      customLimitNote: isCustomLimit ? (user?.customLimitNote || undefined) : undefined,
+      formulaLimit,
       nextMilestone,
     };
   }

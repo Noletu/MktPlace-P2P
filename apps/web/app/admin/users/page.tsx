@@ -7,6 +7,7 @@ import FreezeAccountModal from '@/components/admin/modals/FreezeAccountModal';
 import UnfreezeAccountModal from '@/components/admin/modals/UnfreezeAccountModal';
 import ChangeRoleModal from '@/components/admin/modals/ChangeRoleModal';
 import UserDetailsModal from '@/components/admin/modals/UserDetailsModal';
+import AdjustLimitModal from '@/components/admin/modals/AdjustLimitModal';
 
 interface User {
   id: string;
@@ -20,7 +21,9 @@ interface User {
   accountFrozen?: boolean;
   frozenReason?: string;
   frozenAt?: string;
-  frozenUntil?: string; // Data/hora de auto-desbloqueio (null = permanente)
+  frozenUntil?: string;
+  customDailyLimit?: number;
+  dailyLimit?: number;
 }
 
 export default function UsersPage() {
@@ -35,6 +38,7 @@ export default function UsersPage() {
   const [showUnfreezeModal, setShowUnfreezeModal] = useState(false);
   const [showChangeRoleModal, setShowChangeRoleModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showAdjustLimitModal, setShowAdjustLimitModal] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -212,9 +216,20 @@ export default function UsersPage() {
                     />
                   </td>
                   <td className="px-4 py-2">
-                    <span className="text-sm text-gray-900 dark:text-white font-semibold">
-                      R$ {(1000 + user.reputationScore * 100).toLocaleString('pt-BR')}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-gray-900 dark:text-white font-semibold">
+                        R$ {(user.dailyLimit ?? (1000 + user.reputationScore * 100)).toLocaleString('pt-BR')}
+                      </span>
+                      {user.customDailyLimit !== undefined && user.customDailyLimit !== null ? (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-yellow-600/20 text-yellow-500 rounded font-bold">
+                          personalizado
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-gray-600/20 text-gray-500 rounded">
+                          auto
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-2">
                     <StatusBadge status={user.role} variant={getRoleBadgeVariant(user.role)} />
@@ -239,6 +254,18 @@ export default function UsersPage() {
                         title="Ver detalhes"
                       >
                         👁️
+                      </button>
+
+                      {/* Ajustar Limite */}
+                      <button
+                        onClick={() => {
+                          setSelectedUser(user);
+                          setShowAdjustLimitModal(true);
+                        }}
+                        className="p-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-sm transition"
+                        title="Ajustar limite diario"
+                      >
+                        ✏️
                       </button>
 
                       {/* Mudar Role */}
@@ -337,6 +364,19 @@ export default function UsersPage() {
           onClose={() => {
             setShowDetailsModal(false);
             setSelectedUserId(null);
+          }}
+        />
+      )}
+
+      {showAdjustLimitModal && selectedUser && (
+        <AdjustLimitModal
+          user={selectedUser}
+          onClose={() => {
+            setShowAdjustLimitModal(false);
+            setSelectedUser(null);
+          }}
+          onSuccess={() => {
+            fetchUsers();
           }}
         />
       )}

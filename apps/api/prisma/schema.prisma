@@ -25,6 +25,12 @@ model User {
   totalTransactions      Int @default(0)
   successfulTransactions Int @default(0)
 
+  // Custom daily limit (admin override)
+  customDailyLimit  Float?    // Null = formula automatica, set = override manual
+  customLimitSetBy  String?   // ID do admin que definiu
+  customLimitSetAt  DateTime? // Quando foi definido
+  customLimitNote   String?   // Nota do admin (motivo)
+
   // Cancellation tracking
   totalCancellations  Int       @default(0) // Total histórico de cancelamentos
   recentCancellations Int       @default(0) // Cancelamentos nos últimos 30 dias

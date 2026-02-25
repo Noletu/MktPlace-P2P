@@ -22,6 +22,11 @@ interface UserDetails {
     frozenReason?: string;
     frozenAt?: string;
     frozenUntil?: string;
+    dailyLimit: number;
+    formulaLimit?: number;
+    customDailyLimit?: number;
+    customLimitNote?: string;
+    customLimitSetAt?: string;
     createdAt: string;
     lastLoginAt?: string;
   };
@@ -99,6 +104,14 @@ interface UserDetails {
   }>;
 }
 
+interface ReputationBreakdown {
+  reviews: { score: number; weight: number; weighted: number; details: string };
+  transactions: { score: number; weight: number; weighted: number; details: string };
+  disputes: { score: number; weight: number; weighted: number; details: string };
+  maturity: { score: number; weight: number; weighted: number; details: string };
+  finalScore: number;
+}
+
 type TabType = 'general' | 'transactions' | 'orders' | 'disputes' | 'report' | 'audit';
 
 export default function UserDetailsModal({ userId, onClose }: UserDetailsModalProps) {
@@ -108,6 +121,9 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
   const [error, setError] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('ALL');
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+  const [breakdown, setBreakdown] = useState<ReputationBreakdown | null>(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
 
   const copyToClipboard = async (address: string) => {
     try {
@@ -121,6 +137,7 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
 
   useEffect(() => {
     fetchUserDetails();
+    fetchBreakdown();
   }, [userId]);
 
   const fetchUserDetails = async () => {
@@ -146,6 +163,45 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
       setError(err.message || 'Erro ao carregar detalhes do usuário');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchBreakdown = async () => {
+    setBreakdownLoading(true);
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://localhost:3002/api/v1/admin/users/${userId}/reputation-breakdown`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (data.success) {
+        setBreakdown(data.data);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar breakdown:', err);
+    } finally {
+      setBreakdownLoading(false);
+    }
+  };
+
+  const handleRecalculate = async () => {
+    setRecalculating(true);
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://localhost:3002/api/v1/admin/users/${userId}/recalculate-reputation`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (data.success) {
+        // Recarregar tudo
+        await fetchUserDetails();
+        await fetchBreakdown();
+      }
+    } catch (err) {
+      console.error('Erro ao recalcular:', err);
+    } finally {
+      setRecalculating(false);
     }
   };
 
@@ -370,6 +426,98 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                         </div>
                       )}
                     </div>
+                  </div>
+
+                  {/* Limite Diario */}
+                  <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4">
+                    <h5 className="font-bold text-gray-900 dark:text-white mb-4">💰 Limite Diario</h5>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Limite Ativo</p>
+                        <p className="text-2xl font-bold text-blue-400">
+                          R$ {(details.user.dailyLimit || 0).toLocaleString('pt-BR')}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Tipo</p>
+                        <p className="text-lg font-medium text-gray-900 dark:text-white">
+                          {details.user.customDailyLimit !== undefined && details.user.customDailyLimit !== null ? (
+                            <span className="text-yellow-400 font-bold">✏️ Personalizado</span>
+                          ) : (
+                            <span className="text-gray-500">🔄 Automatico (formula)</span>
+                          )}
+                        </p>
+                      </div>
+                      {details.user.formulaLimit !== undefined && (
+                        <div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">Limite pela Formula</p>
+                          <p className="text-sm text-gray-900 dark:text-white">
+                            R$ {details.user.formulaLimit.toLocaleString('pt-BR')}
+                          </p>
+                        </div>
+                      )}
+                      {details.user.customLimitNote && (
+                        <div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">Nota do Admin</p>
+                          <p className="text-sm text-gray-900 dark:text-white">{details.user.customLimitNote}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Composicao da Reputacao */}
+                  <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h5 className="font-bold text-gray-900 dark:text-white">📊 Composicao da Reputacao</h5>
+                      <button
+                        onClick={handleRecalculate}
+                        disabled={recalculating}
+                        className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition disabled:opacity-50"
+                      >
+                        {recalculating ? 'Recalculando...' : 'Recalcular'}
+                      </button>
+                    </div>
+
+                    {breakdownLoading ? (
+                      <div className="flex items-center justify-center py-6">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                        <p className="ml-2 text-sm text-gray-600 dark:text-gray-400">Carregando...</p>
+                      </div>
+                    ) : breakdown ? (
+                      <div className="space-y-3">
+                        {[
+                          { label: 'Reviews', emoji: '⭐', color: 'bg-yellow-500', data: breakdown.reviews },
+                          { label: 'Transacoes', emoji: '💸', color: 'bg-blue-500', data: breakdown.transactions },
+                          { label: 'Disputas', emoji: '⚖️', color: 'bg-purple-500', data: breakdown.disputes },
+                          { label: 'Maturidade', emoji: '📅', color: 'bg-green-500', data: breakdown.maturity },
+                        ].map(component => (
+                          <div key={component.label} className="bg-white dark:bg-gray-800 rounded-lg p-3">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium text-gray-900 dark:text-white">
+                                {component.emoji} {component.label} ({(component.data.weight * 100).toFixed(0)}%)
+                              </span>
+                              <span className="text-sm font-bold text-gray-900 dark:text-white">
+                                {component.data.score}/100 → {component.data.weighted.toFixed(1)} pts
+                              </span>
+                            </div>
+                            <div className="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-2 mb-1">
+                              <div
+                                className={`${component.color} h-2 rounded-full transition-all`}
+                                style={{ width: `${component.data.score}%` }}
+                              />
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{component.data.details}</p>
+                          </div>
+                        ))}
+
+                        <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-3 text-white">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold">Score Final</span>
+                            <span className="text-2xl font-bold">{breakdown.finalScore}/100</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               )}

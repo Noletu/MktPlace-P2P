@@ -655,12 +655,14 @@ export class TransactionService {
   }
 
   /**
-   * Atualizar reputação do usuário
+   * Atualizar contadores de transacao e recalcular reputacao composta
    *
-   * Nova formula: +10 pontos por transacao bem-sucedida, maximo 100
-   * Transacoes mal-sucedidas nao alteram a reputacao
+   * Incrementa contadores (totalTransactions, successfulTransactions)
+   * Delega calculo de reputacao ao ReputationService (score composto)
    */
   async updateUserReputation(userId: string, success: boolean): Promise<void> {
+    const { reputationService } = await import('./reputation.service');
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
     });
@@ -672,20 +674,17 @@ export class TransactionService {
       ? user.successfulTransactions + 1
       : user.successfulTransactions;
 
-    // Nova formula: +10 pontos por transacao bem-sucedida, max 100
-    // Transacoes mal-sucedidas nao alteram a reputacao
-    const newReputation = success
-      ? Math.min(100, user.reputationScore + 10)
-      : user.reputationScore;
-
+    // Atualizar SOMENTE contadores — reputacao sera recalculada pelo ReputationService
     await prisma.user.update({
       where: { id: userId },
       data: {
         totalTransactions: newTotalTransactions,
         successfulTransactions: newSuccessfulTransactions,
-        reputationScore: newReputation,
       },
     });
+
+    // Recalcular score composto
+    await reputationService.recalculateAndSave(userId);
   }
 
   /**
