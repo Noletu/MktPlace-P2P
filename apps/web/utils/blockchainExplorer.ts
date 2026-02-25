@@ -9,8 +9,8 @@ interface ExplorerConfig {
 
 const EXPLORERS: Record<NetworkType, ExplorerConfig> = {
   BITCOIN: {
-    name: 'Blockchain.info',
-    baseUrl: 'https://blockchain.info',
+    name: 'Mempool',
+    baseUrl: 'https://mempool.space',
     txPath: 'tx',
   },
   ETHEREUM: {

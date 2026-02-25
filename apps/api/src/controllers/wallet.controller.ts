@@ -1,6 +1,9 @@
 import {Request, Response} from 'express';
+import {PrismaClient} from '@prisma/client';
 import {WalletService} from '../services/wallet.service';
 import {z} from 'zod';
+
+const prisma = new PrismaClient();
 
 /**
  * Wallet Controller
@@ -36,7 +39,8 @@ export class WalletController {
       const wallet = await WalletService.createWallet(
         userId,
         validatedData.cryptoType,
-        validatedData.network
+        validatedData.network,
+        { source: 'MANUAL', details: { endpoint: 'POST /api/v1/wallets', trigger: 'user_action' } }
       );
 
       res.status(201).json({
@@ -311,6 +315,104 @@ export class WalletController {
 
       res.status(400).json({
         error: error.message || 'Error requesting withdrawal',
+      });
+    }
+  }
+
+  /**
+   * GET /api/v1/wallets/my-withdrawals
+   * Lista todos os saques do usuário (todas as carteiras)
+   */
+  async getMyWithdrawals(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({error: 'Unauthorized'});
+      }
+
+      const limit = parseInt(req.query.limit as string) || 20;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      // Buscar todas as carteiras do usuário
+      const userWallets = await prisma.userWallet.findMany({
+        where: {userId},
+        select: {id: true},
+      });
+      const walletIds = userWallets.map(w => w.id);
+
+      const [withdrawals, total] = await Promise.all([
+        prisma.withdrawal.findMany({
+          where: {walletId: {in: walletIds}},
+          include: {
+            wallet: {
+              select: {
+                cryptoType: true,
+                network: true,
+                address: true,
+              },
+            },
+          },
+          orderBy: {createdAt: 'desc'},
+          take: limit,
+          skip: offset,
+        }),
+        prisma.withdrawal.count({
+          where: {walletId: {in: walletIds}},
+        }),
+      ]);
+
+      res.json({
+        success: true,
+        data: withdrawals,
+        pagination: {total, limit, offset},
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message || 'Error fetching withdrawals',
+      });
+    }
+  }
+
+  /**
+   * GET /api/v1/wallets/:id/withdrawal-estimate
+   * Estima custos de um saque
+   */
+  async getWithdrawalEstimate(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({error: 'Unauthorized'});
+      }
+
+      const {id} = req.params;
+      const amount = req.query.amount as string;
+      const toAddress = req.query.toAddress as string;
+
+      if (!amount || !toAddress) {
+        return res.status(400).json({
+          error: 'Missing required query parameters: amount, toAddress',
+        });
+      }
+
+      // Verificar ownership
+      const wallet = await WalletService.getWallet(id);
+      if (wallet.userId !== userId) {
+        return res.status(403).json({error: 'Forbidden'});
+      }
+
+      const estimate = await WalletService.getWithdrawalEstimate(
+        id,
+        amount,
+        toAddress
+      );
+
+      res.json({
+        success: true,
+        data: estimate,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Error estimating withdrawal',
       });
     }
   }

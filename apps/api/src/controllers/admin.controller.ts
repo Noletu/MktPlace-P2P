@@ -4,6 +4,7 @@ import { auditLogService } from '../services/auditLog.service';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { platformWalletService } from '../services/platformWallet.service';
+import { platformTransferService } from '../services/platform-transfer.service';
 
 const prisma = new PrismaClient();
 
@@ -643,6 +644,154 @@ export class AdminController {
       res.status(500).json({
         success: false,
         error: error.message || 'Erro ao exportar logs',
+      });
+    }
+  }
+
+  /**
+   * ============================================
+   * TRANSFERÊNCIAS DE PLATFORM WALLETS
+   * ============================================
+   */
+
+  /**
+   * GET /admin/platform-wallets/:id/transfers
+   * Histórico de transferências de uma platform wallet
+   */
+  async getPlatformWalletTransfers(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+
+      const transfers = await platformTransferService.getTransfers(id);
+
+      res.json({
+        success: true,
+        data: transfers,
+      });
+    } catch (error: any) {
+      console.error('Erro ao buscar transferências:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar transferências',
+      });
+    }
+  }
+
+  /**
+   * GET /admin/platform-wallets/:id/transfer-estimate?amount=X&toAddress=Y
+   * Estimativa de fee para transferência
+   */
+  async getPlatformWalletTransferEstimate(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { amount, toAddress } = req.query;
+
+      if (!amount || !toAddress) {
+        return res.status(400).json({
+          success: false,
+          error: 'Parâmetros "amount" e "toAddress" são obrigatórios',
+        });
+      }
+
+      const estimate = await platformTransferService.getTransferEstimate(
+        id,
+        amount as string,
+        toAddress as string
+      );
+
+      res.json({
+        success: true,
+        data: estimate,
+      });
+    } catch (error: any) {
+      console.error('Erro ao estimar transferência:', error);
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao estimar transferência',
+      });
+    }
+  }
+
+  /**
+   * POST /admin/platform-wallets/:id/transfer
+   * Solicitar transferência (requer 2FA)
+   */
+  async requestPlatformWalletTransfer(req: Request, res: Response) {
+    try {
+      const adminId = req.user?.userId;
+      if (!adminId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Não autorizado',
+        });
+      }
+
+      const { id } = req.params;
+      const { toAddress, amount, twoFactorCode, note } = req.body;
+
+      if (!toAddress || !amount || !twoFactorCode) {
+        return res.status(400).json({
+          success: false,
+          error: 'Campos obrigatórios: toAddress, amount, twoFactorCode',
+        });
+      }
+
+      const transfer = await platformTransferService.requestTransfer({
+        platformWalletId: id,
+        toAddress,
+        amount,
+        adminId,
+        twoFactorCode,
+        note,
+      });
+
+      // Audit log via request (inclui IP e user-agent)
+      auditLogService.logFromRequest(
+        req,
+        'PLATFORM_TRANSFER_REQUESTED',
+        'PLATFORM_TRANSFER',
+        transfer.id,
+        {
+          walletId: id,
+          amount,
+          toAddress,
+          status: transfer.status,
+          txHash: transfer.txHash,
+        }
+      );
+
+      res.json({
+        success: true,
+        data: transfer,
+        message: transfer.status === 'COMPLETED'
+          ? 'Transferência realizada com sucesso'
+          : 'Transferência criada',
+      });
+    } catch (error: any) {
+      console.error('Erro ao solicitar transferência:', error);
+
+      // Audit log de falha
+      const adminId = req.user?.userId;
+      if (adminId) {
+        auditLogService.logFromRequest(
+          req,
+          'PLATFORM_TRANSFER_REQUESTED',
+          'PLATFORM_TRANSFER',
+          undefined,
+          {
+            walletId: req.params.id,
+            amount: req.body?.amount,
+            toAddress: req.body?.toAddress,
+            error: error.message,
+          },
+          false,
+          error.message
+        );
+      }
+
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao solicitar transferência',
       });
     }
   }

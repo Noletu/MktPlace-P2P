@@ -65,7 +65,10 @@ export class InternalBalanceService {
 
     if (!wallet) {
       // Criar nova carteira HD
-      wallet = await WalletService.createWallet(userId, cryptoType, network);
+      wallet = await WalletService.createWallet(userId, cryptoType, network, {
+        source: 'INTERNAL_BALANCE_ADD',
+        details: { trigger: 'add_balance' },
+      });
     }
 
     // Adicionar saldo de teste (em dev) ou registrar depósito
@@ -191,7 +194,10 @@ export class InternalBalanceService {
     let wallet = await WalletService.getWalletByUserAndCrypto(userId, cryptoType, network);
 
     if (!wallet) {
-      wallet = await WalletService.createWallet(userId, cryptoType, network);
+      wallet = await WalletService.createWallet(userId, cryptoType, network, {
+        source: 'INTERNAL_BALANCE_CREDIT',
+        details: { trigger: 'credit_deposit', txHash },
+      });
     }
 
     // Adicionar saldo

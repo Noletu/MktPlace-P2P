@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import DepositWizardModal from '@/components/modals/DepositWizardModal';
+import WithdrawWizardModal from '@/components/modals/WithdrawWizardModal';
 
 interface Balance {
   cryptoType: string;
@@ -16,16 +18,31 @@ interface Price {
   usdPrice?: string;
 }
 
+interface HDWallet {
+  id: string;
+  cryptoType: string;
+  network: string;
+  address: string;
+  balance: string;
+  availableBalance: string;
+  lockedBalance: string;
+  totalDeposited: string;
+  totalWithdrawn: string;
+}
+
 export default function CollateralSummaryWidget() {
   const router = useRouter();
   const [balances, setBalances] = useState<Balance[]>([]);
   const [prices, setPrices] = useState<Record<string, number>>({});
+  const [wallets, setWallets] = useState<HDWallet[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedAvailable, setExpandedAvailable] = useState(false);
   const [expandedLocked, setExpandedLocked] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [withdrawWizardOpen, setWithdrawWizardOpen] = useState(false);
 
   useEffect(() => {
-    Promise.all([fetchBalances(), fetchPrices()]);
+    Promise.all([fetchBalances(), fetchPrices(), fetchWallets()]);
   }, []);
 
   const fetchBalances = async () => {
@@ -41,6 +58,21 @@ export default function CollateralSummaryWidget() {
       setBalances(data.data || []);
     } catch (error) {
       console.error('Error fetching balances:', error);
+    }
+  };
+
+  const fetchWallets = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://localhost:3002/api/v1/wallets', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (data.success) {
+        setWallets(data.data || []);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar carteiras:', error);
     }
   };
 
@@ -241,9 +273,32 @@ export default function CollateralSummaryWidget() {
         )}
       </div>
 
+      {/* Botões Depositar / Sacar */}
+      <div className="flex justify-center gap-4">
+        <button
+          onClick={() => setWizardOpen(true)}
+          className="flex-1 sm:flex-none px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Depositar
+        </button>
+        <button
+          onClick={() => setWithdrawWizardOpen(true)}
+          disabled={wallets.length === 0}
+          className="flex-1 sm:flex-none px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+          </svg>
+          Sacar
+        </button>
+      </div>
+
       {/* Botão Ver Detalhes */}
       <button
-        onClick={() => router.push('/collateral-balance')}
+        onClick={() => router.push('/wallet')}
         className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
       >
         <span>Ver Detalhes Completos</span>
@@ -251,6 +306,24 @@ export default function CollateralSummaryWidget() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
       </button>
+
+      {/* Deposit Wizard Modal */}
+      <DepositWizardModal
+        isOpen={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+      />
+
+      {/* Withdraw Wizard Modal */}
+      <WithdrawWizardModal
+        isOpen={withdrawWizardOpen}
+        onClose={() => setWithdrawWizardOpen(false)}
+        wallets={wallets}
+        prices={prices}
+        onSuccess={() => {
+          Promise.all([fetchBalances(), fetchWallets()]);
+        }}
+      />
+
     </div>
   );
 }
