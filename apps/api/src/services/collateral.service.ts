@@ -207,28 +207,8 @@ export class CollateralService {
       throw new Error('Wallet not found');
     }
 
-    // Adicionar saldo de teste
-    await WalletService.addTestBalance(wallet.id, amount);
-
-    // Registrar transação simulada
-    const { prisma } = await import('../utils/prisma');
-    await prisma.walletTransaction.create({
-      data: {
-        walletId: wallet.id,
-        userId: wallet.userId,
-        type: 'DEPOSIT',
-        amount: amount,
-        balanceBefore: wallet.balance,
-        balanceAfter: (parseFloat(wallet.balance) + parseFloat(amount)).toFixed(8),
-        description: 'Simulated collateral payment (TEST)',
-        txHash: txHash || `SIMULATED_${Date.now()}`,
-        metadata: JSON.stringify({
-          source: 'simulation',
-          originalAmount: amount,
-          timestamp: new Date().toISOString(),
-        }),
-      },
-    });
+    // Creditar saldo via ledger interno (produção-safe)
+    await WalletService.creditBalance(wallet.id, amount, `Collateral payment: ${txHash || 'simulated'}`);
 
     return {
       success: true,

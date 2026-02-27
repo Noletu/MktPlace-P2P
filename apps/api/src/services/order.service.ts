@@ -797,13 +797,37 @@ export class OrderService {
       });
 
       if (providerWallet && result.collateralLockedAmount) {
-        await WalletService.lockBalance(
-          providerWallet.id,
-          result.collateralLockedAmount,
-          result.id,
-          `Colateral bloqueado para ordem BUY ${result.id}`
-        );
-        console.log(`🔒 [BUY ORDER] Saldo bloqueado: ${result.collateralLockedAmount} ${result.cryptoType}`);
+        try {
+          await WalletService.lockBalance(
+            providerWallet.id,
+            result.collateralLockedAmount,
+            result.id,
+            `Colateral bloqueado para ordem BUY ${result.id}`
+          );
+          console.log(`🔒 [BUY ORDER] Saldo bloqueado: ${result.collateralLockedAmount} ${result.cryptoType}`);
+        } catch (error) {
+          // Se falhar ao bloquear saldo, reverter order ao estado PENDING
+          console.error(`❌ [BUY ORDER] Erro ao bloquear saldo do provedor:`, (error as Error).message);
+
+          await prisma.$transaction([
+            prisma.order.update({
+              where: { id: result.id },
+              data: {
+                status: OrderStatus.PENDING,
+                providerId: null,
+                providerWalletId: null,
+                walletId: null,
+                collateralSource: null,
+                collateralLocked: false,
+                collateralLockedAmount: null,
+              },
+            }),
+            // Deletar a Transaction que foi criada
+            ...(result.transaction ? [prisma.transaction.delete({ where: { id: result.transaction.id } })] : []),
+          ]);
+
+          throw new Error(`Falha ao bloquear saldo do provedor: ${(error as Error).message}`);
+        }
       }
 
       // Enviar notificações
@@ -1236,34 +1260,37 @@ export class OrderService {
       reputationAfter = result.newReputation;
     }
 
-    // Atualizar pedido com informações de cancelamento
-    await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: OrderStatus.CANCELLED,
-        cancelledAt: new Date(),
-        cancelledBy: userId,
-        cancellationReason: reason,
-        cancellationNote: note,
-      },
+    // Transaction atômica: cancelar pedido + registrar histórico
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: OrderStatus.CANCELLED,
+          cancelledAt: new Date(),
+          cancelledBy: userId,
+          cancellationReason: reason,
+          cancellationNote: note,
+        },
+      });
+
+      await tx.cancellationHistory.create({
+        data: {
+          userId,
+          orderId,
+          role: creatorRole,
+          reason: reason as any,
+          note,
+          penaltyApplied: penalty.shouldApplyPenalty,
+          penaltyPoints: penalty.penaltyPoints,
+          reputationBefore,
+          reputationAfter,
+          orderStatus: order.status,
+          orderValue: order.brlAmount,
+        },
+      });
     });
 
-    // Criar registro no histórico
-    await cancellationHistoryService.create({
-      userId,
-      orderId,
-      role: creatorRole,
-      reason: reason as any,
-      note,
-      penaltyApplied: penalty.shouldApplyPenalty,
-      penaltyPoints: penalty.penaltyPoints,
-      reputationBefore,
-      reputationAfter,
-      orderStatus: order.status,
-      orderValue: order.brlAmount,
-    });
-
-    // Desbloquear colateral
+    // Desbloquear colateral (FORA da transaction — WalletService tem $transaction próprio)
     // SELL: colateral do criador (vendedor) em order.walletId
     // BUY: colateral do provedor em order.providerWalletId (se MATCHED)
     const walletToUnlock = isBuyOrder ? order.providerWalletId : order.walletId;
@@ -1281,7 +1308,6 @@ export class OrderService {
           `Colateral desbloqueado - pedido cancelado pelo criador`
         );
 
-        // Atualizar a ordem para marcar colateral como desbloqueado
         await prisma.order.update({
           where: { id: orderId },
           data: {
@@ -1292,8 +1318,9 @@ export class OrderService {
 
         console.log(`🔓 Saldo desbloqueado após cancelamento: ${order.collateralLockedAmount} ${order.cryptoType}`);
       } catch (error: any) {
-        console.error(`❌ Erro ao desbloquear saldo após cancelamento:`, error);
-        // Não falhar o cancelamento se houver erro no desbloqueio
+        // NÃO engolir — order já está CANCELLED mas funds ficaram travados
+        console.error(`❌ CRITICAL: Erro ao desbloquear saldo após cancelamento — funds travados no wallet ${walletToUnlock}:`, error);
+        throw new Error(`Cancelamento registrado mas falha ao desbloquear colateral: ${error.message}. Wallet ${walletToUnlock} com ${order.collateralLockedAmount} locked. Necessária intervenção admin.`);
       }
     }
 
@@ -1394,37 +1421,38 @@ export class OrderService {
       reputationAfter = result.newReputation;
     }
 
-    // Voltar pedido para PENDING (volta ao marketplace)
-    // Resetar timeoutAt para a expiração original do pedido
-    await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: OrderStatus.PENDING,
-        cancelledBy: payerId,
-        cancellationReason: reason,
-        cancellationNote: note,
-        timeoutAt: this.calculateTimeoutAt(order.customExpirationHours ?? undefined, order.manualCancelOnly ?? undefined),
-      },
-    });
+    // Transaction atômica: voltar pedido + histórico + deletar transaction
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: OrderStatus.PENDING,
+          cancelledBy: payerId,
+          cancellationReason: reason,
+          cancellationNote: note,
+          timeoutAt: this.calculateTimeoutAt(order.customExpirationHours ?? undefined, order.manualCancelOnly ?? undefined),
+        },
+      });
 
-    // Criar registro no histórico
-    await cancellationHistoryService.create({
-      userId: payerId,
-      orderId,
-      role: UserRole.BUYER,
-      reason: reason as any,
-      note,
-      penaltyApplied: penalty.shouldApplyPenalty,
-      penaltyPoints: penalty.penaltyPoints,
-      reputationBefore,
-      reputationAfter,
-      orderStatus: order.status,
-      orderValue: order.brlAmount,
-    });
+      await tx.cancellationHistory.create({
+        data: {
+          userId: payerId,
+          orderId,
+          role: UserRole.BUYER,
+          reason: reason as any,
+          note,
+          penaltyApplied: penalty.shouldApplyPenalty,
+          penaltyPoints: penalty.penaltyPoints,
+          reputationBefore,
+          reputationAfter,
+          orderStatus: order.status,
+          orderValue: order.brlAmount,
+        },
+      });
 
-    // Deletar/cancelar a transaction (desvincula o pagador)
-    await prisma.transaction.delete({
-      where: { id: transaction.id },
+      await tx.transaction.delete({
+        where: { id: transaction.id },
+      });
     });
 
     console.log(`🔄 Pedido ${orderId} voltou ao marketplace após cancelamento do pagador`);
@@ -1531,65 +1559,72 @@ export class OrderService {
       reputationAfter = result.newReputation;
     }
 
-    // Desbloquear colateral do provedor
-    if (order.collateralLocked && order.collateralLockedAmount && order.providerWalletId) {
+    // Buscar transactions ANTES da transaction atômica
+    const transactions = await this.getOrderTransactions(orderId);
+    const providerWalletId = order.providerWalletId;
+    const collateralAmount = order.collateralLockedAmount;
+    const hadCollateralLocked = order.collateralLocked && collateralAmount && providerWalletId;
+
+    // Transaction atômica: voltar pedido + histórico + deletar transaction
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: OrderStatus.PENDING,
+          cancelledBy: providerId,
+          cancellationReason: reason,
+          cancellationNote: note,
+          providerId: null,
+          providerWalletId: null,
+          walletId: null,
+          orderData: JSON.stringify({}),
+          collateralSource: null,
+          collateralConfirmed: false,
+          collateralLocked: false,
+          collateralLockedAmount: null,
+          collateralUnlockedAt: new Date(),
+          timeoutAt: this.calculateTimeoutAt(order.customExpirationHours ?? undefined, order.manualCancelOnly ?? undefined),
+        },
+      });
+
+      await tx.cancellationHistory.create({
+        data: {
+          userId: providerId,
+          orderId,
+          role: UserRole.SELLER,
+          reason: reason as any,
+          note,
+          penaltyApplied: penalty.shouldApplyPenalty,
+          penaltyPoints: penalty.penaltyPoints,
+          reputationBefore,
+          reputationAfter,
+          orderStatus: order.status,
+          orderValue: order.brlAmount,
+        },
+      });
+
+      if (transactions && transactions.length > 0) {
+        await tx.transaction.delete({
+          where: { id: transactions[0].id },
+        });
+      }
+    });
+
+    // Desbloquear colateral do provedor DEPOIS da transaction (DB já atualizado)
+    if (hadCollateralLocked) {
       try {
         await WalletService.unlockBalance(
-          order.providerWalletId,
-          order.collateralLockedAmount,
+          providerWalletId,
+          collateralAmount,
           orderId,
           `Colateral desbloqueado - provedor cancelou ordem BUY`
         );
-        console.log(`🔓 [BUY ORDER] Colateral desbloqueado: ${order.collateralLockedAmount} ${order.cryptoType}`);
+        console.log(`🔓 [BUY ORDER] Colateral desbloqueado: ${collateralAmount} ${order.cryptoType}`);
       } catch (error: any) {
-        console.error(`❌ Erro ao desbloquear colateral do provedor:`, error);
+        // NÃO engolir — order já está PENDING/collateralLocked=false, funds ficaram travados
+        console.error(`❌ [BUY ORDER] CRITICAL: Erro ao desbloquear colateral do provedor — funds travados no wallet ${providerWalletId}:`, error);
+        throw new Error(`Cancelamento registrado mas falha ao desbloquear colateral: ${error.message}. Wallet ${providerWalletId} com ${collateralAmount} locked. Necessária intervenção admin.`);
       }
-    }
-
-    // Voltar pedido para PENDING (volta ao marketplace sem provedor)
-    // Resetar timeoutAt para a expiração original do pedido
-    await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: OrderStatus.PENDING,
-        cancelledBy: providerId,
-        cancellationReason: reason,
-        cancellationNote: note,
-        // Limpar dados do provedor
-        providerId: null,
-        providerWalletId: null,
-        walletId: null,
-        orderData: JSON.stringify({}), // Limpar dados de pagamento
-        collateralSource: null,
-        collateralConfirmed: false,
-        collateralLocked: false,
-        collateralLockedAmount: null,
-        collateralUnlockedAt: new Date(),
-        timeoutAt: this.calculateTimeoutAt(order.customExpirationHours ?? undefined, order.manualCancelOnly ?? undefined),
-      },
-    });
-
-    // Criar registro no histórico
-    await cancellationHistoryService.create({
-      userId: providerId,
-      orderId,
-      role: UserRole.SELLER, // Provedor age como vendedor
-      reason: reason as any,
-      note,
-      penaltyApplied: penalty.shouldApplyPenalty,
-      penaltyPoints: penalty.penaltyPoints,
-      reputationBefore,
-      reputationAfter,
-      orderStatus: order.status,
-      orderValue: order.brlAmount,
-    });
-
-    // Deletar transaction se existir
-    const transactions = await this.getOrderTransactions(orderId);
-    if (transactions && transactions.length > 0) {
-      await prisma.transaction.delete({
-        where: { id: transactions[0].id },
-      });
     }
 
     console.log(`🔄 [BUY ORDER] ${orderId} voltou ao marketplace após cancelamento do provedor`);

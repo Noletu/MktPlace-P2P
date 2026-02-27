@@ -42,6 +42,7 @@ import { presenceMonitorWorker } from './workers/presence-monitor.worker';
 import { collateralReleaseWorker } from './workers/collateral-release.worker';
 import { chatArchiveWorker } from './workers/chat-archive.worker';
 import { withdrawalProcessorWorker } from './workers/withdrawal-processor.worker';
+import { SweepWorker } from './workers/sweep.worker';
 import { initializeSocketServer } from './socket/socket.server';
 import { initializeChatSocket } from './socket/chat.socket';
 import { initializeNotificationSocket } from './socket/notification.socket';
@@ -324,6 +325,7 @@ httpServer.listen(port, async () => {
   chatArchiveWorker.start();
   // collateralReleaseWorker.start(); // DESABILITADO: processamento agora é feito direto no transaction.service.ts
   withdrawalProcessorWorker.start(); // Processamento automático de saques
+  SweepWorker.start(); // Consolidação de fundos → hot wallet (Omnibus)
 
   // Restaurar estado do BalanceSyncWorker do banco de dados
   try {
@@ -341,7 +343,7 @@ httpServer.listen(port, async () => {
   // Iniciar job de auto-desbloqueio de contas (freeze temporário)
   startAutoUnfreezeJob();
 
-  console.log('⚙️  [workers]: Background workers started (HD wallet monitoring, order expiration, presence, chat archive, auto-unfreeze, withdrawal processor)');
+  console.log('⚙️  [workers]: Background workers started (HD wallet monitoring, order expiration, presence, chat archive, auto-unfreeze, withdrawal processor, sweep)');
 });
 
 // Exportar para uso em outros módulos

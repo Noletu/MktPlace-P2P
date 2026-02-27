@@ -4,6 +4,7 @@
  * MIGRADO: Agora usa WalletService em vez de InternalBalance deprecado
  */
 
+import BigNumber from 'bignumber.js';
 import { WalletService } from './wallet.service';
 import { internalBalanceService } from './internal-balance.service';
 
@@ -51,23 +52,23 @@ export class BalanceValidatorService {
     const issues: Array<any> = [];
 
     for (const wallet of wallets) {
-      const balance = parseFloat(wallet.balance);
-      const available = parseFloat(wallet.availableBalance);
-      const locked = parseFloat(wallet.lockedBalance);
+      const balanceBN = new BigNumber(wallet.balance);
+      const availableBN = new BigNumber(wallet.availableBalance);
+      const lockedBN = new BigNumber(wallet.lockedBalance);
 
       // Validar: balance = available + locked
-      const expected = available + locked;
-      if (Math.abs(balance - expected) > 0.00000001) {
+      const expectedBN = availableBN.plus(lockedBN);
+      if (!balanceBN.minus(expectedBN).abs().lt('0.00000001')) {
         issues.push({
           walletId: wallet.id,
           cryptoType: wallet.cryptoType,
           network: wallet.network,
-          issue: `Balance mismatch: total=${balance}, available=${available}, locked=${locked}`,
+          issue: `Balance mismatch: total=${balanceBN.toFixed(8)}, available=${availableBN.toFixed(8)}, locked=${lockedBN.toFixed(8)}`,
         });
       }
 
       // Validar valores não negativos
-      if (balance < 0 || available < 0 || locked < 0) {
+      if (balanceBN.isNegative() || availableBN.isNegative() || lockedBN.isNegative()) {
         issues.push({
           walletId: wallet.id,
           cryptoType: wallet.cryptoType,
@@ -94,14 +95,14 @@ export class BalanceValidatorService {
     let updated = 0;
 
     for (const wallet of wallets) {
-      const balance = parseFloat(wallet.balance);
-      const locked = parseFloat(wallet.lockedBalance);
-      const expectedAvailable = balance - locked;
+      const balanceBN = new BigNumber(wallet.balance);
+      const lockedBN = new BigNumber(wallet.lockedBalance);
+      const expectedAvailableBN = balanceBN.minus(lockedBN);
 
       // Se available está incorreto, corrigir
-      if (Math.abs(parseFloat(wallet.availableBalance) - expectedAvailable) > 0.00000001) {
+      if (!new BigNumber(wallet.availableBalance).minus(expectedAvailableBN).abs().lt('0.00000001')) {
         await WalletService.updateBalance(wallet.id, {
-          availableBalance: expectedAvailable.toFixed(8),
+          availableBalance: expectedAvailableBN.toFixed(8),
         });
         updated++;
       }
@@ -132,9 +133,9 @@ export class BalanceValidatorService {
     }));
 
     const totals = {
-      totalBalance: wallets.reduce((sum, w) => sum + parseFloat(w.balance), 0).toFixed(8),
-      totalAvailable: wallets.reduce((sum, w) => sum + parseFloat(w.availableBalance), 0).toFixed(8),
-      totalLocked: wallets.reduce((sum, w) => sum + parseFloat(w.lockedBalance), 0).toFixed(8),
+      totalBalance: wallets.reduce((sum, w) => sum.plus(w.balance), new BigNumber(0)).toFixed(8),
+      totalAvailable: wallets.reduce((sum, w) => sum.plus(w.availableBalance), new BigNumber(0)).toFixed(8),
+      totalLocked: wallets.reduce((sum, w) => sum.plus(w.lockedBalance), new BigNumber(0)).toFixed(8),
     };
 
     return {
@@ -195,17 +196,17 @@ export class BalanceValidatorService {
         },
       });
 
-      const totalLocked = activeOrders.reduce(
-        (sum, order) => sum + parseFloat(order.cryptoAmount),
-        0
+      const totalLockedBN = activeOrders.reduce(
+        (sum, order) => sum.plus(order.cryptoAmount),
+        new BigNumber(0)
       );
 
       // Atualizar se diferente
-      if (Math.abs(parseFloat(wallet.lockedBalance) - totalLocked) > 0.00000001) {
-        const newAvailable = parseFloat(wallet.balance) - totalLocked;
+      if (!new BigNumber(wallet.lockedBalance).minus(totalLockedBN).abs().lt('0.00000001')) {
+        const newAvailableBN = new BigNumber(wallet.balance).minus(totalLockedBN);
         await WalletService.updateBalance(wallet.id, {
-          lockedBalance: totalLocked.toFixed(8),
-          availableBalance: newAvailable.toFixed(8),
+          lockedBalance: totalLockedBN.toFixed(8),
+          availableBalance: newAvailableBN.toFixed(8),
         });
         updated++;
       }

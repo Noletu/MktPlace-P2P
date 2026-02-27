@@ -8,7 +8,6 @@
  */
 
 import { WalletService } from './wallet.service';
-import { prisma } from '../utils/prisma';
 
 export class InternalBalanceService {
   /**
@@ -71,10 +70,10 @@ export class InternalBalanceService {
       });
     }
 
-    // Adicionar saldo de teste (em dev) ou registrar depósito
-    await WalletService.addTestBalance(wallet.id, amount);
+    // Creditar saldo via ledger interno (produção-safe)
+    await WalletService.creditBalance(wallet.id, amount, `Internal credit: ${cryptoType}`);
 
-    console.log(`✅ Saldo interno atualizado (via HD Wallet): ${userId} - ${amount} ${cryptoType}`);
+    console.log(`✅ Saldo interno creditado (via HD Wallet): ${userId} - ${amount} ${cryptoType}`);
 
     // Buscar wallet atualizado
     const updated = await WalletService.getWallet(wallet.id);
@@ -200,27 +199,8 @@ export class InternalBalanceService {
       });
     }
 
-    // Adicionar saldo
-    await WalletService.addTestBalance(wallet.id, amount);
-
-    // Registrar transação de depósito
-    await prisma.walletTransaction.create({
-      data: {
-        walletId: wallet.id,
-        userId: userId,
-        type: 'DEPOSIT',
-        amount: amount,
-        balanceBefore: wallet.balance,
-        balanceAfter: (parseFloat(wallet.balance) + parseFloat(amount)).toString(),
-        description: 'Deposit credited from collateral address',
-        txHash: txHash,
-        metadata: JSON.stringify({
-          source: 'collateral_deposit',
-          originalTxHash: txHash,
-          timestamp: new Date().toISOString(),
-        }),
-      },
-    });
+    // Creditar saldo via ledger interno (produção-safe)
+    await WalletService.creditBalance(wallet.id, amount, `Deposit credit: ${txHash}`);
 
     console.log(`✅ Depósito creditado (via HD Wallet): ${amount} ${cryptoType} - TX: ${txHash}`);
 

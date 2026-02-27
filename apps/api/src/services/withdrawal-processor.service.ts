@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import BigNumber from 'bignumber.js';
 import { KeyManagementService } from './hd-wallet/key-management.service';
 import { TransactionSenderService } from './blockchain/transaction-sender.service';
 import { FeeEstimatorService } from './blockchain/fee-estimator.service';
@@ -71,16 +72,16 @@ export class WithdrawalProcessorService {
     }
 
     // 3. Verificar valor mínimo (amount deve cobrir pelo menos a fee)
-    const amount = parseFloat(withdrawal.amount);
-    const networkFee = parseFloat(feeEstimate.estimatedFee);
+    const amountBN = new BigNumber(withdrawal.amount);
+    const networkFeeBN = new BigNumber(feeEstimate.estimatedFee);
 
     // Para tokens ERC-20/SPL, a fee é paga em moeda nativa (ETH/SOL), não no token
     // Então o amount do saque não precisa cobrir a fee do gas
     const isToken = ['USDT', 'USDC'].includes(wallet.cryptoType);
 
-    if (!isToken && amount <= networkFee) {
-      logger.error(`[WITHDRAWAL] Amount ${amount} is less than network fee ${networkFee}`);
-      await this.markFailed(withdrawalId, `Withdrawal amount (${amount}) is less than network fee (${networkFee})`);
+    if (!isToken && amountBN.lte(networkFeeBN)) {
+      logger.error(`[WITHDRAWAL] Amount ${amountBN.toFixed(8)} is less than network fee ${networkFeeBN.toFixed(8)}`);
+      await this.markFailed(withdrawalId, `Withdrawal amount (${amountBN.toFixed(8)}) is less than network fee (${networkFeeBN.toFixed(8)})`);
       // Desbloquear saldo
       await this.unlockAndRefund(withdrawal);
       return;
@@ -91,7 +92,7 @@ export class WithdrawalProcessorService {
     // Para moeda nativa (BTC, ETH, SOL): descontar fee do valor
     const amountToSend = isToken
       ? withdrawal.amount
-      : (amount - networkFee).toFixed(8);
+      : amountBN.minus(networkFeeBN).toFixed(8);
 
     // 5. Marcar como PROCESSING
     await prisma.withdrawal.update({
@@ -103,20 +104,57 @@ export class WithdrawalProcessorService {
       },
     });
 
-    // 6. Descriptografar private key
-    let privateKey: string;
-    try {
-      privateKey = KeyManagementService.decryptPrivateKey(
-        wallet.encryptedPrivateKey,
-        wallet.userId
-      );
-    } catch (error: any) {
-      logger.error(`[WITHDRAWAL] Failed to decrypt key for wallet ${wallet.id}:`, error.message);
-      await this.markFailed(withdrawalId, 'Failed to decrypt private key');
+    // 6. Buscar hot wallet (PlatformWallet) — saques saem do hot wallet (Omnibus)
+    const hotWallet = await prisma.platformWallet.findUnique({
+      where: {
+        cryptoType_network: {
+          cryptoType: wallet.cryptoType,
+          network: wallet.network,
+        },
+      },
+    });
+
+    if (!hotWallet) {
+      logger.error(`[WITHDRAWAL] Hot wallet not found: ${wallet.cryptoType}/${wallet.network}`);
+      await this.markFailed(withdrawalId, `Hot wallet not found: ${wallet.cryptoType}/${wallet.network}`);
       return;
     }
 
-    // 7. Enviar transação on-chain
+    // 7. Verificar solvência do hot wallet
+    const hotBalanceBN = new BigNumber(hotWallet.balance);
+    const withdrawAmountBN = new BigNumber(withdrawal.amount);
+    const totalNeededBN = isToken ? withdrawAmountBN : withdrawAmountBN.plus(networkFeeBN);
+
+    if (hotBalanceBN.lt(totalNeededBN)) {
+      logger.error(
+        `[WITHDRAWAL] Insufficient hot wallet balance: ${hotBalanceBN.toFixed(8)} < ${totalNeededBN.toFixed(8)} (${wallet.cryptoType}/${wallet.network})`
+      );
+      await prisma.withdrawal.update({
+        where: { id: withdrawalId },
+        data: {
+          status: 'REQUIRES_APPROVAL',
+          lastError: `Insufficient hot wallet balance: ${hotBalanceBN.toFixed(8)} < ${totalNeededBN.toFixed(8)}`,
+        },
+      });
+      return;
+    }
+
+    // 8. Descriptografar private key do HOT WALLET
+    let privateKey: string;
+    try {
+      privateKey = KeyManagementService.decryptPrivateKey(
+        hotWallet.encryptedPrivateKey,
+        KeyManagementService.PLATFORM_ID
+      );
+    } catch (error: any) {
+      logger.error(`[WITHDRAWAL] Failed to decrypt hot wallet key for ${wallet.cryptoType}/${wallet.network}:`, error.message);
+      await this.markFailed(withdrawalId, 'Failed to decrypt hot wallet private key');
+      return;
+    }
+
+    const fromAddress = hotWallet.address;
+
+    // 9. Enviar transação on-chain DO HOT WALLET
     try {
       let result;
 
@@ -124,7 +162,7 @@ export class WithdrawalProcessorService {
         case 'BITCOIN':
           result = await TransactionSenderService.sendBitcoinTransaction(
             privateKey,
-            wallet.address,
+            fromAddress,          // hot wallet address
             withdrawal.toAddress,
             parseFloat(amountToSend),
             feeEstimate.feeRate || 10
@@ -157,56 +195,93 @@ export class WithdrawalProcessorService {
           throw new Error(`Unsupported network: ${wallet.network}`);
       }
 
-      // 8. Atualizar Withdrawal com txHash
-      await prisma.withdrawal.update({
-        where: { id: withdrawalId },
-        data: {
-          txHash: result.txHash,
-          networkFee: result.networkFee,
-          status: 'COMPLETED',
-          completedAt: new Date(),
-        },
-      });
+      // 10-13. Transaction atômica: withdrawal COMPLETED + deduzir usuário + hot wallet + WalletTransactions
+      const deductBN = new BigNumber(withdrawal.amount);
+      const lockedBN = new BigNumber(wallet.lockedBalance);
+      if (lockedBN.lt(deductBN)) {
+        throw new Error('Insufficient locked balance');
+      }
 
-      // 9. Deduzir do saldo total (o lockBalance já reservou o valor)
-      await WalletService.deductBalance(
-        wallet.id,
-        withdrawal.amount,
-        `Withdrawal to ${withdrawal.toAddress}`,
-        true // from locked balance
-      );
+      const newLockedBalance = lockedBN.minus(deductBN).toFixed(8);
+      const newBalance = new BigNumber(wallet.balance).minus(deductBN).toFixed(8);
+      const newAvailableBalance = new BigNumber(newBalance).minus(newLockedBalance).toFixed(8);
+      const newTotalUsed = new BigNumber(wallet.totalUsed).plus(deductBN).toFixed(8);
+      const newTotalWithdrawn = new BigNumber(wallet.totalWithdrawn).plus(deductBN).toFixed(8);
 
-      // Atualizar totalWithdrawn
-      await prisma.userWallet.update({
-        where: { id: wallet.id },
-        data: {
-          totalWithdrawn: (
-            parseFloat(wallet.totalWithdrawn) + parseFloat(withdrawal.amount)
-          ).toString(),
-        },
-      });
-
-      // 10. Registrar transação de saque
-      await prisma.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          userId: wallet.userId,
-          type: 'WITHDRAWAL',
-          amount: withdrawal.amount,
-          balanceBefore: wallet.balance,
-          balanceAfter: (parseFloat(wallet.balance) - parseFloat(withdrawal.amount)).toString(),
-          txHash: result.txHash,
-          description: `Saque para ${withdrawal.toAddress}`,
-          metadata: JSON.stringify({
-            toAddress: withdrawal.toAddress,
+      await prisma.$transaction(async (tx) => {
+        // 0. Marcar withdrawal como COMPLETED (dentro da tx!)
+        await tx.withdrawal.update({
+          where: { id: withdrawalId },
+          data: {
+            txHash: result.txHash,
             networkFee: result.networkFee,
-            amountSent: amountToSend,
-            withdrawalId,
-          }),
-        },
+            status: 'COMPLETED',
+            completedAt: new Date(),
+          },
+        });
+
+        // 1. Deduzir do usuário (inlinado de deductBalance)
+        await tx.userWallet.update({
+          where: { id: wallet.id },
+          data: {
+            balance: newBalance,
+            availableBalance: newAvailableBalance,
+            lockedBalance: newLockedBalance,
+            totalUsed: newTotalUsed,
+            totalWithdrawn: newTotalWithdrawn,
+          },
+        });
+
+        // 2. WalletTransaction DEDUCT (usuário)
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            userId: wallet.userId,
+            type: 'DEDUCT',
+            amount: withdrawal.amount,
+            balanceBefore: wallet.balance,
+            balanceAfter: newBalance,
+            description: `Withdrawal to ${withdrawal.toAddress}`,
+            metadata: JSON.stringify({
+              fromLocked: true,
+              timestamp: new Date().toISOString(),
+            }),
+          },
+        });
+
+        // 3. Decrementar hot wallet
+        await tx.platformWallet.update({
+          where: { id: hotWallet.id },
+          data: {
+            balance: hotBalanceBN.minus(withdrawAmountBN).toFixed(8),
+            totalWithdrawn: new BigNumber(hotWallet.totalWithdrawn).plus(withdrawAmountBN).toFixed(8),
+          },
+        });
+
+        // 4. WalletTransaction WITHDRAWAL (registro)
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            userId: wallet.userId,
+            type: 'WITHDRAWAL',
+            amount: withdrawal.amount,
+            balanceBefore: wallet.balance,
+            balanceAfter: newBalance,
+            txHash: result.txHash,
+            description: `Saque para ${withdrawal.toAddress} (via hot wallet)`,
+            metadata: JSON.stringify({
+              toAddress: withdrawal.toAddress,
+              fromAddress,
+              networkFee: result.networkFee,
+              amountSent: amountToSend,
+              withdrawalId,
+              hotWalletId: hotWallet.id,
+            }),
+          },
+        });
       });
 
-      // 11. Notificar usuário
+      // 14. Notificar usuário
       try {
         await notificationService.notifyWithdrawalProcessed(
           wallet.userId,
@@ -219,7 +294,7 @@ export class WithdrawalProcessorService {
       }
 
       logger.info(
-        `[WITHDRAWAL] Completed: ${withdrawalId}, txHash: ${result.txHash}, amount: ${amountToSend} ${wallet.cryptoType}`
+        `[WITHDRAWAL] Completed: ${withdrawalId}, txHash: ${result.txHash}, amount: ${amountToSend} ${wallet.cryptoType} (from hot wallet ${fromAddress})`
       );
     } catch (error: any) {
       logger.error(`[WITHDRAWAL] Transaction send failed for ${withdrawalId}:`, error.message);

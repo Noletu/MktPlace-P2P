@@ -1,42 +1,39 @@
 import {PrismaClient} from '@prisma/client';
 import {BlockchainService} from '../services/blockchain/blockchain.service';
 import {WorkerStateService} from '../services/workerState.service';
+import BigNumber from 'bignumber.js';
 
 const prisma = new PrismaClient();
 
 /**
- * Balance Sync Worker
+ * Balance Sync Worker (Omnibus Architecture)
  *
- * Sincroniza saldos on-chain com banco de dados periodicamente.
+ * Monitora APENAS PlatformWallets (hot wallets).
+ * UserWallets agora usam ledger interno — saldo NUNCA é sobrescrito pelo on-chain.
  *
  * Execução: A cada 5 minutos
  *
  * Propósito:
- * - Reconciliar discrepâncias entre saldo salvo e saldo real
- * - Detectar saques feitos fora da plataforma (se usuário tiver private key)
- * - Manter dados atualizados mesmo sem depósitos
- * - Alertar sobre inconsistências graves
+ * - Sincronizar saldo on-chain das hot wallets (PlatformWallet)
+ * - Verificação de solvência: hot wallet balance >= soma UserWallet.balance
+ * - Alertar sobre insolvência (hot wallet < saldo dos usuários)
  */
 
 export class BalanceSyncWorker {
   private static intervalId: NodeJS.Timeout | null = null;
-  private static isExecuting: boolean = false; // Flag para prevenir execuções concorrentes
+  private static isExecuting: boolean = false;
 
-  /**
-   * Inicia o worker
-   */
   static async start() {
     if (this.intervalId) {
       console.log('⚠️  Balance Sync já está rodando');
       return;
     }
 
-    console.log('🔄 Balance Sync Worker iniciado (a cada 5min)');
+    console.log('🔄 Balance Sync Worker iniciado (a cada 5min) — modo Omnibus (só PlatformWallet)');
 
-    // Salvar estado no banco
     await WorkerStateService.setState('BalanceSyncWorker', true);
 
-    // Executar após 1 minuto (dar tempo do deposit monitor rodar primeiro)
+    // Executar após 1 minuto
     setTimeout(() => {
       this.run();
     }, 60000);
@@ -44,36 +41,25 @@ export class BalanceSyncWorker {
     // Executar a cada 5 minutos
     this.intervalId = setInterval(() => {
       this.run();
-    }, 300000); // 5 minutos
+    }, 300000);
   }
 
-  /**
-   * Para o worker
-   */
   static async stop() {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
-      this.isExecuting = false; // Resetar flag de execução
+      this.isExecuting = false;
       console.log('🛑 Balance Sync Worker parado');
 
-      // Salvar estado no banco
       await WorkerStateService.setState('BalanceSyncWorker', false);
     }
   }
 
-  /**
-   * Verifica se o worker está rodando
-   */
   static isRunning(): boolean {
     return this.intervalId !== null;
   }
 
-  /**
-   * Executa sincronização completa
-   */
   static async run() {
-    // Prevenir execuções concorrentes
     if (this.isExecuting) {
       console.log('⏭️  Balance Sync: já executando, pulando...');
       return;
@@ -82,37 +68,33 @@ export class BalanceSyncWorker {
     this.isExecuting = true;
 
     try {
-      console.log('\n🔄 [Balance Sync] Sincronizando saldos...');
+      console.log('\n🔄 [Balance Sync] Sincronizando hot wallets (PlatformWallet)...');
 
-      // Buscar todas carteiras ativas
-      const wallets = await prisma.userWallet.findMany({
+      // Buscar todas as platform wallets ativas
+      const platformWallets = await prisma.platformWallet.findMany({
         where: {isActive: true},
-        include: {user: true},
       });
 
-      console.log(`   Sincronizando ${wallets.length} carteiras`);
+      console.log(`   Sincronizando ${platformWallets.length} hot wallets`);
 
       let synced = 0;
-      let discrepancies = 0;
 
-      // Processar cada carteira
-      for (const wallet of wallets) {
+      for (const hotWallet of platformWallets) {
         try {
-          const hasDiscrepancy = await this.syncWalletBalance(wallet);
-          if (hasDiscrepancy) discrepancies++;
+          await this.syncHotWalletBalance(hotWallet);
           synced++;
         } catch (error) {
           console.error(
-            `   ❌ Erro ao sincronizar carteira ${wallet.id}:`,
+            `   ❌ Erro ao sincronizar hot wallet ${hotWallet.cryptoType}/${hotWallet.network}:`,
             (error as Error).message
           );
         }
       }
 
-      console.log(`   ✅ ${synced} carteiras sincronizadas`);
-      if (discrepancies > 0) {
-        console.log(`   ⚠️  ${discrepancies} discrepâncias encontradas`);
-      }
+      console.log(`   ✅ ${synced} hot wallets sincronizadas`);
+
+      // Verificação de solvência
+      await this.checkSolvency(platformWallets);
     } catch (error) {
       console.error('❌ [Balance Sync] Erro:', (error as Error).message);
     } finally {
@@ -121,125 +103,79 @@ export class BalanceSyncWorker {
   }
 
   /**
-   * Sincroniza saldo de uma carteira específica
+   * Sincroniza saldo on-chain de uma PlatformWallet (hot wallet)
    */
-  private static async syncWalletBalance(wallet: any): Promise<boolean> {
-    // Consultar saldo on-chain
+  private static async syncHotWalletBalance(hotWallet: any): Promise<void> {
     const onChainBalance = await BlockchainService.getBalance(
-      wallet.address,
-      wallet.network
+      hotWallet.address,
+      hotWallet.network
     );
 
-    // Comparar com saldo salvo
-    const savedBalance = parseFloat(wallet.balance);
+    const savedBalance = parseFloat(hotWallet.balance);
     const currentBalance = parseFloat(onChainBalance);
 
-    // Tolerância para diferenças de arredondamento
     const diff = Math.abs(currentBalance - savedBalance);
-    if (diff < 0.00000001) {
-      // Saldo igual, atualizar apenas lastSyncedAt
-      await prisma.userWallet.update({
-        where: {id: wallet.id},
-        data: {lastSyncedAt: new Date()},
-      });
-      return false;
-    }
-
-    // Discrepância detectada!
-    const changePercent = ((currentBalance - savedBalance) / savedBalance) * 100;
-
-    console.log(
-      `   ⚠️  Discrepância em ${wallet.cryptoType}/${wallet.network}:`,
-      `Salvo: ${savedBalance}, Real: ${currentBalance} (${changePercent.toFixed(2)}%)`
-    );
-
-    // Verificar se é discrepância grave (>10%)
-    if (Math.abs(changePercent) > 10) {
-      console.error(
-        `   🚨 ALERTA: Discrepância grave (>10%) em carteira ${wallet.id}!`
+    if (diff > 0.00000001) {
+      console.log(
+        `   📊 Hot wallet ${hotWallet.cryptoType}/${hotWallet.network}:`,
+        `${savedBalance} → ${currentBalance}`
       );
-      console.error(`      Usuário: ${wallet.userId}`);
-      console.error(`      Crypto: ${wallet.cryptoType}/${wallet.network}`);
-      console.error(`      Endereço: ${wallet.address}`);
-      console.error(`      Saldo salvo: ${savedBalance}`);
-      console.error(`      Saldo real: ${currentBalance}`);
-
-      // TODO: Enviar alerta para admin
-      // TODO: Pausar carteira para investigação
     }
 
-    // Atualizar saldo no banco
-    const newAvailableBalance = Math.max(
-      0,
-      currentBalance - parseFloat(wallet.lockedBalance)
-    );
-
-    await prisma.userWallet.update({
-      where: {id: wallet.id},
+    await prisma.platformWallet.update({
+      where: {id: hotWallet.id},
       data: {
         balance: onChainBalance,
-        availableBalance: newAvailableBalance.toString(),
+        availableBalance: onChainBalance,
         lastSyncedAt: new Date(),
       },
     });
-
-    // Registrar reconciliação
-    await this.recordReconciliation(wallet, savedBalance, currentBalance);
-
-    return true;
   }
 
   /**
-   * Registra reconciliação de saldo no histórico
+   * Verificação de solvência: hot wallet balance vs soma dos saldos dos usuários
+   * Se hot wallet < soma dos usuários → ALERTA CRÍTICO
    */
-  private static async recordReconciliation(
-    wallet: any,
-    oldBalance: number,
-    newBalance: number
-  ) {
-    const diff = newBalance - oldBalance;
+  private static async checkSolvency(platformWallets: any[]): Promise<void> {
+    console.log('   🔍 Verificando solvência...');
 
-    await prisma.walletTransaction.create({
-      data: {
-        walletId: wallet.id,
-        userId: wallet.userId,
-        type: diff > 0 ? 'DEPOSIT' : 'WITHDRAWAL',
-        amount: Math.abs(diff).toString(),
-        balanceBefore: oldBalance.toString(),
-        balanceAfter: newBalance.toString(),
-        description: `Reconciliação de saldo (sync automático)`,
-        metadata: JSON.stringify({
-          source: 'balance-sync-worker',
-          timestamp: new Date().toISOString(),
-          network: wallet.network,
-        }),
-      },
-    });
-  }
+    for (const hotWallet of platformWallets) {
+      // Somar todos os saldos de UserWallet para esta crypto/rede
+      const userWallets = await prisma.userWallet.findMany({
+        where: {
+          cryptoType: hotWallet.cryptoType,
+          network: hotWallet.network,
+          isActive: true,
+        },
+        select: {balance: true},
+      });
 
-  /**
-   * Força sincronização de uma carteira específica (uso manual/admin)
-   */
-  static async forceSyncWallet(walletId: string): Promise<void> {
-    const wallet = await prisma.userWallet.findUnique({
-      where: {id: walletId},
-      include: {user: true},
-    });
+      const totalUserBalance = userWallets.reduce(
+        (sum, w) => sum.plus(w.balance),
+        new BigNumber(0)
+      );
 
-    if (!wallet) {
-      throw new Error(`Wallet ${walletId} not found`);
+      const hotBalance = new BigNumber(hotWallet.balance);
+      const delta = hotBalance.minus(totalUserBalance);
+
+      if (delta.lt(0)) {
+        console.error(
+          `   🚨 ALERTA SOLVÊNCIA: ${hotWallet.cryptoType}/${hotWallet.network}`,
+          `Hot wallet: ${hotBalance.toString()}, Usuários: ${totalUserBalance.toString()},`,
+          `Déficit: ${delta.abs().toString()}`
+        );
+      } else {
+        console.log(
+          `   ✅ ${hotWallet.cryptoType}/${hotWallet.network}: solvente`,
+          `(hot: ${hotBalance.toString()}, users: ${totalUserBalance.toString()}, surplus: ${delta.toString()})`
+        );
+      }
     }
-
-    console.log(`🔄 Forçando sincronização da carteira ${walletId}...`);
-    await this.syncWalletBalance(wallet);
-    console.log(`✅ Carteira ${walletId} sincronizada`);
   }
 }
 
 // Worker controlado manualmente via endpoints HTTP
-// Para iniciar: POST /api/v1/workers/balance-sync/start
-// Para parar: POST /api/v1/workers/balance-sync/stop
-console.log('⏭️  BalanceSyncWorker em modo manual (controle via API)');
+console.log('⏭️  BalanceSyncWorker em modo manual (controle via API) — Omnibus mode');
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
