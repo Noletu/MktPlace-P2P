@@ -925,6 +925,59 @@ export class AdminController {
     }
   }
 
+  /**
+   * ============================================
+   * ADMIN: RESETAR SENHA DE USUARIO
+   * ============================================
+   */
+
+  /**
+   * POST /admin/users/:id/reset-password
+   * Admin reseta a senha de um usuario (gera link de reset + envia email)
+   */
+  async adminResetUserPassword(req: Request, res: Response) {
+    try {
+      const adminId = req.user?.userId;
+      if (!adminId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Nao autorizado',
+        });
+      }
+
+      const { id } = req.params;
+      const { disable2FA } = req.body;
+
+      const result = await adminService.adminResetUserPassword(adminId, id, {
+        disable2FA: disable2FA === true,
+      });
+
+      // Audit log via request (inclui IP e user-agent)
+      await auditLogService.logFromRequest(
+        req,
+        'ADMIN_RESET_PASSWORD',
+        'USER',
+        id,
+        { disable2FA: disable2FA === true }
+      );
+
+      res.json({
+        success: true,
+        data: {
+          resetLink: result.resetLink,
+          emailSent: true,
+        },
+        message: 'Link de reset enviado por email ao usuario',
+      });
+    } catch (error: any) {
+      console.error('Erro ao resetar senha do usuario:', error);
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao resetar senha do usuario',
+      });
+    }
+  }
+
   // Helper para converter logs em CSV
   private logsToCSV(logs: any[]): string {
     if (logs.length === 0) return 'No data';

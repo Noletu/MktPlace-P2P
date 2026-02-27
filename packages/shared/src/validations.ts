@@ -70,6 +70,7 @@ export const resetPasswordSchema = z.object({
   email: z.string().email('Email invalido'),
   token: z.string().min(1, 'Token e obrigatorio'),
   newPassword: strongPasswordSchema,
+  twoFactorToken: z.string().optional(),
 });
 
 // Order schemas

@@ -8,6 +8,7 @@ import UnfreezeAccountModal from '@/components/admin/modals/UnfreezeAccountModal
 import ChangeRoleModal from '@/components/admin/modals/ChangeRoleModal';
 import UserDetailsModal from '@/components/admin/modals/UserDetailsModal';
 import AdjustLimitModal from '@/components/admin/modals/AdjustLimitModal';
+import ResetPasswordModal from '@/components/admin/modals/ResetPasswordModal';
 
 interface User {
   id: string;
@@ -24,6 +25,7 @@ interface User {
   frozenUntil?: string;
   customDailyLimit?: number;
   dailyLimit?: number;
+  twoFactorEnabled?: boolean;
 }
 
 export default function UsersPage() {
@@ -39,6 +41,7 @@ export default function UsersPage() {
   const [showChangeRoleModal, setShowChangeRoleModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showAdjustLimitModal, setShowAdjustLimitModal] = useState(false);
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -280,6 +283,18 @@ export default function UsersPage() {
                         🔄
                       </button>
 
+                      {/* Resetar Senha */}
+                      <button
+                        onClick={() => {
+                          setSelectedUser(user);
+                          setShowResetPasswordModal(true);
+                        }}
+                        className="p-2 bg-orange-600 hover:bg-orange-700 text-white rounded text-sm transition"
+                        title="Resetar senha"
+                      >
+                        🔑
+                      </button>
+
                       {/* Bloquear/Desbloquear */}
                       {user.accountFrozen ? (
                         <button
@@ -373,6 +388,19 @@ export default function UsersPage() {
           user={selectedUser}
           onClose={() => {
             setShowAdjustLimitModal(false);
+            setSelectedUser(null);
+          }}
+          onSuccess={() => {
+            fetchUsers();
+          }}
+        />
+      )}
+
+      {showResetPasswordModal && selectedUser && (
+        <ResetPasswordModal
+          user={selectedUser}
+          onClose={() => {
+            setShowResetPasswordModal(false);
             setSelectedUser(null);
           }}
           onSuccess={() => {

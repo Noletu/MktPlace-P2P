@@ -1,6 +1,8 @@
 import { PrismaClient } from '@prisma/client';
+import crypto from 'crypto';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from './auditLog.service';
 import { notificationService } from './notification.service';
+import { emailService } from './email.service';
 
 const prisma = new PrismaClient();
 
@@ -319,6 +321,7 @@ export class AdminService {
         frozenAt: true,
         frozenUntil: true,
         customDailyLimit: true,
+        twoFactorEnabled: true,
         // RBAC: Incluir role relation
         role: {
           select: {
@@ -1507,6 +1510,131 @@ export class AdminService {
       // Audit log completo
       auditLog: userDetails.auditLog,
     };
+  }
+
+  /**
+   * ============================================
+   * ADMIN: RESETAR SENHA DE USUARIO
+   * ============================================
+   */
+
+  async adminResetUserPassword(
+    adminId: string,
+    targetUserId: string,
+    options?: { disable2FA?: boolean }
+  ): Promise<{ resetLink: string }> {
+    // 1. Verificar que admin tem nivel ADMIN ou MASTER
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+      include: {
+        role: { select: { slug: true, level: true } },
+      },
+    });
+
+    if (!admin) {
+      throw new Error('Admin nao encontrado');
+    }
+
+    const adminRole = admin.role?.slug?.toUpperCase() || admin.legacyRole;
+    const adminLevel = admin.role?.level || 0;
+
+    if (adminLevel < 80) {
+      throw new Error('Apenas ADMIN ou MASTER podem resetar senhas');
+    }
+
+    // 2. Buscar usuario alvo
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      include: {
+        role: { select: { slug: true, level: true } },
+      },
+    });
+
+    if (!targetUser) {
+      throw new Error('Usuario nao encontrado');
+    }
+
+    const targetRole = targetUser.role?.slug?.toUpperCase() || targetUser.legacyRole;
+    const targetLevel = targetUser.role?.level || 0;
+
+    // Nao pode resetar senha de alguem de nivel superior ou igual
+    if (targetLevel >= adminLevel) {
+      throw new Error('Voce nao tem permissao para resetar a senha deste usuario');
+    }
+
+    // 3. Gerar token de reset (mesma logica do requestPasswordReset)
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
+
+    const updateData: any = {
+      passwordResetToken: hashedToken,
+      passwordResetExpires: expires,
+    };
+
+    // 4. Se disable2FA === true: desabilitar 2FA do usuario
+    if (options?.disable2FA) {
+      updateData.twoFactorEnabled = false;
+      updateData.twoFactorSecret = null;
+      updateData.twoFactorBackupCodes = null;
+    }
+
+    await prisma.user.update({
+      where: { id: targetUserId },
+      data: updateData,
+    });
+
+    // 5. Enviar email de reset ao usuario
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const resetLink = `${frontendUrl}/reset-password?token=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(targetUser.email)}`;
+
+    try {
+      await emailService.sendPasswordResetEmail(targetUser.email, rawToken);
+    } catch (emailError) {
+      console.error('[ADMIN] Error sending reset email:', emailError);
+    }
+
+    // 6. Registrar no audit log
+    await this.logAdminAction({
+      adminId,
+      action: 'ADMIN_RESET_USER_PASSWORD',
+      resource: 'USER',
+      resourceId: targetUserId,
+      metadata: JSON.stringify({
+        targetEmail: targetUser.email,
+        targetRole,
+        adminRole,
+        disable2FA: options?.disable2FA || false,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+
+    // Audit log moderno
+    await auditLogService.log({
+      userId: adminId,
+      email: admin.email,
+      role: adminRole,
+      action: 'ADMIN_RESET_PASSWORD',
+      resource: AUDIT_RESOURCES.USER,
+      resourceId: targetUserId,
+      metadata: {
+        targetEmail: targetUser.email,
+        targetRole,
+        disable2FA: options?.disable2FA || false,
+      },
+    });
+
+    // Notificar usuario
+    await notificationService.createNotification({
+      userId: targetUserId,
+      type: 'PASSWORD_RESET_BY_ADMIN',
+      category: 'SECURITY',
+      title: 'Senha resetada por administrador',
+      message: `Um administrador solicitou a redefinicao da sua senha.${options?.disable2FA ? ' O 2FA da sua conta foi desativado.' : ''} Verifique seu email para o link de redefinicao.`,
+      priority: 'HIGH',
+    });
+
+    return { resetLink };
   }
 
   /**

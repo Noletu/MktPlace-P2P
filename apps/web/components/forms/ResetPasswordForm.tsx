@@ -13,6 +13,8 @@ export default function ResetPasswordForm() {
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [twoFactorToken, setTwoFactorToken] = useState('');
+  const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -118,13 +120,27 @@ export default function ResetPasswordForm() {
     setLoading(true);
 
     try {
+      const body: any = { email, token, newPassword };
+
+      // Se 2FA e necessario, incluir o token
+      if (requiresTwoFactor && twoFactorToken) {
+        body.twoFactorToken = twoFactorToken;
+      }
+
       const response = await fetch(getApiUrl('auth/reset-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, token, newPassword }),
+        body: JSON.stringify(body),
       });
 
       const data = await response.json();
+
+      // Se 2FA e necessario
+      if (data.requiresTwoFactor) {
+        setRequiresTwoFactor(true);
+        setLoading(false);
+        return;
+      }
 
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Erro ao redefinir senha');
@@ -203,6 +219,24 @@ export default function ResetPasswordForm() {
         )}
       </div>
 
+      {/* Campo 2FA (aparece quando backend exige) */}
+      {requiresTwoFactor && (
+        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-400 dark:border-yellow-700 rounded-lg">
+          <p className="text-sm text-yellow-800 dark:text-yellow-300 mb-3 font-medium">
+            Sua conta possui 2FA ativado. Digite o codigo do seu app autenticador ou um backup code:
+          </p>
+          <input
+            type="text"
+            value={twoFactorToken}
+            onChange={(e) => setTwoFactorToken(e.target.value.replace(/\s/g, ''))}
+            placeholder="000000"
+            maxLength={8}
+            className="w-full px-4 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600 text-center text-2xl tracking-widest font-mono focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+            autoFocus
+          />
+        </div>
+      )}
+
       {error && (
         <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-800 text-red-700 dark:text-red-400 rounded">
           {error}
@@ -211,10 +245,10 @@ export default function ResetPasswordForm() {
 
       <button
         type="submit"
-        disabled={loading || !passwordValid || !passwordsMatch}
+        disabled={loading || !passwordValid || !passwordsMatch || (requiresTwoFactor && !twoFactorToken)}
         className="w-full bg-blue-600 dark:bg-blue-700 text-white py-2 px-4 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {loading ? 'Redefinindo...' : 'Redefinir Senha'}
+        {loading ? 'Redefinindo...' : requiresTwoFactor ? 'Confirmar com 2FA' : 'Redefinir Senha'}
       </button>
     </form>
   );
