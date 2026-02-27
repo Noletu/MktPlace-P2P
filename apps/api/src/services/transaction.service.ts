@@ -30,21 +30,21 @@ export class TransactionService {
       throw new Error('Esta transação não está aguardando comprovante');
     }
 
-    // Atualizar transação com comprovante
-    const updatedTransaction = await prisma.transaction.update({
-      where: { id: input.transactionId },
-      data: {
-        comprovanteData: input.comprovanteData,
-        comprovanteUrl: input.comprovanteUrl,
-        status: TransactionStatus.VALIDATING,
-      },
-    });
-
-    // Atualizar status do pedido
-    await prisma.order.update({
-      where: { id: transaction.orderId },
-      data: { status: OrderStatus.PAYMENT_SENT },
-    });
+    // Atualizar transação + pedido atomicamente
+    const [updatedTransaction] = await prisma.$transaction([
+      prisma.transaction.update({
+        where: { id: input.transactionId },
+        data: {
+          comprovanteData: input.comprovanteData,
+          comprovanteUrl: input.comprovanteUrl,
+          status: TransactionStatus.VALIDATING,
+        },
+      }),
+      prisma.order.update({
+        where: { id: transaction.orderId },
+        data: { status: OrderStatus.PAYMENT_SENT },
+      }),
+    ]);
 
     // Enviar notificação para o vendedor
     setImmediate(async () => {
@@ -353,25 +353,38 @@ export class TransactionService {
             }
           }
 
-          // Deduzir platform fee do vendedor (já foi removido do locked, agora remover do balance)
-          const sellerCurrentBalance = new BigNumber(
-            (await tx.userWallet.findUnique({ where: { id: sellerWallet.id } }))?.balance || '0'
-          );
+          // Deduzir platform fee do vendedor
+          // SELL: fee vem do available (NÃO faz parte do colateral locked)
+          // BUY: fee vem do locked (JÁ estava incluída no colateral do provedor)
+          const sellerCurrentWallet = await tx.userWallet.findUnique({ where: { id: sellerWallet.id } });
+          const sellerCurrentBalance = new BigNumber(sellerCurrentWallet?.balance || '0');
           const sellerAfterFeeBN = sellerCurrentBalance.minus(platformFeeBN);
 
-          // Atualizar locked balance do vendedor (deduzir fee)
-          const sellerCurrentLocked = new BigNumber(
-            (await tx.userWallet.findUnique({ where: { id: sellerWallet.id } }))?.lockedBalance || '0'
-          );
-          const sellerLockedAfterFeeBN = sellerCurrentLocked.minus(platformFeeBN);
+          const sellerCurrentLocked = new BigNumber(sellerCurrentWallet?.lockedBalance || '0');
+          const sellerCurrentAvailable = new BigNumber(sellerCurrentWallet?.availableBalance || '0');
 
-          await tx.userWallet.update({
-            where: { id: sellerWallet.id },
-            data: {
-              balance: sellerAfterFeeBN.toFixed(8),
-              lockedBalance: sellerLockedAfterFeeBN.toFixed(8),
-            },
-          });
+          if (isBuyOrder) {
+            // BUY: deduzir fee do locked (faz parte do colateral do provedor)
+            const sellerLockedAfterFeeBN = sellerCurrentLocked.minus(platformFeeBN);
+            await tx.userWallet.update({
+              where: { id: sellerWallet.id },
+              data: {
+                balance: sellerAfterFeeBN.toFixed(8),
+                lockedBalance: sellerLockedAfterFeeBN.toFixed(8),
+              },
+            });
+          } else {
+            // SELL: deduzir fee do available (NÃO do locked)
+            const sellerAvailableAfterFeeBN = sellerCurrentAvailable.minus(platformFeeBN);
+            await tx.userWallet.update({
+              where: { id: sellerWallet.id },
+              data: {
+                balance: sellerAfterFeeBN.toFixed(8),
+                availableBalance: sellerAvailableAfterFeeBN.toFixed(8),
+                // lockedBalance: NÃO TOCAR — fee não fazia parte do colateral
+              },
+            });
+          }
 
           // Creditar na carteira da plataforma
           const platformNewBalanceBN = new BigNumber(platformWallet.balance).plus(platformFeeBN);
@@ -387,6 +400,9 @@ export class TransactionService {
           });
 
           // Registrar transação de platform fee
+          const feeLockedAfter = isBuyOrder
+            ? sellerCurrentLocked.minus(platformFeeBN).toFixed(8)
+            : sellerCurrentLocked.toFixed(8); // SELL: locked não mudou
           await tx.walletTransaction.create({
             data: {
               walletId: sellerWallet.id,
@@ -397,12 +413,13 @@ export class TransactionService {
               balanceBefore: sellerCurrentBalance.toFixed(8),
               balanceAfter: sellerAfterFeeBN.toFixed(8),
               lockedBefore: sellerCurrentLocked.toFixed(8),
-              lockedAfter: sellerLockedAfterFeeBN.toFixed(8),
+              lockedAfter: feeLockedAfter,
               description: `Platform fee transferred (Order ${completedOrder.id})`,
               metadata: JSON.stringify({
                 orderId: completedOrder.id,
                 platformWalletId: platformWallet.id,
                 platformFee: platformFeeBN.toFixed(8),
+                feeSource: isBuyOrder ? 'locked' : 'available',
                 timestamp: new Date().toISOString(),
               }),
             },
@@ -592,22 +609,22 @@ export class TransactionService {
 
       return updatedTransaction;
     } else {
-      // Rejeitar transação
-      const updatedTransaction = await prisma.transaction.update({
-        where: { id: input.transactionId },
-        data: {
-          status: TransactionStatus.REJECTED,
-          validationScore: input.validationScore || 0,
-          validatedBy: input.validatedBy,
-          validatedAt: new Date(),
-        },
-      });
-
-      // Atualizar status do pedido para PENDING novamente
-      await prisma.order.update({
-        where: { id: transaction.orderId },
-        data: { status: OrderStatus.PENDING },
-      });
+      // Rejeitar transação + voltar pedido para PENDING atomicamente
+      const [updatedTransaction] = await prisma.$transaction([
+        prisma.transaction.update({
+          where: { id: input.transactionId },
+          data: {
+            status: TransactionStatus.REJECTED,
+            validationScore: input.validationScore || 0,
+            validatedBy: input.validatedBy,
+            validatedAt: new Date(),
+          },
+        }),
+        prisma.order.update({
+          where: { id: transaction.orderId },
+          data: { status: OrderStatus.PENDING },
+        }),
+      ]);
 
       return updatedTransaction;
     }
@@ -635,21 +652,21 @@ export class TransactionService {
       throw new Error('Você não tem permissão para disputar esta transação');
     }
 
-    // Atualizar transação para status DISPUTED
-    const updatedTransaction = await prisma.transaction.update({
-      where: { id: input.transactionId },
-      data: {
-        status: TransactionStatus.DISPUTED,
-        disputeReason: input.reason,
-        disputeData: input.disputeData ? JSON.stringify(input.disputeData) : null,
-      },
-    });
-
-    // Atualizar pedido para DISPUTED
-    await prisma.order.update({
-      where: { id: transaction.orderId },
-      data: { status: OrderStatus.DISPUTED },
-    });
+    // Atualizar transação + pedido para DISPUTED atomicamente
+    const [updatedTransaction] = await prisma.$transaction([
+      prisma.transaction.update({
+        where: { id: input.transactionId },
+        data: {
+          status: TransactionStatus.DISPUTED,
+          disputeReason: input.reason,
+          disputeData: input.disputeData ? JSON.stringify(input.disputeData) : null,
+        },
+      }),
+      prisma.order.update({
+        where: { id: transaction.orderId },
+        data: { status: OrderStatus.DISPUTED },
+      }),
+    ]);
 
     return updatedTransaction;
   }

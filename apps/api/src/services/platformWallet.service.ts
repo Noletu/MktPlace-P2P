@@ -62,7 +62,7 @@ export class PlatformWalletService {
     );
 
     // Criptografar private key
-    const encryptedPrivateKey = KeyManagementService.encryptPrivateKey(privateKey);
+    const encryptedPrivateKey = KeyManagementService.encryptPrivateKey(privateKey, KeyManagementService.PLATFORM_ID);
 
     // Upsert no banco (cria ou atualiza)
     await prisma.platformWallet.upsert({
@@ -292,7 +292,7 @@ export class PlatformWalletService {
       throw new Error(`Platform wallet not found: ${cryptoType} ${network}`);
     }
 
-    return KeyManagementService.decryptPrivateKey(wallet.encryptedPrivateKey);
+    return KeyManagementService.decryptPrivateKey(wallet.encryptedPrivateKey, KeyManagementService.PLATFORM_ID);
   }
 }
 

@@ -588,9 +588,13 @@ export class DisputeService {
               throw new Error('Buyer ID not found for dispute resolution');
             }
 
-            if (sellerLockedBalanceBN.lt(totalAmountBN)) {
-              logger.error(`[DISPUTE] Saldo bloqueado insuficiente: ${sellerLockedBalanceBN.toFixed(8)} < ${totalAmountBN.toFixed(8)}`);
-              throw new Error(`Insufficient locked balance for dispute resolution: ${sellerLockedBalanceBN.toFixed(8)} < ${totalAmountBN.toFixed(8)}`);
+            // BUY: colateral inclui fee (crypto + 1.5%), SELL: colateral NÃO inclui fee (crypto + 1% reward)
+            const totalDeductFromLockedBN = isBuyOrder
+              ? totalAmountBN.plus(platformFeeBN) // BUY: totalAmount + fee vêm do locked
+              : totalAmountBN;                     // SELL: só totalAmount vem do locked
+            if (sellerLockedBalanceBN.lt(totalDeductFromLockedBN)) {
+              logger.error(`[DISPUTE] Saldo bloqueado insuficiente: ${sellerLockedBalanceBN.toFixed(8)} < ${totalDeductFromLockedBN.toFixed(8)}`);
+              throw new Error(`Insufficient locked balance for dispute resolution: ${sellerLockedBalanceBN.toFixed(8)} < ${totalDeductFromLockedBN.toFixed(8)}`);
             }
 
             // Buscar/criar carteira do comprador
@@ -636,69 +640,17 @@ export class DisputeService {
             const buyerNewBalanceBN = new BigNumber(buyerWallet.balance).plus(totalAmountBN);
             const buyerNewAvailableBN = new BigNumber(buyerWallet.availableBalance).plus(totalAmountBN);
 
-            // Deduzir do vendedor (lockedBalance e balance)
-            await prisma.userWallet.update({
-              where: { id: sellerWallet.id },
-              data: {
-                balance: sellerNewBalanceBN.toFixed(8),
-                lockedBalance: sellerNewLockedBN.toFixed(8),
-              },
-            });
+            // Pré-buscar platform wallet ANTES da transaction (reads fora, writes dentro)
+            let platformWallet: any = null;
+            let sellerBalanceBeforeFee: BigNumber | null = null;
+            let sellerLockedBeforeFee: BigNumber | null = null;
+            let sellerBalanceAfterFee: BigNumber | null = null;
+            let sellerLockedAfterFee: BigNumber | null = null;
+            let platformNewBalance: BigNumber | null = null;
+            let currentTotalFees: BigNumber | null = null;
 
-            // Creditar no comprador (availableBalance e balance)
-            await prisma.userWallet.update({
-              where: { id: buyerWallet.id },
-              data: {
-                balance: buyerNewBalanceBN.toFixed(8),
-                availableBalance: buyerNewAvailableBN.toFixed(8),
-              },
-            });
-
-            // Registrar WalletTransaction DEDUCT (vendedor)
-            await prisma.walletTransaction.create({
-              data: {
-                walletId: sellerWallet.id,
-                userId: sellerWallet.userId,
-                orderId: order.id,
-                type: 'DEDUCT',
-                amount: totalAmountBN.toFixed(8),
-                balanceBefore: sellerWallet.balance,
-                balanceAfter: sellerNewBalanceBN.toFixed(8),
-                lockedBefore: sellerWallet.lockedBalance,
-                lockedAfter: sellerNewLockedBN.toFixed(8),
-                description: `Disputa resolvida - Cripto transferida ao comprador (Order ${order.id})`,
-                metadata: JSON.stringify({
-                  disputeId: input.disputeId,
-                  resolutionType: input.resolutionType,
-                  buyerId,
-                  buyerWalletId: buyerWallet.id,
-                }),
-              },
-            });
-
-            // Registrar WalletTransaction CREDIT (comprador)
-            await prisma.walletTransaction.create({
-              data: {
-                walletId: buyerWallet.id,
-                userId: buyerWallet.userId,
-                orderId: order.id,
-                type: 'CREDIT',
-                amount: totalAmountBN.toFixed(8),
-                balanceBefore: buyerWallet.balance,
-                balanceAfter: buyerNewBalanceBN.toFixed(8),
-                description: `Disputa resolvida - Cripto recebida do vendedor (Order ${order.id})`,
-                metadata: JSON.stringify({
-                  disputeId: input.disputeId,
-                  resolutionType: input.resolutionType,
-                  sellerId,
-                  sellerWalletId: sellerWallet.id,
-                }),
-              },
-            });
-
-            // Transferir platform fee para carteira da plataforma
             if (platformFeeBN.gt(0)) {
-              let platformWallet = await prisma.platformWallet.findFirst({
+              platformWallet = await prisma.platformWallet.findFirst({
                 where: {
                   cryptoType: order.cryptoType,
                   network: order.cryptoNetwork,
@@ -731,27 +683,98 @@ export class DisputeService {
                 }
               }
 
-              // Deduzir fee adicional do vendedor (locked → platform)
-              const sellerAfterFeeWallet = await prisma.userWallet.findUnique({ where: { id: sellerWallet.id } });
-              if (sellerAfterFeeWallet) {
-                const sellerBalanceBeforeFee = new BigNumber(sellerAfterFeeWallet.balance);
-                const sellerLockedBeforeFee = new BigNumber(sellerAfterFeeWallet.lockedBalance);
-                const sellerBalanceAfterFee = sellerBalanceBeforeFee.minus(platformFeeBN);
-                const sellerLockedAfterFee = sellerLockedBeforeFee.minus(platformFeeBN);
+              // Pré-calcular saldos do fee (vendedor já teve totalAmount deduzido)
+              // BUY: fee vem do locked (faz parte do colateral do provedor)
+              // SELL: fee vem do available (NÃO faz parte do colateral)
+              sellerBalanceBeforeFee = sellerNewBalanceBN;
+              sellerLockedBeforeFee = sellerNewLockedBN;
+              sellerBalanceAfterFee = sellerNewBalanceBN.minus(platformFeeBN);
+              if (isBuyOrder) {
+                sellerLockedAfterFee = sellerNewLockedBN.minus(platformFeeBN);
+              } else {
+                sellerLockedAfterFee = sellerNewLockedBN; // SELL: locked NÃO muda pela fee
+              }
+              platformNewBalance = new BigNumber(platformWallet.balance).plus(platformFeeBN);
+              currentTotalFees = new BigNumber(platformWallet.totalFeesCollected || '0');
+            }
 
-                await prisma.userWallet.update({
-                  where: { id: sellerWallet.id },
-                  data: {
-                    balance: sellerBalanceAfterFee.toFixed(8),
-                    lockedBalance: sellerLockedAfterFee.toFixed(8),
-                  },
-                });
+            // Pré-calcular availableBalance para SELL orders com fee (fee vem do available)
+            let sellerAvailableAfterFee: BigNumber | null = null;
+            if (platformFeeBN.gt(0) && !isBuyOrder) {
+              sellerAvailableAfterFee = new BigNumber(sellerWallet.availableBalance).minus(platformFeeBN);
+            }
 
+            // Transaction atômica: todas as writes de saldo + order update
+            await prisma.$transaction(async (tx) => {
+              // Deduzir do vendedor (lockedBalance e balance)
+              const sellerUpdateData: any = {
+                balance: (platformFeeBN.gt(0) && sellerBalanceAfterFee ? sellerBalanceAfterFee : sellerNewBalanceBN).toFixed(8),
+                lockedBalance: (platformFeeBN.gt(0) && sellerLockedAfterFee ? sellerLockedAfterFee : sellerNewLockedBN).toFixed(8),
+              };
+              // SELL com fee: atualizar availableBalance (fee vem do available, não do locked)
+              if (sellerAvailableAfterFee) {
+                sellerUpdateData.availableBalance = sellerAvailableAfterFee.toFixed(8);
+              }
+              await tx.userWallet.update({
+                where: { id: sellerWallet.id },
+                data: sellerUpdateData,
+              });
+
+              // Creditar no comprador (availableBalance e balance)
+              await tx.userWallet.update({
+                where: { id: buyerWallet.id },
+                data: {
+                  balance: buyerNewBalanceBN.toFixed(8),
+                  availableBalance: buyerNewAvailableBN.toFixed(8),
+                },
+              });
+
+              // Registrar WalletTransaction DEDUCT (vendedor)
+              await tx.walletTransaction.create({
+                data: {
+                  walletId: sellerWallet.id,
+                  userId: sellerWallet.userId,
+                  orderId: order.id,
+                  type: 'DEDUCT',
+                  amount: totalAmountBN.toFixed(8),
+                  balanceBefore: sellerWallet.balance,
+                  balanceAfter: sellerNewBalanceBN.toFixed(8),
+                  lockedBefore: sellerWallet.lockedBalance,
+                  lockedAfter: sellerNewLockedBN.toFixed(8),
+                  description: `Disputa resolvida - Cripto transferida ao comprador (Order ${order.id})`,
+                  metadata: JSON.stringify({
+                    disputeId: input.disputeId,
+                    resolutionType: input.resolutionType,
+                    buyerId,
+                    buyerWalletId: buyerWallet.id,
+                  }),
+                },
+              });
+
+              // Registrar WalletTransaction CREDIT (comprador)
+              await tx.walletTransaction.create({
+                data: {
+                  walletId: buyerWallet.id,
+                  userId: buyerWallet.userId,
+                  orderId: order.id,
+                  type: 'CREDIT',
+                  amount: totalAmountBN.toFixed(8),
+                  balanceBefore: buyerWallet.balance,
+                  balanceAfter: buyerNewBalanceBN.toFixed(8),
+                  description: `Disputa resolvida - Cripto recebida do vendedor (Order ${order.id})`,
+                  metadata: JSON.stringify({
+                    disputeId: input.disputeId,
+                    resolutionType: input.resolutionType,
+                    sellerId,
+                    sellerWalletId: sellerWallet.id,
+                  }),
+                },
+              });
+
+              // Platform fee (se houver)
+              if (platformFeeBN.gt(0) && platformWallet && sellerBalanceBeforeFee && sellerLockedBeforeFee && sellerBalanceAfterFee && sellerLockedAfterFee && platformNewBalance && currentTotalFees) {
                 // Creditar na carteira da plataforma
-                const platformNewBalance = new BigNumber(platformWallet.balance).plus(platformFeeBN);
-                const currentTotalFees = new BigNumber(platformWallet.totalFeesCollected || '0');
-
-                await prisma.platformWallet.update({
+                await tx.platformWallet.update({
                   where: { id: platformWallet.id },
                   data: {
                     balance: platformNewBalance.toFixed(8),
@@ -760,7 +783,7 @@ export class DisputeService {
                 });
 
                 // Registrar WalletTransaction PLATFORM_FEE
-                await prisma.walletTransaction.create({
+                await tx.walletTransaction.create({
                   data: {
                     walletId: sellerWallet.id,
                     userId: sellerWallet.userId,
@@ -776,24 +799,25 @@ export class DisputeService {
                       disputeId: input.disputeId,
                       platformWalletId: platformWallet.id,
                       platformFee: platformFeeBN.toFixed(8),
+                      feeSource: isBuyOrder ? 'locked' : 'available',
                     }),
                   },
                 });
 
                 logger.info(`[DISPUTE] Platform fee transferida: ${platformFeeBN.toFixed(8)} ${order.cryptoType}`);
               }
-            }
 
-            // Marcar pedido como transferido
-            await prisma.order.update({
-              where: { id: order.id },
-              data: {
-                cryptoTransferred: true,
-                cryptoTransferredAt: new Date(),
-                cryptoTransferredTo: buyerId,
-                collateralLocked: false,
-                collateralUnlockedAt: new Date(),
-              },
+              // Marcar pedido como transferido
+              await tx.order.update({
+                where: { id: order.id },
+                data: {
+                  cryptoTransferred: true,
+                  cryptoTransferredAt: new Date(),
+                  cryptoTransferredTo: buyerId,
+                  collateralLocked: false,
+                  collateralUnlockedAt: new Date(),
+                },
+              });
             });
 
             logger.info(`[DISPUTE] Cripto transferida para comprador: ${totalAmountBN.toFixed(8)} ${order.cryptoType}`);
@@ -810,43 +834,46 @@ export class DisputeService {
             const sellerNewLockedBN = sellerLockedBalanceBN.minus(amountToUnlock);
             const sellerNewAvailableBN = new BigNumber(sellerWallet.availableBalance).plus(amountToUnlock);
 
-            // Mover de lockedBalance para availableBalance
-            await prisma.userWallet.update({
-              where: { id: sellerWallet.id },
-              data: {
-                lockedBalance: sellerNewLockedBN.toFixed(8),
-                availableBalance: sellerNewAvailableBN.toFixed(8),
-              },
-            });
+            // Transaction atômica: unlock + WalletTransaction + order update
+            await prisma.$transaction(async (tx) => {
+              // Mover de lockedBalance para availableBalance
+              await tx.userWallet.update({
+                where: { id: sellerWallet.id },
+                data: {
+                  lockedBalance: sellerNewLockedBN.toFixed(8),
+                  availableBalance: sellerNewAvailableBN.toFixed(8),
+                },
+              });
 
-            // Registrar WalletTransaction UNLOCK
-            await prisma.walletTransaction.create({
-              data: {
-                walletId: sellerWallet.id,
-                userId: sellerWallet.userId,
-                orderId: order.id,
-                type: 'UNLOCK',
-                amount: amountToUnlock.toFixed(8),
-                balanceBefore: sellerWallet.balance,
-                balanceAfter: sellerWallet.balance, // balance total não muda, só locked→available
-                lockedBefore: sellerWallet.lockedBalance,
-                lockedAfter: sellerNewLockedBN.toFixed(8),
-                description: `Disputa resolvida - Colateral desbloqueado (Order ${order.id})`,
-                metadata: JSON.stringify({
-                  disputeId: input.disputeId,
-                  resolutionType: input.resolutionType,
-                }),
-              },
-            });
+              // Registrar WalletTransaction UNLOCK
+              await tx.walletTransaction.create({
+                data: {
+                  walletId: sellerWallet.id,
+                  userId: sellerWallet.userId,
+                  orderId: order.id,
+                  type: 'UNLOCK',
+                  amount: amountToUnlock.toFixed(8),
+                  balanceBefore: sellerWallet.balance,
+                  balanceAfter: sellerWallet.balance, // balance total não muda, só locked→available
+                  lockedBefore: sellerWallet.lockedBalance,
+                  lockedAfter: sellerNewLockedBN.toFixed(8),
+                  description: `Disputa resolvida - Colateral desbloqueado (Order ${order.id})`,
+                  metadata: JSON.stringify({
+                    disputeId: input.disputeId,
+                    resolutionType: input.resolutionType,
+                  }),
+                },
+              });
 
-            // Marcar pedido como desbloqueado (nao transferido)
-            await prisma.order.update({
-              where: { id: order.id },
-              data: {
-                collateralLocked: false,
-                collateralUnlockedAt: new Date(),
-                cryptoTransferred: false,
-              },
+              // Marcar pedido como desbloqueado (nao transferido)
+              await tx.order.update({
+                where: { id: order.id },
+                data: {
+                  collateralLocked: false,
+                  collateralUnlockedAt: new Date(),
+                  cryptoTransferred: false,
+                },
+              });
             });
 
             const action = input.resolutionType === 'CANCEL_NO_PENALTY' ? 'Cancelamento' : 'Devolvida ao vendedor';

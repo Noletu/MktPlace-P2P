@@ -137,6 +137,12 @@ model UserWallet {
   lastSyncedAt    DateTime? // Última vez que saldo foi sincronizado
   lastBlockHeight Int?      // Último bloco verificado
 
+  // Omnibus / Sweep (Hot Wallet Architecture)
+  onChainSnapshot    String    @default("0")    // Último saldo on-chain conhecido (separado do ledger)
+  lastSweptAt        DateTime?                   // Quando fundos foram varridos para hot wallet
+  sweepStatus        String    @default("NONE") // NONE | PENDING | GAS_FUNDING | SWEEPING | COMPLETED | FAILED
+  pendingSweepAmount String    @default("0")    // Valor aguardando sweep
+
   // Estado
   isActive Boolean @default(true)
 
@@ -151,6 +157,7 @@ model UserWallet {
   ordersAsCollateral Order[]             @relation("WalletCollateral")
   transactions       WalletTransaction[]
   withdrawals        Withdrawal[]
+  sweepTransactions  SweepTransaction[]
 
   @@unique([userId, cryptoType, network])
   @@index([userId])
@@ -448,7 +455,8 @@ model PlatformWallet {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  transfers PlatformTransfer[]
+  transfers         PlatformTransfer[]
+  sweepTransactions SweepTransaction[]
 
   @@unique([cryptoType, network])
   @@index([cryptoType])
@@ -489,6 +497,51 @@ model PlatformTransfer {
   @@index([platformWalletId])
   @@index([status])
   @@index([requestedBy])
+}
+
+// ============================================
+// SWEEP TRANSACTIONS - Omnibus Hot Wallet
+// ============================================
+
+// Registra cada operação de sweep (user wallet → hot wallet)
+model SweepTransaction {
+  id                 String   @id @default(cuid())
+
+  // Carteira de origem (usuário)
+  userWalletId       String
+  userWallet         UserWallet @relation(fields: [userWalletId], references: [id])
+
+  // Carteira destino (hot wallet da plataforma)
+  platformWalletId   String
+  platformWallet     PlatformWallet @relation(fields: [platformWalletId], references: [id])
+
+  // Tipo de ativo
+  cryptoType         String   // BTC, USDT, USDC
+  network            String   // BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA
+
+  // Valor varrido
+  amount             String
+
+  // Gas funding (para tokens ERC-20/SPL que precisam de moeda nativa para gas)
+  gasFundingTxHash   String?
+  gasFundingAmount   String?
+  gasFundingStatus   String?  // PENDING | CONFIRMED | FAILED
+
+  // Transação de sweep principal
+  sweepTxHash        String?  @unique
+  status             String   @default("PENDING") // PENDING | GAS_FUNDING | GAS_CONFIRMED | SWEEPING | COMPLETED | FAILED
+
+  // Erro e retry
+  lastError          String?
+  retryCount         Int      @default(0)
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  completedAt        DateTime?
+
+  @@index([userWalletId])
+  @@index([platformWalletId])
+  @@index([status])
 }
 
 // ============================================

@@ -17,6 +17,9 @@ export class KeyManagementService {
   private static AUTH_TAG_LENGTH = 16; // 128 bits
   private static SALT_LENGTH = 32; // 256 bits
 
+  /** ID padrão para criptografia de platform wallets (Account 0) */
+  static readonly PLATFORM_ID = 'PLATFORM_SYSTEM';
+
   /**
    * Inicializa o service com a master key
    */
@@ -47,7 +50,7 @@ export class KeyManagementService {
    * @param userId ID do usuário (usado para derivar chave única)
    * @returns Encrypted private key no formato: salt:iv:authTag:ciphertext (hex)
    */
-  static encryptPrivateKey(privateKey: string, userId: string): string {
+  static encryptPrivateKey(privateKey: string, userId: string = KeyManagementService.PLATFORM_ID): string {
     // Gerar salt único para este usuário
     const salt = crypto.randomBytes(this.SALT_LENGTH);
 
@@ -90,7 +93,7 @@ export class KeyManagementService {
    */
   static decryptPrivateKey(
     encryptedPrivateKey: string,
-    userId: string
+    userId: string = KeyManagementService.PLATFORM_ID
   ): string {
     // Parse encrypted data
     const parts = encryptedPrivateKey.split(':');

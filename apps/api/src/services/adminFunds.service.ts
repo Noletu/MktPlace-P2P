@@ -115,6 +115,47 @@ export class AdminFundsService {
     const totalCustody = Array.from(userBalances.values())
       .reduce((sum, item) => sum.plus(item.totalBalance), new BigNumber(0));
 
+    // Verificação de solvência: PlatformWallet.balance vs SUM(UserWallet.balance) por crypto/rede
+    const platformWallets = await prisma.platformWallet.findMany({
+      where: { isActive: true },
+    });
+
+    const solvency: Array<{
+      cryptoType: string;
+      network: string;
+      hotWalletBalance: string;
+      totalUserBalance: string;
+      delta: string;
+      status: 'HEALTHY' | 'WARNING' | 'CRITICAL';
+    }> = [];
+
+    for (const hotWallet of platformWallets) {
+      const key = `${hotWallet.cryptoType}/${hotWallet.network}`;
+      const totalForNetwork = totals[key];
+      const totalUserBalance = totalForNetwork
+        ? totalForNetwork.balance
+        : new BigNumber(0);
+
+      const hotBalance = new BigNumber(hotWallet.balance);
+      const delta = hotBalance.minus(totalUserBalance);
+
+      let status: 'HEALTHY' | 'WARNING' | 'CRITICAL' = 'HEALTHY';
+      if (delta.lt(0)) {
+        status = 'CRITICAL';
+      } else if (totalUserBalance.gt(0) && delta.div(totalUserBalance).lt(0.05)) {
+        status = 'WARNING'; // menos de 5% de margem
+      }
+
+      solvency.push({
+        cryptoType: hotWallet.cryptoType,
+        network: hotWallet.network,
+        hotWalletBalance: hotBalance.toString(),
+        totalUserBalance: totalUserBalance.toString(),
+        delta: delta.toString(),
+        status,
+      });
+    }
+
     return {
       success: true,
       data: {
@@ -123,6 +164,7 @@ export class AdminFundsService {
         topUsers,
         totalUsers: userBalances.size,
         totalWallets: wallets.length,
+        solvency,
       },
     };
   }

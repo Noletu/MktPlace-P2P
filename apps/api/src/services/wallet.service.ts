@@ -163,10 +163,10 @@ export class WalletService {
 
     // Fix: corrigir saldos bloqueados negativos diretamente (sempre invalido)
     for (const wallet of wallets) {
-      const locked = parseFloat(wallet.lockedBalance);
-      if (locked < 0) {
-        const balance = parseFloat(wallet.balance);
-        const correctedAvailable = Math.max(0, balance).toString();
+      const lockedBN = new BigNumber(wallet.lockedBalance);
+      if (lockedBN.isNegative()) {
+        const balanceBN = new BigNumber(wallet.balance);
+        const correctedAvailable = BigNumber.max(0, balanceBN).toFixed(8);
         console.log(
           `🚨 [FIX] Wallet ${wallet.id} (${wallet.cryptoType}) tem lockedBalance negativo: ${wallet.lockedBalance}. Corrigindo para 0.`
         );
@@ -227,27 +227,26 @@ export class WalletService {
       throw new Error(`Wallet ${walletId} not found`);
     }
 
-    const availableBalance = parseFloat(wallet.availableBalance);
-    const amountToLock = parseFloat(amount);
+    const availableBN = new BigNumber(wallet.availableBalance);
+    const amountBN = new BigNumber(amount);
 
-    if (availableBalance < amountToLock) {
+    if (availableBN.lt(amountBN)) {
       throw new Error(
-        `Insufficient balance. Available: ${availableBalance}, Required: ${amountToLock}`
+        `Insufficient balance. Available: ${availableBN.toFixed(8)}, Required: ${amountBN.toFixed(8)}`
       );
     }
 
     // Atualizar saldos
-    const newAvailableBalance = availableBalance - amountToLock;
-    const newLockedBalance =
-      parseFloat(wallet.lockedBalance) + amountToLock;
+    const newAvailableBN = availableBN.minus(amountBN);
+    const newLockedBN = new BigNumber(wallet.lockedBalance).plus(amountBN);
 
     await prisma.$transaction([
       // Atualizar carteira
       prisma.userWallet.update({
         where: {id: walletId},
         data: {
-          availableBalance: newAvailableBalance.toString(),
-          lockedBalance: newLockedBalance.toString(),
+          availableBalance: newAvailableBN.toFixed(8),
+          lockedBalance: newLockedBN.toFixed(8),
         },
       }),
 
@@ -259,7 +258,7 @@ export class WalletService {
           type: 'LOCK',
           amount: amount,
           balanceBefore: wallet.availableBalance,
-          balanceAfter: newAvailableBalance.toString(),
+          balanceAfter: newAvailableBN.toFixed(8),
           description: reason,
           metadata: JSON.stringify({
             orderId,
@@ -276,8 +275,8 @@ export class WalletService {
 
     return {
       success: true,
-      newAvailableBalance: newAvailableBalance.toString(),
-      newLockedBalance: newLockedBalance.toString(),
+      newAvailableBalance: newAvailableBN.toFixed(8),
+      newLockedBalance: newLockedBN.toFixed(8),
     };
   }
 
@@ -303,27 +302,26 @@ export class WalletService {
       throw new Error(`Wallet ${walletId} not found`);
     }
 
-    const lockedBalance = parseFloat(wallet.lockedBalance);
-    const amountToUnlock = parseFloat(amount);
+    const lockedBN = new BigNumber(wallet.lockedBalance);
+    const amountBN = new BigNumber(amount);
 
-    if (lockedBalance < amountToUnlock) {
+    if (lockedBN.lt(amountBN)) {
       throw new Error(
-        `Cannot unlock ${amountToUnlock}. Only ${lockedBalance} is locked.`
+        `Cannot unlock ${amountBN.toFixed(8)}. Only ${lockedBN.toFixed(8)} is locked.`
       );
     }
 
     // Atualizar saldos
-    const newLockedBalance = lockedBalance - amountToUnlock;
-    const newAvailableBalance =
-      parseFloat(wallet.availableBalance) + amountToUnlock;
+    const newLockedBN = lockedBN.minus(amountBN);
+    const newAvailableBN = new BigNumber(wallet.availableBalance).plus(amountBN);
 
     await prisma.$transaction([
       // Atualizar carteira
       prisma.userWallet.update({
         where: {id: walletId},
         data: {
-          availableBalance: newAvailableBalance.toString(),
-          lockedBalance: newLockedBalance.toString(),
+          availableBalance: newAvailableBN.toFixed(8),
+          lockedBalance: newLockedBN.toFixed(8),
         },
       }),
 
@@ -335,7 +333,7 @@ export class WalletService {
           type: 'UNLOCK',
           amount: amount,
           balanceBefore: wallet.availableBalance,
-          balanceAfter: newAvailableBalance.toString(),
+          balanceAfter: newAvailableBN.toFixed(8),
           description: reason,
           metadata: JSON.stringify({
             orderId,
@@ -352,8 +350,8 @@ export class WalletService {
 
     return {
       success: true,
-      newAvailableBalance: newAvailableBalance.toString(),
-      newLockedBalance: newLockedBalance.toString(),
+      newAvailableBalance: newAvailableBN.toFixed(8),
+      newLockedBalance: newLockedBN.toFixed(8),
     };
   }
 
@@ -379,36 +377,36 @@ export class WalletService {
       throw new Error(`Wallet ${walletId} not found`);
     }
 
-    const amountToDeduct = parseFloat(amount);
-    let newBalance: string;
-    let newAvailableBalance: string;
-    let newLockedBalance: string;
+    const amountBN = new BigNumber(amount);
+    let newBalanceBN: BigNumber;
+    let newAvailableBN: BigNumber;
+    let newLockedBN: BigNumber;
 
     if (fromLocked) {
       // Deduzir de saldo bloqueado
-      const lockedBalance = parseFloat(wallet.lockedBalance);
-      if (lockedBalance < amountToDeduct) {
+      const lockedBN = new BigNumber(wallet.lockedBalance);
+      if (lockedBN.lt(amountBN)) {
         throw new Error(`Insufficient locked balance`);
       }
 
-      newLockedBalance = (lockedBalance - amountToDeduct).toString();
-      newAvailableBalance = wallet.availableBalance;
-      newBalance = (
-        parseFloat(wallet.balance) - amountToDeduct
-      ).toString();
+      newLockedBN = lockedBN.minus(amountBN);
+      newAvailableBN = new BigNumber(wallet.availableBalance);
+      newBalanceBN = new BigNumber(wallet.balance).minus(amountBN);
     } else {
       // Deduzir de saldo disponível
-      const availableBalance = parseFloat(wallet.availableBalance);
-      if (availableBalance < amountToDeduct) {
+      const availableBN = new BigNumber(wallet.availableBalance);
+      if (availableBN.lt(amountBN)) {
         throw new Error(`Insufficient available balance`);
       }
 
-      newAvailableBalance = (availableBalance - amountToDeduct).toString();
-      newLockedBalance = wallet.lockedBalance;
-      newBalance = (
-        parseFloat(wallet.balance) - amountToDeduct
-      ).toString();
+      newAvailableBN = availableBN.minus(amountBN);
+      newLockedBN = new BigNumber(wallet.lockedBalance);
+      newBalanceBN = new BigNumber(wallet.balance).minus(amountBN);
     }
+
+    const newBalance = newBalanceBN.toFixed(8);
+    const newAvailableBalance = newAvailableBN.toFixed(8);
+    const newLockedBalance = newLockedBN.toFixed(8);
 
     await prisma.$transaction([
       // Atualizar carteira
@@ -418,9 +416,7 @@ export class WalletService {
           balance: newBalance,
           availableBalance: newAvailableBalance,
           lockedBalance: newLockedBalance,
-          totalUsed: (
-            parseFloat(wallet.totalUsed) + amountToDeduct
-          ).toString(),
+          totalUsed: new BigNumber(wallet.totalUsed).plus(amountBN).toFixed(8),
         },
       }),
 
@@ -477,11 +473,11 @@ export class WalletService {
       throw new Error(`Wallet ${walletId} not found`);
     }
 
-    const amountToCredit = parseFloat(amount);
+    const amountBN = new BigNumber(amount);
 
     // Atualizar saldos
-    const newBalance = (parseFloat(wallet.balance) + amountToCredit).toString();
-    const newAvailableBalance = (parseFloat(wallet.availableBalance) + amountToCredit).toString();
+    const newBalance = new BigNumber(wallet.balance).plus(amountBN).toFixed(8);
+    const newAvailableBalance = new BigNumber(wallet.availableBalance).plus(amountBN).toFixed(8);
 
     await prisma.$transaction([
       // Atualizar carteira
@@ -490,7 +486,7 @@ export class WalletService {
         data: {
           balance: newBalance,
           availableBalance: newAvailableBalance,
-          totalDeposited: (parseFloat(wallet.totalDeposited) + amountToCredit).toString(),
+          totalDeposited: new BigNumber(wallet.totalDeposited).plus(amountBN).toFixed(8),
         },
       }),
 
@@ -526,7 +522,11 @@ export class WalletService {
   }
 
   /**
-   * Força sincronização do saldo com blockchain
+   * Sincroniza snapshot on-chain do wallet (READ-ONLY para ledger)
+   *
+   * Omnibus: apenas atualiza onChainSnapshot e lastSyncedAt.
+   * NUNCA sobrescreve balance/availableBalance (ledger interno).
+   * Após sweep, o saldo on-chain tende a zero — sobrescrever zeraria o saldo do usuário.
    */
   static async syncBalanceFromBlockchain(walletId: string) {
     const wallet = await prisma.userWallet.findUnique({
@@ -538,7 +538,7 @@ export class WalletService {
     }
 
     console.log(
-      `🔄 Syncing wallet ${walletId} (${wallet.cryptoType}/${wallet.network})...`
+      `🔄 Syncing on-chain snapshot for wallet ${walletId} (${wallet.cryptoType}/${wallet.network})...`
     );
 
     const onChainBalance = await BlockchainService.getBalance(
@@ -546,32 +546,23 @@ export class WalletService {
       wallet.network
     );
 
-    const currentBalance = parseFloat(onChainBalance);
-    const savedBalance = parseFloat(wallet.balance);
-
-    // Atualizar saldo
-    const newAvailableBalance = Math.max(
-      0,
-      currentBalance - parseFloat(wallet.lockedBalance)
-    );
-
+    // Omnibus: apenas atualiza snapshot on-chain, NUNCA sobrescreve ledger interno
     await prisma.userWallet.update({
       where: {id: walletId},
       data: {
-        balance: onChainBalance,
-        availableBalance: newAvailableBalance.toString(),
+        onChainSnapshot: onChainBalance,
         lastSyncedAt: new Date(),
       },
     });
 
     console.log(
-      `✅ Wallet synced: ${savedBalance} → ${currentBalance} ${wallet.cryptoType}`
+      `✅ On-chain snapshot updated: ${onChainBalance} ${wallet.cryptoType} (ledger balance: ${wallet.balance})`
     );
 
     return {
       success: true,
-      oldBalance: savedBalance.toString(),
-      newBalance: currentBalance.toString(),
+      ledgerBalance: wallet.balance,
+      onChainSnapshot: onChainBalance,
       lastSyncedAt: new Date(),
     };
   }
@@ -597,17 +588,14 @@ export class WalletService {
       throw new Error(`Wallet ${walletId} not found`);
     }
 
-    const amountToAdd = parseFloat(amount);
-    if (amountToAdd <= 0 || isNaN(amountToAdd)) {
+    const amountBN = new BigNumber(amount);
+    if (amountBN.lte(0) || amountBN.isNaN()) {
       throw new Error('Amount must be a positive number');
     }
 
     // Calcular novos saldos
-    const currentBalance = parseFloat(wallet.balance);
-    const currentAvailable = parseFloat(wallet.availableBalance);
-
-    const newBalance = currentBalance + amountToAdd;
-    const newAvailableBalance = currentAvailable + amountToAdd;
+    const newBalance = new BigNumber(wallet.balance).plus(amountBN).toFixed(8);
+    const newAvailableBalance = new BigNumber(wallet.availableBalance).plus(amountBN).toFixed(8);
 
     // Atualizar carteira e criar registro de transação
     await prisma.$transaction([
@@ -615,11 +603,9 @@ export class WalletService {
       prisma.userWallet.update({
         where: {id: walletId},
         data: {
-          balance: newBalance.toString(),
-          availableBalance: newAvailableBalance.toString(),
-          totalDeposited: (
-            parseFloat(wallet.totalDeposited) + amountToAdd
-          ).toString(),
+          balance: newBalance,
+          availableBalance: newAvailableBalance,
+          totalDeposited: new BigNumber(wallet.totalDeposited).plus(amountBN).toFixed(8),
           lastSyncedAt: new Date(),
         },
       }),
@@ -632,7 +618,7 @@ export class WalletService {
           type: 'DEPOSIT',
           amount: amount,
           balanceBefore: wallet.balance,
-          balanceAfter: newBalance.toString(),
+          balanceAfter: newBalance,
           description: '[TEST] Added test balance for development/testing',
           metadata: JSON.stringify({
             testBalance: true,
@@ -651,8 +637,8 @@ export class WalletService {
       success: true,
       walletId,
       amountAdded: amount,
-      newBalance: newBalance.toString(),
-      newAvailableBalance: newAvailableBalance.toString(),
+      newBalance,
+      newAvailableBalance,
       cryptoType: wallet.cryptoType,
       network: wallet.network,
     };
@@ -834,6 +820,18 @@ export class WalletService {
       lockedBalance?: string;
     }
   ) {
+    // Guard: se todos os 3 campos são fornecidos, validar invariante B = A + L
+    if (data.balance !== undefined && data.availableBalance !== undefined && data.lockedBalance !== undefined) {
+      const bBN = new BigNumber(data.balance);
+      const aBN = new BigNumber(data.availableBalance);
+      const lBN = new BigNumber(data.lockedBalance);
+      if (!bBN.eq(aBN.plus(lBN))) {
+        throw new Error(
+          `Invariant violation: balance (${bBN.toFixed(8)}) != available (${aBN.toFixed(8)}) + locked (${lBN.toFixed(8)})`
+        );
+      }
+    }
+
     return await prisma.userWallet.update({
       where: {id: walletId},
       data: {
