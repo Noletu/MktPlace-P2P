@@ -26,6 +26,13 @@ export class AuthController {
 
       securityLogger.register(result.user.id, true, req.ip);
 
+      // Enviar email de boas-vindas (não bloquear registro se falhar)
+      try {
+        await emailService.sendWelcomeEmail(validatedData.email, validatedData.name);
+      } catch (emailError) {
+        console.error('[AUTH] Error sending welcome email:', emailError);
+      }
+
       // SECURITY: Enviar tokens via HttpOnly cookies (XSS protection)
       setAccessTokenCookie(res, result.token);
       setRefreshTokenCookie(res, result.refreshToken);
@@ -496,15 +503,25 @@ export class AuthController {
   // PASSWORD RESET: Reset password with token
   async resetPassword(req: Request, res: Response): Promise<void> {
     try {
-      const { email, token, newPassword } = resetPasswordSchema.parse(req.body);
+      const { email, token, newPassword, twoFactorToken } = resetPasswordSchema.parse(req.body);
 
-      await authService.resetPassword(email, token, newPassword);
+      await authService.resetPassword(email, token, newPassword, twoFactorToken);
 
       res.status(200).json({
         success: true,
         message: 'Senha redefinida com sucesso!',
       });
     } catch (error: any) {
+      // SECURITY: Tratamento especial para 2FA requerido no reset
+      if (error.message === '2FA_REQUIRED') {
+        res.status(200).json({
+          success: false,
+          requiresTwoFactor: true,
+          message: 'Codigo 2FA necessario para redefinir a senha',
+        });
+        return;
+      }
+
       if (error.name === 'ZodError') {
         res.status(400).json({
           success: false,

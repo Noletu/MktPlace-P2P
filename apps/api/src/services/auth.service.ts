@@ -272,7 +272,7 @@ export class AuthService {
   }
 
   // PASSWORD RESET: Validate token and set new password
-  async resetPassword(email: string, token: string, newPassword: string): Promise<void> {
+  async resetPassword(email: string, token: string, newPassword: string, twoFactorToken?: string): Promise<void> {
     const user = await prisma.user.findUnique({
       where: { email },
     });
@@ -291,6 +291,18 @@ export class AuthService {
     // Check expiration
     if (new Date() > user.passwordResetExpires) {
       throw new Error('Token invalido ou expirado');
+    }
+
+    // SECURITY: Se usuario tem 2FA ativado, exigir codigo
+    if (user.twoFactorEnabled) {
+      if (!twoFactorToken) {
+        throw new Error('2FA_REQUIRED');
+      }
+
+      const is2FAValid = await twoFactorService.verifyToken(user.id, twoFactorToken);
+      if (!is2FAValid) {
+        throw new Error('Codigo 2FA invalido');
+      }
     }
 
     // Hash new password with bcrypt
