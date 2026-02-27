@@ -25,16 +25,27 @@ cp setup/api.env apps/api/.env
 cp setup/api.env.keys apps/api/.env.keys
 ```
 
-## 3. Criar o banco de dados
+## 3. Banco de dados
+
+O banco SQLite (`apps/api/prisma/dev.db`) ja esta incluido no repo com:
+- Conta MASTER e ADMIN configuradas
+- Todos os usuarios de teste criados durante desenvolvimento
+- Roles RBAC seedados
+- Dados de ordens, transacoes, wallets, etc.
+
+Basta gerar o client do Prisma:
 
 ```bash
 cd apps/api
 npx prisma generate
-npx prisma db push
-npx prisma db seed
 ```
 
-O seed cria os roles RBAC (USER, SUPPORT, GERENTE, ADMIN, MASTER).
+> **Se precisar recriar o banco do zero** (opcional):
+> ```bash
+> rm apps/api/prisma/dev.db
+> npx prisma db push
+> npx prisma db seed
+> ```
 
 ## 4. Iniciar o sistema
 
@@ -52,25 +63,29 @@ npm run dev
 
 ## 5. Primeiro acesso
 
-1. Acesse `http://localhost:3000/register`
-2. Crie uma conta com email real (voce recebera email de boas-vindas)
-3. Para promover a MASTER: abrir outro terminal e rodar:
-   ```bash
-   cd apps/api
-   npx tsx -e "
-   const { PrismaClient } = require('@prisma/client');
-   const prisma = new PrismaClient();
-   async function main() {
-     const masterRole = await prisma.role.findUnique({ where: { slug: 'master' } });
-     await prisma.user.updateMany({
-       where: { email: 'SEU_EMAIL_AQUI' },
-       data: { roleId: masterRole.id, legacyRole: 'MASTER' }
-     });
-     console.log('Promovido a MASTER!');
-   }
-   main().then(() => process.exit());
-   "
-   ```
+O banco ja vem com contas prontas. Faca login com as credenciais existentes
+(pergunte ao Noletu as senhas dos usuarios de teste).
+
+Ou crie uma nova conta em `http://localhost:3000/register` — voce recebera
+email de boas-vindas automaticamente.
+
+> **Para promover um usuario novo a MASTER** (se precisar):
+> ```bash
+> cd apps/api
+> npx tsx -e "
+> const { PrismaClient } = require('@prisma/client');
+> const prisma = new PrismaClient();
+> async function main() {
+>   const masterRole = await prisma.role.findUnique({ where: { slug: 'master' } });
+>   await prisma.user.updateMany({
+>     where: { email: 'SEU_EMAIL_AQUI' },
+>     data: { roleId: masterRole.id, legacyRole: 'MASTER' }
+>   });
+>   console.log('Promovido a MASTER!');
+> }
+> main().then(() => process.exit());
+> "
+> ```
 
 ## 6. O que funciona
 
