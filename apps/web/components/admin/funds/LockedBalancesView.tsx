@@ -227,11 +227,8 @@ export default function LockedBalancesView() {
             >
               <option value="">Todas</option>
               <option value="BITCOIN">Bitcoin</option>
-              <option value="ETHEREUM">Ethereum</option>
               <option value="BASE">Base</option>
-              <option value="ARBITRUM">Arbitrum</option>
               <option value="SOLANA">Solana</option>
-              <option value="TRC20">TRC20</option>
             </select>
           </div>
 

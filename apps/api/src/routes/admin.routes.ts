@@ -37,6 +37,7 @@ router.put('/platform-wallets/:id', adminMiddleware, adminActionLimiter, adminCo
 router.delete('/platform-wallets/:id', adminMiddleware, adminActionLimiter, adminController.deletePlatformWallet.bind(adminController));
 // Transferências de platform wallets (hot → cold / externo)
 router.get('/platform-wallets/:id/transfers', adminMiddleware, adminController.getPlatformWalletTransfers.bind(adminController));
+router.get('/platform-wallets/:id/movements', adminMiddleware, adminController.getPlatformWalletMovements.bind(adminController));
 router.get('/platform-wallets/:id/transfer-estimate', adminMiddleware, adminController.getPlatformWalletTransferEstimate.bind(adminController));
 router.post('/platform-wallets/:id/transfer', adminMiddleware, adminActionLimiter, adminController.requestPlatformWalletTransfer.bind(adminController));
 

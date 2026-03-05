@@ -3,6 +3,7 @@ import { KeyManagementService } from './hd-wallet/key-management.service';
 import { TransactionSenderService } from './blockchain/transaction-sender.service';
 import { BlockchainService } from './blockchain/blockchain.service';
 import { logger } from '../utils/logger';
+import { PlatformWalletService } from './platformWallet.service';
 
 const prisma = new PrismaClient();
 
@@ -493,17 +494,18 @@ export class SweepService {
       return;
     }
 
-    // Transaction atômica: SweepTransaction + UserWallet + PlatformWallet
-    await prisma.$transaction([
-      prisma.sweepTransaction.update({
+    // Transaction atômica: SweepTransaction + UserWallet + PlatformWallet + Movement
+    const newBalance = (parseFloat(hotWallet.balance) + amountNum).toString();
+    await prisma.$transaction(async (tx) => {
+      await tx.sweepTransaction.update({
         where: { id: sweepTxId },
         data: {
           sweepTxHash: txHash,
           status: 'COMPLETED',
           completedAt: new Date(),
         },
-      }),
-      prisma.userWallet.update({
+      });
+      await tx.userWallet.update({
         where: { id: walletId },
         data: {
           sweepStatus: 'COMPLETED',
@@ -511,15 +513,33 @@ export class SweepService {
           pendingSweepAmount: '0',
           onChainSnapshot: '0',
         },
-      }),
-      prisma.platformWallet.update({
+      });
+      await tx.platformWallet.update({
         where: { id: hotWalletId },
         data: {
-          balance: (parseFloat(hotWallet.balance) + amountNum).toString(),
+          balance: newBalance,
           totalDeposited: (parseFloat(hotWallet.totalDeposited) + amountNum).toString(),
         },
-      }),
-    ]);
+      });
+      // Registrar movimentação no ledger
+      await PlatformWalletService.recordMovement(tx, {
+        platformWalletId: hotWalletId,
+        type: 'SWEEP_IN',
+        direction: 'IN',
+        amount: amountNum.toString(),
+        balanceBefore: hotWallet.balance,
+        balanceAfter: newBalance,
+        description: `Sweep recebido de user wallet ${walletId}`,
+        txHash,
+        userId: walletId,
+        metadata: {
+          sweepTxId,
+          userWalletId: walletId,
+          cryptoType: hotWallet.cryptoType,
+          network: hotWallet.network,
+        },
+      });
+    });
   }
 
   /**

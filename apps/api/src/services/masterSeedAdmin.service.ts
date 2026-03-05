@@ -41,7 +41,7 @@ export class MasterSeedAdminService {
       initialized: true,
       createdAt: auditLog?.createdAt,
       encryption: 'AES-256-GCM',
-      supportedNetworks: ['BITCOIN', 'ETHEREUM', 'BASE', 'ARBITRUM', 'SOLANA'],
+      supportedNetworks: ['BITCOIN', 'BASE', 'SOLANA'],
       stats: {
         usersWithWallets: usersWithWallets.length,
         totalUserWallets: walletsCount,
@@ -68,7 +68,11 @@ export class MasterSeedAdminService {
     // Gera mnemonic BIP39 (24 palavras)
     const { mnemonic, encryptedSeed } = MasterSeedService.generateMasterSeed();
 
-    // NOVO: Criar platform wallets automaticamente
+    // CRITICAL: Disponibilizar o seed ANTES de criar platform wallets
+    // Sem isso, getMasterSeed() falha porque MASTER_SEED_ENCRYPTED não existe ainda
+    process.env.MASTER_SEED_ENCRYPTED = encryptedSeed;
+
+    // Criar platform wallets automaticamente
     console.log('[MASTER SEED ADMIN] Creating platform wallets...');
     const { platformWalletService } = await import('./platformWallet.service');
     await platformWalletService.createPlatformWallets();
@@ -173,7 +177,7 @@ export class MasterSeedAdminService {
 
     // Deriva algumas carteiras de teste
     const testWallets = [];
-    const networks = ['BITCOIN', 'ETHEREUM', 'BASE', 'ARBITRUM', 'SOLANA'];
+    const networks = ['BITCOIN', 'BASE', 'SOLANA'];
 
     // Temporariamente sobrescreve o seed para testar
     // NOTA: Isso é apenas para teste, não altera o seed real
@@ -402,6 +406,38 @@ MASTER_SEED_ENCRYPTION_KEY=${newEncryptionKey}
       console.error('[MASTER SEED] Encryption key rotation failed:', error);
       throw new Error(`Falha ao rotacionar encryption key: ${error.message}`);
     }
+  }
+  /**
+   * Reset completo: apaga platform wallets + limpa master seed da memória
+   * Permite gerar uma nova master seed do zero
+   *
+   * SECURITY: Operação DESTRUTIVA — requer MASTER role
+   */
+  async resetMasterSeed(): Promise<{
+    success: boolean;
+    deletedWallets: number;
+    message: string;
+  }> {
+    console.log('[MASTER SEED] Starting full reset...');
+
+    // 1. Apagar todas as platform wallets do banco
+    const deleted = await prisma.platformWallet.deleteMany({});
+    console.log(`[MASTER SEED] Deleted ${deleted.count} platform wallets`);
+
+    // 2. Limpar a env var em memória (para isInitialized() retornar false)
+    delete process.env.MASTER_SEED_ENCRYPTED;
+
+    // 3. Limpar cache do MasterSeedService
+    (MasterSeedService as any).cachedMasterSeed = null;
+    (MasterSeedService as any).cacheExpiry = null;
+
+    console.log('[MASTER SEED] Reset complete. Ready to generate new seed.');
+
+    return {
+      success: true,
+      deletedWallets: deleted.count,
+      message: 'Master seed resetada. Gere uma nova seed pelo painel admin. IMPORTANTE: Atualize o MASTER_SEED_ENCRYPTED no .env após gerar.',
+    };
   }
 }
 

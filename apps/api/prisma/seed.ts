@@ -125,23 +125,9 @@ async function main() {
     // USDT - Múltiplas redes
     {
       cryptoType: 'USDT',
-      network: 'ETHEREUM',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDT Ethereum',
-      derivationPath: "m/44'/60'/0'/0/0",
-    },
-    {
-      cryptoType: 'USDT',
       network: 'BASE',
       address: EVM_ADDRESS,
       label: 'Carteira Principal USDT Base',
-      derivationPath: "m/44'/60'/0'/0/0",
-    },
-    {
-      cryptoType: 'USDT',
-      network: 'ARBITRUM',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDT Arbitrum',
       derivationPath: "m/44'/60'/0'/0/0",
     },
     {
@@ -154,23 +140,9 @@ async function main() {
     // USDC - Múltiplas redes
     {
       cryptoType: 'USDC',
-      network: 'ETHEREUM',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDC Ethereum',
-      derivationPath: "m/44'/60'/0'/0/0",
-    },
-    {
-      cryptoType: 'USDC',
       network: 'BASE',
       address: EVM_ADDRESS,
       label: 'Carteira Principal USDC Base',
-      derivationPath: "m/44'/60'/0'/0/0",
-    },
-    {
-      cryptoType: 'USDC',
-      network: 'ARBITRUM',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDC Arbitrum',
       derivationPath: "m/44'/60'/0'/0/0",
     },
     {

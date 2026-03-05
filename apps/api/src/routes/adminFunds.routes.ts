@@ -43,9 +43,21 @@ router.get(
 );
 
 router.get(
+  '/users/search',
+  managerMiddleware,
+  adminFundsController.searchUserWallets.bind(adminFundsController)
+);
+
+router.get(
   '/users/:userId/wallets',
   managerMiddleware,
   adminFundsController.getUserWallets.bind(adminFundsController)
+);
+
+router.get(
+  '/wallets/:walletId',
+  managerMiddleware,
+  adminFundsController.getWalletById.bind(adminFundsController)
 );
 
 /**
@@ -88,6 +100,19 @@ router.post(
   require2FAMiddleware,
   financialOperationsLimiter,
   adminFundsController.adjustBalance.bind(adminFundsController)
+);
+
+/**
+ * FINANCEIRO CRÍTICO: Platform Refund (APENAS MASTER)
+ * Reembolsar fundos da PlatformWallet para UserWallet
+ * Requer 2FA + Rate limiting restritivo
+ */
+router.post(
+  '/platform-refund',
+  financialOperationsMiddleware,
+  require2FAMiddleware,
+  financialOperationsLimiter,
+  adminFundsController.platformRefund.bind(adminFundsController)
 );
 
 /**

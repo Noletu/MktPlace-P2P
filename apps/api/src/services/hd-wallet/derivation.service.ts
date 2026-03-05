@@ -64,7 +64,8 @@ export class DerivationService {
     // PLATFORM WALLET: Account 0 (reservado)
     const PLATFORM_ACCOUNT = 0;
 
-    // BIP44 path: m/44'/coin_type'/0'/0/0
+    // BIP44 path: m/44'/coin_type'/0'/0'/0'
+    // USDT e USDC na mesma rede compartilham o mesmo endereço (tokens diferentes, mesma wallet)
     const derivationPath = `m/44'/${coinType}'/${PLATFORM_ACCOUNT}'/0'/0'`;
 
     console.log(`[DERIVATION] Deriving platform wallet: ${network} - ${cryptoType}`);

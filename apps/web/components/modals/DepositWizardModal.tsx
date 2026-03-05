@@ -4,7 +4,7 @@ import { useState } from 'react';
 import DepositModal from './DepositModal';
 
 type CryptoType = 'BTC' | 'USDT' | 'USDC';
-type Network = 'BITCOIN' | 'ETHEREUM' | 'BASE' | 'ARBITRUM' | 'SOLANA';
+type Network = 'BITCOIN' | 'BASE' | 'SOLANA';
 
 interface DepositWizardModalProps {
   isOpen: boolean;

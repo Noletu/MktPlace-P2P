@@ -807,6 +807,30 @@ export class AdminController {
   }
 
   /**
+   * GET /admin/platform-wallets/:id/movements
+   * Histórico completo de movimentações de uma platform wallet
+   */
+  async getPlatformWalletMovements(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const limit = parseInt(req.query.limit as string) || 100;
+
+      const movements = await platformWalletService.getMovements(id, limit);
+
+      res.json({
+        success: true,
+        data: movements,
+      });
+    } catch (error: any) {
+      console.error('Erro ao buscar movimentações:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar movimentações',
+      });
+    }
+  }
+
+  /**
    * GET /admin/platform-wallets/:id/transfer-estimate?amount=X&toAddress=Y
    * Estimativa de fee para transferência
    */

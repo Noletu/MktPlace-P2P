@@ -191,9 +191,8 @@ export default function DisputeDetailPage() {
   };
 
   const canResolve = () => {
-    // GERENTE+ pode resolver disputas
-    return dispute?.status !== DisputeStatus.RESOLVED &&
-           dispute?.status !== DisputeStatus.CANCELLED &&
+    // GERENTE+ pode resolver disputas que estão OPEN ou UNDER_REVIEW
+    return (dispute?.status === DisputeStatus.OPEN || dispute?.status === DisputeStatus.UNDER_REVIEW) &&
            userLevel >= 60;
   };
 

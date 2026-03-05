@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { getApiUrl } from '@/config/api';
 import { getExplorerUrl, getExplorerName, truncateHash } from '@/utils/blockchainExplorer';
 import type { NetworkType } from '@/utils/blockchainExplorer';
@@ -31,6 +32,24 @@ interface PlatformTransfer {
   lastError: string | null;
   createdAt: string;
   completedAt: string | null;
+}
+
+interface PlatformWalletMovement {
+  id: string;
+  platformWalletId: string;
+  type: string;
+  direction: string;
+  amount: string;
+  balanceBefore: string;
+  balanceAfter: string;
+  orderId: string | null;
+  txHash: string | null;
+  toAddress: string | null;
+  fromAddress: string | null;
+  userId: string | null;
+  description: string;
+  metadata: string | null;
+  createdAt: string;
 }
 
 interface TransferEstimate {
@@ -67,10 +86,14 @@ export default function PlatformWalletsPage() {
   const [transferResult, setTransferResult] = useState<PlatformTransfer | null>(null);
   const [transferError, setTransferError] = useState<string | null>(null);
 
-  // Transfer history state
+  // Deposit modal state
+  const [depositWallet, setDepositWallet] = useState<PlatformWallet | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // Movement history state
   const [historyWallet, setHistoryWallet] = useState<PlatformWallet | null>(null);
-  const [transfers, setTransfers] = useState<PlatformTransfer[]>([]);
-  const [transfersLoading, setTransfersLoading] = useState(false);
+  const [movements, setMovements] = useState<PlatformWalletMovement[]>([]);
+  const [movementsLoading, setMovementsLoading] = useState(false);
 
   useEffect(() => {
     fetchWallets();
@@ -102,7 +125,7 @@ export default function PlatformWalletsPage() {
   };
 
   const handleCreateAll = async () => {
-    if (!confirm('Deseja criar todas as 9 carteiras da plataforma?\n\nIsso ira derivar enderecos usando o master seed.')) {
+    if (!confirm('Deseja criar todas as 5 carteiras da plataforma?\n(BTC, USDT/BASE, USDT/SOL, USDC/BASE, USDC/SOL)\n\nIsso irá derivar endereços usando o master seed.')) {
       return;
     }
 
@@ -223,47 +246,56 @@ export default function PlatformWalletsPage() {
   };
 
   // ============================================
-  // TRANSFER HISTORY
+  // MOVEMENT HISTORY
   // ============================================
 
-  const openTransferHistory = async (wallet: PlatformWallet) => {
+  const openMovementHistory = async (wallet: PlatformWallet) => {
     setHistoryWallet(wallet);
-    setTransfersLoading(true);
+    setMovementsLoading(true);
 
     try {
       const response = await fetch(
-        getApiUrl(`admin/platform-wallets/${wallet.id}/transfers`),
+        getApiUrl(`admin/platform-wallets/${wallet.id}/movements`),
         { headers: getAuthHeaders() }
       );
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
 
-      setTransfers(data.data || []);
+      setMovements(data.data || []);
     } catch (err: any) {
-      console.error('Erro ao buscar transferencias:', err);
-      setTransfers([]);
+      console.error('Erro ao buscar movimentacoes:', err);
+      setMovements([]);
     } finally {
-      setTransfersLoading(false);
+      setMovementsLoading(false);
     }
   };
 
-  const closeTransferHistory = () => {
+  const closeMovementHistory = () => {
     setHistoryWallet(null);
-    setTransfers([]);
+    setMovements([]);
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'COMPLETED':
-        return <span className="px-2 py-1 text-xs font-medium rounded bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300">Concluido</span>;
-      case 'PROCESSING':
-        return <span className="px-2 py-1 text-xs font-medium rounded bg-yellow-100 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-300">Processando</span>;
-      case 'FAILED':
-        return <span className="px-2 py-1 text-xs font-medium rounded bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300">Falhou</span>;
-      default:
-        return <span className="px-2 py-1 text-xs font-medium rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-400">Pendente</span>;
-    }
+  const getMovementTypeBadge = (type: string, direction: string) => {
+    const isIn = direction === 'IN';
+    const colorClass = isIn
+      ? 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300'
+      : 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-300';
+
+    const labels: Record<string, string> = {
+      'FEE_RECEIVED': 'Fee Recebida',
+      'SWEEP_IN': 'Sweep Recebido',
+      'WITHDRAWAL_OUT': 'Saque',
+      'TRANSFER_OUT': 'Transferencia',
+      'DEPOSIT_IN': 'Deposito',
+      'BALANCE_SYNC': 'Sync',
+    };
+
+    return (
+      <span className={`px-2 py-1 text-xs font-medium rounded ${colorClass}`}>
+        {labels[type] || type}
+      </span>
+    );
   };
 
   // ============================================
@@ -303,17 +335,25 @@ export default function PlatformWalletsPage() {
           </div>
         )}
 
-        {/* Info Alert — no wallets */}
+        {/* Info Alert — wallets faltando */}
         {wallets.length === 0 && (
           <div className="mb-6 p-4 bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 rounded-lg">
             <p className="text-sm text-blue-800 dark:text-blue-300">
-              <strong>Nenhuma carteira encontrada.</strong> Clique no botao abaixo para criar todas as carteiras da plataforma automaticamente.
+              <strong>Nenhuma carteira encontrada.</strong> Clique no botão abaixo para criar todas as carteiras da plataforma automaticamente.
+            </p>
+          </div>
+        )}
+
+        {wallets.length > 0 && wallets.length < 5 && (
+          <div className="mb-6 p-4 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded-lg">
+            <p className="text-sm text-yellow-800 dark:text-yellow-300">
+              <strong>Carteiras incompletas ({wallets.length}/5).</strong> Clique no botão abaixo para criar as carteiras que faltam.
             </p>
           </div>
         )}
 
         {/* Create All Button */}
-        {wallets.length === 0 && (
+        {wallets.length < 5 && (
           <div className="mb-8">
             <button
               onClick={handleCreateAll}
@@ -324,10 +364,10 @@ export default function PlatformWalletsPage() {
                   : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
               }`}
             >
-              {creating ? 'Criando carteiras...' : 'Criar Todas as Carteiras (9)'}
+              {creating ? 'Criando carteiras...' : wallets.length === 0 ? 'Criar Todas as Carteiras (5)' : `Criar Carteiras Faltantes (${5 - wallets.length})`}
             </button>
             <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-              Serao criadas: BTC/BITCOIN + USDT e USDC em 4 redes (Ethereum, Base, Arbitrum, Solana)
+              Redes suportadas: BTC/BITCOIN, USDT e USDC em Base e Solana
             </p>
           </div>
         )}
@@ -397,6 +437,12 @@ export default function PlatformWalletsPage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex gap-2">
                           <button
+                            onClick={() => setDepositWallet(wallet)}
+                            className="px-3 py-1.5 text-xs font-medium rounded bg-green-600 hover:bg-green-700 text-white transition"
+                          >
+                            Depositar
+                          </button>
+                          <button
                             onClick={() => openTransferModal(wallet)}
                             disabled={!wallet.isActive || parseFloat(wallet.balance) <= 0}
                             className={`px-3 py-1.5 text-xs font-medium rounded transition ${
@@ -408,7 +454,7 @@ export default function PlatformWalletsPage() {
                             Transferir
                           </button>
                           <button
-                            onClick={() => openTransferHistory(wallet)}
+                            onClick={() => openMovementHistory(wallet)}
                             className="px-3 py-1.5 text-xs font-medium rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 transition"
                           >
                             Historico
@@ -438,6 +484,83 @@ export default function PlatformWalletsPage() {
           </div>
         )}
       </div>
+
+      {/* ============================================ */}
+      {/* DEPOSIT MODAL */}
+      {/* ============================================ */}
+      {depositWallet && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                Depositar {depositWallet.cryptoType}
+              </h2>
+              <button
+                onClick={() => { setDepositWallet(null); setCopied(false); }}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="text-center mb-6">
+              <span className="inline-block px-3 py-1 text-sm font-medium rounded bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 mb-1">
+                {depositWallet.cryptoType}
+              </span>
+              <span className="inline-block px-3 py-1 text-sm font-medium rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 ml-2">
+                {depositWallet.network}
+              </span>
+            </div>
+
+            {/* QR Code */}
+            <div className="flex justify-center mb-6">
+              <div className="bg-white p-4 rounded-lg">
+                <QRCodeSVG
+                  value={depositWallet.address}
+                  size={200}
+                  level="H"
+                  includeMargin={false}
+                />
+              </div>
+            </div>
+
+            {/* Address */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 text-center">
+                Endereço da Carteira
+              </label>
+              <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-3 border border-gray-300 dark:border-gray-700">
+                <code className="text-sm text-gray-800 dark:text-gray-200 break-all block text-center font-mono">
+                  {depositWallet.address}
+                </code>
+              </div>
+            </div>
+
+            {/* Copy Button */}
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(depositWallet.address);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 3000);
+              }}
+              className={`w-full py-3 rounded-lg font-medium transition text-sm ${
+                copied
+                  ? 'bg-green-600 text-white'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
+            >
+              {copied ? 'Endereço Copiado!' : 'Copiar Endereço'}
+            </button>
+
+            {/* Warning */}
+            <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg">
+              <p className="text-xs text-yellow-800 dark:text-yellow-300">
+                Envie apenas <strong>{depositWallet.cryptoType}</strong> na rede <strong>{depositWallet.network}</strong> para este endereço. Enviar ativos em rede incorreta pode resultar em perda de fundos.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ============================================ */}
       {/* TRANSFER MODAL */}
@@ -730,7 +853,7 @@ export default function PlatformWalletsPage() {
       )}
 
       {/* ============================================ */}
-      {/* TRANSFER HISTORY MODAL */}
+      {/* MOVEMENT HISTORY MODAL */}
       {/* ============================================ */}
       {historyWallet && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -739,14 +862,14 @@ export default function PlatformWalletsPage() {
             <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                  Historico de Transferencias
+                  Historico de Movimentacoes
                 </h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {historyWallet.cryptoType} / {historyWallet.network}
+                  {historyWallet.cryptoType} / {historyWallet.network} — Entradas, saidas e fees
                 </p>
               </div>
               <button
-                onClick={closeTransferHistory}
+                onClick={closeMovementHistory}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
               >
                 X
@@ -755,68 +878,75 @@ export default function PlatformWalletsPage() {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6">
-              {transfersLoading ? (
+              {movementsLoading ? (
                 <div className="animate-pulse space-y-3">
                   {[1, 2, 3].map((i) => (
                     <div key={i} className="h-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
                   ))}
                 </div>
-              ) : transfers.length === 0 ? (
+              ) : movements.length === 0 ? (
                 <div className="text-center py-12">
-                  <p className="text-gray-500 dark:text-gray-400">Nenhuma transferencia realizada</p>
+                  <p className="text-gray-500 dark:text-gray-400">Nenhuma movimentacao registrada</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {transfers.map((transfer) => (
+                  {movements.map((mov) => (
                     <div
-                      key={transfer.id}
-                      className="border border-gray-200 dark:border-gray-700 rounded-lg p-4"
+                      key={mov.id}
+                      className={`border rounded-lg p-4 ${
+                        mov.direction === 'IN'
+                          ? 'border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10'
+                          : 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/10'
+                      }`}
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          {getStatusBadge(transfer.status)}
-                          <span className="text-sm font-medium text-gray-900 dark:text-white">
-                            {transfer.amount} {historyWallet.cryptoType}
+                          {getMovementTypeBadge(mov.type, mov.direction)}
+                          <span className={`text-sm font-medium ${
+                            mov.direction === 'IN'
+                              ? 'text-green-700 dark:text-green-400'
+                              : 'text-red-700 dark:text-red-400'
+                          }`}>
+                            {mov.direction === 'IN' ? '+' : '-'}{parseFloat(mov.amount).toFixed(8)} {historyWallet.cryptoType}
                           </span>
                         </div>
                         <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {new Date(transfer.createdAt).toLocaleString('pt-BR')}
+                          {new Date(mov.createdAt).toLocaleString('pt-BR')}
                         </span>
                       </div>
 
-                      <p className="text-xs text-gray-600 dark:text-gray-400 break-all mb-1">
-                        Para: {transfer.toAddress}
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
+                        {mov.description}
                       </p>
 
-                      {transfer.txHash && (
-                        <p className="text-xs">
+                      <div className="flex gap-4 text-xs text-gray-500 dark:text-gray-400">
+                        <span>Antes: {parseFloat(mov.balanceBefore).toFixed(8)}</span>
+                        <span>Depois: {parseFloat(mov.balanceAfter).toFixed(8)}</span>
+                      </div>
+
+                      {mov.txHash && (
+                        <p className="text-xs mt-1">
                           <span className="text-gray-500 dark:text-gray-400">TxHash: </span>
                           <a
-                            href={getExplorerUrl(historyWallet.network as NetworkType, transfer.txHash)}
+                            href={getExplorerUrl(historyWallet.network as NetworkType, mov.txHash)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 dark:text-blue-400 hover:underline font-mono"
                           >
-                            {truncateHash(transfer.txHash)} ({getExplorerName(historyWallet.network as NetworkType)})
+                            {truncateHash(mov.txHash)} ({getExplorerName(historyWallet.network as NetworkType)})
                           </a>
                         </p>
                       )}
 
-                      {transfer.networkFee && (
+                      {mov.toAddress && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 break-all">
+                          Para: {mov.toAddress}
+                        </p>
+                      )}
+
+                      {mov.orderId && (
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          Fee: {transfer.networkFee}
-                        </p>
-                      )}
-
-                      {transfer.note && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">
-                          Nota: {transfer.note}
-                        </p>
-                      )}
-
-                      {transfer.lastError && (
-                        <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                          Erro: {transfer.lastError}
+                          Order: {mov.orderId}
                         </p>
                       )}
                     </div>
