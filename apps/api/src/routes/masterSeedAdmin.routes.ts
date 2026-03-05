@@ -49,4 +49,11 @@ router.get('/audit-log', require2FAMiddleware, masterSeedAdminController.getAudi
  */
 router.post('/rotate-key', adminActionLimiter, require2FAMiddleware, masterSeedAdminController.rotateEncryptionKey.bind(masterSeedAdminController));
 
+/**
+ * POST /admin/master-seed/reset
+ * Reset completo da master seed (REQUER 2FA - OBRIGATÓRIO)
+ * SECURITY: Rate limiting + 2FA obrigatório — operação DESTRUTIVA
+ */
+router.post('/reset', adminActionLimiter, require2FAMiddleware, masterSeedAdminController.resetMasterSeed.bind(masterSeedAdminController));
+
 export default router;

@@ -7,6 +7,7 @@ import { BlockchainService } from './blockchain/blockchain.service';
 import { WalletService } from './wallet.service';
 import { notificationService } from './notification.service';
 import { logger } from '../utils/logger';
+import { PlatformWalletService } from './platformWallet.service';
 
 const prisma = new PrismaClient();
 
@@ -250,11 +251,32 @@ export class WithdrawalProcessorService {
         });
 
         // 3. Decrementar hot wallet
+        const hotWalletNewBalance = hotBalanceBN.minus(withdrawAmountBN).toFixed(8);
         await tx.platformWallet.update({
           where: { id: hotWallet.id },
           data: {
-            balance: hotBalanceBN.minus(withdrawAmountBN).toFixed(8),
+            balance: hotWalletNewBalance,
             totalWithdrawn: new BigNumber(hotWallet.totalWithdrawn).plus(withdrawAmountBN).toFixed(8),
+          },
+        });
+
+        // 3.1 Registrar movimentação no ledger da platform wallet
+        await PlatformWalletService.recordMovement(tx, {
+          platformWalletId: hotWallet.id,
+          type: 'WITHDRAWAL_OUT',
+          direction: 'OUT',
+          amount: withdrawal.amount,
+          balanceBefore: hotWallet.balance,
+          balanceAfter: hotWalletNewBalance,
+          description: `Saque processado para ${withdrawal.toAddress}`,
+          txHash: result.txHash,
+          toAddress: withdrawal.toAddress,
+          userId: wallet.userId,
+          metadata: {
+            withdrawalId,
+            networkFee: result.networkFee,
+            cryptoType: wallet.cryptoType,
+            network: wallet.network,
           },
         });
 

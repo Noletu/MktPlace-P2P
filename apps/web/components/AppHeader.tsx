@@ -99,6 +99,7 @@ export default function AppHeader() {
     { name: 'Marketplace', path: '/marketplace' },
     { name: 'Carteira', path: '/wallet' },
     { name: 'Meus Pedidos', path: '/orders/my-orders' },
+    { name: 'Disputas', path: '/disputes' },
     { name: 'Suporte', path: '/support' },
     { name: 'Perfil', path: '/profile' },
   ];

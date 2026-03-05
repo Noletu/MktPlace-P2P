@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { WalletService } from './wallet.service';
 import { FeeEstimatorService } from './blockchain/fee-estimator.service';
 import { TransactionSenderService } from './blockchain/transaction-sender.service';
-import { platformWalletService } from './platformWallet.service';
+import { platformWalletService, PlatformWalletService } from './platformWallet.service';
 import { twoFactorService } from './twoFactor.service';
 import { auditLogService } from './auditLog.service';
 
@@ -208,11 +208,34 @@ export class PlatformTransferService {
       });
 
       // 6. Atualizar saldo da platform wallet
+      const walletBefore = await platformWalletService.getPlatformWallet(wallet.cryptoType, wallet.network);
       await platformWalletService.recordWithdrawal(
         wallet.cryptoType,
         wallet.network,
         transfer.amount
       );
+      const walletAfter = await platformWalletService.getPlatformWallet(wallet.cryptoType, wallet.network);
+
+      // 6.1 Registrar movimentação no ledger
+      if (walletBefore && walletAfter) {
+        await PlatformWalletService.recordMovement(prisma, {
+          platformWalletId: wallet.id,
+          type: 'TRANSFER_OUT',
+          direction: 'OUT',
+          amount: transfer.amount,
+          balanceBefore: walletBefore.balance,
+          balanceAfter: walletAfter.balance,
+          description: `Transferência para ${transfer.toAddress}`,
+          txHash: txResult.txHash,
+          toAddress: transfer.toAddress,
+          metadata: {
+            transferId,
+            requestedBy: transfer.requestedBy,
+            networkFee: txResult.networkFee,
+            note: transfer.note,
+          },
+        });
+      }
 
       // 7. Audit log
       auditLogService.log({

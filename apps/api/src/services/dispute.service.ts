@@ -14,6 +14,7 @@ import { OrderStatus } from '../types/order.types';
 import { logger } from '../utils/logger';
 import { DerivationService } from './hd-wallet/derivation.service';
 import BigNumber from 'bignumber.js';
+import { PlatformWalletService } from './platformWallet.service';
 import { KeyManagementService } from './hd-wallet/key-management.service';
 
 const prisma = new PrismaClient();
@@ -801,6 +802,25 @@ export class DisputeService {
                       platformFee: platformFeeBN.toFixed(8),
                       feeSource: isBuyOrder ? 'locked' : 'available',
                     }),
+                  },
+                });
+
+                // Registrar movimentação no ledger da platform wallet
+                await PlatformWalletService.recordMovement(tx, {
+                  platformWalletId: platformWallet.id,
+                  type: 'FEE_RECEIVED',
+                  direction: 'IN',
+                  amount: platformFeeBN.toFixed(8),
+                  balanceBefore: platformWallet.balance,
+                  balanceAfter: platformNewBalance.toFixed(8),
+                  description: `Fee recebida via disputa ${input.disputeId} (Order ${order.id})`,
+                  orderId: order.id,
+                  userId: sellerWallet.userId,
+                  metadata: {
+                    disputeId: input.disputeId,
+                    orderType: isBuyOrder ? 'BUY' : 'SELL',
+                    cryptoType: order.cryptoType,
+                    network: order.network,
                   },
                 });
 

@@ -7,6 +7,7 @@ import { DerivationService } from './hd-wallet/derivation.service';
 import { KeyManagementService } from './hd-wallet/key-management.service';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from './auditLog.service';
 import BigNumber from 'bignumber.js';
+import { PlatformWalletService } from './platformWallet.service';
 
 export class TransactionService {
   /**
@@ -422,6 +423,25 @@ export class TransactionService {
                 feeSource: isBuyOrder ? 'locked' : 'available',
                 timestamp: new Date().toISOString(),
               }),
+            },
+          });
+
+          // Registrar movimentação no ledger da platform wallet
+          await PlatformWalletService.recordMovement(tx, {
+            platformWalletId: platformWallet.id,
+            type: 'FEE_RECEIVED',
+            direction: 'IN',
+            amount: platformFeeBN.toFixed(8),
+            balanceBefore: platformWallet.balance,
+            balanceAfter: platformNewBalanceBN.toFixed(8),
+            description: `Fee recebida da order ${completedOrder.id} (${completedOrder.cryptoType})`,
+            orderId: completedOrder.id,
+            userId: sellerWallet.userId,
+            metadata: {
+              orderType: isBuyOrder ? 'BUY' : 'SELL',
+              cryptoType: completedOrder.cryptoType,
+              network: completedOrder.network,
+              feeSource: isBuyOrder ? 'locked' : 'available',
             },
           });
 

@@ -220,6 +220,36 @@ export class MasterSeedAdminController {
       });
     }
   }
+  /**
+   * POST /admin/master-seed/reset
+   * Reset completo da master seed (2FA validado pelo middleware)
+   */
+  async resetMasterSeed(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.userId;
+
+      if (!userId) {
+        res.status(401).json({ success: false, error: 'Não autorizado' });
+        return;
+      }
+
+      const result = await masterSeedAdminService.resetMasterSeed();
+
+      // SECURITY: Audit log
+      auditLogService.logFromRequest(
+        req,
+        'MASTER_SEED_RESET',
+        'MASTER_SEED',
+        userId,
+        { deletedWallets: result.deletedWallets, timestamp: new Date().toISOString() }
+      );
+
+      res.status(200).json({ success: true, data: result });
+    } catch (error: any) {
+      console.error('[MASTER SEED] Reset error:', error);
+      res.status(400).json({ success: false, error: error.message || 'Erro ao resetar master seed' });
+    }
+  }
 }
 
 export const masterSeedAdminController = new MasterSeedAdminController();

@@ -108,6 +108,12 @@ export default function WalletHubPage() {
     wallet: HDWallet | null;
   }>({ isOpen: false, wallet: null });
   const [expandedCryptos, setExpandedCryptos] = useState<Set<string>>(new Set());
+  const [networkPicker, setNetworkPicker] = useState<{
+    isOpen: boolean;
+    cryptoType: string;
+    action: 'deposit' | 'withdraw';
+    wallets: HDWallet[];
+  }>({ isOpen: false, cryptoType: '', action: 'deposit', wallets: [] });
 
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
@@ -284,19 +290,39 @@ export default function WalletHubPage() {
 
   // Open withdraw for a specific wallet (pick the first wallet of that crypto with available balance)
   const handleOpenWithdraw = (cryptoType: string) => {
-    const wallet = wallets.find(
-      w => w.cryptoType === cryptoType && parseFloat(w.availableBalance) > 0
-    ) || wallets.find(w => w.cryptoType === cryptoType);
+    const matching = wallets.filter(w => w.cryptoType === cryptoType);
+    if (matching.length === 0) return;
 
-    if (wallet) {
-      setWithdrawModal({ isOpen: true, wallet });
+    if (matching.length === 1) {
+      setWithdrawModal({ isOpen: true, wallet: matching[0] });
+    } else {
+      setNetworkPicker({ isOpen: true, cryptoType, action: 'withdraw', wallets: matching });
     }
   };
 
   // Open deposit for a specific crypto
   const handleOpenDeposit = (cryptoType: string) => {
-    const wallet = wallets.find(w => w.cryptoType === cryptoType);
-    if (wallet) {
+    const matching = wallets.filter(w => w.cryptoType === cryptoType);
+    if (matching.length === 0) return;
+
+    if (matching.length === 1) {
+      setDepositModal({
+        isOpen: true,
+        wallet: {
+          id: matching[0].id,
+          cryptoType: matching[0].cryptoType,
+          network: matching[0].network,
+          address: matching[0].address,
+        },
+      });
+    } else {
+      setNetworkPicker({ isOpen: true, cryptoType, action: 'deposit', wallets: matching });
+    }
+  };
+
+  const handleNetworkSelected = (wallet: HDWallet) => {
+    setNetworkPicker({ isOpen: false, cryptoType: '', action: 'deposit', wallets: [] });
+    if (networkPicker.action === 'deposit') {
       setDepositModal({
         isOpen: true,
         wallet: {
@@ -306,6 +332,8 @@ export default function WalletHubPage() {
           address: wallet.address,
         },
       });
+    } else {
+      setWithdrawModal({ isOpen: true, wallet });
     }
   };
 
@@ -717,6 +745,49 @@ export default function WalletHubPage() {
             fetchAll();
           }}
         />
+      )}
+
+      {/* Network Picker Modal (when crypto has multiple networks) */}
+      {networkPicker.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+              Selecione a Rede
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              {networkPicker.action === 'deposit' ? 'Para qual rede deseja depositar' : 'De qual rede deseja sacar'}{' '}
+              {networkPicker.cryptoType}?
+            </p>
+            <div className="space-y-2">
+              {networkPicker.wallets.map(w => (
+                <button
+                  key={w.id}
+                  onClick={() => handleNetworkSelected(w)}
+                  className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-left"
+                >
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">{w.network}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-1">
+                      {w.address.slice(0, 8)}...{w.address.slice(-6)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-green-600 dark:text-green-400">
+                      {parseFloat(w.availableBalance).toFixed(8)}
+                    </p>
+                    <p className="text-xs text-gray-400">disponível</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setNetworkPicker({ isOpen: false, cryptoType: '', action: 'deposit', wallets: [] })}
+              className="w-full mt-4 px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
       )}
     </>
   );

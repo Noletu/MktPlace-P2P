@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { apiPost, apiGet } from '@/utils/api';
 
 type CryptoType = 'BTC' | 'USDT' | 'USDC';
-type Network = 'BITCOIN' | 'ETHEREUM' | 'BASE' | 'ARBITRUM' | 'SOLANA';
+type Network = 'BITCOIN' | 'BASE' | 'SOLANA';
 
 interface GenerateWalletModalProps {
   isOpen: boolean;

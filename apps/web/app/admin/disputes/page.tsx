@@ -13,29 +13,6 @@ interface DisputeStats {
   cancelled: number;
 }
 
-enum ResolutionType {
-  RELEASE_TO_BUYER = 'RELEASE_TO_BUYER',
-  RETURN_TO_SELLER = 'RETURN_TO_SELLER',
-  CANCEL_NO_PENALTY = 'CANCEL_NO_PENALTY',
-  PENALTY_BUYER = 'PENALTY_BUYER',
-  PENALTY_SELLER = 'PENALTY_SELLER',
-}
-
-const RESOLUTION_TYPE_LABELS: Record<ResolutionType, string> = {
-  [ResolutionType.RELEASE_TO_BUYER]: 'Liberar Cripto para Pagador do PIX (comprovante valido)',
-  [ResolutionType.RETURN_TO_SELLER]: 'Devolver Cripto ao Vendedor (comprovante invalido)',
-  [ResolutionType.CANCEL_NO_PENALTY]: 'Cancelar Negociacao (sem penalidade)',
-  [ResolutionType.PENALTY_BUYER]: 'Penalizar Pagador do PIX (fraude comprovada)',
-  [ResolutionType.PENALTY_SELLER]: 'Penalizar Vendedor de Cripto (ma-fe comprovada)',
-};
-
-const RESOLUTION_DESCRIPTIONS: Record<ResolutionType, string> = {
-  [ResolutionType.RELEASE_TO_BUYER]: 'A cripto sera transferida para a carteira do pagador do PIX. O vendedor perde a cripto bloqueada.',
-  [ResolutionType.RETURN_TO_SELLER]: 'A cripto sera desbloqueada e devolvida ao vendedor. O pagador do PIX nao recebe nada.',
-  [ResolutionType.CANCEL_NO_PENALTY]: 'A cripto sera desbloqueada para o vendedor. Nenhuma penalidade aplicada.',
-  [ResolutionType.PENALTY_BUYER]: 'Cripto devolvida ao vendedor + penalidade de reputacao ao comprador.',
-  [ResolutionType.PENALTY_SELLER]: 'Cripto liberada ao comprador + penalidade de reputacao ao vendedor.',
-};
 
 export default function AdminDisputesPage() {
   const router = useRouter();
@@ -43,10 +20,6 @@ export default function AdminDisputesPage() {
   const [stats, setStats] = useState<DisputeStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
-  const [resolvingId, setResolvingId] = useState<string | null>(null);
-  const [resolutionType, setResolutionType] = useState<ResolutionType | ''>('');
-  const [resolutionText, setResolutionText] = useState('');
-  const [resolving, setResolving] = useState(false);
 
   useEffect(() => {
     fetchDisputes();
@@ -100,52 +73,6 @@ export default function AdminDisputesPage() {
       }
     } catch (error) {
       console.error('Erro ao carregar estatísticas:', error);
-    }
-  };
-
-  const handleResolve = async () => {
-    if (!resolvingId || !resolutionType || !resolutionText.trim()) {
-      alert('Preencha todos os campos');
-      return;
-    }
-
-    setResolving(true);
-    try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        alert('Você precisa estar logado');
-        router.push('/login');
-        return;
-      }
-
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/disputes/${resolvingId}/resolve`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          resolutionType,
-          resolution: resolutionText,
-        }),
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        alert('Disputa resolvida com sucesso!');
-        setResolvingId(null);
-        setResolutionType('');
-        setResolutionText('');
-        await fetchDisputes();
-        await fetchStats();
-      } else {
-        alert(data.message || 'Erro ao resolver disputa');
-      }
-    } catch (error) {
-      console.error('Erro ao resolver disputa:', error);
-      alert('Erro ao resolver disputa');
-    } finally {
-      setResolving(false);
     }
   };
 
@@ -291,150 +218,59 @@ export default function AdminDisputesPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {disputes
-            .filter(d => filterStatus === 'ALL' || d.status === filterStatus)
-            .map((dispute) => (
-            <div
-              key={dispute.id}
-              className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow p-6"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-                    {dispute.title}
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {CATEGORY_LABELS[dispute.category as keyof typeof CATEGORY_LABELS]}
-                  </p>
-                </div>
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(
-                    dispute.status
-                  )}`}
-                >
-                  {STATUS_LABELS[dispute.status as keyof typeof STATUS_LABELS]}
-                </span>
-              </div>
-
-              {/* Info Grid */}
-              <div className="grid grid-cols-3 gap-4 mb-4 text-sm">
-                <div>
-                  <span className="text-gray-600 dark:text-gray-400">Criado por:</span>
-                  <span className="ml-2 font-semibold text-gray-900 dark:text-white">
-                    {dispute.creator.name}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-600 dark:text-gray-400">Pedido:</span>
-                  <span className="ml-2 font-mono text-gray-900 dark:text-white">
-                    #{dispute.order.id.substring(0, 8)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-600 dark:text-gray-400">Valor:</span>
-                  <span className="ml-2 font-semibold text-gray-900 dark:text-white">
-                    R$ {parseFloat(dispute.order.brlAmount).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-
-              {/* Description Preview */}
-              <div className="bg-white dark:bg-gray-900 border border-gray-600 rounded p-3 mb-4">
-                <p className="text-sm text-gray-800 dark:text-gray-200 line-clamp-2">
-                  {dispute.description}
-                </p>
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => router.push(`/disputes/${dispute.id}`)}
-                  className="px-4 py-2 bg-blue-600 text-gray-900 dark:text-white rounded-lg hover:bg-blue-700 text-sm"
-                >
-                  Ver Detalhes
-                </button>
-                {(dispute.status === DisputeStatus.OPEN || dispute.status === DisputeStatus.UNDER_REVIEW) && (
-                  <button
-                    onClick={() => setResolvingId(dispute.id)}
-                    className="px-4 py-2 bg-green-600 text-gray-900 dark:text-white rounded-lg hover:bg-green-700 text-sm"
-                  >
-                    Resolver Disputa
-                  </button>
-                )}
-              </div>
-
-              {/* Resolution Form */}
-              {resolvingId === dispute.id && (
-                <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-700 rounded-lg">
-                  <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-3">
-                    Resolver Disputa
-                  </h4>
-
-                  {/* Resolution Type */}
-                  <div className="mb-3">
-                    <label className="block text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
-                      Tipo de Resolucao
-                    </label>
-                    <select
-                      value={resolutionType}
-                      onChange={(e) => setResolutionType(e.target.value as ResolutionType)}
-                      className="w-full px-3 py-2 border border-blue-300 dark:border-blue-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                    >
-                      <option value="">Selecione a decisao...</option>
-                      {Object.entries(RESOLUTION_TYPE_LABELS).map(([key, label]) => (
-                        <option key={key} value={key}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                    {resolutionType && (
-                      <p className="mt-2 text-xs text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-800 p-2 rounded">
-                        {RESOLUTION_DESCRIPTIONS[resolutionType as ResolutionType]}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Resolution Text */}
-                  <div className="mb-3">
-                    <label className="block text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
-                      Justificativa da Decisão
-                    </label>
-                    <textarea
-                      value={resolutionText}
-                      onChange={(e) => setResolutionText(e.target.value)}
-                      placeholder="Explique detalhadamente a decisão tomada..."
-                      className="w-full px-3 py-2 border border-blue-300 dark:border-blue-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-none"
-                      rows={4}
-                    />
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        setResolvingId(null);
-                        setResolutionType('');
-                        setResolutionText('');
-                      }}
-                      className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
-                      disabled={resolving}
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={handleResolve}
-                      disabled={resolving || !resolutionType || !resolutionText.trim()}
-                      className="px-4 py-2 bg-green-600 text-gray-900 dark:text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {resolving ? 'Resolvendo...' : 'Confirmar Resolução'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
+        <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-900">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Titulo</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Criado por</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Valor</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Data</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Acao</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                {disputes
+                  .filter(d => filterStatus === 'ALL' || d.status === filterStatus)
+                  .map((dispute) => (
+                  <tr key={dispute.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(dispute.status)}`}>
+                        {STATUS_LABELS[dispute.status as keyof typeof STATUS_LABELS]}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="text-sm font-medium text-gray-900 dark:text-white truncate max-w-xs">
+                        {dispute.title}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {CATEGORY_LABELS[dispute.category as keyof typeof CATEGORY_LABELS]}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                      {dispute.creator.name}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                      R$ {parseFloat(dispute.order.brlAmount).toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
+                      {new Date(dispute.createdAt).toLocaleDateString('pt-BR')}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <button
+                        onClick={() => router.push(`/disputes/${dispute.id}`)}
+                        className="px-3 py-1.5 text-xs font-medium rounded bg-blue-600 hover:bg-blue-700 text-white transition"
+                      >
+                        Ver Detalhes
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

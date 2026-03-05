@@ -37,6 +37,8 @@ export default function MasterSeedAdminPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     fetchStatus();
@@ -123,6 +125,39 @@ export default function MasterSeedAdminPage() {
     } catch (error) {
       console.error('Erro ao recuperar master seed:', error);
       setError('Erro ao recuperar master seed');
+    }
+  };
+
+  const handleReset = async () => {
+    try {
+      setError('');
+      setResetting(true);
+      const token = localStorage.getItem('accessToken');
+
+      const response = await fetch('http://localhost:3002/api/v1/admin/master-seed/reset', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ twoFactorCode }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setSuccess(data.data.message);
+        setShowResetModal(false);
+        setTwoFactorCode('');
+        fetchStatus();
+      } else {
+        setError(data.error || 'Erro ao resetar master seed');
+      }
+    } catch (error) {
+      console.error('Erro ao resetar master seed:', error);
+      setError('Erro ao resetar master seed');
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -214,6 +249,17 @@ export default function MasterSeedAdminPage() {
                 </span>
               ))}
             </div>
+          </div>
+          <div className="mt-6 pt-4 border-t border-gray-700">
+            <button
+              onClick={() => setShowResetModal(true)}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              Resetar Master Seed
+            </button>
+            <p className="mt-2 text-xs text-gray-500">
+              Remove todas as platform wallets e permite gerar uma nova seed do zero.
+            </p>
           </div>
         </div>
       )}
@@ -416,6 +462,58 @@ export default function MasterSeedAdminPage() {
                 </button>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Reset Modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-lg w-full">
+            <h2 className="text-2xl font-bold text-red-400 mb-4">Resetar Master Seed</h2>
+
+            <div className="bg-red-500/10 border border-red-500 rounded-lg p-4 mb-6">
+              <p className="text-red-400 font-semibold mb-2">ATENÇÃO - Operação Destrutiva!</p>
+              <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside">
+                <li>Todas as platform wallets serão apagadas</li>
+                <li>A master seed será removida da memória</li>
+                <li>Será necessário gerar uma nova seed</li>
+                <li>Certifique-se de ter o backup do mnemonic atual</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Código 2FA para confirmar
+              </label>
+              <input
+                type="text"
+                value={twoFactorCode}
+                onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white text-center text-2xl tracking-widest font-mono"
+                maxLength={6}
+              />
+            </div>
+
+            <div className="flex justify-end gap-4">
+              <button
+                onClick={() => {
+                  setShowResetModal(false);
+                  setTwoFactorCode('');
+                }}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleReset}
+                disabled={twoFactorCode.length !== 6 || resetting}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {resetting ? 'Resetando...' : 'Confirmar Reset'}
+              </button>
+            </div>
           </div>
         </div>
       )}
