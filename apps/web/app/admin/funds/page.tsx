@@ -35,6 +35,33 @@ interface UserWallet {
   lockedBalance: string;
 }
 
+interface SearchedWalletData {
+  id: string;
+  cryptoType: string;
+  network: string;
+  address: string;
+  balance: string;
+  availableBalance: string;
+  lockedBalance: string;
+}
+
+interface SearchedUserData {
+  user: { id: string; email: string; name: string | null };
+  wallets: SearchedWalletData[];
+}
+
+interface WalletLookupData {
+  id: string;
+  cryptoType: string;
+  network: string;
+  address: string;
+  balance: string;
+  lockedBalance: string;
+  availableBalance: string;
+  isActive: boolean;
+  user: { id: string; email: string; name: string | null };
+}
+
 interface AuditLogEntry {
   id: string;
   action: string;
@@ -47,25 +74,48 @@ export default function AdminFundsPage() {
   const router = useRouter();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'partners' | 'users' | 'total' | 'locked' | 'freeze' | 'transfer' | 'adjust' | 'audit' | 'analytics'>('partners');
+  const [activeTab, setActiveTab] = useState<'partners' | 'users' | 'total' | 'locked' | 'freeze' | 'operations' | 'audit' | 'analytics'>('partners');
 
   // Freeze/Unfreeze states
   const [freezeUserId, setFreezeUserId] = useState('');
   const [freezeReason, setFreezeReason] = useState('');
   const [freezeLoading, setFreezeLoading] = useState(false);
 
-  // Transfer states
+  // Operations tab — unified state
+  const [operationType, setOperationType] = useState<'transfer' | 'refund' | 'adjust'>('transfer');
+  const [operationLoading, setOperationLoading] = useState(false);
+
+  // Transfer fields
+  const [transferCrypto, setTransferCrypto] = useState('');
+  const [transferNetwork, setTransferNetwork] = useState('');
+  const [fromEmail, setFromEmail] = useState('');
+  const [fromUserData, setFromUserData] = useState<SearchedUserData | null>(null);
   const [fromWalletId, setFromWalletId] = useState('');
+  const [fromSearchLoading, setFromSearchLoading] = useState(false);
+  const [toEmail, setToEmail] = useState('');
+  const [toUserData, setToUserData] = useState<SearchedUserData | null>(null);
   const [toWalletId, setToWalletId] = useState('');
+  const [toSearchLoading, setToSearchLoading] = useState(false);
   const [transferAmount, setTransferAmount] = useState('');
   const [transferReason, setTransferReason] = useState('');
-  const [transferLoading, setTransferLoading] = useState(false);
 
-  // Adjust states
+  // Platform operation fields
+  const [platformEmail, setPlatformEmail] = useState('');
+  const [platformUserData, setPlatformUserData] = useState<SearchedUserData | null>(null);
+  const [platformSearchLoading, setPlatformSearchLoading] = useState(false);
+  const [refundToWalletId, setRefundToWalletId] = useState('');
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState('');
+  const [platformDirection, setPlatformDirection] = useState<'TO_USER' | 'FROM_USER'>('TO_USER');
+
+  // Adjust fields
   const [adjustWalletId, setAdjustWalletId] = useState('');
   const [adjustment, setAdjustment] = useState('');
   const [adjustReason, setAdjustReason] = useState('');
-  const [adjustLoading, setAdjustLoading] = useState(false);
+
+  // Wallet lookup cache (walletId → data)
+  const [walletLookups, setWalletLookups] = useState<Record<string, WalletLookupData>>({});
+  const [lookupLoading, setLookupLoading] = useState<Record<string, boolean>>({});
 
   // Search states
   const [searchUserId, setSearchUserId] = useState('');
@@ -92,6 +142,70 @@ export default function AdminFundsPage() {
 
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  };
+
+  const lookupWallet = async (walletId: string) => {
+    if (!walletId.trim()) return;
+    if (walletLookups[walletId]) return; // já em cache
+
+    setLookupLoading((prev) => ({ ...prev, [walletId]: true }));
+    const token = localStorage.getItem('accessToken');
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1'}/admin/funds/wallets/${walletId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || 'Carteira não encontrada');
+      }
+
+      const result = await response.json();
+      setWalletLookups((prev) => ({ ...prev, [walletId]: result.data }));
+    } catch (error) {
+      addToast('error', `Wallet ${walletId.slice(0, 12)}...: ${(error as Error).message}`);
+    } finally {
+      setLookupLoading((prev) => ({ ...prev, [walletId]: false }));
+    }
+  };
+
+  const searchUserByEmail = async (email: string, target: 'from' | 'to' | 'platform') => {
+    if (!email.trim()) return;
+    const setLoading = target === 'platform' ? setPlatformSearchLoading : target === 'from' ? setFromSearchLoading : setToSearchLoading;
+    const setData = target === 'platform' ? setPlatformUserData : target === 'from' ? setFromUserData : setToUserData;
+    const setWallet = target === 'platform' ? setRefundToWalletId : target === 'from' ? setFromWalletId : setToWalletId;
+
+    setLoading(true);
+    setData(null);
+    setWallet('');
+    const token = localStorage.getItem('accessToken');
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1'}/admin/funds/users/search?email=${encodeURIComponent(email)}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || 'Usuário não encontrado');
+      }
+
+      const result = await response.json();
+      setData(result.data);
+    } catch (error) {
+      addToast('error', (error as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getFilteredWallets = (data: SearchedUserData | null): SearchedWalletData[] => {
+    if (!data) return [];
+    return data.wallets.filter((w) =>
+      (!transferCrypto || w.cryptoType === transferCrypto) &&
+      (!transferNetwork || w.network === transferNetwork)
+    );
   };
 
   useEffect(() => {
@@ -239,16 +353,20 @@ export default function AdminFundsPage() {
   };
 
   const handleInternalTransfer = async () => {
-    if (!fromWalletId.trim() || !toWalletId.trim() || !transferAmount.trim() || !transferReason.trim()) {
-      alert('Preencha todos os campos');
+    if (!fromWalletId || !toWalletId || !transferAmount.trim() || !transferReason.trim()) {
+      alert('Preencha todos os campos e selecione as carteiras');
       return;
     }
 
-    if (!confirm(`⚠️ OPERAÇÃO CRÍTICA\n\nTransferir ${transferAmount} da carteira ${fromWalletId} para ${toWalletId}?\n\nMotivo: ${transferReason}\n\nEsta ação é IRREVERSÍVEL!`)) {
+    const fromWallet = fromUserData?.wallets.find((w) => w.id === fromWalletId);
+    const fromLabel = `${fromUserData?.user.email} (${fromWallet?.cryptoType}/${fromWallet?.network} - saldo: ${fromWallet?.availableBalance})`;
+    const toLabel = `${toUserData?.user.email}`;
+
+    if (!confirm(`Confirmar Transferencia\n\nTransferir ${transferAmount} ${transferCrypto}/${transferNetwork}\n\nDe: ${fromLabel}\nPara: ${toLabel}\n\nMotivo: ${transferReason}\n\nDeseja prosseguir?`)) {
       return;
     }
 
-    setTransferLoading(true);
+    setOperationLoading(true);
     const token = localStorage.getItem('accessToken');
 
     try {
@@ -272,17 +390,94 @@ export default function AdminFundsPage() {
         throw new Error(result.message || 'Erro ao transferir fundos');
       }
 
-      addToast('success', 'Transferência interna realizada com sucesso!');
+      addToast('success', 'Transferencia interna realizada com sucesso!');
       setFromWalletId('');
       setToWalletId('');
+      setFromEmail('');
+      setToEmail('');
+      setFromUserData(null);
+      setToUserData(null);
       setTransferAmount('');
       setTransferReason('');
       loadDashboard();
     } catch (error) {
       console.error('Erro ao transferir fundos:', error);
-      addToast('error', `Erro na transferência: ${(error as Error).message}`);
+      addToast('error', `Erro na transferencia: ${(error as Error).message}`);
     } finally {
-      setTransferLoading(false);
+      setOperationLoading(false);
+    }
+  };
+
+  const handlePlatformRefund = async () => {
+    // Pegar crypto/network da wallet selecionada
+    const selectedWallet = platformUserData?.wallets.find(w => w.id === refundToWalletId);
+    const crypto = selectedWallet?.cryptoType || '';
+    const network = selectedWallet?.network || '';
+
+    if (!crypto || !network || !refundToWalletId.trim() || !refundAmount.trim() || !refundReason.trim()) {
+      alert('Preencha todos os campos (busque o usuario e selecione a carteira)');
+      return;
+    }
+
+    const userEmail = platformUserData?.user.email || refundToWalletId;
+    const isCollect = platformDirection === 'FROM_USER';
+
+    const confirmMsg = isCollect
+      ? `Confirmar Cobrança\n\nCobrar ${refundAmount} ${crypto}/${network} de ${userEmail} para a PlatformWallet?\n\nMotivo: ${refundReason}\n\nDeseja prosseguir?`
+      : `Confirmar Reembolso\n\nReembolsar ${refundAmount} ${crypto}/${network} da PlatformWallet para ${userEmail}?\n\nMotivo: ${refundReason}\n\nDeseja prosseguir?`;
+
+    if (!confirm(confirmMsg)) {
+      return;
+    }
+
+    // Dupla confirmacao
+    const finalMsg = isCollect
+      ? `CONFIRMACAO FINAL\n\nVoce tem CERTEZA ABSOLUTA que deseja executar esta cobrança?\n\nValor: ${refundAmount} ${crypto}\nRede: ${network}\nOrigem: ${userEmail}`
+      : `CONFIRMACAO FINAL\n\nVoce tem CERTEZA ABSOLUTA que deseja executar este reembolso?\n\nValor: ${refundAmount} ${crypto}\nRede: ${network}\nDestino: ${userEmail}`;
+
+    if (!confirm(finalMsg)) {
+      return;
+    }
+
+    setOperationLoading(true);
+    const token = localStorage.getItem('accessToken');
+
+    try {
+      const response = await fetch('http://localhost:3002/api/v1/admin/funds/platform-refund', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cryptoType: crypto,
+          network: network,
+          toWalletId: refundToWalletId,
+          amount: refundAmount,
+          reason: refundReason,
+          direction: platformDirection,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || (isCollect ? 'Erro ao cobrar' : 'Erro ao reembolsar'));
+      }
+
+      addToast('success', isCollect ? 'Cobrança da plataforma realizada com sucesso!' : 'Reembolso da plataforma realizado com sucesso!');
+      setPlatformEmail('');
+      setPlatformUserData(null);
+      setRefundToWalletId('');
+      setRefundAmount('');
+      setRefundReason('');
+      setPlatformDirection('TO_USER');
+      loadDashboard();
+    } catch (error) {
+      console.error(isCollect ? 'Erro ao cobrar:' : 'Erro ao reembolsar:', error);
+      addToast('error', `${isCollect ? 'Erro na cobrança' : 'Erro no reembolso'}: ${(error as Error).message}`);
+    } finally {
+      setOperationLoading(false);
     }
   };
 
@@ -305,7 +500,7 @@ export default function AdminFundsPage() {
       return;
     }
 
-    setAdjustLoading(true);
+    setOperationLoading(true);
     const token = localStorage.getItem('accessToken');
 
     try {
@@ -337,7 +532,7 @@ export default function AdminFundsPage() {
       console.error('Erro ao ajustar saldo:', error);
       addToast('error', `Erro ao ajustar saldo: ${(error as Error).message}`);
     } finally {
-      setAdjustLoading(false);
+      setOperationLoading(false);
     }
   };
 
@@ -478,24 +673,14 @@ export default function AdminFundsPage() {
             ❄️ Freeze/Unfreeze
           </button>
           <button
-            onClick={() => setActiveTab('transfer')}
+            onClick={() => setActiveTab('operations')}
             className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
-              activeTab === 'transfer'
-                ? 'border-blue-500 text-blue-400'
+              activeTab === 'operations'
+                ? 'border-orange-500 text-orange-400'
                 : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
             }`}
           >
-            💸 Transferência Interna
-          </button>
-          <button
-            onClick={() => setActiveTab('adjust')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
-              activeTab === 'adjust'
-                ? 'border-blue-500 text-blue-400'
-                : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
-            }`}
-          >
-            🔧 Ajuste de Saldo
+            ⚡ Operacoes
           </button>
           <button
             onClick={() => setActiveTab('audit')}
@@ -732,147 +917,445 @@ export default function AdminFundsPage() {
         </div>
       )}
 
-      {/* Internal Transfer Tab */}
-      {activeTab === 'transfer' && (
+      {/* Operations Tab (Unified: Transfer + Refund + Adjust) */}
+      {activeTab === 'operations' && (
         <div className="space-y-6">
           <div className="bg-red-900/20 border border-red-600/50 rounded-lg p-4">
             <p className="text-red-300 text-sm">
-              🚨 <strong>OPERAÇÃO CRÍTICA:</strong> Transferências internas movem fundos entre carteiras sem usar blockchain. Esta ação é IRREVERSÍVEL!
+              <strong>Operacoes financeiras:</strong> Afetam saldos reais dos usuarios. Exigem autenticacao 2FA e sao registradas no Audit Log.
             </p>
           </div>
 
+          {/* Operation Type Selector */}
           <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">💸 Transferência Interna</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Carteira de Origem (From Wallet ID)
-                </label>
-                <input
-                  type="text"
-                  value={fromWalletId}
-                  onChange={(e) => setFromWalletId(e.target.value)}
-                  placeholder="ID da carteira de origem"
-                  className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Carteira de Destino (To Wallet ID)
-                </label>
-                <input
-                  type="text"
-                  value={toWalletId}
-                  onChange={(e) => setToWalletId(e.target.value)}
-                  placeholder="ID da carteira de destino"
-                  className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Valor
-                </label>
-                <input
-                  type="number"
-                  step="0.00000001"
-                  value={transferAmount}
-                  onChange={(e) => setTransferAmount(e.target.value)}
-                  placeholder="0.00000000"
-                  className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Motivo (obrigatório)
-                </label>
-                <textarea
-                  value={transferReason}
-                  onChange={(e) => setTransferReason(e.target.value)}
-                  placeholder="Ex: Correção de saldo incorreto, reembolso aprovado, etc."
-                  rows={3}
-                  className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <button
-                onClick={handleInternalTransfer}
-                disabled={transferLoading}
-                className="w-full px-6 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-gray-900 dark:text-white rounded-lg font-medium transition"
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Tipo de Operacao</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <label
+                className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition ${
+                  operationType === 'transfer'
+                    ? 'border-blue-500 bg-blue-900/20'
+                    : 'border-gray-600 hover:border-gray-500'
+                }`}
               >
-                {transferLoading ? 'Processando...' : '🚨 Executar Transferência Interna'}
-              </button>
+                <input
+                  type="radio"
+                  name="operationType"
+                  value="transfer"
+                  checked={operationType === 'transfer'}
+                  onChange={() => setOperationType('transfer')}
+                  className="text-blue-500"
+                />
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">Transferencia entre Usuarios</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">UserWallet → UserWallet</p>
+                </div>
+              </label>
+
+              <label
+                className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition ${
+                  operationType === 'refund'
+                    ? 'border-purple-500 bg-purple-900/20'
+                    : 'border-gray-600 hover:border-gray-500'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="operationType"
+                  value="refund"
+                  checked={operationType === 'refund'}
+                  onChange={() => setOperationType('refund')}
+                  className="text-purple-500"
+                />
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">Operação Plataforma</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">PlatformWallet ↔ UserWallet</p>
+                </div>
+              </label>
+
+              <label
+                className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition ${
+                  operationType === 'adjust'
+                    ? 'border-red-500 bg-red-900/20'
+                    : 'border-gray-600 hover:border-gray-500'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="operationType"
+                  value="adjust"
+                  checked={operationType === 'adjust'}
+                  onChange={() => setOperationType('adjust')}
+                  className="text-red-500"
+                />
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">Ajuste Manual</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Adicionar/subtrair de UserWallet</p>
+                </div>
+              </label>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Adjust Balance Tab */}
-      {activeTab === 'adjust' && (
-        <div className="space-y-6">
-          <div className="bg-red-900/20 border border-red-600/50 rounded-lg p-4">
-            <p className="text-red-300 text-sm">
-              🚨 <strong>OPERAÇÃO CRÍTICA:</strong> Ajuste manual de saldo pode adicionar ou subtrair fundos de qualquer carteira. Esta ação é IRREVERSÍVEL!
-            </p>
-          </div>
+          {/* Transfer Form */}
+          {operationType === 'transfer' && (
+            <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Transferencia entre Usuarios</h3>
+              <div className="space-y-4">
+                {/* Crypto + Network */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Crypto</label>
+                    <select
+                      value={transferCrypto}
+                      onChange={(e) => { setTransferCrypto(e.target.value); setFromWalletId(''); setToWalletId(''); }}
+                      className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">Selecione...</option>
+                      <option value="BTC">BTC</option>
+                      <option value="USDT">USDT</option>
+                      <option value="USDC">USDC</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Rede</label>
+                    <select
+                      value={transferNetwork}
+                      onChange={(e) => { setTransferNetwork(e.target.value); setFromWalletId(''); setToWalletId(''); }}
+                      className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">Selecione...</option>
+                      <option value="BITCOIN">BITCOIN</option>
+                      <option value="BASE">BASE</option>
+                      <option value="SOLANA">SOLANA</option>
+                    </select>
+                  </div>
+                </div>
 
-          <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">🔧 Ajuste Manual de Saldo</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Wallet ID
-                </label>
-                <input
-                  type="text"
-                  value={adjustWalletId}
-                  onChange={(e) => setAdjustWalletId(e.target.value)}
-                  placeholder="ID da carteira"
-                  className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
+                {/* From User */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Origem - Email do usuario</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      value={fromEmail}
+                      onChange={(e) => setFromEmail(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && searchUserByEmail(fromEmail, 'from')}
+                      placeholder="usuario@email.com"
+                      className="flex-1 px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                    />
+                    <button
+                      onClick={() => searchUserByEmail(fromEmail, 'from')}
+                      disabled={fromSearchLoading || !fromEmail.trim()}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg text-sm transition"
+                    >
+                      {fromSearchLoading ? '...' : 'Buscar'}
+                    </button>
+                  </div>
+                  {fromUserData && (
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-400 mb-1">
+                        {fromUserData.user.name || fromUserData.user.email} — {getFilteredWallets(fromUserData).length} carteira(s) {transferCrypto}/{transferNetwork}
+                      </p>
+                      {getFilteredWallets(fromUserData).length > 0 ? (
+                        <select
+                          value={fromWalletId}
+                          onChange={(e) => setFromWalletId(e.target.value)}
+                          className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">Selecione a carteira...</option>
+                          {getFilteredWallets(fromUserData).map((w) => (
+                            <option key={w.id} value={w.id}>
+                              {w.cryptoType}/{w.network} — Saldo: {w.balance} | Disponivel: {w.availableBalance} | Bloqueado: {w.lockedBalance}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-sm text-red-400">Nenhuma carteira encontrada para {transferCrypto || '?'}/{transferNetwork || '?'}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* To User */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Destino - Email do usuario</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      value={toEmail}
+                      onChange={(e) => setToEmail(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && searchUserByEmail(toEmail, 'to')}
+                      placeholder="usuario@email.com"
+                      className="flex-1 px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                    />
+                    <button
+                      onClick={() => searchUserByEmail(toEmail, 'to')}
+                      disabled={toSearchLoading || !toEmail.trim()}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg text-sm transition"
+                    >
+                      {toSearchLoading ? '...' : 'Buscar'}
+                    </button>
+                  </div>
+                  {toUserData && (
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-400 mb-1">
+                        {toUserData.user.name || toUserData.user.email} — {getFilteredWallets(toUserData).length} carteira(s) {transferCrypto}/{transferNetwork}
+                      </p>
+                      {getFilteredWallets(toUserData).length > 0 ? (
+                        <select
+                          value={toWalletId}
+                          onChange={(e) => setToWalletId(e.target.value)}
+                          className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">Selecione a carteira...</option>
+                          {getFilteredWallets(toUserData).map((w) => (
+                            <option key={w.id} value={w.id}>
+                              {w.cryptoType}/{w.network} — Saldo: {w.balance} | Disponivel: {w.availableBalance}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-sm text-red-400">Nenhuma carteira encontrada para {transferCrypto || '?'}/{transferNetwork || '?'}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Valor</label>
+                  <input
+                    type="number"
+                    step="0.00000001"
+                    value={transferAmount}
+                    onChange={(e) => setTransferAmount(e.target.value)}
+                    placeholder="0.00000000"
+                    className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Motivo (obrigatorio)</label>
+                  <textarea
+                    value={transferReason}
+                    onChange={(e) => setTransferReason(e.target.value)}
+                    placeholder="Ex: Correcao de saldo incorreto, reembolso aprovado, etc."
+                    rows={3}
+                    className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <button
+                  onClick={handleInternalTransfer}
+                  disabled={operationLoading || !fromWalletId || !toWalletId}
+                  className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-gray-900 dark:text-white rounded-lg font-medium transition"
+                >
+                  {operationLoading ? 'Processando...' : 'Executar Transferencia'}
+                </button>
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Ajuste (use valores negativos para subtrair)
-                </label>
-                <input
-                  type="number"
-                  step="0.00000001"
-                  value={adjustment}
-                  onChange={(e) => setAdjustment(e.target.value)}
-                  placeholder="Ex: 100.50 para adicionar ou -50.25 para subtrair"
-                  className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
-                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                  💡 Dica: Use valor positivo para adicionar, negativo para subtrair
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Motivo (obrigatório)
-                </label>
-                <textarea
-                  value={adjustReason}
-                  onChange={(e) => setAdjustReason(e.target.value)}
-                  placeholder="Ex: Correção de crédito duplicado, erro de sistema, etc."
-                  rows={3}
-                  className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <button
-                onClick={handleAdjustBalance}
-                disabled={adjustLoading}
-                className="w-full px-6 py-3 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-gray-900 dark:text-white rounded-lg font-medium transition"
-              >
-                {adjustLoading ? 'Processando...' : '🚨 Executar Ajuste de Saldo'}
-              </button>
             </div>
-          </div>
+          )}
+
+          {/* Platform Operation Form */}
+          {operationType === 'refund' && (
+            <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Operação Plataforma</h3>
+
+              {/* Direction Toggle */}
+              <div className="flex gap-3 mb-4">
+                <button
+                  onClick={() => setPlatformDirection('TO_USER')}
+                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition border-2 ${
+                    platformDirection === 'TO_USER'
+                      ? 'border-green-500 bg-green-900/20 text-green-400'
+                      : 'border-gray-600 text-gray-400 hover:border-gray-500'
+                  }`}
+                >
+                  ↗ Enviar para Usuário (Reembolso)
+                </button>
+                <button
+                  onClick={() => setPlatformDirection('FROM_USER')}
+                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition border-2 ${
+                    platformDirection === 'FROM_USER'
+                      ? 'border-orange-500 bg-orange-900/20 text-orange-400'
+                      : 'border-gray-600 text-gray-400 hover:border-gray-500'
+                  }`}
+                >
+                  ↙ Receber de Usuário (Cobrança)
+                </button>
+              </div>
+
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                {platformDirection === 'TO_USER'
+                  ? 'Transfere fundos da PlatformWallet para uma carteira de usuario. Use para devolver fees em caso de reversao de transacao P2P.'
+                  : 'Cobra fundos de uma carteira de usuario para a PlatformWallet. Use para fees nao pagas, creditos indevidos ou reversao de reembolsos incorretos.'}
+              </p>
+              <div className="space-y-4">
+                {/* Busca por Email */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    {platformDirection === 'TO_USER' ? 'Destino - Email do usuario' : 'Origem - Email do usuario'}
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      value={platformEmail}
+                      onChange={(e) => setPlatformEmail(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && searchUserByEmail(platformEmail, 'platform')}
+                      placeholder="usuario@email.com"
+                      className="flex-1 px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                    />
+                    <button
+                      onClick={() => searchUserByEmail(platformEmail, 'platform')}
+                      disabled={platformSearchLoading || !platformEmail.trim()}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg text-sm transition"
+                    >
+                      {platformSearchLoading ? '...' : 'Buscar'}
+                    </button>
+                  </div>
+                  {platformUserData && (
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-400 mb-1">
+                        {platformUserData.user.name || platformUserData.user.email} — {platformUserData.wallets.length} carteira(s)
+                      </p>
+                      {platformUserData.wallets.length > 0 ? (
+                        <select
+                          value={refundToWalletId}
+                          onChange={(e) => setRefundToWalletId(e.target.value)}
+                          className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">Selecione a carteira...</option>
+                          {platformUserData.wallets.map((w) => (
+                            <option key={w.id} value={w.id}>
+                              {w.cryptoType}/{w.network} — Saldo: {w.balance} | Disponivel: {w.availableBalance} | Bloqueado: {w.lockedBalance}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-sm text-red-400">Nenhuma carteira encontrada para este usuario</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Valor
+                  </label>
+                  <input
+                    type="number"
+                    step="0.00000001"
+                    value={refundAmount}
+                    onChange={(e) => setRefundAmount(e.target.value)}
+                    placeholder="0.00000000"
+                    className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Motivo (obrigatorio)
+                  </label>
+                  <textarea
+                    value={refundReason}
+                    onChange={(e) => setRefundReason(e.target.value)}
+                    placeholder="Ex: Reversao de transacao #xyz, devolucao de fee por disputa resolvida, etc."
+                    rows={3}
+                    className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <button
+                  onClick={handlePlatformRefund}
+                  disabled={operationLoading}
+                  className={`w-full px-6 py-3 disabled:bg-gray-600 disabled:cursor-not-allowed text-gray-900 dark:text-white rounded-lg font-medium transition ${
+                    platformDirection === 'FROM_USER'
+                      ? 'bg-orange-600 hover:bg-orange-700'
+                      : 'bg-purple-600 hover:bg-purple-700'
+                  }`}
+                >
+                  {operationLoading ? 'Processando...' : platformDirection === 'FROM_USER' ? 'Executar Cobrança' : 'Executar Reembolso'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Adjust Form */}
+          {operationType === 'adjust' && (
+            <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Ajuste Manual de Saldo</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Wallet ID
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={adjustWalletId}
+                      onChange={(e) => setAdjustWalletId(e.target.value)}
+                      placeholder="ID da carteira"
+                      className="flex-1 px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                    />
+                    <button
+                      onClick={() => lookupWallet(adjustWalletId)}
+                      disabled={lookupLoading[adjustWalletId] || !adjustWalletId.trim()}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg text-sm transition"
+                    >
+                      {lookupLoading[adjustWalletId] ? '...' : 'Buscar'}
+                    </button>
+                  </div>
+                  {walletLookups[adjustWalletId] && (
+                    <div className="mt-2 p-3 bg-gray-900/50 border border-gray-600 rounded-lg text-sm">
+                      <div className="flex flex-wrap gap-x-6 gap-y-1">
+                        <span className="text-gray-400">Usuario: <span className="text-white">{walletLookups[adjustWalletId].user.email}</span></span>
+                        <span className="text-gray-400">Crypto: <span className="text-yellow-400 font-medium">{walletLookups[adjustWalletId].cryptoType}/{walletLookups[adjustWalletId].network}</span></span>
+                        <span className="text-gray-400">Saldo: <span className="text-green-400 font-mono">{walletLookups[adjustWalletId].balance}</span></span>
+                        <span className="text-gray-400">Disponivel: <span className="text-green-300 font-mono">{walletLookups[adjustWalletId].availableBalance}</span></span>
+                        <span className="text-gray-400">Bloqueado: <span className="text-yellow-300 font-mono">{walletLookups[adjustWalletId].lockedBalance}</span></span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Ajuste (use valores negativos para subtrair)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.00000001"
+                    value={adjustment}
+                    onChange={(e) => setAdjustment(e.target.value)}
+                    placeholder="Ex: 100.50 para adicionar ou -50.25 para subtrair"
+                    className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  />
+                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                    Valor positivo = adicionar, negativo = subtrair
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Motivo (obrigatorio)
+                  </label>
+                  <textarea
+                    value={adjustReason}
+                    onChange={(e) => setAdjustReason(e.target.value)}
+                    placeholder="Ex: Correcao de credito duplicado, erro de sistema, etc."
+                    rows={3}
+                    className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <button
+                  onClick={handleAdjustBalance}
+                  disabled={operationLoading}
+                  className="w-full px-6 py-3 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-gray-900 dark:text-white rounded-lg font-medium transition"
+                >
+                  {operationLoading ? 'Processando...' : 'Executar Ajuste de Saldo'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -901,7 +1384,9 @@ export default function AdminFundsPage() {
                   <option value="">Todas</option>
                   <option value="ACCOUNT_FROZEN">Congelar Conta</option>
                   <option value="ACCOUNT_UNFROZEN">Descongelar Conta</option>
-                  <option value="INTERNAL_TRANSFER">Transferência Interna</option>
+                  <option value="INTERNAL_TRANSFER">Transferencia Interna</option>
+                  <option value="PLATFORM_REFUND">Reembolso da Plataforma</option>
+                  <option value="PLATFORM_COLLECT">Cobrança da Plataforma</option>
                   <option value="BALANCE_ADJUSTMENT">Ajuste de Saldo</option>
                 </select>
               </div>
@@ -1007,6 +1492,8 @@ export default function AdminFundsPage() {
                           <span className={`px-2 py-1 rounded text-xs font-medium ${
                             log.action.includes('FROZEN') ? 'bg-blue-900/50 text-blue-300' :
                             log.action.includes('TRANSFER') ? 'bg-orange-900/50 text-orange-300' :
+                            log.action.includes('PLATFORM_REFUND') ? 'bg-purple-900/50 text-purple-300' :
+                            log.action.includes('PLATFORM_COLLECT') ? 'bg-orange-900/50 text-orange-300' :
                             log.action.includes('ADJUSTMENT') ? 'bg-red-900/50 text-red-300' :
                             'bg-gray-700 text-gray-300'
                           }`}>

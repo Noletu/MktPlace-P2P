@@ -24,13 +24,9 @@ export class PlatformWalletService {
 
     const networks = [
       { crypto: 'BTC', network: 'BITCOIN' },
-      { crypto: 'USDT', network: 'ETHEREUM' },
       { crypto: 'USDT', network: 'BASE' },
-      { crypto: 'USDT', network: 'ARBITRUM' },
       { crypto: 'USDT', network: 'SOLANA' },
-      { crypto: 'USDC', network: 'ETHEREUM' },
       { crypto: 'USDC', network: 'BASE' },
-      { crypto: 'USDC', network: 'ARBITRUM' },
       { crypto: 'USDC', network: 'SOLANA' },
     ];
 
@@ -293,6 +289,59 @@ export class PlatformWalletService {
     }
 
     return KeyManagementService.decryptPrivateKey(wallet.encryptedPrivateKey, KeyManagementService.PLATFORM_ID);
+  }
+
+  /**
+   * Registra uma movimentação no ledger da platform wallet
+   * Chamado por todos os serviços que alteram saldo
+   */
+  static async recordMovement(
+    tx: any, // Prisma transaction client ou prisma direto
+    data: {
+      platformWalletId: string;
+      type: 'FEE_RECEIVED' | 'SWEEP_IN' | 'WITHDRAWAL_OUT' | 'TRANSFER_OUT' | 'DEPOSIT_IN' | 'BALANCE_SYNC' | 'REFUND_OUT' | 'COLLECT_IN';
+      direction: 'IN' | 'OUT';
+      amount: string;
+      balanceBefore: string;
+      balanceAfter: string;
+      description: string;
+      orderId?: string;
+      txHash?: string;
+      toAddress?: string;
+      fromAddress?: string;
+      userId?: string;
+      metadata?: Record<string, any>;
+    }
+  ): Promise<void> {
+    const client = tx.platformWalletMovement ? tx : prisma;
+    await client.platformWalletMovement.create({
+      data: {
+        platformWalletId: data.platformWalletId,
+        type: data.type,
+        direction: data.direction,
+        amount: data.amount,
+        balanceBefore: data.balanceBefore,
+        balanceAfter: data.balanceAfter,
+        description: data.description,
+        orderId: data.orderId || null,
+        txHash: data.txHash || null,
+        toAddress: data.toAddress || null,
+        fromAddress: data.fromAddress || null,
+        userId: data.userId || null,
+        metadata: data.metadata ? JSON.stringify(data.metadata) : null,
+      },
+    });
+  }
+
+  /**
+   * Busca movimentações de uma platform wallet
+   */
+  async getMovements(platformWalletId: string, limit = 100) {
+    return prisma.platformWalletMovement.findMany({
+      where: { platformWalletId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
   }
 }
 

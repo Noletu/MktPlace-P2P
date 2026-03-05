@@ -114,7 +114,7 @@ model UserWallet {
 
   // Tipo de cripto e rede
   cryptoType String // BTC, USDC, USDT
-  network    String // BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA, TRC20
+  network    String // BITCOIN, BASE, SOLANA
 
   // Endereço derivado (HD Wallet)
   address        String // Endereço público derivado
@@ -426,10 +426,10 @@ model PlatformWallet {
   id String @id @default(cuid())
 
   cryptoType String // BTC, USDT, USDC
-  network    String // BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA
+  network    String // BITCOIN, BASE, SOLANA
 
   // Endereço derivado da master seed (Account 0 = Platform)
-  address        String @unique // Endereço público derivado
+  address        String // Endereço público derivado (mesmo endereço para USDT/USDC na mesma rede)
   derivationPath String // Ex: m/84'/0'/0'/0/0 (Account 0 = Platform)
   accountIndex   Int    @default(0) // Sempre 0 para platform wallets
 
@@ -444,6 +444,8 @@ model PlatformWallet {
   totalFeesCollected String @default("0") // Total de fees recebidas
   totalDeposited     String @default("0") // Total depositado pelos sócios
   totalWithdrawn     String @default("0") // Total sacado pelos sócios
+  totalRefunded      String @default("0") // Total reembolsado (platform → user)
+  totalCollected     String @default("0") // Total cobrado de usuarios (user → platform)
 
   // Sincronização blockchain
   lastSyncedAt    DateTime? // Última sincronização
@@ -457,6 +459,7 @@ model PlatformWallet {
 
   transfers         PlatformTransfer[]
   sweepTransactions SweepTransaction[]
+  movements         PlatformWalletMovement[]
 
   @@unique([cryptoType, network])
   @@index([cryptoType])
@@ -497,6 +500,50 @@ model PlatformTransfer {
   @@index([platformWalletId])
   @@index([status])
   @@index([requestedBy])
+}
+
+// ============================================
+// MOVIMENTAÇÕES DA PLATFORM WALLET (Ledger completo)
+// ============================================
+
+// Registra TODA movimentação de saldo na platform wallet (entradas, saídas, fees)
+model PlatformWalletMovement {
+  id String @id @default(cuid())
+
+  platformWalletId String
+  platformWallet   PlatformWallet @relation(fields: [platformWalletId], references: [id])
+
+  // Tipo de movimentação
+  type String // FEE_RECEIVED, SWEEP_IN, WITHDRAWAL_OUT, TRANSFER_OUT, DEPOSIT_IN, BALANCE_SYNC
+
+  // Direção e valor
+  direction String // IN, OUT
+  amount    String // Valor absoluto da movimentação
+
+  // Saldos antes/depois (para auditoria)
+  balanceBefore String
+  balanceAfter  String
+
+  // Referências opcionais (para rastreabilidade)
+  orderId    String? // ID do order (para fees)
+  txHash     String? // Hash on-chain (para sweeps, withdrawals, transfers)
+  toAddress  String? // Endereço destino (para saídas)
+  fromAddress String? // Endereço origem (para entradas)
+  userId     String? // Usuário relacionado (para sweeps, withdrawals)
+
+  // Descrição legível
+  description String
+
+  // Metadata adicional (JSON)
+  metadata String?
+
+  createdAt DateTime @default(now())
+
+  @@index([platformWalletId])
+  @@index([type])
+  @@index([direction])
+  @@index([createdAt])
+  @@index([orderId])
 }
 
 // ============================================
