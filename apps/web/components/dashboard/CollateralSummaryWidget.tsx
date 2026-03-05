@@ -30,16 +30,20 @@ interface HDWallet {
   totalWithdrawn: string;
 }
 
+type DisplayCurrency = 'BRL' | 'USD' | 'BTC';
+
 export default function CollateralSummaryWidget() {
   const router = useRouter();
   const [balances, setBalances] = useState<Balance[]>([]);
   const [prices, setPrices] = useState<Record<string, number>>({});
+  const [pricesUsd, setPricesUsd] = useState<Record<string, number>>({});
   const [wallets, setWallets] = useState<HDWallet[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedAvailable, setExpandedAvailable] = useState(false);
   const [expandedLocked, setExpandedLocked] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [withdrawWizardOpen, setWithdrawWizardOpen] = useState(false);
+  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>('BRL');
 
   useEffect(() => {
     Promise.all([fetchBalances(), fetchPrices(), fetchWallets()]);
@@ -82,13 +86,16 @@ export default function CollateralSummaryWidget() {
       if (!response.ok) throw new Error('Erro ao buscar cotações');
 
       const data = await response.json();
-      const priceMap: Record<string, number> = {};
+      const brlMap: Record<string, number> = {};
+      const usdMap: Record<string, number> = {};
 
       data.data.forEach((p: Price) => {
-        priceMap[p.crypto] = parseFloat(p.brlPrice) || 0;
+        brlMap[p.crypto] = parseFloat(p.brlPrice) || 0;
+        usdMap[p.crypto] = parseFloat(p.usdPrice || '0') || 0;
       });
 
-      setPrices(priceMap);
+      setPrices(brlMap);
+      setPricesUsd(usdMap);
     } catch (error) {
       console.error('Error fetching prices:', error);
     } finally {
@@ -96,34 +103,70 @@ export default function CollateralSummaryWidget() {
     }
   };
 
-  const calculateTotalUSD = (type: 'available' | 'locked') => {
+  // Calcula total em BRL
+  const calculateTotalBRL = (type: 'available' | 'locked') => {
     let total = 0;
-
     balances.forEach(balance => {
       const amount = type === 'available'
         ? parseFloat(balance.availableBalance)
         : parseFloat(balance.lockedBalance);
-
-      const priceInBRL = prices[balance.cryptoType] || 0;
-      total += amount * priceInBRL;
+      total += amount * (prices[balance.cryptoType] || 0);
     });
-
     return total;
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(value);
+  // Calcula total em USD
+  const calculateTotalUSD = (type: 'available' | 'locked') => {
+    let total = 0;
+    balances.forEach(balance => {
+      const amount = type === 'available'
+        ? parseFloat(balance.availableBalance)
+        : parseFloat(balance.lockedBalance);
+      total += amount * (pricesUsd[balance.cryptoType] || 0);
+    });
+    return total;
+  };
+
+  // Calcula total em BTC
+  const calculateTotalBTC = (type: 'available' | 'locked') => {
+    const btcPriceBRL = prices['BTC'] || 0;
+    if (btcPriceBRL === 0) return 0;
+    const totalBRL = calculateTotalBRL(type);
+    return totalBRL / btcPriceBRL;
+  };
+
+  // Converte valor individual de BRL para moeda selecionada
+  const convertFromBRL = (valueBRL: number): number => {
+    if (displayCurrency === 'BRL') return valueBRL;
+    if (displayCurrency === 'USD') {
+      // Usa cotação USD/BRL (pegar de stablecoin que é 1:1 USD)
+      const usdBrlRate = prices['USDT'] || prices['USDC'] || 0;
+      return usdBrlRate > 0 ? valueBRL / usdBrlRate : 0;
+    }
+    // BTC
+    const btcPriceBRL = prices['BTC'] || 0;
+    return btcPriceBRL > 0 ? valueBRL / btcPriceBRL : 0;
+  };
+
+  // Formata valor conforme moeda selecionada
+  const formatDisplay = (valueBRL: number): string => {
+    const converted = convertFromBRL(valueBRL);
+    if (displayCurrency === 'BRL') {
+      return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(converted);
+    }
+    if (displayCurrency === 'USD') {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(converted);
+    }
+    // BTC — mostrar com 8 casas
+    return `${converted.toFixed(8)} BTC`;
   };
 
   const formatCrypto = (value: string) => {
     return parseFloat(value).toFixed(8);
   };
 
-  const totalAvailable = calculateTotalUSD('available');
-  const totalLocked = calculateTotalUSD('locked');
+  const totalAvailableBRL = calculateTotalBRL('available');
+  const totalLockedBRL = calculateTotalBRL('locked');
 
   if (loading) {
     return (
@@ -136,12 +179,35 @@ export default function CollateralSummaryWidget() {
     );
   }
 
+  const currencyButtons: { key: DisplayCurrency; label: string }[] = [
+    { key: 'BRL', label: 'R$' },
+    { key: 'USD', label: 'US$' },
+    { key: 'BTC', label: 'BTC' },
+  ];
+
   return (
     <div className="space-y-4">
-      {/* Título */}
-      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-        💰 Saldo de Colateral
-      </h3>
+      {/* Título + Toggle de moeda */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+          Saldo de Colateral
+        </h3>
+        <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
+          {currencyButtons.map((c) => (
+            <button
+              key={c.key}
+              onClick={() => setDisplayCurrency(c.key)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                displayCurrency === c.key
+                  ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Card: Saldo Disponível */}
       <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
@@ -149,7 +215,7 @@ export default function CollateralSummaryWidget() {
           <div>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Saldo Disponível</p>
             <p className="text-3xl font-bold text-green-700 dark:text-green-400">
-              {formatCurrency(totalAvailable)}
+              {formatDisplay(totalAvailableBRL)}
             </p>
           </div>
 
@@ -192,7 +258,7 @@ export default function CollateralSummaryWidget() {
                       </p>
                     </div>
                     <p className="text-sm font-bold text-green-600 dark:text-green-400">
-                      {formatCurrency(valueInBRL)}
+                      {formatDisplay(valueInBRL)}
                     </p>
                   </div>
                 );
@@ -213,11 +279,11 @@ export default function CollateralSummaryWidget() {
           <div>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Saldo Bloqueado</p>
             <p className="text-3xl font-bold text-orange-700 dark:text-orange-400">
-              {formatCurrency(totalLocked)}
+              {formatDisplay(totalLockedBRL)}
             </p>
           </div>
 
-          {totalLocked > 0 && (
+          {totalLockedBRL > 0 && (
             <button
               onClick={() => setExpandedLocked(!expandedLocked)}
               className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-orange-200 dark:hover:bg-orange-700/30 rounded-lg transition-colors flex items-center gap-1"
@@ -254,11 +320,11 @@ export default function CollateralSummaryWidget() {
                         {balance.cryptoType}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        🔒 {formatCrypto(balance.lockedBalance)} {balance.cryptoType}
+                        {formatCrypto(balance.lockedBalance)} {balance.cryptoType}
                       </p>
                     </div>
                     <p className="text-sm font-bold text-orange-600 dark:text-orange-400">
-                      {formatCurrency(valueInBRL)}
+                      {formatDisplay(valueInBRL)}
                     </p>
                   </div>
                 );
@@ -266,7 +332,7 @@ export default function CollateralSummaryWidget() {
           </div>
         )}
 
-        {totalLocked === 0 && (
+        {totalLockedBRL === 0 && (
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Nenhum valor bloqueado
           </p>
