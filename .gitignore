@@ -46,6 +46,9 @@ yarn-error.log*
 *.backup-*
 apps/api/prisma/*.backup*
 
+# Exceção: dev.db versionado para novos devs terem dados de teste
+!apps/api/prisma/dev.db
+
 # Prisma
 # prisma/migrations - MUST be versioned in Git
 logs/
