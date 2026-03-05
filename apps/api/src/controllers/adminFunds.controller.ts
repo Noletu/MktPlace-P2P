@@ -100,6 +100,48 @@ export class AdminFundsController {
   }
 
   /**
+   * GET /api/v1/admin/funds/users/search?email=xxx
+   * Buscar wallets de um usuário por email
+   */
+  async searchUserWallets(req: Request, res: Response): Promise<void> {
+    try {
+      const { email } = req.query;
+      if (!email || typeof email !== 'string') {
+        res.status(400).json({ success: false, error: 'email é obrigatório' });
+        return;
+      }
+      const result = await AdminFundsService.searchUserWalletsByEmail(email);
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] searchUserWallets error:', error);
+      res.status(400).json({
+        success: false,
+        error: 'Erro ao buscar carteiras',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/funds/wallets/:walletId
+   * Buscar detalhes de uma wallet por ID (lookup)
+   */
+  async getWalletById(req: Request, res: Response): Promise<void> {
+    try {
+      const { walletId } = req.params;
+      const result = await AdminFundsService.getWalletById(walletId);
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] getWalletById error:', error);
+      res.status(400).json({
+        success: false,
+        error: 'Erro ao buscar carteira',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
    * POST /api/v1/admin/funds/freeze
    * Congelar conta de usuário
    *
@@ -448,6 +490,55 @@ export class AdminFundsController {
       res.status(400).json({
         success: false,
         error: 'Erro ao desbloquear saldo',
+        message: (error as Error).message,
+      });
+    }
+  }
+  /**
+   * POST /api/v1/admin/funds/platform-refund
+   * Reembolsar fundos da PlatformWallet para um UserWallet
+   *
+   * Body: { cryptoType, network, toWalletId, amount, reason }
+   * Requires: MASTER role + 2FA (operação crítica)
+   */
+  async platformRefund(req: Request, res: Response): Promise<void> {
+    try {
+      const { cryptoType, network, toWalletId, amount, reason, direction } = req.body;
+      const adminUserId = (req as any).user.id;
+
+      if (!cryptoType || !network || !toWalletId || !amount || !reason) {
+        res.status(400).json({
+          success: false,
+          error: 'cryptoType, network, toWalletId, amount e reason são obrigatórios',
+        });
+        return;
+      }
+
+      // Validar direction se fornecida
+      if (direction && direction !== 'TO_USER' && direction !== 'FROM_USER') {
+        res.status(400).json({
+          success: false,
+          error: 'direction deve ser TO_USER ou FROM_USER',
+        });
+        return;
+      }
+
+      const result = await AdminFundsService.platformRefund({
+        cryptoType,
+        network,
+        toWalletId,
+        amount,
+        reason,
+        adminUserId,
+        direction,
+      });
+
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] platformRefund error:', error);
+      res.status(400).json({
+        success: false,
+        error: req.body?.direction === 'FROM_USER' ? 'Erro ao cobrar do usuário' : 'Erro ao reembolsar da plataforma',
         message: (error as Error).message,
       });
     }

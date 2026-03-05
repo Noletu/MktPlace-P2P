@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import BigNumber from 'bignumber.js';
 import { notificationService } from './notification.service';
+import { PlatformWalletService } from './platformWallet.service';
 import {
   LockCategory,
   LockCategoryLabels,
@@ -209,6 +210,74 @@ export class AdminFundsService {
           availableBalance: w.availableBalance,
           isActive: w.isActive,
         })),
+      },
+    };
+  }
+
+  /**
+   * Buscar wallets de um usuário por email (para lookup no frontend)
+   */
+  static async searchUserWalletsByEmail(email: string) {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, name: true },
+    });
+
+    if (!user) {
+      throw new Error('Usuário não encontrado');
+    }
+
+    const wallets = await prisma.userWallet.findMany({
+      where: { userId: user.id, isActive: true },
+      orderBy: [{ cryptoType: 'asc' }, { network: 'asc' }],
+    });
+
+    return {
+      success: true,
+      data: {
+        user,
+        wallets: wallets.map((w) => ({
+          id: w.id,
+          cryptoType: w.cryptoType,
+          network: w.network,
+          address: w.address,
+          balance: w.balance,
+          availableBalance: w.availableBalance,
+          lockedBalance: w.lockedBalance,
+        })),
+      },
+    };
+  }
+
+  /**
+   * Buscar detalhes de uma wallet por ID (para lookup no frontend)
+   */
+  static async getWalletById(walletId: string) {
+    const wallet = await prisma.userWallet.findUnique({
+      where: { id: walletId },
+      include: {
+        user: {
+          select: { id: true, email: true, name: true },
+        },
+      },
+    });
+
+    if (!wallet) {
+      throw new Error('Carteira não encontrada');
+    }
+
+    return {
+      success: true,
+      data: {
+        id: wallet.id,
+        cryptoType: wallet.cryptoType,
+        network: wallet.network,
+        address: wallet.address,
+        balance: wallet.balance,
+        lockedBalance: wallet.lockedBalance,
+        availableBalance: wallet.availableBalance,
+        isActive: wallet.isActive,
+        user: wallet.user,
       },
     };
   }
@@ -655,6 +724,300 @@ export class AdminFundsService {
         adjustment,
         oldBalance: wallet.balance,
         newBalance: result.balance,
+      },
+    };
+  }
+
+  /**
+   * ========================================
+   * PLATFORM REFUND: Reembolso da PlatformWallet → UserWallet
+   * ========================================
+   */
+
+  /**
+   * Reembolsar fundos da PlatformWallet para um UserWallet
+   * - Cenário: reversão de transação P2P → devolver fee cobrada
+   * - Debita PlatformWallet, credita UserWallet
+   * - Registra PlatformWalletMovement tipo REFUND_OUT
+   */
+  static async platformRefund(params: {
+    cryptoType: string;
+    network: string;
+    toWalletId: string;
+    amount: string;
+    reason: string;
+    adminUserId: string;
+    direction?: 'TO_USER' | 'FROM_USER';
+  }) {
+    const { cryptoType, network, toWalletId, amount, reason, adminUserId, direction = 'TO_USER' } = params;
+
+    // Validar amount
+    const amountBN = new BigNumber(amount);
+    if (amountBN.isNaN() || amountBN.lte(0)) {
+      throw new Error('Valor inválido');
+    }
+
+    // Buscar PlatformWallet
+    const platformWallet = await prisma.platformWallet.findUnique({
+      where: {
+        cryptoType_network: { cryptoType, network },
+      },
+    });
+
+    if (!platformWallet) {
+      throw new Error(`PlatformWallet não encontrada: ${cryptoType}/${network}`);
+    }
+
+    // Buscar UserWallet
+    const userWallet = await prisma.userWallet.findUnique({
+      where: { id: toWalletId },
+      include: { user: true },
+    });
+
+    if (!userWallet) {
+      throw new Error(direction === 'TO_USER' ? 'Carteira de destino não encontrada' : 'Carteira de origem não encontrada');
+    }
+
+    // Validar crypto/network match
+    if (userWallet.cryptoType !== cryptoType || userWallet.network !== network) {
+      throw new Error(
+        `Crypto/network incompatível: PlatformWallet é ${cryptoType}/${network}, UserWallet é ${userWallet.cryptoType}/${userWallet.network}`
+      );
+    }
+
+    // ========== BRANCH: FROM_USER (Cobrança: UserWallet → PlatformWallet) ==========
+    if (direction === 'FROM_USER') {
+      // Validar saldo suficiente no UserWallet (respeitar lockedBalance)
+      const userAvailable = new BigNumber(userWallet.availableBalance);
+      if (userAvailable.lt(amountBN)) {
+        throw new Error(
+          `Saldo disponível insuficiente na carteira do usuário: disponível ${userWallet.availableBalance}, requerido ${amount}`
+        );
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        // 1. Debitar UserWallet (balance e availableBalance, respeitar lockedBalance)
+        const newUserBalance = new BigNumber(userWallet.balance).minus(amountBN).toString();
+        const newUserAvailable = new BigNumber(userWallet.availableBalance).minus(amountBN).toString();
+
+        const updatedUser = await tx.userWallet.update({
+          where: { id: toWalletId },
+          data: {
+            balance: newUserBalance,
+            availableBalance: newUserAvailable,
+          },
+        });
+
+        // 2. Creditar PlatformWallet (balance, availableBalance, totalCollected)
+        const newPlatformBalance = new BigNumber(platformWallet.balance).plus(amountBN).toString();
+        const newPlatformAvailable = new BigNumber(platformWallet.availableBalance).plus(amountBN).toString();
+        const newTotalCollected = new BigNumber(platformWallet.totalCollected).plus(amountBN).toString();
+
+        const updatedPlatform = await tx.platformWallet.update({
+          where: { id: platformWallet.id },
+          data: {
+            balance: newPlatformBalance,
+            availableBalance: newPlatformAvailable,
+            totalCollected: newTotalCollected,
+          },
+        });
+
+        // 3. Criar WalletTransaction tipo ADMIN_DEBIT
+        const debitTx = await tx.walletTransaction.create({
+          data: {
+            walletId: toWalletId,
+            userId: userWallet.userId,
+            type: 'ADMIN_DEBIT',
+            amount: amount,
+            balanceBefore: userWallet.balance,
+            balanceAfter: newUserBalance,
+            adminUserId,
+            adminReason: reason,
+            description: `Cobrança da plataforma (${cryptoType}/${network})`,
+          },
+        });
+
+        // 4. Criar PlatformWalletMovement tipo COLLECT_IN
+        await PlatformWalletService.recordMovement(tx, {
+          platformWalletId: platformWallet.id,
+          type: 'COLLECT_IN',
+          direction: 'IN',
+          amount: amount,
+          balanceBefore: platformWallet.balance,
+          balanceAfter: newPlatformBalance,
+          description: `Cobrança de ${userWallet.user.email} (${userWallet.cryptoType}/${userWallet.network})`,
+          userId: userWallet.userId,
+          metadata: {
+            fromWalletId: toWalletId,
+            reason,
+            adminUserId,
+            debitTxId: debitTx.id,
+          },
+        });
+
+        // 5. Audit Log
+        await tx.auditLog.create({
+          data: {
+            userId: adminUserId,
+            action: 'PLATFORM_COLLECT',
+            resource: 'PLATFORM_WALLET',
+            resourceId: platformWallet.id,
+            description: `Cobrança da plataforma: ${userWallet.user.email} → ${cryptoType}/${network}`,
+            metadata: JSON.stringify({
+              platformWalletId: platformWallet.id,
+              fromWalletId: toWalletId,
+              fromUserId: userWallet.userId,
+              amount,
+              reason,
+              platformBalanceBefore: platformWallet.balance,
+              platformBalanceAfter: newPlatformBalance,
+              userBalanceBefore: userWallet.balance,
+              userBalanceAfter: newUserBalance,
+            }),
+            success: true,
+          },
+        });
+
+        return { updatedPlatform, updatedUser, debitTx };
+      });
+
+      return {
+        success: true,
+        message: 'Cobrança da plataforma realizada com sucesso',
+        data: {
+          platformWallet: {
+            id: platformWallet.id,
+            cryptoType,
+            network,
+            newBalance: result.updatedPlatform.balance,
+            totalCollected: result.updatedPlatform.totalCollected,
+          },
+          fromWallet: {
+            walletId: toWalletId,
+            user: userWallet.user.email,
+            newBalance: result.updatedUser.balance,
+          },
+          amount,
+          transactionId: result.debitTx.id,
+        },
+      };
+    }
+
+    // ========== BRANCH: TO_USER (Reembolso: PlatformWallet → UserWallet) ==========
+
+    // Validar saldo suficiente na PlatformWallet
+    const platformAvailable = new BigNumber(platformWallet.availableBalance);
+    if (platformAvailable.lt(amountBN)) {
+      throw new Error(
+        `Saldo insuficiente na PlatformWallet: disponível ${platformWallet.availableBalance}, requerido ${amount}`
+      );
+    }
+
+    // Executar reembolso (transação atômica)
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Debitar PlatformWallet
+      const newPlatformBalance = new BigNumber(platformWallet.balance).minus(amountBN).toString();
+      const newPlatformAvailable = new BigNumber(platformWallet.availableBalance).minus(amountBN).toString();
+      const newTotalRefunded = new BigNumber(platformWallet.totalRefunded).plus(amountBN).toString();
+
+      const updatedPlatform = await tx.platformWallet.update({
+        where: { id: platformWallet.id },
+        data: {
+          balance: newPlatformBalance,
+          availableBalance: newPlatformAvailable,
+          totalRefunded: newTotalRefunded,
+        },
+      });
+
+      // 2. Creditar UserWallet
+      const newToBalance = new BigNumber(userWallet.balance).plus(amountBN).toString();
+      const newToAvailable = new BigNumber(userWallet.availableBalance).plus(amountBN).toString();
+
+      const updatedTo = await tx.userWallet.update({
+        where: { id: toWalletId },
+        data: {
+          balance: newToBalance,
+          availableBalance: newToAvailable,
+        },
+      });
+
+      // 3. Criar WalletTransaction (crédito no UserWallet)
+      const creditTx = await tx.walletTransaction.create({
+        data: {
+          walletId: toWalletId,
+          userId: userWallet.userId,
+          type: 'ADMIN_CREDIT',
+          amount: amount,
+          balanceBefore: userWallet.balance,
+          balanceAfter: newToBalance,
+          adminUserId,
+          adminReason: reason,
+          description: `Reembolso da plataforma (${cryptoType}/${network})`,
+        },
+      });
+
+      // 4. Criar PlatformWalletMovement tipo REFUND_OUT
+      await PlatformWalletService.recordMovement(tx, {
+        platformWalletId: platformWallet.id,
+        type: 'REFUND_OUT',
+        direction: 'OUT',
+        amount: amount,
+        balanceBefore: platformWallet.balance,
+        balanceAfter: newPlatformBalance,
+        description: `Reembolso para ${userWallet.user.email} (${userWallet.cryptoType}/${userWallet.network})`,
+        userId: userWallet.userId,
+        metadata: {
+          toWalletId,
+          reason,
+          adminUserId,
+          creditTxId: creditTx.id,
+        },
+      });
+
+      // 5. Audit Log
+      await tx.auditLog.create({
+        data: {
+          userId: adminUserId,
+          action: 'PLATFORM_REFUND',
+          resource: 'PLATFORM_WALLET',
+          resourceId: platformWallet.id,
+          description: `Reembolso da plataforma: ${cryptoType}/${network} → ${userWallet.user.email}`,
+          metadata: JSON.stringify({
+            platformWalletId: platformWallet.id,
+            toWalletId,
+            toUserId: userWallet.userId,
+            amount,
+            reason,
+            platformBalanceBefore: platformWallet.balance,
+            platformBalanceAfter: newPlatformBalance,
+            userBalanceBefore: userWallet.balance,
+            userBalanceAfter: newToBalance,
+          }),
+          success: true,
+        },
+      });
+
+      return { updatedPlatform, updatedTo, creditTx };
+    });
+
+    return {
+      success: true,
+      message: 'Reembolso da plataforma realizado com sucesso',
+      data: {
+        platformWallet: {
+          id: platformWallet.id,
+          cryptoType,
+          network,
+          newBalance: result.updatedPlatform.balance,
+          totalRefunded: result.updatedPlatform.totalRefunded,
+        },
+        toWallet: {
+          walletId: toWalletId,
+          user: userWallet.user.email,
+          newBalance: result.updatedTo.balance,
+        },
+        amount,
+        transactionId: result.creditTx.id,
       },
     };
   }
