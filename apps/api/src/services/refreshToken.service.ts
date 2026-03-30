@@ -24,10 +24,12 @@ export class RefreshTokenService {
     return token;
   }
 
-  // SECURITY: Verificar se refresh token é válido
-  async validateRefreshToken(token: string): Promise<string | null> {
+  // SECURITY (H-1): Verificar refresh token COM rotação automática
+  // Retorna { userId, newRefreshToken } para que o caller atualize o cookie
+  // Detecção de reutilização: token já revogado → revogar TODA a família (sinal de roubo)
+  async validateAndRotateRefreshToken(token: string): Promise<{ userId: string; newRefreshToken: string } | null> {
     try {
-      const decoded = verifyRefreshToken(token);
+      verifyRefreshToken(token); // Valida assinatura e expiração JWT
 
       const refreshToken = await prisma.refreshToken.findUnique({
         where: { token },
@@ -37,8 +39,10 @@ export class RefreshTokenService {
         return null;
       }
 
-      // SECURITY: Verificar se token foi revogado
+      // SECURITY: Detectar reutilização de token já revogado (possível roubo)
       if (refreshToken.isRevoked) {
+        console.error(`[SECURITY] Refresh token reuse detected for userId=${refreshToken.userId} — revoking all tokens`);
+        await this.revokeAllUserTokens(refreshToken.userId);
         return null;
       }
 
@@ -47,7 +51,33 @@ export class RefreshTokenService {
         return null;
       }
 
-      return decoded.userId;
+      // SECURITY: Rotação — revogar token antigo e emitir novo
+      await prisma.refreshToken.update({
+        where: { token },
+        data: { isRevoked: true },
+      });
+
+      const newRefreshToken = await this.createRefreshToken(refreshToken.userId);
+      return { userId: refreshToken.userId, newRefreshToken };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  // Manter o método legado para compatibilidade (usado internamente no logout)
+  async validateRefreshToken(token: string): Promise<string | null> {
+    try {
+      verifyRefreshToken(token);
+
+      const refreshToken = await prisma.refreshToken.findUnique({
+        where: { token },
+      });
+
+      if (!refreshToken || refreshToken.isRevoked || refreshToken.expiresAt < new Date()) {
+        return null;
+      }
+
+      return refreshToken.userId;
     } catch (error) {
       return null;
     }

@@ -13,6 +13,7 @@ import GenerateWalletModal from '@/components/modals/GenerateWalletModal';
 import { formatBRL } from '@/utils/formatters';
 import { getExplorerUrl, getExplorerName, truncateHash } from '@/utils/blockchainExplorer';
 import type { NetworkType } from '@/utils/blockchainExplorer';
+import { fetchWithAuth } from '@/utils/api';
 
 interface HDWallet {
   id: string;
@@ -116,11 +117,6 @@ export default function WalletHubPage() {
   }>({ isOpen: false, cryptoType: '', action: 'deposit', wallets: [] });
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    if (!token) {
-      router.push('/login');
-      return;
-    }
     fetchAll();
   }, []);
 
@@ -132,10 +128,7 @@ export default function WalletHubPage() {
 
   const fetchWallets = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/wallets', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth('/wallets');
       const data = await response.json();
       if (data.success) {
         setWallets(data.data || []);
@@ -147,7 +140,7 @@ export default function WalletHubPage() {
 
   const fetchPrices = async () => {
     try {
-      const response = await fetch('http://localhost:3002/api/v1/prices');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/prices`);
       if (!response.ok) return;
       const data = await response.json();
       const priceMap: Record<string, number> = {};
@@ -162,10 +155,7 @@ export default function WalletHubPage() {
 
   const fetchHistory = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/collateral-balance/history?limit=10', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth('/collateral-balance/history?limit=10');
       const data = await response.json();
       if (data.success) {
         setTransactions(data.data?.transactions || []);
@@ -177,10 +167,7 @@ export default function WalletHubPage() {
 
   const fetchWithdrawals = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/wallets/my-withdrawals?limit=20', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth('/wallets/my-withdrawals?limit=20');
       const data = await response.json();
       if (data.success) {
         setWithdrawals(data.data || []);
@@ -259,6 +246,8 @@ export default function WalletHubPage() {
     switch (type) {
       case 'DEPOSIT':
       case 'UNLOCK':
+      case 'CREDIT':
+      case 'REFUND':
         return 'text-green-600 dark:text-green-400';
       case 'WITHDRAWAL':
       case 'DEDUCT':
@@ -604,11 +593,11 @@ export default function WalletHubPage() {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <p className={`text-sm font-semibold ${getTransactionColor(tx.type)}`}>
-                        {(tx.type === 'DEPOSIT' || tx.type === 'UNLOCK') ? '+' : '-'}
+                        {(['DEPOSIT', 'UNLOCK', 'CREDIT', 'REFUND'].includes(tx.type)) ? '+' : '-'}
                         {parseFloat(tx.amount).toFixed(8)}
                       </p>
                       <p className="text-xs text-gray-400 dark:text-gray-500">
-                        {tx.txHash ? formatDate(tx.createdAt) : 'PENDING'}
+                        {tx.type === 'DEPOSIT' && !tx.txHash ? 'PENDING' : formatDate(tx.createdAt)}
                       </p>
                     </div>
                   </div>

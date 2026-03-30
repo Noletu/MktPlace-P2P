@@ -26,10 +26,11 @@ model User {
   successfulTransactions Int @default(0)
 
   // Custom daily limit (admin override)
-  customDailyLimit  Float?    // Null = formula automatica, set = override manual
-  customLimitSetBy  String?   // ID do admin que definiu
-  customLimitSetAt  DateTime? // Quando foi definido
-  customLimitNote   String?   // Nota do admin (motivo)
+  customDailyLimit    Float?    // DEPRECATED: usar customDailyLimitStr (Float causa arredondamentos)
+  customDailyLimitStr String?   // MIGRATION (H-8): substitui customDailyLimit com precisão correta
+  customLimitSetBy    String?   // ID do admin que definiu
+  customLimitSetAt    DateTime? // Quando foi definido
+  customLimitNote     String?   // Nota do admin (motivo)
 
   // Cancellation tracking
   totalCancellations  Int       @default(0) // Total histórico de cancelamentos
@@ -209,11 +210,11 @@ model WalletTransaction {
 
   createdAt DateTime @default(now())
 
+  @@unique([txHash]) // SECURITY: Prevenir replay attack — mesmo txHash não pode ser creditado duas vezes
   @@index([walletId])
   @@index([userId])
   @@index([orderId])
   @@index([type])
-  @@index([txHash])
   @@index([createdAt])
 }
 
@@ -386,9 +387,10 @@ model Transaction {
   comprovanteData String?
 
   // Validation
-  validationScore Int?
-  validatedBy     String?
-  validatedAt     DateTime?
+  validationScore   Int?
+  validatedBy       String?
+  validatedAt       DateTime?
+  validationDeadline DateTime? // Auto-rejeita se admin não validar até esta data
 
   // Dispute
   disputeReason String?
@@ -669,6 +671,18 @@ model RefreshToken {
   @@index([token])
 }
 
+// SECURITY (H-2): Blacklist de access tokens revogados (logout invalida token imediatamente)
+// Limpar periodicamente tokens expirados para manter a tabela pequena
+model RevokedToken {
+  id        String   @id @default(cuid())
+  jti       String   @unique // JWT ID (claim 'jti') — identificador único do access token
+  expiresAt DateTime // Copiar expiresAt do JWT para cleanup automático
+  createdAt DateTime @default(now())
+
+  @@index([jti])
+  @@index([expiresAt])
+}
+
 // SECURITY: Audit Log completo para rastreabilidade de todas as ações críticas
 model AuditLog {
   id String @id @default(cuid())
@@ -677,6 +691,7 @@ model AuditLog {
   userId String? // Pode ser null para ações do sistema
   email  String? // Email do usuário (denormalizado para histórico)
   role   String? // Role do usuário no momento da ação
+  name   String? // Nome do usuário no momento da ação
 
   // Ação executada
   action     String // LOGIN, LOGOUT, LOGIN_FAILED, CREATE_ORDER, CANCEL_ORDER, etc

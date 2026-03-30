@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import StatusBadge from '@/components/admin/shared/StatusBadge';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Coupon {
   id: string;
@@ -69,15 +70,9 @@ export default function CouponsPage() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-
       const [couponsRes, statsRes] = await Promise.all([
-        fetch('http://localhost:3002/api/v1/coupons', {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch('http://localhost:3002/api/v1/coupons/stats', {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+        fetchWithAuth('/coupons'),
+        fetchWithAuth('/coupons/stats'),
       ]);
 
       const couponsData = await couponsRes.json();
@@ -104,8 +99,6 @@ export default function CouponsPage() {
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-
       // Converter data para formato ISO 8601 se fornecida
       let expiresAtISO = null;
       if (formData.expiresAt) {
@@ -119,12 +112,8 @@ export default function CouponsPage() {
         }
       }
 
-      const response = await fetch('http://localhost:3002/api/v1/coupons', {
+      const response = await fetchWithAuth('/coupons', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           code: formData.code,
           discountPercentage: formData.discountPercentage,
@@ -165,10 +154,8 @@ export default function CouponsPage() {
     if (!confirm(`Deseja realmente deletar o cupom ${code}?`)) return;
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:3002/api/v1/coupons/${id}`, {
+      const response = await fetchWithAuth(`/coupons/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       const data = await response.json();

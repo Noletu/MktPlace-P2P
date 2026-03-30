@@ -75,7 +75,7 @@ class ReputationService {
     const stats = await reviewService.getUserReviewStats(userId);
 
     if (stats.totalReviews === 0) {
-      return { score: 50, details: 'Sem avaliacoes (neutro)' };
+      return { score: 0, details: 'Sem avaliacoes' };
     }
 
     const score = Math.round((stats.averageRating / 5) * 100);
@@ -185,7 +185,7 @@ class ReputationService {
 
     const totalDisputes = won + lost;
     if (totalDisputes === 0) {
-      return { score: 100, details: 'Sem disputas resolvidas' };
+      return { score: 0, details: 'Sem historico de disputas' };
     }
 
     const score = Math.max(0, Math.min(100, 100 - (lost * 20) + (won * 5)));

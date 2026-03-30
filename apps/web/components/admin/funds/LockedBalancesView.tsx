@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import ManageLockModal from '../modals/ManageLockModal';
+import { fetchWithAuth } from '@/utils/api';
 
 // Enum de categorias (deve espelhar o backend)
 export enum LockCategory {
@@ -78,21 +79,13 @@ export default function LockedBalancesView() {
 
   const loadData = async () => {
     setLoading(true);
-    const token = localStorage.getItem('accessToken');
     try {
       const params = new URLSearchParams();
       if (filters.cryptoType) params.append('cryptoType', filters.cryptoType);
       if (filters.network) params.append('network', filters.network);
       if (filters.userId) params.append('userId', filters.userId);
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1'}/admin/funds/locked-balances?${params.toString()}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const response = await fetchWithAuth(`/admin/funds/locked-balances?${params.toString()}`);
 
       if (!response.ok) {
         throw new Error('Erro ao carregar saldos bloqueados');

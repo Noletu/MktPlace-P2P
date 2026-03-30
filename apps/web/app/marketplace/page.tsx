@@ -7,6 +7,7 @@ import { CryptoType } from '@mktplace/shared';
 import { formatBRL } from '@/utils/formatters';
 import PresenceBadge from '@/components/PresenceBadge';
 import AppHeader from '@/components/AppHeader';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Order {
   id: string;
@@ -56,14 +57,7 @@ export default function MarketplacePage() {
 
   const fetchCurrentUser = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
-      const response = await fetch('http://localhost:3002/api/v1/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/auth/me');
 
       if (response.ok) {
         const data = await response.json();
@@ -76,20 +70,9 @@ export default function MarketplacePage() {
 
   const fetchOrders = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        setError('Voce precisa fazer login para ver o marketplace');
-        setLoading(false);
-        return;
-      }
-
       // Passar filtro de tipo de ordem para a API
       const typeParam = orderTypeFilter !== 'ALL' ? `?type=${orderTypeFilter}` : '';
-      const response = await fetch(`http://localhost:3002/api/v1/orders/marketplace${typeParam}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth(`/orders/marketplace${typeParam}`);
 
       if (!response.ok) {
         throw new Error('Erro ao buscar pedidos');

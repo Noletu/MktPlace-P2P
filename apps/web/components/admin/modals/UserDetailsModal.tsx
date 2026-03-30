@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface UserDetailsModalProps {
   userId: string;
@@ -145,12 +146,7 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:3002/api/v1/admin/users/${userId}/details`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth(`/admin/users/${userId}/details`);
 
       const data = await response.json();
 
@@ -169,10 +165,7 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
   const fetchBreakdown = async () => {
     setBreakdownLoading(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:3002/api/v1/admin/users/${userId}/reputation-breakdown`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth(`/admin/users/${userId}/reputation-breakdown`);
       const data = await response.json();
       if (data.success) {
         setBreakdown(data.data);
@@ -187,10 +180,8 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
   const handleRecalculate = async () => {
     setRecalculating(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:3002/api/v1/admin/users/${userId}/recalculate-reputation`, {
+      const response = await fetchWithAuth(`/admin/users/${userId}/recalculate-reputation`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
       });
       const data = await response.json();
       if (data.success) {
@@ -871,10 +862,7 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                       <button
                         onClick={async () => {
                           try {
-                            const token = localStorage.getItem('accessToken');
-                            const response = await fetch(`http://localhost:3002/api/v1/admin/users/${userId}/authority-report`, {
-                              headers: { 'Authorization': `Bearer ${token}` },
-                            });
+                            const response = await fetchWithAuth(`/admin/users/${userId}/authority-report`);
                             const data = await response.json();
 
                             // Download como JSON

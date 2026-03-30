@@ -8,6 +8,8 @@ import { CryptoType } from '@mktplace/shared';
 import { formatBRL } from '@/utils/formatters';
 import ThemeToggle from '@/components/ThemeToggle';
 import AppHeader from '@/components/AppHeader';
+import { fetchWithAuth } from '@/utils/api';
+import { FrozenAccountBanner } from '@/components/FrozenAccountBanner';
 
 export default function CreateOrderPage() {
   const router = useRouter();
@@ -75,6 +77,7 @@ export default function CreateOrderPage() {
     reason?: string;
     until?: string;
   } | null>(null);
+  const [loadingAccountStatus, setLoadingAccountStatus] = useState(true);
 
   const NETWORK_OPTIONS: Record<string, string[]> = {
     BTC: ['BITCOIN'],
@@ -94,13 +97,7 @@ export default function CreateOrderPage() {
   useEffect(() => {
     const fetchActiveCoupon = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        if (!token) return;
-
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1'}/coupons/active`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        const response = await fetchWithAuth('/coupons/active');
 
         if (response.ok) {
           const data = await response.json();
@@ -121,13 +118,7 @@ export default function CreateOrderPage() {
   useEffect(() => {
     const fetchAccountStatus = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        if (!token) return;
-
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1'}/users/me`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        const response = await fetchWithAuth('/auth/me');
 
         if (response.ok) {
           const data = await response.json();
@@ -144,6 +135,8 @@ export default function CreateOrderPage() {
         }
       } catch (err) {
         console.error('Erro ao verificar status da conta:', err);
+      } finally {
+        setLoadingAccountStatus(false);
       }
     };
 
@@ -170,19 +163,8 @@ export default function CreateOrderPage() {
       setBarcodeValid(null);
 
       try {
-        const token = localStorage.getItem('accessToken');
-        if (!token) {
-          console.error('❌ Token not found');
-          setBarcodeValid(false);
-          return;
-        }
-
-        const response = await fetch('http://localhost:3002/api/v1/boleto/validate', {
+        const response = await fetchWithAuth('/boleto/validate', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
           body: JSON.stringify({ codigo: cleanBarcode }),
         });
 
@@ -242,20 +224,11 @@ export default function CreateOrderPage() {
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        setError('Você precisa fazer login para fazer upload');
-        return;
-      }
-
       const formData = new FormData();
       formData.append('image', file);
 
-      const response = await fetch('http://localhost:3002/api/v1/boleto/extract', {
+      const response = await fetchWithAuth('/boleto/extract', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
         body: formData,
       });
 
@@ -302,7 +275,7 @@ export default function CreateOrderPage() {
 
   const fetchPrices = async () => {
     try {
-      const response = await fetch('http://localhost:3002/api/v1/prices');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/prices`);
       const data = await response.json();
       console.log('📊 Prices API response:', data);
       if (data.success) {
@@ -330,21 +303,7 @@ export default function CreateOrderPage() {
 
     setLoadingBalance(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        console.log('⚠️ Token não encontrado - usuário não autenticado');
-        setInternalBalance(null);
-        return;
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral-balance/${crypto}/${network}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      );
+      const response = await fetchWithAuth(`/collateral-balance/${crypto}/${network}`);
 
       const data = await response.json();
       if (data.success) {
@@ -482,14 +441,6 @@ export default function CreateOrderPage() {
     setError('');
 
     try {
-      // Verificar se está autenticado primeiro
-      const token = localStorage.getItem('accessToken');
-      console.log('🔐 Token de autenticação:', token ? 'Presente' : 'Ausente');
-
-      if (!token) {
-        throw new Error('Você precisa fazer login para criar um pedido');
-      }
-
       // ============ BUY ORDER FLOW ============
       if (orderMode === 'BUY') {
         // Validações para ordem BUY
@@ -513,12 +464,8 @@ export default function CreateOrderPage() {
           ? { manualCancelOnly: true }
           : { customExpirationHours: expirationTime };
 
-        const response = await fetch('http://localhost:3002/api/v1/orders', {
+        const response = await fetchWithAuth('/orders', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
           body: JSON.stringify({
             type: 'BUY',
             cryptoType: crypto,
@@ -576,13 +523,8 @@ export default function CreateOrderPage() {
       // Calcular colateral necessário (valor bruto já inclui taxa embutida)
       const requiredCollateral = parseFloat(cryptoAmount).toFixed(8);
 
-      const checkBalanceResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral-balance/check-sufficient/${crypto}/${network}/${requiredCollateral}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
+      const checkBalanceResponse = await fetchWithAuth(
+        `/collateral-balance/check-sufficient/${crypto}/${network}/${requiredCollateral}`
       );
 
       const balanceData = await checkBalanceResponse.json();
@@ -624,12 +566,8 @@ export default function CreateOrderPage() {
         expectedAmount: cryptoAmount,
       });
 
-      const response = await fetch('http://localhost:3002/api/v1/collateral/generate', {
+      const response = await fetchWithAuth('/collateral/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           cryptoType: crypto,
           cryptoNetwork: network,
@@ -705,15 +643,7 @@ export default function CreateOrderPage() {
 
     const checkPayment = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral/${collateralAddress.id}/status`,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          }
-        );
+        const response = await fetchWithAuth(`/collateral/${collateralAddress.id}/status`);
 
         const data = await response.json();
 
@@ -741,13 +671,8 @@ export default function CreateOrderPage() {
 
       const pendingOrder = JSON.parse(pendingOrderData);
 
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/orders', {
+      const response = await fetchWithAuth('/orders', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           ...pendingOrder,
           collateralAddressId: collateralAddress.id,
@@ -771,20 +696,12 @@ export default function CreateOrderPage() {
   const handleSimulatePayment = async () => {
     setCheckingPayment(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral/${collateralAddress.id}/simulate-payment`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            amount: collateralAddress.expectedAmount,
-          }),
-        }
-      );
+      const response = await fetchWithAuth(`/collateral/${collateralAddress.id}/simulate-payment`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: collateralAddress.expectedAmount,
+        }),
+      });
 
       const data = await response.json();
 
@@ -811,19 +728,13 @@ export default function CreateOrderPage() {
       setLoading(true);
       setShowBalanceDecisionModal(false);
 
-      const token = localStorage.getItem('accessToken');
-
       // Converter expirationTime para os campos da API
       const expirationFields = expirationTime === 'indefinite'
         ? { manualCancelOnly: true }
         : { customExpirationHours: expirationTime };
 
-      const createOrderResponse = await fetch('http://localhost:3002/api/v1/orders', {
+      const createOrderResponse = await fetchWithAuth('/orders', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           type: 'SELL',
           paymentMethod: orderType,
@@ -873,15 +784,9 @@ export default function CreateOrderPage() {
       setShowBalanceDecisionModal(false);
       setLoading(true);
 
-      const token = localStorage.getItem('accessToken');
-
       // Gerar endereço de depósito para colateral
-      const response = await fetch('http://localhost:3002/api/v1/collateral/generate', {
+      const response = await fetchWithAuth('/collateral/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           cryptoType: crypto,
           cryptoNetwork: network,
@@ -1154,33 +1059,27 @@ export default function CreateOrderPage() {
           </div>
         )}
 
-        {/* Banner de Conta Bloqueada */}
-        {accountStatus?.frozen && (
-          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border-2 border-red-500 rounded-lg">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">🚫</span>
-              <div>
-                <h3 className="text-lg font-bold text-red-700 dark:text-red-400">
-                  Conta Suspensa
-                </h3>
-                <p className="text-sm text-red-600 dark:text-red-300">
-                  {accountStatus.until
-                    ? `Sua conta está suspensa até ${new Date(accountStatus.until).toLocaleString('pt-BR')}.`
-                    : 'Sua conta está suspensa permanentemente.'}
-                </p>
-                {accountStatus.reason && (
-                  <p className="text-xs text-red-500 dark:text-red-400 mt-1">
-                    Motivo: {accountStatus.reason}
-                  </p>
-                )}
-                <p className="text-xs text-red-500 dark:text-red-400 mt-2">
-                  Entre em contato com o suporte para mais informações.
-                </p>
-              </div>
+        {loadingAccountStatus ? (
+          <div className="flex justify-center items-center py-16">
+            <div className="text-gray-500 dark:text-gray-400">Carregando...</div>
+          </div>
+        ) : accountStatus?.frozen ? (
+          <div className="max-w-3xl mx-auto">
+            <FrozenAccountBanner
+              frozenReason={accountStatus.reason || 'Não especificado'}
+              frozenAt={''}
+              frozenUntil={accountStatus.until}
+            />
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="text-blue-600 hover:underline"
+              >
+                ← Voltar ao Dashboard
+              </button>
             </div>
           </div>
-        )}
-
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Formulário */}
           <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
@@ -1392,7 +1291,7 @@ export default function CreateOrderPage() {
 
                   <button
                     type="submit"
-                    disabled={loading || accountStatus?.frozen || !effectiveBuyCryptoAmount || parseFloat(effectiveBuyCryptoAmount) <= 0}
+                    disabled={loading || loadingAccountStatus || accountStatus?.frozen || !effectiveBuyCryptoAmount || parseFloat(effectiveBuyCryptoAmount) <= 0}
                     className={`w-full py-3 px-4 font-semibold rounded-lg disabled:opacity-50 ${
                       accountStatus?.frozen
                         ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed text-gray-200'
@@ -1772,7 +1671,7 @@ export default function CreateOrderPage() {
 
               <button
                 type="submit"
-                disabled={loading || accountStatus?.frozen}
+                disabled={loading || loadingAccountStatus || accountStatus?.frozen}
                 className={`w-full py-3 px-4 font-semibold rounded-lg disabled:opacity-50 ${
                   accountStatus?.frozen
                     ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed text-gray-200'
@@ -1991,6 +1890,7 @@ export default function CreateOrderPage() {
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
     </>

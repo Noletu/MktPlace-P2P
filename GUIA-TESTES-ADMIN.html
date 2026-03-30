@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; margin: 2.5cm; color: #222; }
+  h1 { font-size: 20pt; color: #1a3c6e; border-bottom: 3px solid #1a3c6e; padding-bottom: 6px; }
+  h2 { font-size: 14pt; color: #1a3c6e; background: #e8f0fb; padding: 6px 10px; border-left: 5px solid #1a3c6e; margin-top: 30px; }
+  h3 { font-size: 11pt; color: #333; margin-top: 18px; }
+  blockquote { background: #fffbe6; border-left: 4px solid #f0ad00; padding: 8px 14px; margin: 10px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th { background: #1a3c6e; color: white; padding: 7px 10px; text-align: left; }
+  td { border: 1px solid #ccc; padding: 6px 10px; }
+  tr:nth-child(even) { background: #f5f7fa; }
+  .ok  { color: #1a7c2e; font-weight: bold; }
+  .err { color: #c0392b; font-weight: bold; }
+  .note { background: #e8f4fd; border-left: 4px solid #2980b9; padding: 8px 14px; margin: 10px 0; }
+  ol, ul { margin: 6px 0 6px 20px; line-height: 1.8; }
+  .checklist { list-style: none; padding-left: 5px; }
+  .checklist li::before { content: "☐  "; font-size: 12pt; }
+  .modulo-num { font-size: 10pt; color: #888; font-weight: normal; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 25px 0; }
+  .footer { font-size: 9pt; color: #888; text-align: center; margin-top: 40px; }
+  .prereq { background: #fff3cd; border: 1px solid #ffc107; padding: 10px 14px; border-radius: 4px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Guia de Teste — Mktplace P2P</h1>
+<p><em>Perspectiva do Administrador de Negócio</em><br>
+<strong>Atualizado em:</strong> 22/03/2026</p>
+
+<blockquote>
+<strong>Para quem é este guia:</strong> Alguém sem conhecimento técnico que quer verificar se a plataforma funciona corretamente do ponto de vista do negócio.<br>
+Siga os cenários em ordem — cada um constrói sobre o anterior.<br><br>
+<strong>Pré-requisito:</strong> Ter o sistema rodando.<br>
+&nbsp;&nbsp;• Frontend: <strong>http://localhost:3000</strong><br>
+&nbsp;&nbsp;• Backend: <strong>http://localhost:3001</strong>
+</blockquote>
+
+<hr>
+
+<h2>Antes de Começar — Criar Contas de Teste</h2>
+
+<p>Você vai precisar de <strong>3 contas</strong> para testar o ciclo completo. Crie todas em <strong>/register</strong> antes de iniciar:</p>
+
+<table>
+  <tr><th>Conta</th><th>Email sugerido</th><th>Papel</th></tr>
+  <tr><td>Admin</td><td>admin@teste.com</td><td>Administrador da plataforma</td></tr>
+  <tr><td>Vendedor</td><td>vendedor@teste.com</td><td>Usuário que vende crypto</td></tr>
+  <tr><td>Comprador</td><td>comprador@teste.com</td><td>Usuário que compra crypto</td></tr>
+</table>
+
+<hr>
+
+<h2><span class="modulo-num">MÓDULO 1 —</span> Acesso ao Painel Administrativo</h2>
+
+<h3>Teste 1.1 — Login como Administrador</h3>
+<ol>
+  <li>Acesse <strong>http://localhost:3000/login</strong></li>
+  <li>Entre com a conta de admin</li>
+  <li><span class="ok">✅ Esperado:</span> Redireciona para o dashboard do usuário comum</li>
+  <li>Na barra de endereço, vá para <strong>http://localhost:3000/admin</strong></li>
+  <li><span class="ok">✅ Esperado:</span> Painel admin carrega com menu de navegação completo</li>
+  <li><span class="err">❌ Falha se:</span> Aparecer "Acesso negado" ou redirecionar para login</li>
+</ol>
+<div class="note">Se aparecer "Acesso negado", a conta admin precisa ter nível ≥ 40. Peça ao desenvolvedor para promover a conta.</div>
+
+<h3>Teste 1.2 — Navegação do Menu Admin</h3>
+<p>Clique em cada item do menu e marque os que carregam corretamente:</p>
+<ul class="checklist">
+  <li>Dashboard (/admin) — gráficos e estatísticas</li>
+  <li>Usuários (/admin/users) — lista de usuários</li>
+  <li>Pedidos (/admin/orders) — lista de pedidos</li>
+  <li>Audit Log (/admin/audit) — histórico de ações</li>
+  <li>Marketplace (/admin/marketplace) — pedidos disponíveis</li>
+  <li>Suporte (/admin/support) — tickets de suporte</li>
+  <li>Disputas (/admin/disputes) — disputas entre usuários</li>
+  <li>Cupons (/admin/coupons) — gestão de cupons</li>
+  <li>Segurança (/admin/security) — 2FA do admin</li>
+  <li>Roles (/admin/roles) — níveis de acesso</li>
+</ul>
+<p><span class="ok">✅ Todos devem carregar sem erro.</span></p>
+
+<hr>
+
+<h2><span class="modulo-num">MÓDULO 2 —</span> Gestão de Usuários</h2>
+
+<h3>Teste 2.1 — Visualizar Usuários</h3>
+<ol>
+  <li>Acesse <strong>/admin/users</strong></li>
+  <li>Você deve ver a lista com os 3 usuários criados</li>
+  <li><span class="ok">✅ Esperado:</span> Tabela mostra nome, email, reputação, limite diário</li>
+  <li>Teste o filtro: digite o email do vendedor na busca</li>
+  <li><span class="ok">✅ Esperado:</span> Lista filtra mostrando apenas o vendedor</li>
+</ol>
+
+<h3>Teste 2.2 — Ver Detalhes de um Usuário</h3>
+<ol>
+  <li>Na lista de usuários, clique no ícone 👁 ao lado do vendedor</li>
+  <li><span class="ok">✅ Esperado:</span> Modal abre mostrando:
+    <ul>
+      <li>Dados pessoais (nome, email, data de cadastro)</li>
+      <li>Score de reputação atual</li>
+      <li>Limite diário de transação</li>
+      <li>Histórico de pedidos e carteiras</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>Teste 2.3 — Ajustar Limite Diário de um Usuário</h3>
+<ol>
+  <li>Na lista de usuários, clique no ícone ✏ (Ajustar Limite) ao lado do vendedor</li>
+  <li><span class="ok">✅ Esperado:</span> Modal abre com campo para inserir novo limite</li>
+  <li>Digite <strong>5000</strong> (R$ 5.000) e clique em confirmar</li>
+  <li><span class="ok">✅ Esperado:</span> Mensagem de sucesso; limite atualizado na lista</li>
+  <li>Verifique no detalhe do usuário: deve mostrar R$ 5.000</li>
+</ol>
+
+<h3>Teste 2.4 — Congelar uma Conta</h3>
+<ol>
+  <li>Na lista de usuários, clique no ícone 🔒 (Congelar) ao lado do comprador</li>
+  <li><span class="ok">✅ Esperado:</span> Modal pede motivo e data opcional de descongelamento</li>
+  <li>Preencha o motivo: <em>"Teste de congelamento"</em> e confirme</li>
+  <li><span class="ok">✅ Esperado:</span> Conta marcada como congelada na lista</li>
+  <li>Abra aba anônima, logue como comprador e tente criar um pedido</li>
+  <li><span class="ok">✅ Esperado:</span> Banner de "conta congelada" aparece e impede a ação</li>
+</ol>
+
+<h3>Teste 2.5 — Descongelar a Conta</h3>
+<ol>
+  <li>No admin, localize o comprador congelado e clique em 🔓 (Descongelar)</li>
+  <li><span class="ok">✅ Esperado:</span> Confirmação e conta volta ao normal</li>
+</ol>
+
+<h3>Teste 2.6 — Mudar o Role de um Usuário</h3>
+<div class="prereq">⚠️ Cuidado: não promova as contas de teste a MASTER.</div>
+<ol>
+  <li>Na lista, clique em 🔄 (Mudar Role) ao lado do vendedor</li>
+  <li>Selecione <strong>SUPPORT</strong></li>
+  <li><span class="ok">✅ Esperado:</span> Usuário aparece com badge de SUPPORT</li>
+  <li>Reverta para <strong>USER</strong> logo em seguida</li>
+</ol>
+
+<hr>
+
+<h2><span class="modulo-num">MÓDULO 3 —</span> Criação e Ciclo Completo de Pedido</h2>
+
+<blockquote>Este é o coração do negócio. Vamos simular uma venda de crypto completa.</blockquote>
+
+<div class="prereq">📋 <strong>Pré-requisito:</strong> O vendedor precisa ter saldo em carteira. Em ambiente de teste, use o botão "Simular Depósito" quando disponível.</div>
+
+<h3>Teste 3.1 — Criar um Pedido de Venda (pelo Vendedor)</h3>
+<ol>
+  <li>Faça login como <strong>vendedor</strong> em aba anônima</li>
+  <li>Acesse <strong>/orders/create</strong> e selecione:
+    <ul>
+      <li>Tipo: <strong>SELL</strong> (vender crypto para receber BRL)</li>
+      <li>Crypto: Bitcoin (ou qualquer disponível)</li>
+      <li>Quantidade: 0.001 BTC</li>
+      <li>Método de pagamento: PIX</li>
+    </ul>
+  </li>
+  <li>Clique em "Criar Pedido"</li>
+  <li><span class="ok">✅ Esperado:</span> Pedido criado com status ACTIVE, aparece no marketplace</li>
+</ol>
+
+<h3>Teste 3.2 — Ver o Pedido no Admin</h3>
+<ol>
+  <li>No admin, acesse <strong>/admin/orders</strong></li>
+  <li><span class="ok">✅ Esperado:</span> O pedido do vendedor aparece na lista</li>
+  <li>Clique em 👁 e confirme que todos os dados estão visíveis</li>
+</ol>
+
+<h3>Teste 3.3 — Aceitar o Pedido (pelo Comprador)</h3>
+<ol>
+  <li>Faça login como <strong>comprador</strong> em outra aba</li>
+  <li>Acesse <strong>/marketplace</strong>, localize o pedido e clique em "Aceitar"</li>
+  <li><span class="ok">✅ Esperado:</span> Pedido entra em negociação ativa</li>
+</ol>
+
+<h3>Teste 3.4 — Confirmar Pagamento e Completar</h3>
+<ol>
+  <li>Como <strong>comprador</strong>: clique em "Confirmar Pagamento Enviado"</li>
+  <li>Como <strong>vendedor</strong>: verifique a notificação e clique em "Confirmar Recebimento"</li>
+  <li><span class="ok">✅ Esperado:</span> Pedido muda para COMPLETED</li>
+  <li><span class="ok">✅ Esperado:</span> Reputação de ambos aumenta +10 pontos</li>
+</ol>
+
+<h3>Teste 3.5 — Verificar no Admin</h3>
+<ol>
+  <li>Em <strong>/admin/orders</strong>, pedido deve aparecer como COMPLETED</li>
+  <li>Em <strong>/admin/users</strong>, reputação de ambos deve estar maior</li>
+  <li><span class="ok">✅ Verificação de negócio:</span> Transação registrada corretamente</li>
+</ol>
+
+<hr>
+
+<h2><span class="modulo-num">MÓDULO 4 —</span> Gestão de Disputas</h2>
+
+<h3>Teste 4.1 — Criar uma Disputa</h3>
+<ol>
+  <li>Crie um novo pedido (repita Testes 3.1 e 3.3)</li>
+  <li>Desta vez, como <strong>comprador</strong>, <em>não</em> confirme o pagamento</li>
+  <li>Acesse <strong>/orders/[id]/dispute/new</strong> e preencha:
+    <ul>
+      <li>Título: "Teste de disputa"</li>
+      <li>Motivo: "Pagamento não confirmado"</li>
+    </ul>
+  </li>
+  <li><span class="ok">✅ Esperado:</span> Disputa aberta com status OPEN</li>
+</ol>
+
+<h3>Teste 4.2 — Visualizar Disputas no Admin</h3>
+<ol>
+  <li>Acesse <strong>/admin/disputes</strong></li>
+  <li><span class="ok">✅ Esperado:</span> Disputa aparece com status OPEN</li>
+  <li>Veja as estatísticas no topo (total, abertas, em revisão)</li>
+</ol>
+
+<h3>Teste 4.3 — Resolver uma Disputa</h3>
+<ol>
+  <li>Clique na disputa para ver os detalhes</li>
+  <li>Mude o status para "UNDER_REVIEW" (Em Análise)</li>
+  <li>Resolva a favor do comprador ou vendedor</li>
+  <li><span class="ok">✅ Esperado:</span> Disputa marcada como RESOLVED no audit log</li>
+</ol>
+
+<hr>
+
+<h2><span class="modulo-num">MÓDULO 5 —</span> Suporte ao Cliente</h2>
+
+<h3>Teste 5.1 — Criar Ticket de Suporte (como Usuário)</h3>
+<ol>
+  <li>Logado como <strong>comprador</strong>, acesse <strong>/support/ticket/new</strong></li>
+  <li>Preencha: Assunto "Dúvida sobre saque" e Mensagem "Como faço para sacar meu saldo?"</li>
+  <li><span class="ok">✅ Esperado:</span> Ticket criado com status OPEN</li>
+</ol>
+
+<h3>Teste 5.2 — Responder ao Ticket (como Admin)</h3>
+<ol>
+  <li>No admin, acesse <strong>/admin/support</strong> e abra o ticket do comprador</li>
+  <li>Escreva uma resposta e mude o status para "RESOLVED"</li>
+  <li><span class="ok">✅ Esperado:</span> Ticket marcado como resolvido</li>
+</ol>
+
+<h3>Teste 5.3 — Filtros de Suporte</h3>
+<ol>
+  <li>Filtre por status OPEN → mostra apenas abertos</li>
+  <li>Filtre por prioridade HIGH → mostra apenas críticos</li>
+  <li><span class="ok">✅ Todos os filtros devem funcionar</span></li>
+</ol>
+
+<hr>
+
+<h2><span class="modulo-num">MÓDULO 6 —</span> Gestão de Cupons</h2>
+
+<h3>Teste 6.1 — Criar um Cupom</h3>
+<ol>
+  <li>Acesse <strong>/admin/coupons</strong> e clique em "Criar Cupom"</li>
+  <li>Preencha: Código <strong>TESTE10</strong>, Desconto 10%, Máx 1 uso por usuário, Público, Ativo</li>
+  <li><span class="ok">✅ Esperado:</span> Cupom aparece na lista</li>
+</ol>
+
+<h3>Teste 6.2 — Usar o Cupom (como Usuário)</h3>
+<ol>
+  <li>Como <strong>comprador</strong>, crie um pedido e insira o código <strong>TESTE10</strong></li>
+  <li><span class="ok">✅ Esperado:</span> Desconto aplicado</li>
+</ol>
+
+<h3>Teste 6.3 — Verificar Uso no Admin</h3>
+<ol>
+  <li>Volte ao admin em <strong>/admin/coupons</strong></li>
+  <li><span class="ok">✅ Esperado:</span> O cupom mostra 1 uso registrado</li>
+</ol>
+
+<h3>Teste 6.4 — Desativar Cupom</h3>
+<ol>
+  <li>Mude o status do cupom para Inativo</li>
+  <li>Tente usar como usuário</li>
+  <li><span class="err">✅ Esperado:</span> Sistema recusa com mensagem de erro</li>
+</ol>
+
+<hr>
+
+<h2><span class="modulo-num">MÓDULO 7 —</span> Audit Log (Rastreabilidade)</h2>
+
+<h3>Teste 7.1 — Verificar Ações no Log</h3>
+<ol>
+  <li>Acesse <strong>/admin/audit</strong></li>
+  <li><span class="ok">✅ Esperado:</span> Todas as ações aparecem: congelamento, mudança de role, ajuste de limite, resolução de disputa</li>
+  <li>Cada entrada mostra: quem fez, o que fez, quando, e se teve sucesso</li>
+</ol>
+
+<h3>Teste 7.2 — Filtrar o Log</h3>
+<ol>
+  <li>Filtre por ação "FREEZE_ACCOUNT" → só o congelamento aparece</li>
+  <li>Filtre por data de hoje → só as ações de hoje aparecem</li>
+</ol>
+
+<h3>Teste 7.3 — Exportar para CSV</h3>
+<ol>
+  <li>Clique em "Exportar CSV"</li>
+  <li><span class="ok">✅ Esperado:</span> Arquivo baixado com as ações registradas</li>
+</ol>
+
+<hr>
+
+<h2><span class="modulo-num">MÓDULO 8 —</span> Dashboard e Métricas</h2>
+
+<h3>Teste 8.1 — Verificar o Dashboard Admin</h3>
+<ol>
+  <li>Acesse <strong>/admin</strong></li>
+  <li><span class="ok">✅ Esperado:</span> Números refletem os testes feitos (usuários, pedidos, volume)</li>
+  <li>Gráficos devem exibir dados mesmo que pequenos</li>
+</ol>
+
+<h3>Teste 8.2 — Workers / Processos do Sistema</h3>
+<ol>
+  <li>Acesse <strong>/admin/workers</strong></li>
+  <li><span class="ok">✅ Esperado:</span> Deposit Monitor e Collateral Release aparecem como ATIVOS</li>
+  <li><span class="err">❌ Atenção se:</span> Algum worker aparecer como PARADO ou com erro</li>
+</ol>
+
+<hr>
+
+<h2><span class="modulo-num">MÓDULO 9 —</span> Robustez e Casos Extremos</h2>
+
+<h3>Teste 9.1 — Tentar Ações Não Autorizadas</h3>
+<ol>
+  <li>Logado como <strong>vendedor</strong> (não admin), acesse <strong>http://localhost:3000/admin</strong></li>
+  <li><span class="ok">✅ Esperado:</span> Redireciona para login ou exibe "Acesso negado"</li>
+</ol>
+
+<h3>Teste 9.2 — Conta Congelada não Pode Transacionar</h3>
+<ol>
+  <li>Congele o comprador e tente fazer login e aceitar um pedido como ele</li>
+  <li><span class="ok">✅ Esperado:</span> Banner de conta congelada impede a ação</li>
+</ol>
+
+<h3>Teste 9.3 — Pedido Expirado</h3>
+<ol>
+  <li>Crie um pedido com expiração mínima e aguarde expirar</li>
+  <li><span class="ok">✅ Esperado:</span> Pedido muda para EXPIRED automaticamente</li>
+</ol>
+
+<h3>Teste 9.4 — Limite Diário</h3>
+<ol>
+  <li>Com conta nova (reputação 0), limite é R$ 1.000</li>
+  <li>Tente criar pedido de R$ 2.000</li>
+  <li><span class="ok">✅ Esperado:</span> Sistema bloqueia com mensagem de limite excedido</li>
+</ol>
+
+<h3>Teste 9.5 — Senha Errada</h3>
+<ol>
+  <li>Tente senha errada 5 vezes no login</li>
+  <li><span class="ok">✅ Esperado:</span> Bloqueio temporário ou mensagem de muitas tentativas</li>
+</ol>
+
+<hr>
+
+<h2><span class="modulo-num">MÓDULO 10 —</span> Segurança do Admin (2FA)</h2>
+
+<h3>Teste 10.1 — Configurar 2FA para o Admin</h3>
+<ol>
+  <li>Acesse <strong>/admin/security</strong> e clique em "Ativar 2FA"</li>
+  <li>Escaneie o QR code com Google Authenticator, Authy ou similar</li>
+  <li>Digite o código de 6 dígitos gerado</li>
+  <li><span class="ok">✅ Esperado:</span> 2FA ativado, backup codes gerados</li>
+  <li><strong>Importante:</strong> Salve os backup codes em local seguro</li>
+</ol>
+
+<h3>Teste 10.2 — Login com 2FA</h3>
+<ol>
+  <li>Faça logout e logue novamente como admin</li>
+  <li><span class="ok">✅ Esperado:</span> Após email/senha corretos, pede código do autenticador</li>
+  <li>Digite o código do app → login bem-sucedido</li>
+</ol>
+
+<hr>
+
+<h2>Checklist Final</h2>
+
+<h3>Fluxo de Usuários</h3>
+<ul class="checklist">
+  <li>Cadastro de novo usuário funciona</li>
+  <li>Login/logout funciona</li>
+  <li>Congelamento e descongelamento funciona</li>
+  <li>Mudança de role funciona</li>
+  <li>Ajuste de limite funciona</li>
+</ul>
+
+<h3>Fluxo de Negócio</h3>
+<ul class="checklist">
+  <li>Criar pedido de venda funciona</li>
+  <li>Pedido aparece no marketplace</li>
+  <li>Comprador consegue aceitar pedido</li>
+  <li>Ciclo de pagamento completa corretamente</li>
+  <li>Reputação aumenta após transação completada</li>
+</ul>
+
+<h3>Gestão e Controle</h3>
+<ul class="checklist">
+  <li>Disputas são criadas e resolvidas</li>
+  <li>Tickets de suporte são respondidos</li>
+  <li>Cupons são criados e aplicados</li>
+  <li>Audit log registra todas as ações admin</li>
+  <li>Dashboard mostra métricas corretas</li>
+  <li>Workers aparecem como ativos</li>
+</ul>
+
+<h3>Segurança</h3>
+<ul class="checklist">
+  <li>Usuário comum não acessa admin</li>
+  <li>Conta congelada não pode operar</li>
+  <li>Limite diário é respeitado</li>
+  <li>2FA funciona no admin</li>
+</ul>
+
+<hr>
+
+<h2>Problemas Comuns e O Que Fazer</h2>
+
+<table>
+  <tr><th>Sintoma</th><th>Possível Causa</th><th>O Que Fazer</th></tr>
+  <tr><td>"Acesso negado" no admin</td><td>Conta sem role de admin</td><td>Pedir ao dev para promover a conta</td></tr>
+  <tr><td>Pedido não aparece no marketplace</td><td>Status diferente de ACTIVE</td><td>Verificar status no admin/orders</td></tr>
+  <tr><td>Notificações não chegam</td><td>Socket desconectado</td><td>Recarregar a página</td></tr>
+  <tr><td>Worker parado no /admin/workers</td><td>Processo caiu</td><td>Reiniciar o backend</td></tr>
+  <tr><td>Erro ao criar pedido sem saldo</td><td>Saldo insuficiente</td><td>Usar botão "Simular Depósito"</td></tr>
+</table>
+
+<div class="footer">Guia de Teste — Mktplace P2P · Atualizado em 22/03/2026 · Ambiente de desenvolvimento local</div>
+
+</body>
+</html>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface EditOrderModalProps {
   order: {
@@ -53,20 +54,14 @@ export default function EditOrderModal({ order, onClose, onSuccess }: EditOrderM
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-
       const updates: any = {};
       if (amount !== order.fiatAmount) updates.amount = amount;
       if (cryptoAmount !== order.cryptoAmount) updates.cryptoAmount = cryptoAmount;
       if (status !== order.status) updates.status = status;
       if (notes.trim()) updates.notes = notes.trim();
 
-      const response = await fetch(`http://localhost:3002/api/v1/admin/orders/${order.id}/edit`, {
+      const response = await fetchWithAuth(`/admin/orders/${order.id}/edit`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(updates),
       });
 

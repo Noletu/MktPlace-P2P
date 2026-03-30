@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface PartnerCrypto {
   cryptoType: string;
@@ -37,13 +38,8 @@ export default function PartnersView() {
   }, []);
 
   const loadData = async () => {
-    const token = localStorage.getItem('accessToken');
     try {
-      const response = await fetch('http://localhost:3002/api/v1/admin/funds/partners', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/admin/funds/partners');
 
       if (!response.ok) {
         throw new Error('Erro ao carregar dados dos sócios');

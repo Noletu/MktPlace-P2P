@@ -7,6 +7,7 @@ import CryptoIcon from '@/components/ui/CryptoIcon';
 import { CryptoType } from '@mktplace/shared';
 import { formatBRL } from '@/utils/formatters';
 import ThemeToggle from '@/components/ThemeToggle';
+import { fetchWithAuth } from '@/utils/api';
 
 export default function CreateOrderPage() {
   const router = useRouter();
@@ -85,19 +86,8 @@ export default function CreateOrderPage() {
       setBarcodeValid(null);
 
       try {
-        const token = localStorage.getItem('accessToken');
-        if (!token) {
-          console.error('❌ Token not found');
-          setBarcodeValid(false);
-          return;
-        }
-
-        const response = await fetch('http://localhost:3002/api/v1/boleto/validate', {
+        const response = await fetchWithAuth('/boleto/validate', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
           body: JSON.stringify({ codigo: cleanBarcode }),
         });
 
@@ -157,20 +147,11 @@ export default function CreateOrderPage() {
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        setError('Você precisa fazer login para fazer upload');
-        return;
-      }
-
       const formData = new FormData();
       formData.append('image', file);
 
-      const response = await fetch('http://localhost:3002/api/v1/boleto/extract', {
+      const response = await fetchWithAuth('/boleto/extract', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
         body: formData,
       });
 
@@ -217,7 +198,7 @@ export default function CreateOrderPage() {
 
   const fetchPrices = async () => {
     try {
-      const response = await fetch('http://localhost:3002/api/v1/prices');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/prices`);
       const data = await response.json();
       console.log('📊 Prices API response:', data);
       if (data.success) {
@@ -245,21 +226,7 @@ export default function CreateOrderPage() {
 
     setLoadingBalance(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        console.log('⚠️ Token não encontrado - usuário não autenticado');
-        setInternalBalance(null);
-        return;
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral-balance/${crypto}/${network}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      );
+      const response = await fetchWithAuth(`/collateral-balance/${crypto}/${network}`);
 
       const data = await response.json();
       if (data.success) {
@@ -334,27 +301,14 @@ export default function CreateOrderPage() {
         pixKey: pixKey ? 'Presente' : 'Ausente',
       });
 
-      // Verificar se está autenticado primeiro
-      const token = localStorage.getItem('accessToken');
-      console.log('🔐 Token de autenticação:', token ? 'Presente' : 'Ausente');
-
-      if (!token) {
-        throw new Error('Você precisa fazer login para criar um pedido');
-      }
-
       // NOVO: Primeiro verificar se tem saldo interno suficiente
       console.log('💰 Verificando saldo interno...');
 
       // Calcular colateral necessário (valor bruto já inclui taxa embutida)
       const requiredCollateral = parseFloat(cryptoAmount).toFixed(8);
 
-      const checkBalanceResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral-balance/check-sufficient/${crypto}/${network}/${requiredCollateral}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
+      const checkBalanceResponse = await fetchWithAuth(
+        `/collateral-balance/check-sufficient/${crypto}/${network}/${requiredCollateral}`
       );
 
       const balanceData = await checkBalanceResponse.json();
@@ -396,12 +350,8 @@ export default function CreateOrderPage() {
         expectedAmount: cryptoAmount,
       });
 
-      const response = await fetch('http://localhost:3002/api/v1/collateral/generate', {
+      const response = await fetchWithAuth('/collateral/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           cryptoType: crypto,
           cryptoNetwork: network,
@@ -477,15 +427,7 @@ export default function CreateOrderPage() {
 
     const checkPayment = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral/${collateralAddress.id}/status`,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          }
-        );
+        const response = await fetchWithAuth(`/collateral/${collateralAddress.id}/status`);
 
         const data = await response.json();
 
@@ -513,13 +455,8 @@ export default function CreateOrderPage() {
 
       const pendingOrder = JSON.parse(pendingOrderData);
 
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/orders', {
+      const response = await fetchWithAuth('/orders', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           ...pendingOrder,
           collateralAddressId: collateralAddress.id,
@@ -543,20 +480,12 @@ export default function CreateOrderPage() {
   const handleSimulatePayment = async () => {
     setCheckingPayment(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral/${collateralAddress.id}/simulate-payment`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            amount: collateralAddress.expectedAmount,
-          }),
-        }
-      );
+      const response = await fetchWithAuth(`/collateral/${collateralAddress.id}/simulate-payment`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: collateralAddress.expectedAmount,
+        }),
+      });
 
       const data = await response.json();
 
@@ -583,19 +512,13 @@ export default function CreateOrderPage() {
       setLoading(true);
       setShowBalanceDecisionModal(false);
 
-      const token = localStorage.getItem('accessToken');
-
       // Converter expirationTime para os campos da API
       const expirationFields = expirationTime === 'indefinite'
         ? { manualCancelOnly: true }
         : { customExpirationHours: expirationTime };
 
-      const createOrderResponse = await fetch('http://localhost:3002/api/v1/orders', {
+      const createOrderResponse = await fetchWithAuth('/orders', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           type: 'SELL',
           paymentMethod: orderType,
@@ -645,15 +568,9 @@ export default function CreateOrderPage() {
       setShowBalanceDecisionModal(false);
       setLoading(true);
 
-      const token = localStorage.getItem('accessToken');
-
       // Gerar endereço de depósito para colateral
-      const response = await fetch('http://localhost:3002/api/v1/collateral/generate', {
+      const response = await fetchWithAuth('/collateral/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           cryptoType: crypto,
           cryptoNetwork: network,

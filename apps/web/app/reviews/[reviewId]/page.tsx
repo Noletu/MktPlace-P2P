@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Loader2,
 } from 'lucide-react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface ReviewDetails {
   id: string;
@@ -45,7 +46,7 @@ interface ReviewDetails {
 
 export default function ReviewDetailPage() {
   const router = useRouter();
-  const params = useParams();
+  const params = useParams() ?? {};
   const reviewId = params.reviewId as string;
 
   const [review, setReview] = useState<ReviewDetails | null>(null);
@@ -59,19 +60,11 @@ export default function ReviewDetailPage() {
 
   const fetchReviewDetails = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       const userDataStr = localStorage.getItem('user');
       if (!userDataStr) return;
       const userData = JSON.parse(userDataStr);
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/reviews/user/${userData.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth(`/reviews/user/${userData.id}`);
 
       if (response.ok) {
         const data = await response.json();

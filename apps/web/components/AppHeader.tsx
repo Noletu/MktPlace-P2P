@@ -5,6 +5,7 @@ import { NotificationBell } from './NotificationBell';
 import ThemeToggle from './ThemeToggle';
 import CryptoPriceCards from './CryptoPriceCards';
 import { useState, useEffect } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface User {
   id: string;
@@ -28,21 +29,13 @@ export default function AppHeader() {
     // Marcar componente como montado
     setMounted(true);
 
-    // Verificar se o usuário está logado
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      setIsLoggedIn(true);
-      fetchUser(token);
-    }
+    // Verificar se o usuário está logado via cookie HttpOnly
+    fetchUser();
   }, []);
 
-  const fetchUser = async (token: string) => {
+  const fetchUser = async () => {
     try {
-      const response = await fetch('http://localhost:3002/api/v1/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/auth/me');
 
       if (response.ok) {
         const data = await response.json();
@@ -61,24 +54,11 @@ export default function AppHeader() {
 
   const handleLogout = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const refreshToken = localStorage.getItem('refreshToken');
-
-      await fetch('http://localhost:3002/api/v1/auth/logout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        credentials: 'include', // SECURITY: Enviar cookies com a requisição
-        body: JSON.stringify({ refreshToken }),
-      });
+      await fetchWithAuth('/auth/logout', { method: 'POST' });
     } catch (error) {
-      console.error('Erro ao fazer logout:', error);
+      console.warn('Logout: servidor não confirmou.', error);
     }
 
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
     setUser(null);
     setIsLoggedIn(false);

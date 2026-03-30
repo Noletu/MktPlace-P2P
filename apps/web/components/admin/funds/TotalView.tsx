@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface TotalCrypto {
   cryptoType: string;
@@ -32,13 +33,8 @@ export default function TotalView() {
   }, []);
 
   const loadData = async () => {
-    const token = localStorage.getItem('accessToken');
     try {
-      const response = await fetch('http://localhost:3002/api/v1/admin/funds/total', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/admin/funds/total');
 
       if (!response.ok) {
         throw new Error('Erro ao carregar dados totais');

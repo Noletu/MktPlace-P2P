@@ -1,6 +1,7 @@
 interface StatusBadgeProps {
-  status: string;
+  status?: string;
   variant?: 'default' | 'success' | 'warning' | 'danger' | 'info';
+  children?: React.ReactNode;
 }
 
 const variantStyles = {
@@ -11,10 +12,10 @@ const variantStyles = {
   info: 'bg-blue-600/20 border-blue-500/50 text-blue-400',
 };
 
-export default function StatusBadge({ status, variant = 'default' }: StatusBadgeProps) {
+export default function StatusBadge({ status, variant = 'default', children }: StatusBadgeProps) {
   return (
     <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${variantStyles[variant]}`}>
-      {status}
+      {children ?? status}
     </span>
   );
 }

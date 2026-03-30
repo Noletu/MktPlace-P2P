@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useChat } from '@/hooks/useChat';
 import ChatMessage from './ChatMessage';
+import { fetchWithAuth } from '@/utils/api';
 
 interface ChatWindowProps {
   orderId: string;
@@ -44,18 +45,13 @@ export default function ChatWindow({ orderId, onClose, onMinimize, readOnly = fa
   useEffect(() => {
     const fetchChat = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
         const userStr = localStorage.getItem('user');
-        if (!token || !userStr) return;
+        if (!userStr) return;
 
         const userId = JSON.parse(userStr).id;
         setCurrentUserId(userId);
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/chat/order/${orderId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
+        const response = await fetchWithAuth(`/chat/order/${orderId}`);
 
         if (response.ok) {
           const data = await response.json();

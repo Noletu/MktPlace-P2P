@@ -83,6 +83,7 @@ router.get('/audit-log', supportMiddleware, adminController.getAuditLog.bind(adm
  * OPERACIONAL: Audit Log Completo (SUPPORT + GERENTE + ADMIN + MASTER)
  */
 router.get('/audit-logs', supportMiddleware, adminController.getAllAuditLogs.bind(adminController));
+router.get('/audit-logs/actions', supportMiddleware, adminController.getAuditActions.bind(adminController));
 router.get('/audit-logs/stats', supportMiddleware, adminController.getAuditStats.bind(adminController));
 router.get('/audit-logs/export', supportMiddleware, adminController.exportAuditLogs.bind(adminController));
 

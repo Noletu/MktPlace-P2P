@@ -23,16 +23,7 @@ export const authMiddleware = async (
     // SECURITY: Extrair token de HttpOnly cookie ou Authorization header (fallback)
     const token = extractToken(req);
 
-    console.log('🔐 [Auth Middleware]', {
-      path: req.path,
-      method: req.method,
-      hasCookies: !!req.cookies,
-      cookies: Object.keys(req.cookies || {}),
-      hasToken: !!token,
-    });
-
     if (!token) {
-      console.log('❌ Token não fornecido');
       res.status(401).json({ error: 'Token não fornecido' });
       return;
     }
@@ -45,6 +36,18 @@ export const authMiddleware = async (
       decoded.userId = (decoded as any).id;
     }
 
+    // SECURITY (H-2): Verificar blacklist de tokens revogados (logout invalida token imediatamente)
+    if (decoded.jti) {
+      const revoked = await prisma.revokedToken.findUnique({
+        where: { jti: decoded.jti },
+        select: { jti: true },
+      });
+      if (revoked) {
+        res.status(401).json({ error: 'Token revogado. Faça login novamente.' });
+        return;
+      }
+    }
+
     console.log('✅ Token válido:', { userId: decoded.userId, email: decoded.email });
 
     // IMPORTANTE: Verificar se usuário existe no banco e buscar role atualizado
@@ -53,6 +56,7 @@ export const authMiddleware = async (
       select: {
         id: true,
         email: true,
+        name: true,
         legacyRole: true, // Role temporário durante migração RBAC
         accountFrozen: true, // SECURITY: Verificar se conta está bloqueada
         frozenReason: true,
@@ -83,13 +87,14 @@ export const authMiddleware = async (
     req.user = {
       ...decoded,
       role: roleToUse, // Role sempre vem do banco (não confia no JWT)
+      name: user.name ?? undefined,       // Nome do usuário (para audit log)
       accountFrozen: user.accountFrozen,  // Adicionar flag de conta bloqueada
       level: user.role?.level || 0, // Adicionar level para permissões (SUPPORT=40, MANAGER=60, ADMIN=80, MASTER=100)
       frozenReason: user.frozenReason,    // Motivo do bloqueio
       frozenUntil: user.frozenUntil,      // Data de expiração (null = permanente)
     };
 
-// SECURITY: Verificar se conta está congelada e bloquear ações de escrita    if (user.accountFrozen) {      // Permitir todos os GETs (leitura/visualização)      if (req.method === 'GET') {        return next();      }      // Permitir endpoints de disputa (para apelar da decisão de bloqueio)      if (req.path.includes('/disputes')) {        return next();      }      // Permitir logout e refresh de token      if (req.path.includes('/auth/logout') || req.path.includes('/auth/refresh')) {        return next();      }      // Permitir notificações (marcar como lida, etc)      if (req.path.includes('/notifications')) {        return next();      }      // Bloquear todo o resto (POST/PUT/PATCH/DELETE)      const message = user.frozenUntil        ? `Sua conta está suspensa até ${new Date(user.frozenUntil).toLocaleString('pt-BR')}. Motivo: ${user.frozenReason || 'Não especificado'}. Você pode apelar dessa decisão criando uma disputa.`        : `Sua conta está suspensa. Motivo: ${user.frozenReason || 'Não especificado'}. Você pode apelar dessa decisão criando uma disputa.`;      console.log('🚫 Ação bloqueada para conta congelada:', {        userId: user.id,        method: req.method,        path: req.path,        frozenReason: user.frozenReason,      });      res.status(403).json({        success: false,        error: 'Ação bloqueada',        message,        accountFrozen: true,        frozenReason: user.frozenReason,        frozenUntil: user.frozenUntil,        canAppeal: true,        appealUrl: '/disputes/create?category=ACCOUNT_BLOCK_APPEAL',      });      return;    }
+// SECURITY: Verificar se conta está congelada e bloquear ações de escrita    if (user.accountFrozen) {      // Permitir todos os GETs (leitura/visualização)      if (req.method === 'GET') {        return next();      }      // Permitir endpoints de disputa (para apelar da decisão de bloqueio)      if (req.path.includes('/disputes')) {        return next();      }      // Permitir logout e refresh de token      if (req.path.includes('/auth/logout') || req.path.includes('/auth/refresh')) {        return next();      }      // Permitir notificações (marcar como lida, etc)      if (req.path.includes('/notifications')) {        return next();      }      // Bloquear todo o resto (POST/PUT/PATCH/DELETE)      const message = user.frozenUntil        ? `Sua conta está suspensa até ${new Date(user.frozenUntil).toLocaleString('pt-BR')}. Motivo: ${user.frozenReason || 'Não especificado'}. Você pode apelar dessa decisão criando uma disputa.`        : `Sua conta está suspensa. Motivo: ${user.frozenReason || 'Não especificado'}. Você pode apelar dessa decisão criando uma disputa.`;      console.log('🚫 Ação bloqueada para conta congelada:', {        userId: user.id,        method: req.method,        path: req.path,        frozenReason: user.frozenReason,      });      res.status(403).json({        success: false,        error: 'Ação bloqueada',        message,        accountFrozen: true,        frozenReason: user.frozenReason,        frozenUntil: user.frozenUntil,        canAppeal: true,        appealUrl: '/support/ticket/new?appeal=true',      });      return;    }
     next();
   } catch (error) {
     console.log('❌ Token inválido:', error);

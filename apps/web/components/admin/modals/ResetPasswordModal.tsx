@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface ResetPasswordModalProps {
   user: {
@@ -24,13 +25,8 @@ export default function ResetPasswordModal({ user, onClose, onSuccess }: ResetPa
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(`http://localhost:3002/api/v1/admin/users/${user.id}/reset-password`, {
+      const res = await fetchWithAuth(`/admin/users/${user.id}/reset-password`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({ disable2FA }),
       });
 

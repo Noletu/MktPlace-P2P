@@ -7,7 +7,9 @@ import { API_CONFIG } from '@/config/api';
 const API_BASE_URL = API_CONFIG.baseUrl;
 
 /**
- * Get the access token from localStorage
+ * @deprecated Tokens não devem ser acessados via localStorage (XSS).
+ * Use fetchWithAuth que envia o cookie HttpOnly automaticamente.
+ * Mantido apenas para leitura de dados de usuário não-sensíveis durante migração.
  */
 export function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -15,30 +17,25 @@ export function getAccessToken(): string | null {
 }
 
 /**
- * Make an authenticated fetch request
+ * Make an authenticated fetch request.
+ * SECURITY: Usa cookie HttpOnly (accessToken) via credentials:'include'.
+ * Não envia Authorization header — o backend lê o cookie diretamente.
  */
 export async function fetchWithAuth(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const token = getAccessToken();
-
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers,
+    ...(options.headers as Record<string, string>),
   };
-
-  // Add Authorization header if token exists
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
 
   const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
 
   return fetch(url, {
     ...options,
     headers,
-    credentials: 'include', // Still include cookies for refresh token
+    credentials: 'include', // Cookie HttpOnly enviado automaticamente pelo browser
   });
 }
 
@@ -50,9 +47,7 @@ export async function apiGet(endpoint: string): Promise<any> {
 
   if (!response.ok) {
     if (response.status === 401) {
-      // Token expired or invalid, redirect to login
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('accessToken');
         localStorage.removeItem('user');
         window.location.href = '/login';
       }
@@ -75,9 +70,7 @@ export async function apiPost(endpoint: string, data: any): Promise<any> {
 
   if (!response.ok) {
     if (response.status === 401) {
-      // Token expired or invalid, redirect to login
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('accessToken');
         localStorage.removeItem('user');
         window.location.href = '/login';
       }

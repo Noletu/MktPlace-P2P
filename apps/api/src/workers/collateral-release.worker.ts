@@ -56,17 +56,17 @@ class CollateralReleaseWorker {
     try {
       logger.info(`🔓 [COLLATERAL WORKER] Execution #${this.executionCount} at ${this.lastExecution.toISOString()}`);
 
-      // Buscar pedidos com colateral interno bloqueado que já terminaram
+      // Buscar pedidos com colateral bloqueado que já terminaram
+      // Inclui HD_WALLET (sistema atual) e INTERNAL_BALANCE (ordens legadas)
       const finishedOrders = await prisma.order.findMany({
         where: {
-          collateralSource: 'INTERNAL_BALANCE',
+          collateralSource: { in: ['HD_WALLET', 'INTERNAL_BALANCE'] },
           collateralLocked: true,
           status: {
             in: ['COMPLETED', 'CANCELLED', 'TIMEOUT', 'EXPIRED'],
           },
           collateralUnlockedAt: null, // Ainda não foi desbloqueado
         },
-        // internalBalance foi removido - migrado para HD Wallet system
         include: {
           user: true,
         },
@@ -175,7 +175,7 @@ class CollateralReleaseWorker {
 
       const orphanedOrders = await prisma.order.findMany({
         where: {
-          collateralSource: 'INTERNAL_BALANCE',
+          collateralSource: { in: ['HD_WALLET', 'INTERNAL_BALANCE'] },
           collateralLocked: true,
           createdAt: {
             lt: oneDayAgo,
@@ -184,7 +184,6 @@ class CollateralReleaseWorker {
             in: ['PENDING', 'IN_NEGOTIATION', 'MATCHED'], // Status que não deveriam durar 24h
           },
         },
-        // internalBalance foi removido - migrado para HD Wallet system
         include: {
           user: true,
         },

@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { getApiUrl } from '@/config/api';
 import { getExplorerUrl, getExplorerName, truncateHash } from '@/utils/blockchainExplorer';
 import type { NetworkType } from '@/utils/blockchainExplorer';
+import { fetchWithAuth } from '@/utils/api';
 
 interface PlatformWallet {
   id: string;
@@ -99,17 +100,9 @@ export default function PlatformWalletsPage() {
     fetchWallets();
   }, []);
 
-  const getAuthHeaders = () => ({
-    'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-    'Content-Type': 'application/json',
-  });
-
   const fetchWallets = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(getApiUrl('admin/platform-wallets'), {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth('/admin/platform-wallets');
 
       if (!response.ok) throw new Error('Erro ao buscar carteiras');
 
@@ -133,9 +126,8 @@ export default function PlatformWalletsPage() {
     setError(null);
 
     try {
-      const response = await fetch(getApiUrl('admin/platform-wallets/create-all'), {
+      const response = await fetchWithAuth('/admin/platform-wallets/create-all', {
         method: 'POST',
-        headers: getAuthHeaders(),
       });
 
       const data = await response.json();
@@ -191,10 +183,7 @@ export default function PlatformWalletsPage() {
 
     try {
       const params = new URLSearchParams({ amount, toAddress });
-      const response = await fetch(
-        getApiUrl(`admin/platform-wallets/${transferWallet.id}/transfer-estimate?${params}`),
-        { headers: getAuthHeaders() }
-      );
+      const response = await fetchWithAuth(`/admin/platform-wallets/${transferWallet.id}/transfer-estimate?${params}`);
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Erro ao estimar');
@@ -224,14 +213,10 @@ export default function PlatformWalletsPage() {
     setTransferError(null);
 
     try {
-      const response = await fetch(
-        getApiUrl(`admin/platform-wallets/${transferWallet.id}/transfer`),
-        {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ toAddress, amount, twoFactorCode, note: note || undefined }),
-        }
-      );
+      const response = await fetchWithAuth(`/admin/platform-wallets/${transferWallet.id}/transfer`, {
+        method: 'POST',
+        body: JSON.stringify({ toAddress, amount, twoFactorCode, note: note || undefined }),
+      });
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Erro ao transferir');
@@ -254,10 +239,7 @@ export default function PlatformWalletsPage() {
     setMovementsLoading(true);
 
     try {
-      const response = await fetch(
-        getApiUrl(`admin/platform-wallets/${wallet.id}/movements`),
-        { headers: getAuthHeaders() }
-      );
+      const response = await fetchWithAuth(`/admin/platform-wallets/${wallet.id}/movements`);
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);

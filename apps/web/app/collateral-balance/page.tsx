@@ -10,6 +10,7 @@ import DepositWizardModal from '@/components/modals/DepositWizardModal';
 import TransactionTypeFilter, { TransactionType } from '@/components/TransactionTypeFilter';
 import { getExplorerUrl, truncateHash } from '@/utils/blockchainExplorer';
 import AggregatedCryptoCard from '@/components/dashboard/AggregatedCryptoCard';
+import { fetchWithAuth } from '@/utils/api';
 
 interface HDWallet {
   id: string;
@@ -103,17 +104,7 @@ export default function CollateralBalancePage() {
 
   const fetchWallets = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch('http://localhost:3002/api/v1/wallets', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/wallets');
 
       const data = await response.json();
 
@@ -129,22 +120,12 @@ export default function CollateralBalancePage() {
 
   const fetchTransactions = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
       // Buscar transações de todas as carteiras
       const allTransactions: WalletTransaction[] = [];
 
       for (const wallet of wallets) {
         try {
-          const response = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/wallets/${wallet.id}/transactions?limit=50`,
-            {
-              headers: {
-                'Authorization': `Bearer ${token}`,
-              },
-            }
-          );
+          const response = await fetchWithAuth(`/wallets/${wallet.id}/transactions?limit=50`);
 
           const data = await response.json();
           if (data.success && data.data) {
@@ -168,7 +149,7 @@ export default function CollateralBalancePage() {
 
   const fetchPrices = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1'}/prices`);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/prices`);
       if (!response.ok) return;
       const data = await response.json();
       const priceMap: Record<string, number> = {};
@@ -186,23 +167,10 @@ export default function CollateralBalancePage() {
 
     setAddingBalance(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/wallets/${testBalanceModal.walletId}/test-balance`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ amount: testAmount }),
-        }
-      );
+      const response = await fetchWithAuth(`/wallets/${testBalanceModal.walletId}/test-balance`, {
+        method: 'POST',
+        body: JSON.stringify({ amount: testAmount }),
+      });
 
       const data = await response.json();
 

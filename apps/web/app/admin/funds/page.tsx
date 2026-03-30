@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { fetchWithAuth } from '@/utils/api';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import ToastContainer from '@/components/admin/ToastContainer';
 import { Toast } from '@/components/admin/ToastNotification';
@@ -149,12 +150,9 @@ export default function AdminFundsPage() {
     if (walletLookups[walletId]) return; // já em cache
 
     setLookupLoading((prev) => ({ ...prev, [walletId]: true }));
-    const token = localStorage.getItem('accessToken');
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1'}/admin/funds/wallets/${walletId}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth(`/admin/funds/wallets/${walletId}`);
 
       if (!response.ok) {
         const err = await response.json();
@@ -179,12 +177,9 @@ export default function AdminFundsPage() {
     setLoading(true);
     setData(null);
     setWallet('');
-    const token = localStorage.getItem('accessToken');
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1'}/admin/funds/users/search?email=${encodeURIComponent(email)}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth(`/admin/funds/users/search?email=${encodeURIComponent(email)}`);
 
       if (!response.ok) {
         const err = await response.json();
@@ -213,18 +208,8 @@ export default function AdminFundsPage() {
   }, []);
 
   const loadDashboard = async () => {
-    const token = localStorage.getItem('accessToken');
-    if (!token) {
-      router.push('/login');
-      return;
-    }
-
     try {
-      const response = await fetch('http://localhost:3002/api/v1/admin/funds/dashboard', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/admin/funds/dashboard');
 
       if (!response.ok) {
         throw new Error('Erro ao carregar dashboard');
@@ -246,13 +231,8 @@ export default function AdminFundsPage() {
       return;
     }
 
-    const token = localStorage.getItem('accessToken');
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/admin/funds/users/${searchUserId}/wallets`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth(`/admin/funds/users/${searchUserId}/wallets`);
 
       if (!response.ok) {
         throw new Error('Erro ao buscar carteiras');
@@ -277,15 +257,10 @@ export default function AdminFundsPage() {
     }
 
     setFreezeLoading(true);
-    const token = localStorage.getItem('accessToken');
 
     try {
-      const response = await fetch('http://localhost:3002/api/v1/admin/funds/freeze', {
+      const response = await fetchWithAuth('/admin/funds/freeze', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           userId: freezeUserId,
           reason: freezeReason,
@@ -321,15 +296,10 @@ export default function AdminFundsPage() {
     }
 
     setFreezeLoading(true);
-    const token = localStorage.getItem('accessToken');
 
     try {
-      const response = await fetch('http://localhost:3002/api/v1/admin/funds/unfreeze', {
+      const response = await fetchWithAuth('/admin/funds/unfreeze', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           userId: freezeUserId,
         }),
@@ -367,15 +337,10 @@ export default function AdminFundsPage() {
     }
 
     setOperationLoading(true);
-    const token = localStorage.getItem('accessToken');
 
     try {
-      const response = await fetch('http://localhost:3002/api/v1/admin/funds/internal-transfer', {
+      const response = await fetchWithAuth('/admin/funds/internal-transfer', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           fromWalletId,
           toWalletId,
@@ -440,15 +405,10 @@ export default function AdminFundsPage() {
     }
 
     setOperationLoading(true);
-    const token = localStorage.getItem('accessToken');
 
     try {
-      const response = await fetch('http://localhost:3002/api/v1/admin/funds/platform-refund', {
+      const response = await fetchWithAuth('/admin/funds/platform-refund', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           cryptoType: crypto,
           network: network,
@@ -501,15 +461,10 @@ export default function AdminFundsPage() {
     }
 
     setOperationLoading(true);
-    const token = localStorage.getItem('accessToken');
 
     try {
-      const response = await fetch('http://localhost:3002/api/v1/admin/funds/adjust-balance', {
+      const response = await fetchWithAuth('/admin/funds/adjust-balance', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           walletId: adjustWalletId,
           adjustment,
@@ -538,7 +493,6 @@ export default function AdminFundsPage() {
 
   const loadAuditLog = async () => {
     setAuditLoading(true);
-    const token = localStorage.getItem('accessToken');
 
     try {
       const params = new URLSearchParams();
@@ -548,11 +502,7 @@ export default function AdminFundsPage() {
       if (auditFilters.endDate) params.append('endDate', auditFilters.endDate);
       if (auditFilters.limit) params.append('limit', auditFilters.limit);
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/admin/funds/audit-log?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth(`/admin/funds/audit-log?${params.toString()}`);
 
       const result = await response.json();
 
@@ -726,7 +676,7 @@ export default function AdminFundsPage() {
       )}
 
       {/* Dashboard Tab (OLD - DEPRECATED) */}
-      {activeTab === 'dashboard' && dashboard && (
+      {(activeTab as string) === 'dashboard' && dashboard && (
         <div className="space-y-6">
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1552,7 +1502,7 @@ export default function AdminFundsPage() {
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, percent }: { name: string; percent: number }) => `${name} ${(percent * 100).toFixed(0)}%`}
                   outerRadius={120}
                   fill="#8884d8"
                   dataKey="value"

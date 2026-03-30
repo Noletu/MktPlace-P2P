@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface CreateRoleModalProps {
   onClose: () => void;
@@ -56,13 +57,7 @@ export default function CreateRoleModal({ onClose, onSuccess }: CreateRoleModalP
   useEffect(() => {
     const loadPermissions = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-
-        const response = await fetch('http://localhost:3002/api/v1/roles/permissions/all', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        const response = await fetchWithAuth('/roles/permissions/all');
 
         const data = await response.json();
 
@@ -118,14 +113,8 @@ export default function CreateRoleModal({ onClose, onSuccess }: CreateRoleModalP
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch('http://localhost:3002/api/v1/roles', {
+      const response = await fetchWithAuth('/roles', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           name,
           description,

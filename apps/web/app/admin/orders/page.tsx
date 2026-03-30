@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import StatusBadge from '@/components/admin/shared/StatusBadge';
 import { formatBRL } from '@/utils/formatters';
+import { fetchWithAuth } from '@/utils/api';
 import CancelOrderModal from '@/components/admin/modals/CancelOrderModal';
 import EditOrderModal from '@/components/admin/modals/EditOrderModal';
 
@@ -13,6 +14,7 @@ interface Order {
   cryptoType: string;
   cryptoAmount: string;
   brlAmount: string;
+  fiatAmount: string; // alias for brlAmount used by modals
   status: string;
   userId: string;
   user?: { email: string; name?: string };
@@ -41,12 +43,9 @@ export default function OrdersPage() {
 
   const fetchOrders = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3002/api/v1/admin/orders', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await fetchWithAuth('/admin/orders');
       const data = await res.json();
-      if (data.success) setOrders(data.data);
+      if (data.success) setOrders(data.data.map((o: Order) => ({ ...o, fiatAmount: o.fiatAmount ?? o.brlAmount })));
     } catch (error) {
       console.error('Erro ao buscar pedidos:', error);
     } finally {

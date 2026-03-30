@@ -9,6 +9,7 @@ type Network = 'BITCOIN' | 'BASE' | 'SOLANA';
 interface DepositWizardModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSelectWallet?: (walletId: string, cryptoType: string, network: string, address: string) => void;
 }
 
 interface WizardState {

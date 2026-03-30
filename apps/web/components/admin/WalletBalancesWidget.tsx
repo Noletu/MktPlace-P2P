@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface WalletBalance {
   id: string;
@@ -21,10 +22,7 @@ export default function WalletBalancesWidget() {
 
   const fetchBalances = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3002/api/v1/admin/finance/wallet-balances', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await fetchWithAuth('/admin/finance/wallet-balances');
       const data = await res.json();
       if (data.success) setWallets(data.data);
     } catch (error) {

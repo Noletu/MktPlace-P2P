@@ -64,6 +64,6 @@ export const restrictFrozenAccounts = (req: Request, res: Response, next: NextFu
     frozenReason: user.frozenReason,
     frozenUntil: user.frozenUntil,
     canAppeal: true,
-    appealUrl: '/disputes/create?category=ACCOUNT_BLOCK_APPEAL',
+    appealUrl: '/support/ticket/new?appeal=true',
   });
 };

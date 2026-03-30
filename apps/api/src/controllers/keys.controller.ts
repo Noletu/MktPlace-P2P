@@ -25,16 +25,18 @@ export class KeysController {
         });
       }
 
-      await encryptionService.storePublicKey(userId, publicKey);
+      const { isNew } = await encryptionService.storePublicKey(userId, publicKey);
 
-      // SECURITY: Audit log
-      auditLogService.logFromRequest(
-        req,
-        'STORE_PUBLIC_KEY',
-        'ENCRYPTION',
-        userId,
-        {}
-      );
+      // SECURITY: Audit log — só quando a chave é nova ou alterada
+      if (isNew) {
+        auditLogService.logFromRequest(
+          req,
+          'STORE_PUBLIC_KEY',
+          'ENCRYPTION',
+          userId,
+          {}
+        );
+      }
 
       res.json({
         success: true,

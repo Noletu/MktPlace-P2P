@@ -305,7 +305,7 @@ describe('NotificationBell', () => {
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:3002/api/v1/notifications/read-all',
+        'http://localhost:3001/api/v1/notifications/read-all',
         expect.objectContaining({
           method: 'PATCH',
         })

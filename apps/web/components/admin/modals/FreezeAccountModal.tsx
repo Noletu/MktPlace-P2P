@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface FreezeAccountModalProps {
   user: {
@@ -37,7 +38,6 @@ export default function FreezeAccountModal({ user, onClose, onSuccess }: FreezeA
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
       const adminUserId = localStorage.getItem('userId');
 
       const body: any = {
@@ -51,12 +51,8 @@ export default function FreezeAccountModal({ user, onClose, onSuccess }: FreezeA
         body.duration = duration;
       }
 
-      const response = await fetch('http://localhost:3002/api/v1/admin/funds/freeze', {
+      const response = await fetchWithAuth('/admin/funds/freeze', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(body),
       });
 

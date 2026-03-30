@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 export interface ChatData {
   id: string;
@@ -47,18 +48,7 @@ export function useChats() {
   // Buscar todos os chats da API
   const fetchChats = useCallback(async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        setChats([]);
-        setLoading(false);
-        return;
-      }
-
-      const response = await fetch('http://localhost:3002/api/v1/chat', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/chat');
 
       if (response.ok) {
         const data = await response.json();

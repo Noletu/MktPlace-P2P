@@ -7,6 +7,7 @@ export interface AuditLogInput {
   userId?: string;
   email?: string;
   role?: string;
+  name?: string;
   action: string;
   resource: string;
   resourceId?: string;
@@ -27,6 +28,7 @@ export class AuditLogService {
           userId: input.userId,
           email: input.email,
           role: input.role,
+          name: input.name,
           action: input.action,
           resource: input.resource,
           resourceId: input.resourceId,
@@ -57,6 +59,7 @@ export class AuditLogService {
     const userId = (req as any).user?.userId;
     const email = (req as any).user?.email;
     const role = (req as any).user?.role;
+    const name = (req as any).user?.name;
     const ipAddress = req.ip || req.socket.remoteAddress;
     const userAgent = req.get('user-agent');
 
@@ -64,6 +67,7 @@ export class AuditLogService {
       userId,
       email,
       role,
+      name,
       action,
       resource,
       resourceId,
@@ -158,6 +162,16 @@ export class AuditLogService {
     ]);
 
     return { logs, total };
+  }
+
+  // Buscar ações distintas para popular filtro dinâmico
+  async getDistinctActions(): Promise<string[]> {
+    const result = await prisma.auditLog.findMany({
+      select: { action: true },
+      distinct: ['action'],
+      orderBy: { action: 'asc' },
+    });
+    return result.map(r => r.action);
   }
 
   // SECURITY: Obter estatísticas de auditoria

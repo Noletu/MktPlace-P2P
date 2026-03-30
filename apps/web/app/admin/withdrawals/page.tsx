@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getExplorerUrl, getExplorerName, truncateHash, NetworkType } from '@/utils/blockchainExplorer';
+import { fetchWithAuth } from '@/utils/api';
 
 interface WithdrawalUser {
   id: string;
@@ -107,16 +108,9 @@ export default function AdminWithdrawalsPage() {
   const [historyOffset, setHistoryOffset] = useState(0);
   const historyLimit = 20;
 
-  const getToken = () => localStorage.getItem('accessToken');
-
   const fetchPending = async () => {
     try {
-      const token = getToken();
-      if (!token) { router.push('/login'); return; }
-
-      const res = await fetch('http://localhost:3002/api/v1/admin/withdrawals/pending', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await fetchWithAuth('/admin/withdrawals/pending');
       const data = await res.json();
       if (data.success) {
         setWithdrawals(data.data || []);
@@ -129,17 +123,12 @@ export default function AdminWithdrawalsPage() {
 
   const fetchHistory = async (status?: string, offset = 0) => {
     try {
-      const token = getToken();
-      if (!token) return;
-
       const params = new URLSearchParams();
       params.set('limit', String(historyLimit));
       params.set('offset', String(offset));
       if (status) params.set('status', status);
 
-      const res = await fetch(`http://localhost:3002/api/v1/admin/withdrawals/history?${params}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await fetchWithAuth(`/admin/withdrawals/history?${params}`);
       const data = await res.json();
       if (data.success) {
         setHistoryWithdrawals(data.data || []);
@@ -196,20 +185,10 @@ export default function AdminWithdrawalsPage() {
 
     setActionLoading(true);
     try {
-      const token = getToken();
-      if (!token) { router.push('/login'); return; }
-
-      const res = await fetch(
-        `http://localhost:3002/api/v1/admin/withdrawals/${actionId}/${actionType}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ note: actionNote.trim() || undefined }),
-        }
-      );
+      const res = await fetchWithAuth(`/admin/withdrawals/${actionId}/${actionType}`, {
+        method: 'POST',
+        body: JSON.stringify({ note: actionNote.trim() || undefined }),
+      });
       const data = await res.json();
 
       if (data.success) {

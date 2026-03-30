@@ -31,6 +31,8 @@ export interface JWTPayload {
   userId: string;
   email: string;
   role: string;
+  name?: string;
+  jti?: string; // SECURITY (H-2): JWT ID para blacklist de revogação
   level?: number;
   accountFrozen?: boolean;
   frozenReason?: string | null;
@@ -42,10 +44,11 @@ export interface RefreshTokenPayload {
   tokenId: string;
 }
 
-// SECURITY: Access token (curta duração)
+// SECURITY: Access token (curta duração) — inclui jti para blacklist de revogação (H-2)
 export const generateToken = (payload: JWTPayload): string => {
+  const jti = crypto.randomUUID();
   // @ts-expect-error - jsonwebtoken types issue with expiresIn
-  return jwt.sign(payload, JWT_SECRET, {
+  return jwt.sign({ ...payload, jti }, JWT_SECRET, {
     expiresIn: JWT_EXPIRES_IN,
   });
 };

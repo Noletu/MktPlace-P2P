@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import CreateRoleModal from '@/components/admin/modals/CreateRoleModal';
 import EditRolePermissionsModal from '@/components/admin/modals/EditRolePermissionsModal';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Role {
   id: string;
@@ -38,13 +39,7 @@ export default function RolesPage() {
   const loadRoles = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch('http://localhost:3002/api/v1/roles', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/roles');
 
       const data = await response.json();
 
@@ -72,13 +67,8 @@ export default function RolesPage() {
     }
 
     try {
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch(`http://localhost:3002/api/v1/roles/${roleId}`, {
+      const response = await fetchWithAuth(`/roles/${roleId}`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
       });
 
       const data = await response.json();
@@ -97,14 +87,8 @@ export default function RolesPage() {
   // Ativar/Desativar role
   const handleToggleActive = async (role: Role) => {
     try {
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch(`http://localhost:3002/api/v1/roles/${role.id}`, {
+      const response = await fetchWithAuth(`/roles/${role.id}`, {
         method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           isActive: !role.isActive,
         }),

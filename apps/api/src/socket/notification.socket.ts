@@ -43,7 +43,14 @@ export class NotificationSocketServer {
   private setupMiddleware() {
     this.namespace.use(async (socket: AuthenticatedSocket, next) => {
       try {
-        const token = socket.handshake.auth.token;
+        // Support both auth.token (legacy) and HttpOnly cookie
+        let token = socket.handshake.auth.token;
+
+        if (!token) {
+          const cookieHeader = socket.handshake.headers.cookie || '';
+          const match = cookieHeader.match(/(?:^|;\s*)accessToken=([^;]+)/);
+          token = match ? decodeURIComponent(match[1]) : null;
+        }
 
         if (!token) {
           throw new Error('Authentication token required');

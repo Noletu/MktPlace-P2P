@@ -372,17 +372,20 @@ export class AdminController {
 
   async getOrders(req: Request, res: Response) {
     try {
-      const { status, type, userId } = req.query;
+      const { status, type, userId, page, limit } = req.query;
 
-      const orders = await adminService.getAllOrders({
+      const result = await adminService.getAllOrders({
         status: status as string,
         type: type as string,
         userId: userId as string,
+        page: page ? parseInt(page as string, 10) : undefined,
+        limit: limit ? parseInt(limit as string, 10) : undefined,
       });
 
       res.json({
         success: true,
-        data: orders,
+        data: result.orders,
+        pagination: { page: result.page, limit: result.limit, total: result.total, pages: result.pages },
       });
     } catch (error: any) {
       console.error('Erro ao buscar pedidos:', error);
@@ -612,6 +615,16 @@ export class AdminController {
     }
   }
 
+  // Buscar ações distintas do audit log para filtro dinâmico
+  async getAuditActions(req: Request, res: Response) {
+    try {
+      const actions = await auditLogService.getDistinctActions();
+      res.json({ success: true, data: actions });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
   // SECURITY: Exportar logs de auditoria em formato CSV
   async exportAuditLogs(req: Request, res: Response) {
     try {
@@ -637,7 +650,7 @@ export class AdminController {
       // Converter para CSV
       const csv = this.logsToCSV(result.logs);
 
-      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="audit-logs-${new Date().toISOString()}.csv"`);
       res.send(csv);
     } catch (error: any) {
@@ -1006,12 +1019,13 @@ export class AdminController {
   private logsToCSV(logs: any[]): string {
     if (logs.length === 0) return 'No data';
 
-    const headers = ['ID', 'Data/Hora', 'Usuário', 'Email', 'Role', 'Ação', 'Recurso', 'Recurso ID', 'IP', 'Sucesso', 'Erro'];
+    const headers = ['ID', 'Data/Hora', 'Usuário', 'Email', 'Nome', 'Role', 'Ação', 'Recurso', 'Recurso ID', 'IP', 'Sucesso', 'Erro'];
     const rows = logs.map(log => [
       log.id,
       new Date(log.createdAt).toISOString(),
       log.userId || '',
       log.email || '',
+      log.name || '',
       log.role || '',
       log.action,
       log.resource,
@@ -1023,10 +1037,10 @@ export class AdminController {
 
     const csvContent = [
       headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(',')),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
     ].join('\n');
 
-    return csvContent;
+    return '\uFEFF' + csvContent; // BOM para Excel reconhecer UTF-8
   }
 
 }

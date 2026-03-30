@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface AdjustLimitModalProps {
   user: {
@@ -46,14 +47,8 @@ export default function AdjustLimitModal({ user, onClose, onSuccess }: AdjustLim
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch(`http://localhost:3002/api/v1/admin/users/${user.id}/custom-limit`, {
+      const response = await fetchWithAuth(`/admin/users/${user.id}/custom-limit`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           customDailyLimit: mode === 'AUTO' ? null : customLimit,
           note,

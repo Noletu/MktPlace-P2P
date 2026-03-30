@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import { fetchWithAuth } from '@/utils/api';
 import {
   SupportTicket,
   TicketMessage,
@@ -15,7 +16,7 @@ import {
 
 export default function AdminTicketDetailPage() {
   const router = useRouter();
-  const params = useParams();
+  const params = useParams() ?? {};
   const ticketId = params.id as string;
 
   const [ticket, setTicket] = useState<SupportTicket | null>(null);
@@ -36,13 +37,7 @@ export default function AdminTicketDetailPage() {
   const fetchTicket = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch(`http://localhost:3002/api/v1/support/${ticketId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth(`/support/${ticketId}`);
 
       const data = await response.json();
 
@@ -68,14 +63,8 @@ export default function AdminTicketDetailPage() {
 
     try {
       setSending(true);
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch(`http://localhost:3002/api/v1/support/${ticketId}/messages`, {
+      const response = await fetchWithAuth(`/support/${ticketId}/messages`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           message: newMessage,
         }),
@@ -107,14 +96,8 @@ export default function AdminTicketDetailPage() {
 
     try {
       setResolving(true);
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch(`http://localhost:3002/api/v1/support/${ticketId}/resolve`, {
+      const response = await fetchWithAuth(`/support/${ticketId}/resolve`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           resolution,
         }),

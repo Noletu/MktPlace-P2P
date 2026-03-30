@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { fetchWithAuth } from '@/utils/api';
 import {
   SupportTicket,
   TicketStatus,
@@ -37,13 +38,7 @@ export default function AdminSupportPage() {
   const fetchTickets = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch('http://localhost:3002/api/v1/support', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/support');
 
       const data = await response.json();
 
@@ -63,13 +58,7 @@ export default function AdminSupportPage() {
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch('http://localhost:3002/api/v1/support/stats', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/support/stats');
 
       const data = await response.json();
 

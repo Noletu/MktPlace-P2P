@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface CancelOrderModalProps {
   order: {
@@ -35,13 +36,8 @@ export default function CancelOrderModal({ order, onClose, onSuccess }: CancelOr
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:3002/api/v1/admin/orders/${order.id}/cancel`, {
+      const response = await fetchWithAuth(`/admin/orders/${order.id}/cancel`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ reason }),
       });
 

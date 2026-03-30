@@ -112,7 +112,7 @@ describe('ReviewResponseForm', () => {
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:3002/api/v1/reviews/review-1/respond',
+        'http://localhost:3001/api/v1/reviews/review-1/respond',
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({

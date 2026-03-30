@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { DisputeCategory, CATEGORY_LABELS } from '@/types/dispute';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Order {
   id: string;
@@ -28,7 +29,7 @@ interface Order {
 }
 
 export default function NewDisputePage() {
-  const params = useParams();
+  const params = useParams() ?? {};
   const router = useRouter();
   const orderId = params.orderId as string;
 
@@ -50,17 +51,7 @@ export default function NewDisputePage() {
 
   const fetchOrder = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/orders/${orderId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const res = await fetchWithAuth(`/orders/${orderId}`);
       const data = await res.json();
       if (data.success) {
         setOrder(data.data);
@@ -78,14 +69,7 @@ export default function NewDisputePage() {
 
   const fetchCurrentUser = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
-      const res = await fetch('http://localhost:3002/api/v1/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const res = await fetchWithAuth('/auth/me');
       const data = await res.json();
       if (data.success) {
         setCurrentUserId(data.data.id);
@@ -164,13 +148,6 @@ export default function NewDisputePage() {
     setSubmitting(true);
 
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        alert('Você precisa estar logado');
-        router.push('/login');
-        return;
-      }
-
       // Convert files to base64
       const attachmentPromises = attachments.map((file) => {
         return new Promise<string>((resolve, reject) => {
@@ -183,12 +160,8 @@ export default function NewDisputePage() {
 
       const attachmentData = await Promise.all(attachmentPromises);
 
-      const res = await fetch('http://localhost:3002/api/v1/disputes', {
+      const res = await fetchWithAuth('/disputes', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           orderId,
           category,

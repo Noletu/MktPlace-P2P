@@ -48,7 +48,7 @@ export default function LoginForm() {
         throw new Error(data.error || 'Erro ao fazer login');
       }
 
-      console.log('✅ Login bem-sucedido:', data);
+      if (process.env.NODE_ENV === 'development') console.log('✅ Login bem-sucedido');
 
       // Salvar token e dados do usuário
       if (data.data.accessToken) {
