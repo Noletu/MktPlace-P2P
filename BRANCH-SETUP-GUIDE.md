@@ -1,428 +1,138 @@
-# Guia de Setup - Branch feature/admin-2fa-and-funds-dashboard-phase5
+# Guia de Setup - Branch feature/v5.1-security-frozen-audit
 
-## 📋 O que foi implementado nesta branch
+## O que foi implementado nesta branch
 
-Esta branch contém duas implementações principais:
+### 1. Bloqueio de Criação de Pedido para Contas Suspensas
+- `FloatingActionButton` recebe prop `accountFrozen` — exibe alerta em vez de navegar
+- Página `/orders/create` exibe `FrozenAccountBanner` em vez do formulário quando conta está suspensa
+- Race condition corrigida: `loadingAccountStatus` impede que o formulário apareça antes da verificação
+- Correção crítica: endpoint estava chamando `/users/me` (não existe) → corrigido para `/auth/me`
 
-### 1. Sistema 2FA para Administradores
-- ✅ Página `/admin/security` para configuração de 2FA
-- ✅ QR Code generation (Google Authenticator, Authy, Microsoft Authenticator)
-- ✅ Backup codes (10 códigos de emergência)
-- ✅ Gerenciamento completo (habilitar, desabilitar, regenerar)
-- ✅ Integração com endpoints backend existentes
+### 2. Fluxo de Apelação de Conta Suspensa
+- `FrozenAccountBanner` redireciona para `/support/ticket/new?appeal=true`
+- Página de novo ticket pré-preenchida com categoria e texto de recurso quando `?appeal=true`
+- Todos os `appealUrl` do backend atualizados para o novo path
+- Botão de ação na notificação do sino agora navega corretamente
 
-### 2. Admin Funds Dashboard (FASE 5/7)
-- ✅ 3 novos endpoints backend:
-  - `GET /api/v1/admin/funds/partners` - Fundos da plataforma
-  - `GET /api/v1/admin/funds/users-funds` - Fundos dos usuários
-  - `GET /api/v1/admin/funds/total` - Total consolidado
-- ✅ 3 componentes frontend:
-  - PartnersView.tsx (Platform Wallets - Account 0)
-  - UsersView.tsx (User Wallets - Account >= 1)
-  - TotalView.tsx (Visão consolidada)
-- ✅ Bug crítico corrigido: `prisma.hDWallet` → `prisma.userWallet`
+### 3. Audit Log — Melhorias
+- Campo `name` adicionado ao modelo `AuditLog` (schema + migration)
+- `logFromRequest()` passa automaticamente o nome do usuário
+- Filtro de ações dinâmico: busca ações distintas no banco em vez de lista hardcoded
+- `CREATE_COUPON` e `DELETE_COUPON` corrigidos para usar `logFromRequest`
+
+### 4. Workers — CollateralReleaseWorker
+- Card do segundo worker adicionado na página `/admin/workers`
+- Botões "Processar Agora" e "Verificar Órfãos" funcionais
+
+### 5. Segurança — npm audit fix
+- `handlebars` critical → 4.7.9
+- `path-to-regexp` high → 0.1.13
+- `flatted` high → 3.4.2
+- `picomatch` high → 2.3.2 / 4.0.4
+- `brace-expansion` → 1.1.13
+- `nodemailer` → 8.0.4
+- `next.js` moderate → 15.5.14
 
 ---
 
-## 🚀 Como fazer o setup do projeto
+## Setup do projeto
 
-### 1. Clone o repositório (se ainda não tiver)
+### 1. Clone e checkout
+
 ```bash
 git clone https://github.com/Noletu/MktPlace-P2P.git
 cd MktPlace-P2P
+git checkout feature/v5.1-security-frozen-audit
 ```
 
-### 2. Checkout desta branch
-```bash
-git checkout feature/admin-2fa-and-funds-dashboard-phase5
-```
+### 2. Instale as dependências (raiz — instala tudo via workspaces)
 
-### 3. Instale as dependências
-
-#### Backend (API)
 ```bash
-cd apps/api
 npm install
 ```
 
-#### Frontend (Web)
+### 3. Configure o .env do backend
+
 ```bash
-cd apps/web
-npm install
+cp apps/api/.env.example apps/api/.env
 ```
 
-### 4. Configure o arquivo .env
-
-Certifique-se de ter o arquivo `.env` no diretório `apps/api/` com as seguintes variáveis:
+Edite `apps/api/.env` e preencha obrigatoriamente:
 
 ```env
-# Database
-DATABASE_URL="file:./dev.db"
-
-# JWT
-JWT_SECRET="your-secret-here"
-JWT_EXPIRES_IN="7d"
-
-# HD Wallet (Master Seed)
-MASTER_SEED_ENCRYPTION_KEY="sua-encryption-key-aqui"
-HD_WALLET_MNEMONIC_ENCRYPTED="seu-mnemonic-encrypted-aqui"
-
-# Se ainda não tiver gerado a master seed, rode:
-# npm run setup:hd-wallet
+JWT_SECRET=<gerar com: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))">
+MASTER_SEED_ENCRYPTION_KEY=<chave de 32+ chars para criptografar a master seed>
 ```
 
-### 5. Execute as migrations do Prisma
+O `apps/web/.env.example` já contém o valor correto para desenvolvimento local:
+```env
+NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1
+```
+
+Copie-o:
+```bash
+cp apps/web/.env.example apps/web/.env.local
+```
+
+### 4. Banco de dados
+
+O `apps/api/prisma/dev.db` já está no repositório com dados de teste prontos. Basta gerar o Prisma client:
+
 ```bash
 cd apps/api
-npx prisma migrate dev
 npx prisma generate
 ```
 
-### 6. Rode o projeto
+> Se preferir um banco limpo: `npx prisma migrate reset`
 
-#### Terminal 1 - Backend (porta 3001)
+### 5. Rode o projeto
+
+**Terminal 1 — Backend (porta 3001)**
 ```bash
 cd apps/api
 npm run dev
 ```
 
-#### Terminal 2 - Frontend (porta 3000)
+**Terminal 2 — Frontend (porta 3000)**
 ```bash
 cd apps/web
 npm run dev
 ```
 
----
-
-## 🧪 Como testar as funcionalidades
-
-### Testando 2FA
-
-1. **Acesse o painel admin:**
-   ```
-   http://localhost:3000/admin
-   ```
-
-2. **Faça login com uma conta ADMIN ou MASTER**
-
-3. **Acesse a página de segurança:**
-   ```
-   http://localhost:3000/admin/security
-   ```
-
-4. **Configure 2FA:**
-   - Clique em "Ativar 2FA"
-   - Escaneie o QR Code com Google Authenticator/Authy
-   - Digite o código de 6 dígitos
-   - **IMPORTANTE:** Salve os backup codes mostrados (única vez!)
-
-5. **Teste o 2FA:**
-   - Tente acessar `/admin/master-seed`
-   - Sistema deve solicitar código 2FA
-
-### Testando Admin Funds Dashboard
-
-1. **Acesse o controle de fundos:**
-   ```
-   http://localhost:3000/admin/funds
-   ```
-
-2. **Teste cada aba:**
-
-   **💼 Aba Sócios (Partners):**
-   - Mostra platform wallets (Account 0)
-   - Balance, fees, deposits, withdrawals
-   - Breakdown por rede (Bitcoin, Ethereum, Base, etc)
-   - Copy-to-clipboard para endereços
-
-   **👥 Aba Usuários (Users):**
-   - Mostra user wallets (Account >= 1)
-   - Total de usuários, wallets, média
-   - Cards expandíveis por usuário
-   - Lista todas as wallets de cada usuário
-
-   **🌍 Aba Total:**
-   - 4 summary cards
-   - Barras de progresso visuais
-   - Comparação lado a lado (Partners vs Users)
-   - Percentuais de distribuição
-
----
-
-## 📁 Arquivos importantes modificados/criados
-
-### Backend
-```
-apps/api/
-├── src/
-│   ├── services/
-│   │   └── adminFunds.service.ts (MODIFICADO - 3 novos métodos)
-│   ├── controllers/
-│   │   └── adminFunds.controller.ts (MODIFICADO - 3 novos controllers)
-│   └── routes/
-│       └── adminFunds.routes.ts (MODIFICADO - 3 novas rotas)
-```
-
-### Frontend
-```
-apps/web/
-├── app/
-│   └── admin/
-│       ├── security/
-│       │   └── page.tsx (NOVO - 443 linhas)
-│       ├── funds/
-│       │   └── page.tsx (MODIFICADO - sistema de abas)
-│       └── layout.tsx (MODIFICADO - link segurança)
-└── components/
-    └── admin/
-        └── funds/
-            ├── PartnersView.tsx (NOVO - 195 linhas)
-            ├── UsersView.tsx (NOVO - 251 linhas)
-            └── TotalView.tsx (NOVO - 267 linhas)
-```
-
-### Documentação
-```
-docs/
-└── SESSION-2025-12-12-2FA-AND-ADMIN-FUNDS.md (NOVO - 982 linhas)
-```
-
----
-
-## 🔍 Endpoints da API
-
-### 2FA (já existiam)
-```
-GET  /api/v1/2fa/status
-POST /api/v1/2fa/generate
-POST /api/v1/2fa/enable
-POST /api/v1/2fa/disable
-POST /api/v1/2fa/regenerate-backup-codes
-```
-
-### Admin Funds (novos nesta branch)
-```
-GET /api/v1/admin/funds/partners
-GET /api/v1/admin/funds/users-funds
-GET /api/v1/admin/funds/total
-```
-
----
-
-## 🛠️ Comandos úteis
-
-### Git
+**No Windows**, se o build de produção falhar com erro de React duplicado, use:
 ```bash
-# Ver status
-git status
-
-# Ver commits
-git log --oneline -10
-
-# Ver diff
-git diff
-
-# Criar nova branch a partir desta
-git checkout -b feature/sua-nova-feature
-```
-
-### Banco de dados (Prisma)
-```bash
-# Ver dados no Prisma Studio
-cd apps/api
-npx prisma studio
-
-# Resetar banco (CUIDADO!)
-npx prisma migrate reset
-
-# Criar nova migration
-npx prisma migrate dev --name nome_da_migration
-```
-
-### Backend
-```bash
-# Rodar em modo dev
-npm run dev
-
-# Build
-npm run build
-
-# Rodar testes
-npm test
-
-# Ver logs
-# Os logs aparecem no terminal onde você rodou npm run dev
-```
-
-### Frontend
-```bash
-# Rodar em modo dev
-npm run dev
-
-# Build
-npm run build
-
-# Rodar build de produção
-npm start
+cd apps/web
+NODE_OPTIONS="--require ./scripts/normalize-require.js" npx next build
 ```
 
 ---
 
-## 🐛 Troubleshooting
+## Usuários de teste (já no dev.db)
 
-### Problema: "erro ao carregar dados" nas abas de fundos
+Use o Prisma Studio para ver os usuários cadastrados:
 
-**Solução:** Verifique se o backend está rodando na porta 3001:
 ```bash
-lsof -ti:3001
-# Se não retornar nada, rode:
-cd apps/api && npm run dev
-```
-
-### Problema: 2FA não aparece para admin
-
-**Solução:** Certifique-se de que está logado com uma conta de role `ADMIN` ou `MASTER`:
-```sql
--- No Prisma Studio, verifique o campo 'role' do seu usuário
--- Deve ser 'ADMIN' ou 'MASTER', não 'USER'
-```
-
-### Problema: QR Code não carrega
-
-**Solução:** Verifique se a biblioteca `qrcode` está instalada:
-```bash
-cd apps/api
-npm list qrcode
-# Se não aparecer, instale:
-npm install qrcode @types/qrcode
-```
-
-### Problema: Master seed não foi gerada
-
-**Solução:** Execute o script de setup:
-```bash
-cd apps/api
-npm run setup:hd-wallet
-
-# Siga as instruções e GUARDE as 24 palavras em local seguro!
-```
-
-### Problema: Prisma client desatualizado
-
-**Solução:** Regenere o Prisma client:
-```bash
-cd apps/api
-npx prisma generate
+cd apps/api && npx prisma studio
+# Abre http://localhost:5555 — tabela User
 ```
 
 ---
 
-## 📚 Documentação detalhada
+## Vulnerabilidades conhecidas (aceitas intencionalmente)
 
-Para uma documentação completa e detalhada de tudo que foi implementado, veja:
-
-```
-docs/SESSION-2025-12-12-2FA-AND-ADMIN-FUNDS.md
-```
-
-Este arquivo contém:
-- Explicação técnica completa
-- Código fonte comentado
-- Problemas encontrados e soluções
-- Conceitos de HD Wallet (BIP32/BIP44)
-- Arquitetura do sistema
-- Próximos passos sugeridos
+| Pacote | Severidade | Motivo para não corrigir |
+|--------|-----------|--------------------------|
+| `bigint-buffer` | HIGH | Fix exige downgrade de `@solana/spl-token` para v0.1.8 — quebra toda a integração Solana |
+| `jest-environment-jsdom` | LOW x4 | Fix exige upgrade para v30 que pode quebrar configuração de testes |
 
 ---
 
-## 🚧 Próximos passos sugeridos
+## Checklist antes de começar
 
-### Curto prazo
-1. ⚙️ Configurar 2FA para todos os admins MASTER
-2. 🔐 Gerar master seed com 2FA ativado
-3. 📊 Popular dados de teste nas wallets
-4. 🧪 Testar todas as funcionalidades
-
-### Médio prazo
-4. 📁 Implementar abas restantes do Admin Funds:
-   - Freeze Funds
-   - Transfer Funds
-   - Adjust Balance
-   - Audit Log
-   - Analytics
-
-5. 🔍 Adicionar filtros e busca:
-   - Filtrar por período
-   - Buscar usuários específicos
-   - Filtrar por crypto/rede
-
-6. 📤 Export de dados:
-   - CSV export
-   - PDF reports
-   - Excel sheets
-
-### Longo prazo
-7. 📈 Dashboard avançado com gráficos
-8. 🔔 Sistema de alertas
-9. 📊 Analytics e métricas
-10. 🔄 Real-time updates via WebSocket
-
----
-
-## 🔐 Segurança
-
-### IMPORTANTE: Master Seed
-
-A master seed é a chave mestra que deriva TODAS as carteiras do sistema. Se perdida ou comprometida, todo o sistema está em risco.
-
-**NUNCA:**
-- ❌ Commitar a master seed no git
-- ❌ Compartilhar as 24 palavras por email/chat
-- ❌ Guardar em arquivo texto não criptografado
-- ❌ Fazer backup apenas digital
-
-**SEMPRE:**
-- ✅ Guardar as 24 palavras em papel em cofre físico
-- ✅ Ter backup em local separado
-- ✅ Usar 2FA para todas operações com master seed
-- ✅ Limitar acesso apenas a roles MASTER
-
-### 2FA Backup Codes
-
-Os backup codes são exibidos apenas UMA VEZ após habilitar 2FA. Se perder o acesso ao app autenticador e não tiver os códigos, será necessário pedir ajuda ao time técnico para resetar 2FA.
-
----
-
-## 📞 Contato
-
-**Branch criada por:** Claude (Anthropic)
-**Co-Author:** Nicode9 <nkoutroularis@protonmail.com>
-**Data:** 12/12/2025
-**Commits principais:**
-- `a459dff` - feat: add 2FA for admins and fix admin funds dashboard
-- `68788a3` - docs: add comprehensive session documentation
-
-**GitHub:** https://github.com/Noletu/MktPlace-P2P
-**Branch:** feature/admin-2fa-and-funds-dashboard-phase5
-
----
-
-## ✅ Checklist antes de começar
-
-- [ ] Git clone do repositório feito
-- [ ] Checkout da branch `feature/admin-2fa-and-funds-dashboard-phase5`
-- [ ] `npm install` rodado em `apps/api` e `apps/web`
-- [ ] Arquivo `.env` configurado
-- [ ] Prisma migrations executadas (`npx prisma migrate dev`)
-- [ ] Backend rodando na porta 3001 (`cd apps/api && npm run dev`)
-- [ ] Frontend rodando na porta 3000 (`cd apps/web && npm run dev`)
-- [ ] Testado login no admin panel
-- [ ] Testado 2FA funcionando
-- [ ] Testado 3 abas do Admin Funds
-- [ ] Lido a documentação completa em `docs/SESSION-2025-12-12-2FA-AND-ADMIN-FUNDS.md`
-
----
-
-**Boa sorte com o desenvolvimento, Lucas! 🚀**
-
-Se tiver qualquer dúvida, consulte a documentação completa ou entre em contato com o time.
+- [ ] `npm install` na raiz executado
+- [ ] `apps/api/.env` configurado (JWT_SECRET + MASTER_SEED_ENCRYPTION_KEY)
+- [ ] `apps/web/.env.local` com `NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1`
+- [ ] `npx prisma generate` executado em `apps/api`
+- [ ] Backend rodando na porta 3001
+- [ ] Frontend rodando na porta 3000
+- [ ] Login no painel admin funcionando
