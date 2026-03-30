@@ -95,28 +95,21 @@ export async function importPrivateKey(base64Key: string): Promise<CryptoKey> {
 }
 
 /**
- * Armazenar chave privada no IndexedDB (mais seguro que localStorage)
+ * SECURITY: Chave privada NÃO é persistida (localStorage é acessível via XSS).
+ * A chave existe apenas em RAM (via useChat.privateKeyRef) por sessão.
+ * Cada sessão gera um novo par de chaves e registra a nova chave pública no servidor.
  */
-export async function storePrivateKey(privateKey: CryptoKey): Promise<void> {
-  const exported = await exportPrivateKey(privateKey);
-  // TODO: Implementar armazenamento em IndexedDB
-  // Por enquanto, usando localStorage como fallback
-  localStorage.setItem(PRIVATE_KEY_STORAGE_KEY, exported);
+export async function storePrivateKey(_privateKey: CryptoKey): Promise<void> {
+  // Intencionalmente vazio — chave privada fica somente em memória RAM
+  // Limpar qualquer chave antiga que possa ter ficado de versões anteriores
+  localStorage.removeItem(PRIVATE_KEY_STORAGE_KEY);
 }
 
 /**
- * Recuperar chave privada do IndexedDB
+ * Chave privada não é persistida — retorna sempre null para forçar nova geração.
  */
 export async function getPrivateKey(): Promise<CryptoKey | null> {
-  const stored = localStorage.getItem(PRIVATE_KEY_STORAGE_KEY);
-  if (!stored) return null;
-
-  try {
-    return await importPrivateKey(stored);
-  } catch (error) {
-    console.error('Failed to import private key:', error);
-    return null;
-  }
+  return null;
 }
 
 /**

@@ -1,10 +1,13 @@
 import { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { authService } from '../services/auth.service';
 import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema } from '@mktplace/shared';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from '../services/auditLog.service';
 import { emailService } from '../services/email.service';
 import { securityLogger } from '../utils/logger';
-import { setAccessTokenCookie, setRefreshTokenCookie, clearAuthCookies } from '../utils/cookies';
+import { setAccessTokenCookie, setRefreshTokenCookie, clearAuthCookies, setUserRoleCookie, extractToken } from '../utils/cookies';
+import { prisma } from '../utils/prisma';
 
 export class AuthController {
   async register(req: Request, res: Response): Promise<void> {
@@ -36,6 +39,7 @@ export class AuthController {
       // SECURITY: Enviar tokens via HttpOnly cookies (XSS protection)
       setAccessTokenCookie(res, result.token);
       setRefreshTokenCookie(res, result.refreshToken);
+      setUserRoleCookie(res, result.user.role || 'USER'); // Lido pelo Next.js middleware
 
       res.status(201).json({
         success: true,
@@ -101,6 +105,7 @@ export class AuthController {
       // SECURITY: Enviar tokens via HttpOnly cookies (XSS protection)
       setAccessTokenCookie(res, result.token);
       setRefreshTokenCookie(res, result.refreshToken);
+      setUserRoleCookie(res, result.user.role || 'USER'); // Lido pelo Next.js middleware
 
       res.status(200).json({
         success: true,
@@ -194,18 +199,33 @@ export class AuthController {
   async logout(req: Request, res: Response): Promise<void> {
     try {
       // SECURITY: Extrair refresh token do cookie (prioritário) ou body (fallback)
-      const refreshToken = req.cookies?.refreshToken || req.body.refreshToken;
+      const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
 
-      if (!refreshToken) {
-        res.status(400).json({
-          success: false,
-          error: 'Refresh token não fornecido',
-        });
-        return;
+      // Revogar refresh token se disponível (best-effort — não bloqueia o logout)
+      if (refreshToken) {
+        try {
+          await authService.logout(refreshToken);
+        } catch (revokeError) {
+          console.error('[AUTH] Failed to revoke refresh token:', revokeError);
+        }
       }
 
-      // SECURITY: Revogar refresh token no banco
-      await authService.logout(refreshToken);
+      // SECURITY (H-2): Adicionar access token à blacklist (revogar imediatamente)
+      try {
+        const accessToken = extractToken(req);
+        if (accessToken && req.user?.jti) {
+          // Calcular expiresAt a partir do JWT_EXPIRES_IN (default 7d)
+          const expiresInDays = parseInt(process.env.JWT_EXPIRES_IN?.replace('d', '') || '7');
+          const expiresAt = new Date();
+          expiresAt.setDate(expiresAt.getDate() + expiresInDays);
+          await prisma.revokedToken.create({
+            data: { jti: req.user.jti, expiresAt },
+          });
+        }
+      } catch (revokeError) {
+        // Não bloquear logout se blacklist falhar
+        console.error('[SECURITY] Failed to add jti to blacklist:', revokeError);
+      }
 
       // SECURITY: Audit log - logout bem-sucedido
       auditLogService.logFromRequest(
@@ -329,8 +349,9 @@ export class AuthController {
         return;
       }
 
-      // SECURITY: Atualizar access token no cookie
+      // SECURITY (H-1): Atualizar access token E refresh token nos cookies (token rotation)
       setAccessTokenCookie(res, result.token);
+      setRefreshTokenCookie(res, result.newRefreshToken);
 
       res.status(200).json({
         success: true,
@@ -536,6 +557,22 @@ export class AuthController {
         success: false,
         error: error.message || 'Erro ao redefinir senha',
       });
+    }
+  }
+
+
+  async socketTicket(req: Request, res: Response): Promise<void> {
+    try {
+      const user = req.user!;
+      const jti = crypto.randomUUID();
+      const ticket = jwt.sign(
+        { userId: user.userId, email: user.email, role: user.role, jti },
+        process.env.JWT_SECRET!,
+        { expiresIn: '60s' }
+      );
+      res.status(200).json({ success: true, ticket });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: 'Erro ao gerar socket ticket' });
     }
   }
 }

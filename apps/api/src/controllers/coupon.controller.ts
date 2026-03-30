@@ -26,13 +26,9 @@ export class CouponController {
       });
 
       // Audit log
-      await auditLogService.log({
-        userId: userId!,
-        action: 'CREATE_COUPON',
-        resource: 'COUPON',
-        resourceId: coupon.id,
-        description: `Criou cupom ${coupon.code} com ${coupon.discountPercentage}% de desconto`,
-        metadata: JSON.stringify(coupon),
+      auditLogService.logFromRequest(req, 'CREATE_COUPON', 'COUPON', coupon.id, {
+        code: coupon.code,
+        discountPercentage: coupon.discountPercentage,
       });
 
       res.status(201).json({
@@ -146,18 +142,11 @@ export class CouponController {
   async deleteCoupon(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userId = req.user?.userId;
 
       await couponService.deleteCoupon(id);
 
       // Audit log
-      await auditLogService.log({
-        userId: userId!,
-        action: 'DELETE_COUPON',
-        resource: 'COUPON',
-        resourceId: id,
-        description: `Deletou cupom ${id}`,
-      });
+      auditLogService.logFromRequest(req, 'DELETE_COUPON', 'COUPON', id);
 
       res.json({
         success: true,

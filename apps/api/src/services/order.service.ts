@@ -1,4 +1,5 @@
 import { Order } from '@prisma/client';
+import BigNumber from 'bignumber.js';
 import {
   OrderType,
   OrderStatus,
@@ -25,9 +26,9 @@ export class OrderService {
    * Calcula as taxas do pedido (com suporte a cupons de desconto)
    */
   async calculateFees(cryptoAmount: string, userId?: string): Promise<FeeCalculation> {
-    const amount = parseFloat(cryptoAmount);
+    const amount = new BigNumber(cryptoAmount);
 
-    let platformFeePercentage = FEE_CONFIG.PLATFORM_FEE_PERCENTAGE; // 1.5%
+    let platformFeePercentage = new BigNumber(FEE_CONFIG.PLATFORM_FEE_PERCENTAGE); // 0.015
     let appliedCoupon = null;
 
     // Verificar se usuário tem cupom ativo
@@ -35,24 +36,24 @@ export class OrderService {
       const activeCoupon = await couponService.getActiveCoupon(userId);
 
       if (activeCoupon) {
-        const discount = activeCoupon.coupon.discountPercentage / 100;
+        const discount = new BigNumber(activeCoupon.coupon.discountPercentage).div(100);
         const originalPlatformFeePercentage = platformFeePercentage;
-        platformFeePercentage = platformFeePercentage * (1 - discount);
+        platformFeePercentage = platformFeePercentage.multipliedBy(new BigNumber(1).minus(discount));
 
         appliedCoupon = {
           couponId: activeCoupon.coupon.id,
           code: activeCoupon.coupon.code,
           discountPercentage: activeCoupon.coupon.discountPercentage,
-          originalPlatformFee: (amount * originalPlatformFeePercentage).toFixed(8),
-          discountAmount: (amount * originalPlatformFeePercentage - amount * platformFeePercentage).toFixed(8),
+          originalPlatformFee: amount.multipliedBy(originalPlatformFeePercentage).toFixed(8),
+          discountAmount: amount.multipliedBy(originalPlatformFeePercentage).minus(amount.multipliedBy(platformFeePercentage)).toFixed(8),
         };
       }
     }
 
-    const platformFee = amount * platformFeePercentage;
-    const payerReward = amount * FEE_CONFIG.PAYER_REWARD_PERCENTAGE; // 1% inalterado
-    const totalFee = platformFee + payerReward;
-    const netCryptoAmount = amount - totalFee;
+    const platformFee = amount.multipliedBy(platformFeePercentage);
+    const payerReward = amount.multipliedBy(FEE_CONFIG.PAYER_REWARD_PERCENTAGE); // 1% inalterado
+    const totalFee = platformFee.plus(payerReward);
+    const netCryptoAmount = amount.minus(totalFee);
 
     return {
       platformFee: platformFee.toFixed(8),
@@ -71,10 +72,10 @@ export class OrderService {
    * o vendedor transfere cryptoAmount + payerReward para o comprador.
    */
   calculateRequiredCollateral(cryptoAmount: string): string {
-    const amount = parseFloat(cryptoAmount);
+    const amount = new BigNumber(cryptoAmount);
     // Incluir payerReward (1% cashback) que será dado ao comprador
-    const payerReward = amount * FEE_CONFIG.PAYER_REWARD_PERCENTAGE;
-    return (amount + payerReward).toFixed(8);
+    const payerReward = amount.multipliedBy(FEE_CONFIG.PAYER_REWARD_PERCENTAGE);
+    return amount.plus(payerReward).toFixed(8);
   }
 
   /**
@@ -86,10 +87,10 @@ export class OrderService {
    * Lucro líquido do provedor: ~1% (2.5% markup - 1.5% fee)
    */
   calculateBuyOrderCollateral(cryptoAmount: string): string {
-    const amount = parseFloat(cryptoAmount);
+    const amount = new BigNumber(cryptoAmount);
     // Somente platformFee (1.5%) - sem payerReward em ordens BUY
-    const platformFee = amount * BUY_ORDER_CONFIG.PROVIDER_COLLATERAL_FEE;
-    return (amount + platformFee).toFixed(8);
+    const platformFee = amount.multipliedBy(BUY_ORDER_CONFIG.PROVIDER_COLLATERAL_FEE);
+    return amount.plus(platformFee).toFixed(8);
   }
 
   /**
@@ -99,10 +100,10 @@ export class OrderService {
    * - Comprador paga BRL com markup de 2.5%
    */
   async calculateBuyOrderFees(cryptoAmount: string): Promise<FeeCalculation> {
-    const amount = parseFloat(cryptoAmount);
-    const platformFee = amount * FEE_CONFIG.PLATFORM_FEE_PERCENTAGE;
+    const amount = new BigNumber(cryptoAmount);
+    const platformFee = amount.multipliedBy(FEE_CONFIG.PLATFORM_FEE_PERCENTAGE);
     // Sem cashback em ordens BUY
-    const payerReward = 0;
+    const payerReward = new BigNumber(0);
     const totalFee = platformFee;
     const netCryptoAmount = amount; // Comprador recebe exatamente o que pediu
 
@@ -120,10 +121,10 @@ export class OrderService {
    * Busca cotação atual e aplica markup de 2.5%
    */
   async calculateBuyOrderBrlAmount(cryptoAmount: string, cryptoType: string): Promise<string> {
-    const amount = parseFloat(cryptoAmount);
-    const brlValue = await priceService.convertCryptoToBRL(amount, cryptoType as CryptoType);
-    const brlBase = parseFloat(brlValue);
-    const brlWithMarkup = brlBase * (1 + BUY_ORDER_CONFIG.BRL_MARKUP_PERCENTAGE);
+    const amount = new BigNumber(cryptoAmount);
+    const brlValue = await priceService.convertCryptoToBRL(amount.toNumber(), cryptoType as CryptoType);
+    const brlBase = new BigNumber(brlValue);
+    const brlWithMarkup = brlBase.multipliedBy(new BigNumber(1).plus(BUY_ORDER_CONFIG.BRL_MARKUP_PERCENTAGE));
     return brlWithMarkup.toFixed(2);
   }
 
@@ -321,27 +322,24 @@ export class OrderService {
       });
 
       if (wallet) {
-        const availableBalance = parseFloat(wallet.availableBalance);
+        const availableBalanceBN = new BigNumber(wallet.availableBalance);
+        const requiredCollateralBN = new BigNumber(requiredCollateral);
 
-        console.log(`💰 Saldo disponível: ${availableBalance.toFixed(8)} ${input.cryptoType}`);
-        console.log(`🎯 Colateral necessário: ${requiredCollateral} ${input.cryptoType}`);
-
-        const hasEnough = availableBalance >= parseFloat(requiredCollateral);
+        const hasEnough = availableBalanceBN.gte(requiredCollateralBN);
 
         if (hasEnough) {
           // TEM SALDO SUFICIENTE → Criar pedido INSTANTÂNEO usando saldo da carteira
-          console.log(`✅ Usando saldo da carteira HD - Pedido instantâneo!`);
           return await this.createOrderWithWalletBalance(input, fees, timeoutAt, requiredCollateral, wallet.id);
         } else if (!input.collateralAddressId) {
           // NÃO TEM SALDO SUFICIENTE → Retornar info para depósito
-          const missingAmount = (parseFloat(requiredCollateral) - availableBalance).toFixed(8);
+          const missingAmount = requiredCollateralBN.minus(availableBalanceBN).toFixed(8);
 
           console.log(`⚠️ Saldo insuficiente. Falta: ${missingAmount} ${input.cryptoType}`);
 
           return {
             requiresDeposit: true,
             missingAmount,
-            availableBalance,
+            availableBalance: availableBalanceBN.toNumber(),
             requiredCollateral,
             walletAddress: wallet.address, // Incluir endereço para depósito
           };
@@ -401,9 +399,34 @@ export class OrderService {
       couponData = fees.appliedCoupon;
     }
 
-    // Transaction atômica: criar pedido + bloquear saldo
+    // SECURITY (C-2): Transaction atômica — criar pedido + bloquear saldo NA MESMA transação
+    // Evita race condition: sem $transaction aninhada (SQLite não suporta), a lógica de
+    // lockBalance é replicada inline usando o `tx` da transação principal.
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Criar pedido primeiro
+      // 1. Verificar saldo DENTRO da transaction (leitura atômica)
+      const wallet = await tx.userWallet.findUnique({ where: { id: walletId } });
+      if (!wallet) throw new Error(`Carteira ${walletId} não encontrada`);
+
+      const availableBN = new BigNumber(wallet.availableBalance);
+      const amountBN = new BigNumber(collateralAmount);
+      if (availableBN.lt(amountBN)) {
+        throw new Error(
+          `Saldo insuficiente. Disponível: ${availableBN.toFixed(8)}, Necessário: ${amountBN.toFixed(8)}`
+        );
+      }
+
+      // 2. Atualizar saldo da carteira atomicamente (DENTRO da mesma tx)
+      const newAvailable = availableBN.minus(amountBN);
+      const newLocked = new BigNumber(wallet.lockedBalance).plus(amountBN);
+      await tx.userWallet.update({
+        where: { id: walletId },
+        data: {
+          availableBalance: newAvailable.toFixed(8),
+          lockedBalance: newLocked.toFixed(8),
+        },
+      });
+
+      // 3. Criar pedido (saldo já deduzido na mesma tx)
       const order = await tx.order.create({
         data: {
           userId: input.userId,
@@ -416,7 +439,6 @@ export class OrderService {
           platformFee: fees.platformFee,
           payerReward: fees.payerReward,
           totalFee: fees.totalFee,
-          // Coupon tracking
           appliedCouponId: couponData?.couponId || null,
           appliedCouponCode: couponData?.code || null,
           appliedCouponDiscount: couponData?.discountPercentage || null,
@@ -427,7 +449,6 @@ export class OrderService {
           customExpirationHours: input.customExpirationHours,
           manualCancelOnly: input.manualCancelOnly || false,
           paidByPlatform: false,
-          // CRITICAL: Pedido criado com colateral JÁ CONFIRMADO
           collateralConfirmed: true,
           collateralSource: 'HD_WALLET',
           walletId: walletId,
@@ -436,63 +457,40 @@ export class OrderService {
         },
       });
 
-      console.log(`🚀 Pedido ${order.id} criado usando carteira HD!`);
-      if (couponData) {
-        console.log(`🎟️ Cupom ${couponData.code} (${couponData.discountPercentage}%) aplicado!`);
-      }
+      // 4. Registrar WalletTransaction (audit trail)
+      await tx.walletTransaction.create({
+        data: {
+          walletId,
+          userId: wallet.userId,
+          type: 'LOCK',
+          amount: collateralAmount,
+          balanceBefore: wallet.availableBalance,
+          balanceAfter: newAvailable.toFixed(8),
+          description: `Colateral bloqueado para pedido ${order.id}`,
+          metadata: JSON.stringify({ orderId: order.id, lockedAmount: collateralAmount }),
+        },
+      });
 
-      // 2. Incrementar contadores de uso do cupom DENTRO da transaction (atomicidade)
+      // 5. Contadores de cupom (atomicidade)
       if (couponData) {
         const now = new Date();
-
-        // Atualizar UserCoupon (incrementar timesUsed, definir firstUsedAt apenas se null)
         await tx.$executeRaw`
           UPDATE "UserCoupon"
-          SET
-            "timesUsed" = "timesUsed" + 1,
-            "lastUsedAt" = ${now},
-            "firstUsedAt" = COALESCE("firstUsedAt", ${now})
+          SET "timesUsed" = "timesUsed" + 1,
+              "lastUsedAt" = ${now},
+              "firstUsedAt" = COALESCE("firstUsedAt", ${now})
           WHERE "userId" = ${input.userId}
             AND "couponId" = ${couponData.couponId}
             AND "isActive" = true
         `;
-
-        // Atualizar Coupon (incrementar totalUses)
         await tx.coupon.update({
           where: { id: couponData.couponId },
-          data: {
-            totalUses: { increment: 1 },
-          },
+          data: { totalUses: { increment: 1 } },
         });
-
-        console.log(`✅ Contadores do cupom ${couponData.code} incrementados (dentro da transaction)`);
       }
 
       return order;
     });
-
-    // 3. Bloquear saldo usando WalletService (FORA da transaction para evitar deadlock)
-    try {
-      await WalletService.lockBalance(
-        walletId,
-        collateralAmount,
-        result.id,
-        `Colateral bloqueado para pedido ${result.id}`
-      );
-
-      console.log(`🔒 Saldo bloqueado: ${collateralAmount} ${input.cryptoType}`);
-    } catch (error) {
-      // Se falhar ao bloquear saldo, cancelar o pedido
-      console.error(`❌ Erro ao bloquear saldo:`, (error as Error).message);
-
-      await prisma.order.delete({
-        where: {id: result.id},
-      });
-
-      throw new Error(`Falha ao bloquear saldo: ${(error as Error).message}`);
-    }
-
-    console.log(`✅ Order ${result.id} created with HD WALLET BALANCE - Will appear in marketplace IMMEDIATELY!`);
 
     return result;
   }
@@ -624,9 +622,7 @@ export class OrderService {
    * - Cria Transaction com comprador como pagador
    */
   async acceptBuyOrder(input: AcceptBuyOrderInput): Promise<Order> {
-    console.log(`🤝 [BUY ORDER] Provider ${input.providerId} accepting order ${input.orderId}`);
-
-    return await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       // Buscar e travar a ordem
       const order = await tx.order.findUnique({
         where: { id: input.orderId },
@@ -727,11 +723,12 @@ export class OrderService {
 
       // Calcular colateral necessário (crypto + 1.5% fee)
       const requiredCollateral = this.calculateBuyOrderCollateral(order.cryptoAmount);
-      const availableBalance = parseFloat(providerWallet.availableBalance);
+      const availableBalanceBN = new BigNumber(providerWallet.availableBalance);
+      const requiredCollateralBN = new BigNumber(requiredCollateral);
 
-      if (availableBalance < parseFloat(requiredCollateral)) {
+      if (availableBalanceBN.lt(requiredCollateralBN)) {
         throw new Error(
-          `Saldo insuficiente. Necessário: ${requiredCollateral} ${order.cryptoType}, Disponível: ${availableBalance.toFixed(8)} ${order.cryptoType}`
+          `Saldo insuficiente. Necessário: ${requiredCollateral} ${order.cryptoType}, Disponível: ${availableBalanceBN.toFixed(8)} ${order.cryptoType}`
         );
       }
 
@@ -746,16 +743,37 @@ export class OrderService {
       // TIMEOUT: 30 minutos para pagamento ser confirmado
       const timeout = new Date(Date.now() + 30 * 60 * 1000);
 
+      // SECURITY (C-2): Bloquear saldo do provedor DENTRO da mesma tx — atômico com a criação do match
+      const newProviderAvailable = availableBalanceBN.minus(requiredCollateralBN);
+      const newProviderLocked = new BigNumber(providerWallet.lockedBalance).plus(requiredCollateralBN);
+      await tx.userWallet.update({
+        where: { id: providerWallet.id },
+        data: {
+          availableBalance: newProviderAvailable.toFixed(8),
+          lockedBalance: newProviderLocked.toFixed(8),
+        },
+      });
+      await tx.walletTransaction.create({
+        data: {
+          walletId: providerWallet.id,
+          userId: input.providerId,
+          type: 'LOCK',
+          amount: requiredCollateral,
+          balanceBefore: providerWallet.availableBalance,
+          balanceAfter: newProviderAvailable.toFixed(8),
+          description: `Colateral bloqueado para ordem BUY`,
+          metadata: JSON.stringify({ orderId: input.orderId, lockedAmount: requiredCollateral }),
+        },
+      });
+
       const updatedOrder = await tx.order.update({
         where: { id: input.orderId },
         data: {
           status: OrderStatus.MATCHED,
           timeoutAt: timeout,
-          // Dados do provedor
           providerId: input.providerId,
           providerWalletId: providerWallet.id,
           orderData: JSON.stringify(providerPixData),
-          // Colateral
           walletId: providerWallet.id,
           collateralSource: 'HD_WALLET',
           collateralConfirmed: true,
@@ -764,109 +782,52 @@ export class OrderService {
         },
       });
 
-      // Criar Transaction
-      // NOTA: Em ordens BUY, o "pagador" (payerId) é o COMPRADOR (criador da ordem)
-      // que vai pagar BRL via PIX para o provedor
       const transaction = await tx.transaction.create({
         data: {
           orderId: input.orderId,
-          payerId: order.userId, // Comprador é quem paga BRL
+          payerId: order.userId,
           status: 'PENDING',
         },
       });
 
-      console.log(`✅ [BUY ORDER] Match successful!`);
-      console.log(`   Provider: ${input.providerId}`);
-      console.log(`   Collateral: ${requiredCollateral} ${order.cryptoType}`);
-      console.log(`   PIX: ${input.pixKey} (${input.pixKeyType})`);
-      console.log(`   Transaction: ${transaction.id}`);
-
       return { ...updatedOrder, transaction };
     }, {
       timeout: 15000,
-    }).then(async (result) => {
-      // Bloquear saldo do provedor FORA da transaction do Prisma
-      const providerWallet = await prisma.userWallet.findUnique({
-        where: {
-          userId_cryptoType_network: {
-            userId: input.providerId,
-            cryptoType: result.cryptoType,
-            network: result.cryptoNetwork,
-          },
-        },
-      });
-
-      if (providerWallet && result.collateralLockedAmount) {
-        try {
-          await WalletService.lockBalance(
-            providerWallet.id,
-            result.collateralLockedAmount,
-            result.id,
-            `Colateral bloqueado para ordem BUY ${result.id}`
-          );
-          console.log(`🔒 [BUY ORDER] Saldo bloqueado: ${result.collateralLockedAmount} ${result.cryptoType}`);
-        } catch (error) {
-          // Se falhar ao bloquear saldo, reverter order ao estado PENDING
-          console.error(`❌ [BUY ORDER] Erro ao bloquear saldo do provedor:`, (error as Error).message);
-
-          await prisma.$transaction([
-            prisma.order.update({
-              where: { id: result.id },
-              data: {
-                status: OrderStatus.PENDING,
-                providerId: null,
-                providerWalletId: null,
-                walletId: null,
-                collateralSource: null,
-                collateralLocked: false,
-                collateralLockedAmount: null,
-              },
-            }),
-            // Deletar a Transaction que foi criada
-            ...(result.transaction ? [prisma.transaction.delete({ where: { id: result.transaction.id } })] : []),
-          ]);
-
-          throw new Error(`Falha ao bloquear saldo do provedor: ${(error as Error).message}`);
-        }
-      }
-
-      // Enviar notificações
-      setImmediate(async () => {
-        try {
-          // Notificar comprador (criador da ordem)
-          await notificationService.createNotification({
-            userId: result.userId,
-            type: 'ORDER_MATCHED',
-            category: 'ORDER',
-            title: '🎉 Provedor Encontrado!',
-            message: `Um provedor aceitou seu pedido de compra. Pague R$ ${result.brlAmount} via PIX para receber ${result.cryptoAmount} ${result.cryptoType}.`,
-            actionUrl: `/orders/${result.id}`,
-            actionLabel: 'Fazer Pagamento',
-            relatedId: result.id,
-            relatedType: 'ORDER',
-            priority: 'HIGH',
-          });
-
-          // Notificar provedor
-          await notificationService.createNotification({
-            userId: input.providerId,
-            type: 'ORDER_MATCHED',
-            category: 'ORDER',
-            title: '✅ Você aceitou uma ordem de compra',
-            message: `Aguardando pagamento de R$ ${result.brlAmount} do comprador. Seu colateral está bloqueado.`,
-            actionUrl: `/orders/${result.id}`,
-            actionLabel: 'Ver Pedido',
-            relatedId: result.id,
-            relatedType: 'ORDER',
-            priority: 'NORMAL',
-          });
-        } catch (error) {
-          console.error('Failed to send buy order notifications:', error);
-        }
-      });
-
-      return result;
     });
+
+    // Enviar notificações (async, fora da transaction)
+    setImmediate(async () => {
+      try {
+        await notificationService.createNotification({
+          userId: result.userId,
+          type: 'ORDER_MATCHED',
+          category: 'ORDER',
+          title: '🎉 Provedor Encontrado!',
+          message: `Um provedor aceitou seu pedido de compra. Pague R$ ${result.brlAmount} via PIX para receber ${result.cryptoAmount} ${result.cryptoType}.`,
+          actionUrl: `/orders/${result.id}`,
+          actionLabel: 'Fazer Pagamento',
+          relatedId: result.id,
+          relatedType: 'ORDER',
+          priority: 'HIGH',
+        });
+        await notificationService.createNotification({
+          userId: input.providerId,
+          type: 'ORDER_MATCHED',
+          category: 'ORDER',
+          title: '✅ Você aceitou uma ordem de compra',
+          message: `Aguardando pagamento de R$ ${result.brlAmount} do comprador. Seu colateral está bloqueado.`,
+          actionUrl: `/orders/${result.id}`,
+          actionLabel: 'Ver Pedido',
+          relatedId: result.id,
+          relatedType: 'ORDER',
+          priority: 'NORMAL',
+        });
+      } catch (error) {
+        console.error('Failed to send buy order notifications:', error);
+      }
+    });
+
+    return result;
   }
 
   /**

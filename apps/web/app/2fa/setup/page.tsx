@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/AppHeader';
 import Image from 'next/image';
+import { fetchWithAuth } from '@/utils/api';
 
 interface TwoFactorSetup {
   secret: string;
@@ -30,17 +31,7 @@ export default function TwoFactorSetupPage() {
 
   const checkStatus = async () => {
     try {
-      const accessToken = localStorage.getItem('accessToken');
-      if (!accessToken) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch('http://localhost:3002/api/v1/2fa/status', {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      });
+      const response = await fetchWithAuth('/2fa/status');
 
       if (!response.ok) {
         throw new Error('Erro ao verificar status');
@@ -62,17 +53,8 @@ export default function TwoFactorSetupPage() {
     setProcessing(true);
 
     try {
-      const accessToken = localStorage.getItem('accessToken');
-      if (!accessToken) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch('http://localhost:3002/api/v1/2fa/generate', {
+      const response = await fetchWithAuth('/2fa/generate', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
       });
 
       if (!response.ok) {
@@ -103,18 +85,8 @@ export default function TwoFactorSetupPage() {
     setProcessing(true);
 
     try {
-      const accessToken = localStorage.getItem('accessToken');
-      if (!accessToken) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch('http://localhost:3002/api/v1/2fa/enable', {
+      const response = await fetchWithAuth('/2fa/enable', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
         body: JSON.stringify({ token }),
       });
 
@@ -156,18 +128,8 @@ export default function TwoFactorSetupPage() {
     setProcessing(true);
 
     try {
-      const accessToken = localStorage.getItem('accessToken');
-      if (!accessToken) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch('http://localhost:3002/api/v1/2fa/disable', {
+      const response = await fetchWithAuth('/2fa/disable', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
         body: JSON.stringify({ token }),
       });
 
@@ -201,18 +163,8 @@ export default function TwoFactorSetupPage() {
     setProcessing(true);
 
     try {
-      const accessToken = localStorage.getItem('accessToken');
-      if (!accessToken) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch('http://localhost:3002/api/v1/2fa/regenerate-backup-codes', {
+      const response = await fetchWithAuth('/2fa/regenerate-backup-codes', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
         body: JSON.stringify({ token }),
       });
 

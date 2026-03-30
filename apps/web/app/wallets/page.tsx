@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import { CryptoType, NetworkType, CRYPTO_SUPPORTED_NETWORKS } from '@mktplace/shared';
 import AppHeader from '@/components/AppHeader';
+import { fetchWithAuth } from '@/utils/api';
 
 interface HDWallet {
   id: string;
@@ -82,17 +83,7 @@ export default function WalletsPage() {
 
   const fetchWallets = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch('http://localhost:3002/api/v1/wallets', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/wallets');
 
       if (!response.ok) {
         throw new Error('Erro ao buscar carteiras');
@@ -111,18 +102,8 @@ export default function WalletsPage() {
     setOpenDropdown(null); // Fechar dropdown ao criar
     setError('');
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch('http://localhost:3002/api/v1/wallets', {
+      const response = await fetchWithAuth('/wallets', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           cryptoType,
           network,
@@ -144,17 +125,8 @@ export default function WalletsPage() {
   const handleSyncBalance = async (walletId: string) => {
     setSyncing({ ...syncing, [walletId]: true });
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/wallets/${walletId}/sync`, {
+      const response = await fetchWithAuth(`/wallets/${walletId}/sync`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
       });
 
       if (!response.ok) {
@@ -181,17 +153,7 @@ export default function WalletsPage() {
   const fetchTransactions = async (walletId: string) => {
     setLoadingTx(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/wallets/${walletId}/transactions`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth(`/wallets/${walletId}/transactions`);
 
       if (!response.ok) {
         throw new Error('Erro ao buscar transações');
@@ -212,18 +174,8 @@ export default function WalletsPage() {
 
     setAddingBalance(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/wallets/${testBalanceModal.walletId}/test-balance`, {
+      const response = await fetchWithAuth(`/wallets/${testBalanceModal.walletId}/test-balance`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({ amount: testAmount }),
       });
 

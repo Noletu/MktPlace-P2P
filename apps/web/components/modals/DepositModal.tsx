@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -16,6 +17,30 @@ interface DepositModalProps {
 
 export default function DepositModal({ isOpen, onClose, wallet }: DepositModalProps) {
   const [copied, setCopied] = useState(false);
+  const [simulating, setSimulating] = useState(false);
+  const [simAmount, setSimAmount] = useState('1');
+
+  const handleSimulateDeposit = async () => {
+    if (!wallet) return;
+    setSimulating(true);
+    try {
+      const res = await fetchWithAuth(`/wallets/${wallet.id}/test-balance`, {
+        method: 'POST',
+        body: JSON.stringify({ amount: simAmount }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`✅ Depósito simulado: ${simAmount} ${wallet.cryptoType} adicionado com sucesso!`);
+        onClose();
+      } else {
+        alert(`Erro: ${data.error || 'Falha ao simular depósito'}`);
+      }
+    } catch {
+      alert('Erro ao simular depósito');
+    } finally {
+      setSimulating(false);
+    }
+  };
 
   const handleCopyAddress = async () => {
     if (!wallet) return;
@@ -110,6 +135,29 @@ export default function DepositModal({ isOpen, onClose, wallet }: DepositModalPr
                 Envios de outras moedas ou redes diferentes serão perdidos permanentemente.
               </span>
             </p>
+          </div>
+        </div>
+
+        {/* Simulate Deposit (Dev only) */}
+        <div className="px-6 pb-4 bg-green-50 dark:bg-green-900/20 border-t border-green-200 dark:border-green-800">
+          <p className="text-xs font-semibold text-green-700 dark:text-green-400 mt-3 mb-2">⚡ Ambiente de Teste — Simular Depósito</p>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              value={simAmount}
+              onChange={e => setSimAmount(e.target.value)}
+              min="0.00000001"
+              step="0.1"
+              className="flex-1 px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-green-300 dark:border-green-700 rounded-lg text-gray-900 dark:text-gray-100 focus:outline-none"
+              placeholder="Valor"
+            />
+            <button
+              onClick={handleSimulateDeposit}
+              disabled={simulating || !simAmount}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg disabled:opacity-50 whitespace-nowrap"
+            >
+              {simulating ? '🔄 Simulando...' : `⚡ Simular ${wallet?.cryptoType}`}
+            </button>
           </div>
         </div>
 

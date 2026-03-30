@@ -18,10 +18,14 @@ class OrderExpirationWorker {
     this.isRunning = true;
 
     // Verificar a cada 1 minuto (para timeout de 30min ser preciso)
-    this.interval = setInterval(() => this.checkExpiredOrders(), 60 * 1000);
+    this.interval = setInterval(async () => {
+      await this.checkExpiredOrders();
+      await this.checkExpiredValidations();
+    }, 60 * 1000);
 
     // Primeira execução imediata
     await this.checkExpiredOrders();
+    await this.checkExpiredValidations();
   }
 
   stop() {
@@ -214,6 +218,66 @@ class OrderExpirationWorker {
       });
     } catch (error) {
       console.error(`❌ Error processing expired order ${order.id}:`, error);
+    }
+  }
+
+  /**
+   * Auto-rejeitar comprovantes em VALIDATING que passaram do prazo de 24h
+   * Devolve o pedido para PAYMENT_SENT → IN_NEGOTIATION para o comprador reenviar
+   */
+  private async checkExpiredValidations() {
+    try {
+      const now = new Date();
+
+      const expiredValidations = await prisma.transaction.findMany({
+        where: {
+          status: 'VALIDATING',
+          validationDeadline: { lt: now, not: null },
+        },
+        include: { order: true },
+      });
+
+      if (expiredValidations.length === 0) return;
+
+      console.log(`⏰ [VALIDATION TIMEOUT] Found ${expiredValidations.length} expired validations`);
+
+      for (const tx of expiredValidations) {
+        try {
+          await prisma.$transaction([
+            prisma.transaction.update({
+              where: { id: tx.id },
+              data: {
+                status: 'PENDING', // Volta para PENDING → comprador pode reenviar
+                validationDeadline: null,
+                comprovanteData: null,
+                comprovanteUrl: null,
+              },
+            }),
+            prisma.order.update({
+              where: { id: tx.orderId },
+              data: { status: 'IN_NEGOTIATION' }, // Volta para negociação
+            }),
+          ]);
+
+          console.log(`⏰ Transaction ${tx.id} auto-rejected: validation deadline expired`);
+
+          setImmediate(async () => {
+            try {
+              await notificationService.notifyOrderExpired(
+                tx.orderId,
+                tx.payerId,
+                'Seu comprovante não foi validado a tempo (24h). Por favor, envie novamente.'
+              );
+            } catch (error) {
+              console.error('Failed to notify expired validation:', error);
+            }
+          });
+        } catch (error) {
+          console.error(`❌ Error rejecting expired validation ${tx.id}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error checking expired validations:', error);
     }
   }
 

@@ -2,10 +2,18 @@
 
 import { useRouter } from 'next/navigation';
 
-export default function FloatingActionButton() {
+interface Props {
+  accountFrozen?: boolean;
+}
+
+export default function FloatingActionButton({ accountFrozen }: Props) {
   const router = useRouter();
 
   const handleCreateOrder = () => {
+    if (accountFrozen) {
+      alert('Sua conta está suspensa. Você não pode criar pedidos enquanto a conta estiver bloqueada.');
+      return;
+    }
     router.push('/orders/create');
   };
 

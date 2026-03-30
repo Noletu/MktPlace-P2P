@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useNotificationContext } from '@/providers/NotificationProvider';
 import { useRouter } from 'next/navigation';
 import { normalizeNotificationUrl } from '@/utils/notificationUtils';
+import { fetchWithAuth } from '@/utils/api';
 
 export function NotificationBell() {
   const { notifications, unreadCount, setNotifications, setUnreadCount } = useNotificationContext();
@@ -17,12 +18,7 @@ export function NotificationBell() {
         // FIX: Guard de browser API para evitar erro SSR
         if (typeof window === 'undefined') return;
 
-        const token = localStorage.getItem('accessToken');
-        if (!token) return;
-
-        const response = await fetch('http://localhost:3002/api/v1/notifications?limit=10', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await fetchWithAuth('/notifications?limit=10');
 
         if (response.ok) {
           const data = await response.json();
@@ -41,10 +37,8 @@ export function NotificationBell() {
     // Marcar como lida via API (vai emitir WebSocket event que atualiza o context)
     if (!notification.isRead) {
       try {
-        const token = localStorage.getItem('accessToken');
-        await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/notifications/${notification.id}/read`, {
+        await fetchWithAuth(`/notifications/${notification.id}/read`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
         });
       } catch (error) {
         console.error('Failed to mark notification as read:', error);
@@ -61,10 +55,8 @@ export function NotificationBell() {
 
   const handleMarkAllAsRead = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      await fetch('http://localhost:3002/api/v1/notifications/mark-all-read', {
+      await fetchWithAuth('/notifications/mark-all-read', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
       });
     } catch (error) {
       console.error('Failed to mark all as read:', error);
@@ -132,7 +124,10 @@ export function NotificationBell() {
                         {notif.message}
                       </p>
                       {notif.actionLabel && (
-                        <button className="text-blue-600 text-sm mt-2 hover:text-blue-800">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleNotificationClick(notif); }}
+                          className="text-blue-600 text-sm mt-2 hover:text-blue-800"
+                        >
                           {notif.actionLabel} →
                         </button>
                       )}

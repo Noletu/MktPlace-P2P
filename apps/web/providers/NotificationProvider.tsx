@@ -11,6 +11,7 @@ interface Notification {
   category: string;
   priority: string;
   actionUrl?: string;
+  actionLabel?: string;
   isRead: boolean;
   createdAt: string;
 }

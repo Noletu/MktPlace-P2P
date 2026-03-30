@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { authController } from '../controllers/auth.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
-import { authLimiter, registerLimiter, forgotPasswordLimiter } from '../middleware/rateLimiter.middleware';
-import { optionalRecaptchaMiddleware } from '../middleware/recaptcha.middleware';
+import { authLimiter, registerLimiter, forgotPasswordLimiter, checkEmailLimiter } from '../middleware/rateLimiter.middleware';
+import { optionalRecaptchaMiddleware, requiredRecaptchaMiddleware } from '../middleware/recaptcha.middleware';
 
 const router = Router();
 
@@ -11,7 +11,7 @@ const router = Router();
  * @desc    Registrar novo usuário
  * @access  Public
  */
-router.post('/register', registerLimiter, optionalRecaptchaMiddleware, (req, res) => authController.register(req, res));
+router.post('/register', registerLimiter, requiredRecaptchaMiddleware, (req, res) => authController.register(req, res));
 
 /**
  * @route   POST /api/v1/auth/login
@@ -53,7 +53,7 @@ router.post('/logout', authMiddleware, (req, res) => authController.logout(req, 
  * @desc    Verificar se email está disponível
  * @access  Public
  */
-router.get('/check-email', (req, res) => authController.checkEmail(req, res));
+router.get('/check-email', checkEmailLimiter, (req, res) => authController.checkEmail(req, res));
 
 /**
  * @route   GET /api/v1/auth/check-cpf
@@ -82,5 +82,12 @@ router.post('/forgot-password', forgotPasswordLimiter, (req, res) => authControl
  * @access  Public
  */
 router.post('/reset-password', forgotPasswordLimiter, (req, res) => authController.resetPassword(req, res));
+
+/**
+ * @route   GET /api/v1/auth/socket-ticket
+ * @desc    Obter ticket de curta duração (60s) para autenticação WebSocket
+ * @access  Private
+ */
+router.get('/socket-ticket', authMiddleware, (req, res) => authController.socketTicket(req, res));
 
 export default router;

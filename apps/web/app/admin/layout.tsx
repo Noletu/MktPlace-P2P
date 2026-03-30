@@ -7,6 +7,7 @@ import { getApiUrl } from '@/config/api';
 import { NotificationBell } from '@/components/NotificationBell';
 import ThemeToggle from '@/components/ThemeToggle';
 import CryptoPriceCards from '@/components/CryptoPriceCards';
+import { fetchWithAuth } from '@/utils/api';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -14,7 +15,7 @@ interface AdminLayoutProps {
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname() ?? '';
   const [isLoading, setIsLoading] = useState(true);
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
@@ -23,18 +24,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login?redirect=/admin');
-        return;
-      }
-
       try {
-        const response = await fetch(getApiUrl('auth/me'), {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
+        const response = await fetchWithAuth('/auth/me');
 
         if (!response.ok) {
           throw new Error('Não autenticado');
@@ -64,8 +55,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     checkAuth();
   }, [router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('accessToken');
+  const handleLogout = async () => {
+    try {
+      await fetchWithAuth('/auth/logout', { method: 'POST' });
+    } catch (error) {
+      console.warn('Logout: servidor não confirmou.', error);
+    }
+    localStorage.removeItem('user');
     router.push('/login');
   };
 

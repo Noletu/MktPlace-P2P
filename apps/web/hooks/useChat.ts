@@ -2,6 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import * as encryptionUtils from '@/utils/encryption.utils';
 import { getWsUrl } from '@/config/api';
+import { fetchWithAuth } from '@/utils/api';
+
+// Guard de módulo: evita que múltiplos mounts (React StrictMode) disparem
+// inicialização de chaves simultânea e registrem a chave pública duas vezes.
+let _encryptionInitPromise: Promise<void> | null = null;
 
 export interface ChatMessage {
   id: string;
@@ -68,58 +73,61 @@ export function useChat(chatId?: string, options?: UseChatOptions) {
       return;
     }
 
-    try {
-      // Tentar recuperar chaves existentes
-      let privateKey = await encryptionUtils.getPrivateKey();
-      let publicKey = await encryptionUtils.getPublicKey();
-
-      // Se não existir, gerar novas chaves
-      if (!privateKey || !publicKey) {
-        console.log('🔑 Generating new encryption keys...');
-        const keyPair = await encryptionUtils.generateKeyPair();
-        privateKey = keyPair.privateKey;
-        publicKey = keyPair.publicKey;
-
-        // Armazenar localmente
-        await encryptionUtils.storePrivateKey(privateKey);
-        await encryptionUtils.storePublicKey(publicKey);
-
-        // Enviar chave pública ao servidor
-        const token = localStorage.getItem('accessToken');
-        const publicKeyExported = await encryptionUtils.exportPublicKey(publicKey);
-
-        await fetch('http://localhost:3002/api/v1/keys/public-key', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ publicKey: publicKeyExported }),
-        });
-
-        console.log('✅ Public key sent to server');
-      }
-
-      privateKeyRef.current = privateKey;
-      publicKeyRef.current = publicKey;
-      setEncryptionEnabled(true);
-      console.log('🔐 Encryption enabled');
-    } catch (error) {
-      console.error('Failed to initialize encryption:', error);
-      setEncryptionEnabled(false);
+    // Se já existe uma inicialização em andamento (React StrictMode monta 2x),
+    // aguardar a mesma Promise em vez de iniciar uma segunda.
+    if (_encryptionInitPromise) {
+      await _encryptionInitPromise;
+      return;
     }
+
+    const doInit = async () => {
+      try {
+        // Tentar recuperar chaves existentes
+        let privateKey = await encryptionUtils.getPrivateKey();
+        let publicKey = await encryptionUtils.getPublicKey();
+
+        // Se não existir, gerar novas chaves
+        if (!privateKey || !publicKey) {
+          console.log('🔑 Generating new encryption keys...');
+          const keyPair = await encryptionUtils.generateKeyPair();
+          privateKey = keyPair.privateKey;
+          publicKey = keyPair.publicKey;
+
+          // Armazenar localmente
+          await encryptionUtils.storePrivateKey(privateKey);
+          await encryptionUtils.storePublicKey(publicKey);
+
+          // Enviar chave pública ao servidor
+          const publicKeyExported = await encryptionUtils.exportPublicKey(publicKey);
+
+          await fetchWithAuth('/keys/public-key', {
+            method: 'POST',
+            body: JSON.stringify({ publicKey: publicKeyExported }),
+          });
+
+          console.log('✅ Public key sent to server');
+        }
+
+        privateKeyRef.current = privateKey;
+        publicKeyRef.current = publicKey;
+        setEncryptionEnabled(true);
+        console.log('🔐 Encryption enabled');
+      } catch (error) {
+        console.error('Failed to initialize encryption:', error);
+        setEncryptionEnabled(false);
+      } finally {
+        _encryptionInitPromise = null;
+      }
+    };
+
+    _encryptionInitPromise = doInit();
+    await _encryptionInitPromise;
   }, []);
 
   // Buscar chave pública do destinatário
   const fetchRecipientPublicKey = useCallback(async (recipientId: string) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/keys/public-key/${recipientId}`,
-        {
-          headers: { 'Authorization': `Bearer ${token}` },
-        }
-      );
+      const response = await fetchWithAuth(`/keys/public-key/${recipientId}`);
 
       if (response.ok) {
         const data = await response.json();
@@ -200,71 +208,87 @@ export function useChat(chatId?: string, options?: UseChatOptions) {
 
   // Conectar ao WebSocket
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    if (!token) return;
+    let newSocket: ReturnType<typeof io> | null = null;
 
-    const newSocket = io(getWsUrl('chat'), {
-      auth: { token },
-      path: '/socket.io/',
-    });
+    const connectSocket = async () => {
+      let ticket: string | null = null;
+      try {
+        const res = await fetchWithAuth('/auth/socket-ticket');
+        if (res.ok) {
+          const data = await res.json();
+          ticket = data.ticket ?? null;
+        }
+      } catch {
+        // sem ticket — ainda tenta conectar (backend aceita cookie como fallback)
+      }
+      if (!ticket) return;
 
-    newSocket.on('connect', () => {
-      console.log('✅ Connected to chat server');
-      setIsConnected(true);
-    });
-
-    newSocket.on('disconnect', () => {
-      console.log('❌ Disconnected from chat server');
-      setIsConnected(false);
-    });
-
-    newSocket.on('error', (error: any) => {
-      console.error('Socket error:', error.message);
-    });
-
-    newSocket.on('message:new', async (message: ChatMessage) => {
-      // Verificar se é própria mensagem para guardar no cache
-      const userStr = localStorage.getItem('user');
-      const currentUser = userStr ? JSON.parse(userStr) : null;
-      const isMine = currentUser && message.senderId === currentUser.id;
-
-      console.log('[Chat] New message received:', {
-        id: message.id.slice(0, 8),
-        isEncrypted: message.isEncrypted,
-        hasIV: !!message.iv,
-        senderId: message.senderId.slice(0, 8),
-        isMine,
+      newSocket = io(getWsUrl('chat'), {
+        path: '/socket.io/',
+        withCredentials: true,
+        auth: { token: ticket },
       });
 
-      // Se é minha mensagem e tenho pendingMessage, guardar no cache
-      if (isMine && pendingMessageRef.current) {
-        console.log('[Chat] Storing own message plaintext:', message.id.slice(0, 8));
-        ownMessagesRef.current.set(message.id, pendingMessageRef.current);
-        pendingMessageRef.current = null; // Limpar após usar
-      }
+      newSocket.on('connect', () => {
+        console.log('✅ Connected to chat server');
+        setIsConnected(true);
+      });
 
-      // Descriptografar mensagem se necessário
-      const decryptedMsg = await decryptMessageContent(message);
-      setMessages((prev) => [...prev, decryptedMsg]);
+      newSocket.on('disconnect', () => {
+        console.log('❌ Disconnected from chat server');
+        setIsConnected(false);
+      });
 
-      // Notificar componente pai sobre nova mensagem (para atualizar badge)
-      if (onNewMessageRef.current) {
-        onNewMessageRef.current(decryptedMsg, !!isMine);
-      }
-    });
+      newSocket.on('error', (error: any) => {
+        console.error('Socket error:', error.message);
+      });
 
-    newSocket.on('user:typing', (data: any) => {
-      setIsTyping(data.isTyping);
-    });
+      newSocket.on('message:new', async (message: ChatMessage) => {
+        // Verificar se é própria mensagem para guardar no cache
+        const userStr = localStorage.getItem('user');
+        const currentUser = userStr ? JSON.parse(userStr) : null;
+        const isMine = currentUser && message.senderId === currentUser.id;
 
-    socketRef.current = newSocket;
-    setSocket(newSocket);
+        console.log('[Chat] New message received:', {
+          id: message.id.slice(0, 8),
+          isEncrypted: message.isEncrypted,
+          hasIV: !!message.iv,
+          senderId: message.senderId.slice(0, 8),
+          isMine,
+        });
 
-    // Inicializar criptografia ao conectar
-    initializeEncryption();
+        // Se é minha mensagem e tenho pendingMessage, guardar no cache
+        if (isMine && pendingMessageRef.current) {
+          console.log('[Chat] Storing own message plaintext:', message.id.slice(0, 8));
+          ownMessagesRef.current.set(message.id, pendingMessageRef.current);
+          pendingMessageRef.current = null; // Limpar após usar
+        }
+
+        // Descriptografar mensagem se necessário
+        const decryptedMsg = await decryptMessageContent(message);
+        setMessages((prev) => [...prev, decryptedMsg]);
+
+        // Notificar componente pai sobre nova mensagem (para atualizar badge)
+        if (onNewMessageRef.current) {
+          onNewMessageRef.current(decryptedMsg, !!isMine);
+        }
+      });
+
+      newSocket.on('user:typing', (data: any) => {
+        setIsTyping(data.isTyping);
+      });
+
+      socketRef.current = newSocket;
+      setSocket(newSocket);
+
+      // Inicializar criptografia ao conectar
+      initializeEncryption();
+    };
+
+    connectSocket();
 
     return () => {
-      newSocket.disconnect();
+      if (newSocket) newSocket.disconnect();
     };
   }, [initializeEncryption]);
 
@@ -292,13 +316,10 @@ export function useChat(chatId?: string, options?: UseChatOptions) {
     if (!chatId) return;
 
     try {
-      const token = localStorage.getItem('accessToken');
       const userStr = localStorage.getItem('user');
       const currentUser = userStr ? JSON.parse(userStr) : null;
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/chat/${chatId}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth(`/chat/${chatId}`);
 
       if (response.ok) {
         const data = await response.json();
@@ -404,11 +425,7 @@ export function useChat(chatId?: string, options?: UseChatOptions) {
     if (!chatId) return;
 
     try {
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/chat/${chatId}/history`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth(`/chat/${chatId}/history`);
 
       if (response.ok) {
         const data = await response.json();

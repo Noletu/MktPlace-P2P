@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/utils/formatters';
 import { useChats } from '@/hooks/useChats';
 import AppHeader from '@/components/AppHeader';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Order {
   id: string;
@@ -47,15 +48,11 @@ export default function MyOrdersPage() {
     if (onlineOrders.length === 0) return;
 
     const interval = setInterval(async () => {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
       // Enviar heartbeat para cada pedido online
       for (const order of onlineOrders) {
         try {
-          await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/presence/orders/${order.id}/heartbeat`, {
+          await fetchWithAuth(`/presence/orders/${order.id}/heartbeat`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
           });
         } catch (err) {
           console.error('Heartbeat failed for order:', order.id);
@@ -68,17 +65,7 @@ export default function MyOrdersPage() {
 
   const fetchOrders = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch('http://localhost:3002/api/v1/orders/my-orders', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/orders/my-orders');
 
       if (!response.ok) {
         throw new Error('Erro ao buscar pedidos');
@@ -95,18 +82,8 @@ export default function MyOrdersPage() {
 
   const handleTogglePresence = async (orderId: string, currentStatus: boolean) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        alert('Você precisa estar logado');
-        return;
-      }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/presence/orders/${orderId}/toggle`, {
+      const response = await fetchWithAuth(`/presence/orders/${orderId}/toggle`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({ online: !currentStatus }),
       });
 

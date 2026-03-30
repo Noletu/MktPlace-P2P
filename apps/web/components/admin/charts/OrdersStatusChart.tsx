@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 import ChartCard from '../shared/ChartCard';
+import { fetchWithAuth } from '@/utils/api';
 
 const COLORS = {
   PENDING: '#3b82f6',
@@ -25,10 +26,7 @@ export default function OrdersStatusChart() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3002/api/v1/admin/orders/stats', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await fetchWithAuth('/admin/orders/stats');
       const result = await res.json();
       if (result.success) {
         setData(result.data.byStatus || []);
@@ -55,7 +53,7 @@ export default function OrdersStatusChart() {
               cx="50%"
               cy="50%"
               labelLine={false}
-              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+              label={({ name, percent }: { name: string; percent: number }) => `${name}: ${(percent * 100).toFixed(0)}%`}
               outerRadius={80}
               fill="#8884d8"
               dataKey="value"

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import UserAvatar from '@/components/admin/shared/UserAvatar';
+import { fetchWithAuth } from '@/utils/api';
 import StatusBadge from '@/components/admin/shared/StatusBadge';
 import FreezeAccountModal from '@/components/admin/modals/FreezeAccountModal';
 import UnfreezeAccountModal from '@/components/admin/modals/UnfreezeAccountModal';
@@ -49,10 +50,7 @@ export default function UsersPage() {
 
   const fetchUsers = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3002/api/v1/admin/users', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await fetchWithAuth('/admin/users');
       const data = await res.json();
       if (data.success) setUsers(data.data);
     } catch (error) {

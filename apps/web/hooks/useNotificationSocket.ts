@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { getWsUrl } from '@/config/api';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Notification {
   id: string;
@@ -36,20 +37,29 @@ export function useNotificationSocket({
   const socketRef = useRef<Socket | null>(null);
   const isConnectedRef = useRef(false);
 
-  const connect = useCallback(() => {
+  const getSocketTicket = useCallback(async (): Promise<string | null> => {
+    try {
+      const res = await fetchWithAuth('/auth/socket-ticket');
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.ticket ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const connect = useCallback(async () => {
     if (socketRef.current?.connected || isConnectedRef.current) {
       return;
     }
 
-    const token = localStorage.getItem('accessToken');
-    if (!token) {
-      console.warn('[WebSocket] No access token, skipping connection');
-      return;
-    }
+    const ticket = await getSocketTicket();
+    if (!ticket) return;
 
     const socket = io(getWsUrl('notifications'), {
       path: '/socket.io/',
-      auth: { token },
+      withCredentials: true,
+      auth: { token: ticket },
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
@@ -102,7 +112,7 @@ export function useNotificationSocket({
     });
 
     socketRef.current = socket;
-  }, [onNewNotification, onNotificationRead, onAllRead, onNotificationDeleted, onCountUpdate]);
+  }, [getSocketTicket, onNewNotification, onNotificationRead, onAllRead, onNotificationDeleted, onCountUpdate]);
 
   const disconnect = useCallback(() => {
     if (socketRef.current) {

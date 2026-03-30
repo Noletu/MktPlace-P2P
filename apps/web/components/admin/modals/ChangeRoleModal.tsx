@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface ChangeRoleModalProps {
   user: {
@@ -73,14 +74,8 @@ export default function ChangeRoleModal({ user, onClose, onSuccess }: ChangeRole
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch(`http://localhost:3002/api/v1/admin/users/${user.id}`, {
+      const response = await fetchWithAuth(`/admin/users/${user.id}`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           role: newRole,
         }),

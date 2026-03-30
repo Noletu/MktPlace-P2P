@@ -6,15 +6,23 @@ export class EncryptionService {
   /**
    * Armazena a chave pública de um usuário
    */
-  async storePublicKey(userId: string, publicKey: string): Promise<void> {
+  async storePublicKey(userId: string, publicKey: string): Promise<{ isNew: boolean }> {
+    const existing = await prisma.userKeys.findUnique({
+      where: { userId },
+      select: { publicKey: true },
+    });
+
+    if (existing?.publicKey === publicKey) {
+      return { isNew: false }; // Chave não mudou, sem necessidade de log
+    }
+
     await prisma.userKeys.upsert({
       where: { userId },
       update: { publicKey },
-      create: {
-        userId,
-        publicKey,
-      },
+      create: { userId, publicKey },
     });
+
+    return { isNew: true };
   }
 
   /**

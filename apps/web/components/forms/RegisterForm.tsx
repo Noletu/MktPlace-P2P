@@ -49,7 +49,7 @@ export default function RegisterForm() {
 
       setEmailChecking(true);
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/auth/check-email?email=${encodeURIComponent(formData.email)}`);
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/auth/check-email?email=${encodeURIComponent(formData.email)}`);
         const data = await response.json();
         setEmailValid(data.available);
       } catch (err) {
@@ -74,7 +74,7 @@ export default function RegisterForm() {
     setLoading(true);
 
     try {
-      const response = await fetch('http://localhost:3002/api/v1/auth/register', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

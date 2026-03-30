@@ -10,6 +10,7 @@ import SecurityBanner from '@/components/dashboard/SecurityBanner';
 import FloatingActionButton from '@/components/dashboard/FloatingActionButton';
 import { FrozenAccountBanner } from '@/components/FrozenAccountBanner';
 import { useChats } from '@/hooks/useChats';
+import { fetchWithAuth } from '@/utils/api';
 
 interface User {
   id: string;
@@ -37,16 +38,7 @@ export default function DashboardPage() {
 
   const fetchUser = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('Token não encontrado');
-      }
-
-      const response = await fetch('http://localhost:3002/api/v1/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/auth/me');
 
       if (!response.ok) {
         throw new Error('Não autorizado');
@@ -190,7 +182,7 @@ export default function DashboardPage() {
       </main>
 
         {/* Floating Action Button */}
-        <FloatingActionButton />
+        <FloatingActionButton accountFrozen={user?.accountFrozen} />
       </div>
     </>
   );

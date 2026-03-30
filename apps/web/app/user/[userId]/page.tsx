@@ -6,6 +6,7 @@ import { ReviewStats } from '@/components/ReviewStats';
 import { Star, ArrowLeft, Shield, Clock, CheckCircle } from 'lucide-react';
 import AppHeader from '@/components/AppHeader';
 import CancellationBadge from '@/components/CancellationBadge';
+import { fetchWithAuth } from '@/utils/api';
 
 interface PublicProfile {
   id: string;
@@ -53,10 +54,7 @@ export default function PublicUserProfilePage() {
 
   const fetchPublicProfile = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/auth/public-profile/${userId}`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-      });
+      const response = await fetchWithAuth(`/auth/public-profile/${userId}`);
 
       if (!response.ok) {
         throw new Error('Usuário não encontrado');
@@ -71,10 +69,7 @@ export default function PublicUserProfilePage() {
 
   const fetchReviewStats = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/reviews/user/${userId}/stats`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-      });
+      const response = await fetchWithAuth(`/reviews/user/${userId}/stats`);
 
       if (response.ok) {
         const data = await response.json();
@@ -87,10 +82,7 @@ export default function PublicUserProfilePage() {
 
   const fetchReviews = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/reviews/user/${userId}`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-      });
+      const response = await fetchWithAuth(`/reviews/user/${userId}`);
 
       if (response.ok) {
         const data = await response.json();

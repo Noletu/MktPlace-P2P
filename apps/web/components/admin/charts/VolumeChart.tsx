@@ -5,6 +5,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import ChartCard from '../shared/ChartCard';
+import { fetchWithAuth } from '@/utils/api';
 
 export default function VolumeChart() {
   const [data, setData] = useState<{ date: string; volume: number }[]>([]);
@@ -16,10 +17,7 @@ export default function VolumeChart() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3002/api/v1/admin/orders/stats', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await fetchWithAuth('/admin/orders/stats');
       const result = await res.json();
       if (result.success) {
         setData(result.data.volumeByDay || []);
@@ -56,7 +54,7 @@ export default function VolumeChart() {
             <YAxis
               stroke="var(--axis-stroke)"
               style={{ fontSize: '12px' }}
-              tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
+              tickFormatter={(value: number) => `R$ ${(value / 1000).toFixed(0)}k`}
             />
             <Tooltip
               contentStyle={{

@@ -219,39 +219,39 @@ export class WalletService {
     orderId: string,
     reason: string = 'Collateral locked for order'
   ) {
-    const wallet = await prisma.userWallet.findUnique({
-      where: {id: walletId},
-    });
+    // Leitura + validação + escrita dentro da mesma transação atômica
+    // Previne race condition onde dois requests simultâneos passam na verificação de saldo
+    const result = await prisma.$transaction(async (tx) => {
+      const wallet = await tx.userWallet.findUnique({
+        where: {id: walletId},
+      });
 
-    if (!wallet) {
-      throw new Error(`Wallet ${walletId} not found`);
-    }
+      if (!wallet) {
+        throw new Error(`Wallet ${walletId} not found`);
+      }
 
-    const availableBN = new BigNumber(wallet.availableBalance);
-    const amountBN = new BigNumber(amount);
+      const availableBN = new BigNumber(wallet.availableBalance);
+      const amountBN = new BigNumber(amount);
 
-    if (availableBN.lt(amountBN)) {
-      throw new Error(
-        `Insufficient balance. Available: ${availableBN.toFixed(8)}, Required: ${amountBN.toFixed(8)}`
-      );
-    }
+      if (availableBN.lt(amountBN)) {
+        throw new Error(
+          `Insufficient balance. Available: ${availableBN.toFixed(8)}, Required: ${amountBN.toFixed(8)}`
+        );
+      }
 
-    // Atualizar saldos
-    const newAvailableBN = availableBN.minus(amountBN);
-    const newLockedBN = new BigNumber(wallet.lockedBalance).plus(amountBN);
+      // Atualizar saldos
+      const newAvailableBN = availableBN.minus(amountBN);
+      const newLockedBN = new BigNumber(wallet.lockedBalance).plus(amountBN);
 
-    await prisma.$transaction([
-      // Atualizar carteira
-      prisma.userWallet.update({
+      await tx.userWallet.update({
         where: {id: walletId},
         data: {
           availableBalance: newAvailableBN.toFixed(8),
           lockedBalance: newLockedBN.toFixed(8),
         },
-      }),
+      });
 
-      // Registrar transação
-      prisma.walletTransaction.create({
+      await tx.walletTransaction.create({
         data: {
           walletId,
           userId: wallet.userId,
@@ -266,17 +266,23 @@ export class WalletService {
             timestamp: new Date().toISOString(),
           }),
         },
-      }),
-    ]);
+      });
+
+      return {
+        cryptoType: wallet.cryptoType,
+        newAvailableBalance: newAvailableBN.toFixed(8),
+        newLockedBalance: newLockedBN.toFixed(8),
+      };
+    });
 
     console.log(
-      `🔒 Locked ${amount} ${wallet.cryptoType} in wallet ${walletId} for order ${orderId}`
+      `🔒 Locked ${amount} ${result.cryptoType} in wallet ${walletId} for order ${orderId}`
     );
 
     return {
       success: true,
-      newAvailableBalance: newAvailableBN.toFixed(8),
-      newLockedBalance: newLockedBN.toFixed(8),
+      newAvailableBalance: result.newAvailableBalance,
+      newLockedBalance: result.newLockedBalance,
     };
   }
 
@@ -877,7 +883,12 @@ export class WalletService {
           select: { id: true, collateralLockedAmount: true, status: true },
         });
 
-        const allLocked = [...lockedOrders, ...lockedBuyOrders];
+        const seenIds = new Set<string>();
+        const allLocked = [...lockedOrders, ...lockedBuyOrders].filter(o => {
+          if (seenIds.has(o.id)) return false;
+          seenIds.add(o.id);
+          return true;
+        });
         let realLockedBN = allLocked.reduce(
           (sum, order) => sum.plus(new BigNumber(order.collateralLockedAmount || '0')),
           new BigNumber(0)

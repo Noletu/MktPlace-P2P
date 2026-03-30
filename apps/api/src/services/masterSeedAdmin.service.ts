@@ -2,8 +2,27 @@ import { PrismaClient } from '@prisma/client';
 import { MasterSeedService } from './hd-wallet/master-seed.service';
 import { DerivationService } from './hd-wallet/derivation.service';
 import * as bip39 from 'bip39';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const prisma = new PrismaClient();
+
+/**
+ * Persiste MASTER_SEED_ENCRYPTED no arquivo .env automaticamente.
+ * Remove a linha anterior (se existir) e adiciona a nova ao final.
+ */
+function persistEncryptedSeedToEnv(encryptedSeed: string): void {
+  const envPath = path.join(process.cwd(), '.env');
+  let content = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+
+  // Remove linha existente se houver
+  content = content.replace(/^MASTER_SEED_ENCRYPTED=.*$/m, '').replace(/\n{2,}/g, '\n').trimEnd();
+
+  // Adiciona ao final
+  content += `\nMASTER_SEED_ENCRYPTED=${encryptedSeed}\n`;
+
+  fs.writeFileSync(envPath, content, 'utf-8');
+}
 
 export class MasterSeedAdminService {
   /**
@@ -68,9 +87,9 @@ export class MasterSeedAdminService {
     // Gera mnemonic BIP39 (24 palavras)
     const { mnemonic, encryptedSeed } = MasterSeedService.generateMasterSeed();
 
-    // CRITICAL: Disponibilizar o seed ANTES de criar platform wallets
-    // Sem isso, getMasterSeed() falha porque MASTER_SEED_ENCRYPTED não existe ainda
+    // CRITICAL: Disponibilizar o seed em memória e persistir no .env automaticamente
     process.env.MASTER_SEED_ENCRYPTED = encryptedSeed;
+    persistEncryptedSeedToEnv(encryptedSeed);
 
     // Criar platform wallets automaticamente
     console.log('[MASTER SEED ADMIN] Creating platform wallets...');
@@ -79,21 +98,7 @@ export class MasterSeedAdminService {
 
     const platformWallets = await platformWalletService.getAllPlatformWallets();
 
-    // Audit log
-    await prisma.auditLog.create({
-      data: {
-        action: 'MASTER_SEED_CREATED',
-        resource: 'MASTER_SEED',
-        description: 'Master seed gerada via admin panel',
-        userId: 'SYSTEM',
-        success: true,
-        metadata: JSON.stringify({
-          method: 'GENERATED',
-          timestamp: new Date().toISOString(),
-          platformWalletsCreated: platformWallets.length,
-        }),
-      },
-    });
+    // Audit log registrado pelo controller com o admin real (não duplicar aqui)
 
     // Retorna mnemonic (ÚNICA VEZ que usuário verá) + platform wallets
     return {
@@ -130,20 +135,11 @@ export class MasterSeedAdminService {
     // Recupera seed criptografado
     const encryptedSeed = MasterSeedService.recoverFromMnemonic(mnemonic);
 
-    // Audit log
-    await prisma.auditLog.create({
-      data: {
-        action: 'MASTER_SEED_RECOVERED',
-        resource: 'MASTER_SEED',
-        description: 'Master seed recuperada de mnemonic',
-        userId: 'ADMIN',
-        success: true,
-        metadata: JSON.stringify({
-          walletsMatched: testResult.matchedWallets,
-          walletsTest: testResult.totalTested,
-        }),
-      },
-    });
+    // Disponibilizar o seed em memória e persistir no .env automaticamente
+    process.env.MASTER_SEED_ENCRYPTED = encryptedSeed;
+    persistEncryptedSeedToEnv(encryptedSeed);
+
+    // Audit log registrado pelo controller com o admin real (não duplicar aqui)
 
     return {
       success: true,
@@ -385,9 +381,9 @@ MASTER_SEED_ENCRYPTION_KEY=${newEncryptionKey}
       // Audit log
       auditLogService.log({
         action: 'MASTER_SEED_KEY_ROTATED',
-        entityType: 'MASTER_SEED',
+        resource: 'MASTER_SEED',
         userId: 'system',
-        details: {
+        metadata: {
           timestamp: new Date().toISOString(),
           backupPath,
         },

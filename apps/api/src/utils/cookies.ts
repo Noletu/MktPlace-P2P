@@ -30,11 +30,28 @@ export const setRefreshTokenCookie = (res: Response, token: string): void => {
 };
 
 /**
+ * Cookie de role acessível pelo JS (não httpOnly) — usado pelo Next.js middleware
+ * para proteção server-side de rotas admin sem expor o token JWT
+ */
+const ROLE_COOKIE_OPTIONS = {
+  httpOnly: false, // Precisa ser lido pelo Next.js middleware via request.cookies
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'strict' as const : 'lax' as const,
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+  path: '/',
+};
+
+export const setUserRoleCookie = (res: Response, role: string): void => {
+  res.cookie('userRole', role, ROLE_COOKIE_OPTIONS);
+};
+
+/**
  * SECURITY: Limpar cookies de autenticação (logout)
  */
 export const clearAuthCookies = (res: Response): void => {
   res.clearCookie('accessToken', { path: '/' });
   res.clearCookie('refreshToken', { path: '/' });
+  res.clearCookie('userRole', { path: '/' });
 };
 
 /**

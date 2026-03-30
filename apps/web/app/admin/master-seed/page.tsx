@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { fetchWithAuth } from '@/utils/api';
 
 interface PlatformWallet {
   cryptoType: string;
@@ -46,12 +47,7 @@ export default function MasterSeedAdminPage() {
 
   const fetchStatus = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/admin/master-seed/status', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/admin/master-seed/status');
 
       const data = await response.json();
       if (data.success) {
@@ -69,14 +65,8 @@ export default function MasterSeedAdminPage() {
     try {
       setError('');
       setSuccess('');
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch('http://localhost:3002/api/v1/admin/master-seed/generate', {
+      const response = await fetchWithAuth('/admin/master-seed/generate', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ twoFactorCode }),
       });
 
@@ -100,14 +90,8 @@ export default function MasterSeedAdminPage() {
     try {
       setError('');
       setSuccess('');
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch('http://localhost:3002/api/v1/admin/master-seed/recover', {
+      const response = await fetchWithAuth('/admin/master-seed/recover', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ mnemonic: mnemonicInput, twoFactorCode }),
       });
 
@@ -132,14 +116,8 @@ export default function MasterSeedAdminPage() {
     try {
       setError('');
       setResetting(true);
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch('http://localhost:3002/api/v1/admin/master-seed/reset', {
+      const response = await fetchWithAuth('/admin/master-seed/reset', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ twoFactorCode }),
       });
 
@@ -190,6 +168,23 @@ export default function MasterSeedAdminPage() {
       {success && (
         <div className="mb-6 p-4 bg-green-500/10 border border-green-500 rounded-lg text-green-400">
           {success}
+        </div>
+      )}
+
+      {/* Encrypted Seed — salvar no .env antes de reiniciar o backend */}
+      {encryptedSeed && (
+        <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500 rounded-lg">
+          <p className="text-yellow-400 font-bold mb-2">⚠️ Salve este valor no .env antes de reiniciar o backend!</p>
+          <p className="text-yellow-300 text-sm mb-3">Adicione a linha abaixo no arquivo <code>apps/api/.env</code>:</p>
+          <div className="bg-gray-900 rounded p-3 mb-3">
+            <code className="text-xs text-gray-300 break-all">MASTER_SEED_ENCRYPTED={encryptedSeed}</code>
+          </div>
+          <button
+            onClick={() => copyToClipboard(`MASTER_SEED_ENCRYPTED=${encryptedSeed}`)}
+            className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-sm transition-colors"
+          >
+            📋 Copiar linha completa para o .env
+          </button>
         </div>
       )}
 
@@ -406,7 +401,7 @@ export default function MasterSeedAdminPage() {
                   </button>
                   <button
                     onClick={handleGenerate}
-                    disabled={twoFactorCode.length !== 6}
+                    disabled={twoFactorCode.length > 0 && twoFactorCode.length !== 6}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Gerar Seed
@@ -581,7 +576,7 @@ export default function MasterSeedAdminPage() {
               </button>
               <button
                 onClick={handleRecover}
-                disabled={!mnemonicInput.trim() || twoFactorCode.length !== 6}
+                disabled={!mnemonicInput.trim() || (twoFactorCode.length > 0 && twoFactorCode.length !== 6)}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Recuperar

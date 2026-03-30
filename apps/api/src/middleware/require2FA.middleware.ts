@@ -29,6 +29,13 @@ export const require2FAMiddleware = async (
       return;
     }
 
+    // DEV BYPASS: SKIP_2FA=true no .env desativa 2FA em ambiente não-produção
+    if (process.env.SKIP_2FA === 'true' && process.env.NODE_ENV !== 'production') {
+      console.warn('[2FA Middleware] ⚠️  SKIP_2FA ativo — bypass de 2FA em DEV');
+      next();
+      return;
+    }
+
     // Verificar se 2FA está habilitado
     const is2FAEnabled = await twoFactorService.isTwoFactorEnabled(userId);
 

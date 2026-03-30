@@ -65,10 +65,16 @@ export function FrozenAccountBanner({ frozenReason, frozenAt, frozenUntil }: Fro
                   💬 Se você acredita que isso é um erro, entre em contato com o suporte.
                 </p>
 
-                <div className="mt-4">
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <a
+                    href="/support/ticket/new?appeal=true"
+                    className="inline-block bg-white text-red-600 px-4 py-2 rounded-md font-medium hover:bg-gray-100 transition-colors"
+                  >
+                    ⚖️ Apelar da Decisão
+                  </a>
                   <a
                     href="/support/ticket/new"
-                    className="inline-block bg-white text-red-600 px-4 py-2 rounded-md font-medium hover:bg-gray-100 transition-colors"
+                    className="inline-block bg-white/20 border border-white text-white px-4 py-2 rounded-md font-medium hover:bg-white/30 transition-colors"
                   >
                     📧 Abrir Ticket de Suporte
                   </a>

@@ -3,6 +3,32 @@ import BigNumber from 'bignumber.js';
 import {BlockchainService} from '../services/blockchain/blockchain.service';
 import {NotificationService} from '../services/notification.service';
 
+/**
+ * SECURITY (H-9): Retry com exponential backoff para chamadas blockchain críticas
+ * Previne perda silenciosa de depósitos por falha temporária de RPC
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  label = 'operation'
+): Promise<T> {
+  let lastError: Error | undefined;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+      if (attempt < maxRetries) {
+        const delayMs = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+        console.warn(`   ⚠️  [Retry ${attempt}/${maxRetries}] ${label} failed: ${lastError.message}. Retrying in ${delayMs}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+  console.error(`   ❌ [Retry] ${label} failed after ${maxRetries} attempts: ${lastError?.message}`);
+  throw lastError;
+}
+
 const prisma = new PrismaClient();
 
 /**
@@ -102,10 +128,11 @@ export class DepositMonitorWorker {
    * Usa crédito ADITIVO — compara on-chain atual vs onChainSnapshot
    */
   private static async checkWalletDeposits(wallet: any): Promise<boolean> {
-    // Consultar saldo on-chain
-    const onChainBalance = await BlockchainService.getBalance(
-      wallet.address,
-      wallet.network
+    // Consultar saldo on-chain (com retry para resiliência a falhas de RPC)
+    const onChainBalance = await retryWithBackoff(
+      () => BlockchainService.getBalance(wallet.address, wallet.network),
+      3,
+      `getBalance(${wallet.cryptoType}/${wallet.network})`
     );
 
     // Comparar com onChainSnapshot (último saldo on-chain conhecido)
@@ -127,11 +154,11 @@ export class DepositMonitorWorker {
       `onChainSnapshot: ${savedOnChainBN.toFixed(8)} → on-chain: ${currentBalanceBN.toFixed(8)} (+${depositAmountBN.toFixed(8)})`
     );
 
-    // Buscar transações desde último bloco verificado
-    const transactions = await BlockchainService.getTransactions(
-      wallet.address,
-      wallet.network,
-      wallet.lastBlockHeight || 0
+    // Buscar transações desde último bloco verificado (com retry)
+    const transactions = await retryWithBackoff(
+      () => BlockchainService.getTransactions(wallet.address, wallet.network, wallet.lastBlockHeight || 0),
+      3,
+      `getTransactions(${wallet.cryptoType}/${wallet.network})`
     );
 
     // Filtrar apenas transações RECEBIDAS e confirmadas
@@ -149,33 +176,55 @@ export class DepositMonitorWorker {
       return false;
     }
 
-    // Crédito ADITIVO: adicionar depósito ao saldo interno (não sobrescrever)
-    const newBalance = new BigNumber(wallet.balance).plus(depositAmountBN).toFixed(8);
-    const newAvailable = new BigNumber(wallet.availableBalance).plus(depositAmountBN).toFixed(8);
-
-    // Coletar WalletTransaction creates para depósitos válidos
-    const walletTxCreates = deposits
-      .filter((d) => new BigNumber(d.value).gt(0))
-      .map((deposit) =>
-        prisma.walletTransaction.create({
-          data: {
-            walletId: wallet.id,
-            userId: wallet.userId,
-            type: 'DEPOSIT',
-            amount: new BigNumber(deposit.value).toFixed(8),
-            balanceBefore: wallet.balance,
-            balanceAfter: new BigNumber(wallet.balance).plus(deposit.value).toFixed(8),
-            txHash: deposit.hash,
-            blockHeight: deposit.blockHeight,
-            confirmations: deposit.confirmations,
-            description: `Depósito recebido na rede ${wallet.network}`,
-            metadata: JSON.stringify({
-              from: deposit.from,
-              timestamp: deposit.timestamp,
-            }),
-          },
+    // SECURITY (H-6): Anti-replay — filtrar txHashes já processados
+    const candidateHashes = deposits.map((d) => d.hash).filter(Boolean);
+    const existingTxs = candidateHashes.length > 0
+      ? await prisma.walletTransaction.findMany({
+          where: { txHash: { in: candidateHashes } },
+          select: { txHash: true },
         })
+      : [];
+    const processedHashes = new Set(existingTxs.map((wt) => wt.txHash));
+    const newDeposits = deposits.filter(
+      (d) => d.hash && !processedHashes.has(d.hash) && new BigNumber(d.value).gt(0)
+    );
+
+    if (newDeposits.length === 0) {
+      console.log(
+        `   ℹ️  Todos os depósitos já foram registrados para ${wallet.id} (anti-replay)`
       );
+      return false;
+    }
+
+    // Crédito ADITIVO: adicionar depósito ao saldo interno (não sobrescrever)
+    const actualDepositBN = newDeposits.reduce(
+      (sum, d) => sum.plus(d.value),
+      new BigNumber(0)
+    );
+    const newBalance = new BigNumber(wallet.balance).plus(actualDepositBN).toFixed(8);
+    const newAvailable = new BigNumber(wallet.availableBalance).plus(actualDepositBN).toFixed(8);
+
+    // Coletar WalletTransaction creates para depósitos novos (não duplicados)
+    const walletTxCreates = newDeposits.map((deposit) =>
+      prisma.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          userId: wallet.userId,
+          type: 'DEPOSIT',
+          amount: new BigNumber(deposit.value).toFixed(8),
+          balanceBefore: wallet.balance,
+          balanceAfter: new BigNumber(wallet.balance).plus(deposit.value).toFixed(8),
+          txHash: deposit.hash,
+          blockHeight: deposit.blockHeight,
+          confirmations: deposit.confirmations,
+          description: `Depósito recebido na rede ${wallet.network}`,
+          metadata: JSON.stringify({
+            from: deposit.from,
+            timestamp: deposit.timestamp,
+          }),
+        },
+      })
+    );
 
     // Balance update + WalletTransactions em uma única transaction atômica
     await prisma.$transaction([
@@ -185,18 +234,18 @@ export class DepositMonitorWorker {
           balance: newBalance,                    // ADITIVO (não sobrescreve)
           availableBalance: newAvailable,         // ADITIVO
           onChainSnapshot: onChainBalance,        // Rastreia on-chain separadamente
-          totalDeposited: new BigNumber(wallet.totalDeposited).plus(depositAmountBN).toFixed(8),
+          totalDeposited: new BigNumber(wallet.totalDeposited).plus(actualDepositBN).toFixed(8),
           lastSyncedAt: new Date(),
-          lastBlockHeight: deposits[0]?.blockHeight || wallet.lastBlockHeight,
+          lastBlockHeight: newDeposits[0]?.blockHeight || wallet.lastBlockHeight,
           sweepStatus: 'PENDING',                 // Marcar para sweep
-          pendingSweepAmount: new BigNumber(wallet.pendingSweepAmount || '0').plus(depositAmountBN).toFixed(8),
+          pendingSweepAmount: new BigNumber(wallet.pendingSweepAmount || '0').plus(actualDepositBN).toFixed(8),
         },
       }),
       ...walletTxCreates,
     ]);
 
     // Notificações FORA da transaction (não-críticas, fire-and-forget)
-    for (const deposit of deposits) {
+    for (const deposit of newDeposits) {
       const amountBN = new BigNumber(deposit.value);
       if (amountBN.lte(0)) continue;
       const amount = amountBN.toFixed(8);

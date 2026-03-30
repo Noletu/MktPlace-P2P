@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DepositWizardModal from '@/components/modals/DepositWizardModal';
 import WithdrawWizardModal from '@/components/modals/WithdrawWizardModal';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Balance {
   cryptoType: string;
@@ -51,10 +52,7 @@ export default function CollateralSummaryWidget() {
 
   const fetchBalances = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/collateral-balance', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth('/collateral-balance');
 
       if (!response.ok) throw new Error('Erro ao buscar saldos');
 
@@ -67,10 +65,7 @@ export default function CollateralSummaryWidget() {
 
   const fetchWallets = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/wallets', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth('/wallets');
       const data = await response.json();
       if (data.success) {
         setWallets(data.data || []);
@@ -82,7 +77,7 @@ export default function CollateralSummaryWidget() {
 
   const fetchPrices = async () => {
     try {
-      const response = await fetch('http://localhost:3002/api/v1/prices');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/prices`);
       if (!response.ok) throw new Error('Erro ao buscar cotações');
 
       const data = await response.json();

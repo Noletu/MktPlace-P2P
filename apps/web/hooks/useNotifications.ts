@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 export interface Notification {
   id: string;
@@ -28,9 +29,6 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
 
   const fetchNotifications = useCallback(async (customOffset?: number) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
       const params = new URLSearchParams();
       params.append('limit', limit.toString());
       params.append('offset', (customOffset ?? offset).toString());
@@ -39,11 +37,7 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
       if (filters?.isRead !== undefined) params.append('isRead', filters.isRead.toString());
       if (filters?.priority) params.append('priority', filters.priority);
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/notifications?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth(`/notifications?${params.toString()}`);
 
       if (response.ok) {
         const data = await response.json();
@@ -60,14 +54,7 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
 
   const fetchUnreadCount = useCallback(async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
-      const response = await fetch('http://localhost:3002/api/v1/notifications/unread-count', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/notifications/unread-count');
 
       if (response.ok) {
         const data = await response.json();
@@ -80,14 +67,8 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
 
   const markAsRead = useCallback(async (notificationId: string) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/notifications/${notificationId}/read`, {
+      const response = await fetchWithAuth(`/notifications/${notificationId}/read`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
       });
 
       if (response.ok) {
@@ -104,14 +85,8 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
 
   const markAllAsRead = useCallback(async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
-      const response = await fetch('http://localhost:3002/api/v1/notifications/mark-all-read', {
+      const response = await fetchWithAuth('/notifications/mark-all-read', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
       });
 
       if (response.ok) {
@@ -126,14 +101,8 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
 
   const deleteNotification = useCallback(async (notificationId: string) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/notifications/${notificationId}`, {
+      const response = await fetchWithAuth(`/notifications/${notificationId}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
       });
 
       if (response.ok) {
@@ -152,14 +121,8 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
 
   const deleteAllRead = useCallback(async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
-      const response = await fetch('http://localhost:3002/api/v1/notifications/delete-all-read', {
+      const response = await fetchWithAuth('/notifications/delete-all-read', {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
       });
 
       if (response.ok) {

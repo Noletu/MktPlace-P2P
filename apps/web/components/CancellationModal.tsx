@@ -7,6 +7,7 @@ import {
   CancellationWarning,
   AntiSpamStats,
 } from '@/types/cancellation';
+import { fetchWithAuth } from '@/utils/api';
 
 interface CancellationModalProps {
   isOpen: boolean;
@@ -52,12 +53,7 @@ export default function CancellationModal({
   const loadCancellationWarning = async () => {
     try {
       setLoadingWarning(true);
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/orders/cancellation/warning', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/orders/cancellation/warning');
 
       if (response.ok) {
         const data = await response.json();
@@ -72,12 +68,7 @@ export default function CancellationModal({
 
   const loadAntiSpamStats = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/orders/anti-spam/stats', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/orders/anti-spam/stats');
 
       if (response.ok) {
         const data = await response.json();

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ReviewStats } from '@/components/ReviewStats';
 import { ReviewResponseForm } from '@/components/ReviewResponseForm';
 import { Star, MessageSquare, ExternalLink, Loader2, ChevronDown, ChevronUp, ArrowLeft } from 'lucide-react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Review {
   id: string;
@@ -30,7 +31,7 @@ interface Review {
 
 export default function ReviewsPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const searchParams = useSearchParams() ?? new URLSearchParams();
   const orderIdFilter = searchParams.get('orderId');
 
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -48,12 +49,6 @@ export default function ReviewsPage() {
 
   const fetchReviews = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
       const userDataStr = localStorage.getItem('user');
       if (!userDataStr) return;
 
@@ -63,12 +58,7 @@ export default function ReviewsPage() {
       const params = new URLSearchParams();
       if (orderIdFilter) params.append('orderId', orderIdFilter);
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/reviews/user/${userId}?${params.toString()}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const response = await fetchWithAuth(`/reviews/user/${userId}?${params.toString()}`);
 
       if (response.ok) {
         const data = await response.json();
@@ -83,18 +73,13 @@ export default function ReviewsPage() {
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
       const userDataStr = localStorage.getItem('user');
       if (!userDataStr) return;
 
       const userData = JSON.parse(userDataStr);
       const userId = userData.id;
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/reviews/user/${userId}/stats`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth(`/reviews/user/${userId}/stats`);
 
       if (response.ok) {
         const data = await response.json();

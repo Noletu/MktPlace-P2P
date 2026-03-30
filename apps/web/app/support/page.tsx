@@ -12,6 +12,7 @@ import {
   PRIORITY_LABELS,
   PRIORITY_COLORS,
 } from '../../types/support';
+import { fetchWithAuth } from '@/utils/api';
 
 export default function SupportPage() {
   const router = useRouter();
@@ -32,13 +33,7 @@ export default function SupportPage() {
   const fetchTickets = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch('http://localhost:3002/api/v1/support/my-tickets', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/support/my-tickets');
 
       const data = await response.json();
 

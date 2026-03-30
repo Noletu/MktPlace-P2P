@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { fetchWithAuth } from '@/utils/api';
 
 interface AdminProfile {
   id: string;
@@ -20,12 +21,7 @@ export default function AdminProfilePage() {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        const res = await fetch('http://localhost:3002/api/v1/auth/me', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
+        const res = await fetchWithAuth('/auth/me');
 
         if (!res.ok) {
           throw new Error('Erro ao buscar perfil');

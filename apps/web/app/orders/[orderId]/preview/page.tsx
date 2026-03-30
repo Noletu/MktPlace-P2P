@@ -10,6 +10,7 @@ import CryptoIcon from '@/components/ui/CryptoIcon';
 import { CryptoType } from '@mktplace/shared';
 import { Star, ExternalLink, AlertTriangle } from 'lucide-react';
 import CancellationBadge from '@/components/CancellationBadge';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Order {
   id: string;
@@ -42,7 +43,7 @@ interface Order {
 
 export default function OrderPreviewPage() {
   const router = useRouter();
-  const params = useParams();
+  const params = useParams() ?? {};
   const orderId = params.orderId as string;
 
   const [order, setOrder] = useState<Order | null>(null);
@@ -78,12 +79,7 @@ export default function OrderPreviewPage() {
 
   const fetchCurrentUser = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
-      const response = await fetch('http://localhost:3002/api/v1/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth('/auth/me');
 
       if (response.ok) {
         const data = await response.json();
@@ -96,15 +92,7 @@ export default function OrderPreviewPage() {
 
   const fetchOrder = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/orders/${orderId}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth(`/orders/${orderId}`);
 
       if (!response.ok) {
         throw new Error('Erro ao buscar pedido');
@@ -128,14 +116,8 @@ export default function OrderPreviewPage() {
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('Você precisa estar logado');
-      }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/orders/${orderId}/match`, {
+      const response = await fetchWithAuth(`/orders/${orderId}/match`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
       });
 
       const data = await response.json();
@@ -169,17 +151,8 @@ export default function OrderPreviewPage() {
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('Você precisa estar logado');
-      }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/orders/${orderId}/accept-buy`, {
+      const response = await fetchWithAuth(`/orders/${orderId}/accept-buy`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           pixKey: providerPixKey,
           pixKeyType: providerPixKeyType,
@@ -209,11 +182,7 @@ export default function OrderPreviewPage() {
 
     setLoadingProviderBalance(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral-balance/${order.cryptoType}/${order.cryptoNetwork}`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
-      );
+      const response = await fetchWithAuth(`/collateral-balance/${order.cryptoType}/${order.cryptoNetwork}`);
 
       const data = await response.json();
       if (data.success && data.data.balance) {
@@ -239,21 +208,13 @@ export default function OrderPreviewPage() {
   const initializeProviderWallet = async () => {
     if (!order) return;
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral-balance/deposit`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            cryptoType: order.cryptoType,
-            network: order.cryptoNetwork,
-          }),
-        }
-      );
+      const response = await fetchWithAuth('/collateral-balance/deposit', {
+        method: 'POST',
+        body: JSON.stringify({
+          cryptoType: order.cryptoType,
+          network: order.cryptoNetwork,
+        }),
+      });
       const data = await response.json();
       if (data.success) {
         setProviderBalance(prev => ({
@@ -272,20 +233,12 @@ export default function OrderPreviewPage() {
 
     setSimulatingDeposit(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/collateral-balance/simulate-deposit/${providerBalance.id}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            amount: collateralAmount,
-          }),
-        }
-      );
+      const response = await fetchWithAuth(`/collateral-balance/simulate-deposit/${providerBalance.id}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: collateralAmount,
+        }),
+      });
 
       const data = await response.json();
       if (data.success) {

@@ -6,9 +6,10 @@ import { Dispute, DisputeMessage, STATUS_LABELS, CATEGORY_LABELS, DisputeStatus 
 import DisputeMessageThread from '@/components/DisputeMessageThread';
 import EvidenceGallery from '@/components/admin/EvidenceGallery';
 import AppHeader from '@/components/AppHeader';
+import { fetchWithAuth } from '@/utils/api';
 
 export default function DisputeDetailPage() {
-  const params = useParams();
+  const params = useParams() ?? {};
   const router = useRouter();
   const disputeId = params.disputeId as string;
 
@@ -28,17 +29,7 @@ export default function DisputeDetailPage() {
 
   const fetchDispute = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/disputes/${disputeId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const res = await fetchWithAuth(`/disputes/${disputeId}`);
       const data = await res.json();
       if (data.success) {
         setDispute(data.data);
@@ -55,14 +46,7 @@ export default function DisputeDetailPage() {
 
   const fetchCurrentUser = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
-      const res = await fetch('http://localhost:3002/api/v1/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const res = await fetchWithAuth('/auth/me');
       const data = await res.json();
       if (data.success) {
         setCurrentUserId(data.data.id);
@@ -75,13 +59,6 @@ export default function DisputeDetailPage() {
 
   const handleSendMessage = async (message: string, attachments?: File[], visibleTo?: string) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        alert('Voce precisa estar logado');
-        router.push('/login');
-        return;
-      }
-
       const body: any = { message };
       if (visibleTo) {
         body.visibleTo = visibleTo;
@@ -100,12 +77,8 @@ export default function DisputeDetailPage() {
         body.attachments = await Promise.all(base64Promises);
       }
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/disputes/${disputeId}/messages`, {
+      const res = await fetchWithAuth(`/disputes/${disputeId}/messages`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify(body),
       });
       const data = await res.json();
@@ -133,13 +106,8 @@ export default function DisputeDetailPage() {
     setResolving(true);
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/disputes/${disputeId}/resolve`, {
+      const res = await fetchWithAuth(`/disputes/${disputeId}/resolve`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           resolution: resolutionText,
           resolutionType: resolutionType,

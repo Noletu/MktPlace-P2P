@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from './auditLog.service';
 import { notificationService } from './notification.service';
 import { emailService } from './email.service';
+import { clearUserPermissionCache } from '../middleware/permission.middleware';
+import { WalletService } from './wallet.service';
 
 const prisma = new PrismaClient();
 
@@ -321,6 +323,7 @@ export class AdminService {
         frozenAt: true,
         frozenUntil: true,
         customDailyLimit: true,
+        customDailyLimitStr: true,
         twoFactorEnabled: true,
         // RBAC: Incluir role relation
         role: {
@@ -335,18 +338,19 @@ export class AdminService {
     // RBAC: Mapear para retornar role como string (compatibilidade frontend)
     return users.map(user => {
       const userRole = user.role?.slug?.toUpperCase() || user.legacyRole;
-      const { role: roleObject, legacyRole, customDailyLimit, ...rest } = user;
+      const { role: roleObject, legacyRole, customDailyLimit, customDailyLimitStr, ...rest } = user;
 
-      // Calcular limite real (custom ou formula)
+      // Calcular limite real: preferir String (preciso) sobre Float (deprecado)
       const formulaLimit = 1000 + (user.reputationScore * 100);
-      const dailyLimit = customDailyLimit !== null && customDailyLimit !== undefined
-        ? customDailyLimit
-        : formulaLimit;
+      const effectiveCustom = customDailyLimitStr != null
+        ? parseFloat(customDailyLimitStr)
+        : customDailyLimit ?? null;
+      const dailyLimit = effectiveCustom !== null ? effectiveCustom : formulaLimit;
 
       return {
         ...rest,
         role: userRole,
-        customDailyLimit: customDailyLimit ?? undefined,
+        customDailyLimit: effectiveCustom ?? undefined,
         dailyLimit,
       };
     });
@@ -444,6 +448,9 @@ export class AdminService {
         },
       });
 
+      // Invalidar cache de permissões imediatamente para que o novo role seja aplicado
+      clearUserPermissionCache(userId);
+
       // Registrar ação admin com detalhes da hierarquia (legacy system - manter para backward compatibility)
       await this.logAdminAction({
         adminId,
@@ -520,21 +527,25 @@ export class AdminService {
   ) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { customDailyLimit: true, reputationScore: true },
+      select: { customDailyLimit: true, customDailyLimitStr: true, reputationScore: true },
     });
 
     if (!user) {
       throw new Error('Usuário não encontrado');
     }
 
-    const previousLimit = user.customDailyLimit !== null
-      ? user.customDailyLimit
+    const effectivePrevious = user.customDailyLimitStr != null
+      ? parseFloat(user.customDailyLimitStr)
+      : user.customDailyLimit ?? null;
+    const previousLimit = effectivePrevious !== null
+      ? effectivePrevious
       : 1000 + (user.reputationScore * 100);
 
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: {
-        customDailyLimit: data.customDailyLimit,
+        customDailyLimit: data.customDailyLimit, // DEPRECATED: manter até remoção da coluna Float
+        customDailyLimitStr: data.customDailyLimit !== null ? String(data.customDailyLimit) : null,
         customLimitSetBy: data.customDailyLimit !== null ? data.adminId : null,
         customLimitSetAt: data.customDailyLimit !== null ? new Date() : null,
         customLimitNote: data.customDailyLimit !== null ? data.note : null,
@@ -568,29 +579,40 @@ export class AdminService {
     status?: string;
     type?: string;
     userId?: string;
+    page?: number;
+    limit?: number;
   }) {
-    const orders = await prisma.order.findMany({
-      where: {
-        status: filters?.status,
-        type: filters?.type,
-        userId: filters?.userId,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-          },
-        },
-        transactions: true,
-      },
-    });
+    const page = Math.max(1, filters?.page ?? 1);
+    const limit = Math.min(100, Math.max(1, filters?.limit ?? 50));
+    const skip = (page - 1) * limit;
 
-    return orders;
+    const [orders, total] = await prisma.$transaction([
+      prisma.order.findMany({
+        where: {
+          status: filters?.status,
+          type: filters?.type,
+          userId: filters?.userId,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip,
+        include: {
+          user: {
+            select: { id: true, email: true, name: true },
+          },
+          transactions: true,
+        },
+      }),
+      prisma.order.count({
+        where: {
+          status: filters?.status,
+          type: filters?.type,
+          userId: filters?.userId,
+        },
+      }),
+    ]);
+
+    return { orders, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
   async cancelOrder(orderId: string, adminId: string, reason: string) {
@@ -643,18 +665,21 @@ export class AdminService {
       );
     }
 
-    // 4. Desbloquear colateral se existir (HD Wallet)
-    if (order.walletId && order.collateralLocked) {
+    // 4. Desbloquear colateral se existir
+    // BUY orders: colateral em providerWalletId; SELL orders: colateral em walletId
+    const collateralWalletId = order.providerWalletId || order.walletId;
+    if (collateralWalletId && order.collateralLocked && order.collateralLockedAmount) {
       try {
-        const { HDWalletService } = await import('./hdWallet.service');
-        const hdWalletService = new HDWalletService();
-        await hdWalletService.unlockCollateral(order.walletId, orderId);
-
+        await WalletService.unlockBalance(
+          collateralWalletId,
+          order.collateralLockedAmount,
+          orderId,
+          `Colateral desbloqueado - pedido cancelado pelo admin`
+        );
         console.log(`[ADMIN CANCEL] Colateral desbloqueado para order ${orderId}`);
       } catch (error) {
         console.error('[ADMIN CANCEL] Erro ao desbloquear colateral:', error);
         // Não falhar o cancelamento por erro de desbloqueio
-        // Mas registrar no log de auditoria
       }
     }
 
@@ -666,6 +691,8 @@ export class AdminService {
         cancelledBy: adminId,
         cancellationReason: `[ADMIN] ${reason}`,
         cancelledAt: new Date(),
+        collateralLocked: false,
+        collateralUnlockedAt: new Date(),
       },
     });
 
@@ -1215,11 +1242,16 @@ export class AdminService {
         reputationScore: user.reputationScore,
         totalTransactions: user.totalTransactions,
         successfulTransactions: user.successfulTransactions,
-        dailyLimit: (user.customDailyLimit !== null && user.customDailyLimit !== undefined)
-          ? user.customDailyLimit
-          : 1000 + (user.reputationScore * 100),
+        dailyLimit: (() => {
+          const effective = user.customDailyLimitStr != null
+            ? parseFloat(user.customDailyLimitStr)
+            : user.customDailyLimit ?? null;
+          return effective !== null ? effective : 1000 + (user.reputationScore * 100);
+        })(),
         formulaLimit: 1000 + (user.reputationScore * 100),
-        customDailyLimit: user.customDailyLimit ?? undefined,
+        customDailyLimit: user.customDailyLimitStr != null
+          ? parseFloat(user.customDailyLimitStr)
+          : user.customDailyLimit ?? undefined,
         customLimitNote: user.customLimitNote ?? undefined,
         customLimitSetAt: user.customLimitSetAt ?? undefined,
         twoFactorEnabled: user.twoFactorEnabled,

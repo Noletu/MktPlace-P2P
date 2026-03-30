@@ -58,7 +58,7 @@ export interface CryptoData {
  * Fetch cryptocurrency prices via backend API (avoids CORS issues with CoinGecko)
  */
 export async function fetchCryptoPrices(): Promise<CryptoPrices> {
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1';
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
   try {
     const response = await fetch(`${API_URL}/prices`, {

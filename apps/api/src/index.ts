@@ -49,6 +49,24 @@ import { initializeNotificationSocket } from './socket/notification.socket';
 import { MasterSeedService } from './services/hd-wallet/master-seed.service';
 import { KeyManagementService } from './services/hd-wallet/key-management.service';
 import { startAutoUnfreezeJob } from './jobs/autoUnfreeze.job';
+import { PrismaClient as PrismaForCleanup } from '@prisma/client';
+
+// SECURITY (H-2): Limpeza diária de tokens revogados expirados
+async function cleanupExpiredRevokedTokens() {
+  const prismaCleanup = new PrismaForCleanup();
+  try {
+    const result = await prismaCleanup.revokedToken.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
+    });
+    if (result.count > 0) {
+      logger.info(`[SECURITY] Cleaned up ${result.count} expired revoked tokens`);
+    }
+  } catch (err) {
+    logger.error('[SECURITY] Failed to cleanup revoked tokens:', err);
+  } finally {
+    await prismaCleanup.$disconnect();
+  }
+}
 
 dotenv.config();
 
@@ -112,7 +130,7 @@ app.use(helmet({
 
 // SECURITY: CORS whitelist estrita
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
   : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000'];
 
 app.use(cors({
@@ -342,6 +360,10 @@ httpServer.listen(port, async () => {
 
   // Iniciar job de auto-desbloqueio de contas (freeze temporário)
   startAutoUnfreezeJob();
+
+  // SECURITY (H-2): Limpeza diária de tokens revogados expirados
+  cleanupExpiredRevokedTokens(); // Rodar uma vez ao iniciar
+  setInterval(cleanupExpiredRevokedTokens, 24 * 60 * 60 * 1000); // Depois a cada 24h
 
   console.log('⚙️  [workers]: Background workers started (HD wallet monitoring, order expiration, presence, chat archive, auto-unfreeze, withdrawal processor, sweep)');
 });

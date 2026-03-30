@@ -31,6 +31,10 @@ export class TransactionService {
       throw new Error('Esta transação não está aguardando comprovante');
     }
 
+    // Prazo de 24h para admin validar o comprovante
+    const validationDeadline = new Date();
+    validationDeadline.setHours(validationDeadline.getHours() + 24);
+
     // Atualizar transação + pedido atomicamente
     const [updatedTransaction] = await prisma.$transaction([
       prisma.transaction.update({
@@ -39,6 +43,7 @@ export class TransactionService {
           comprovanteData: input.comprovanteData,
           comprovanteUrl: input.comprovanteUrl,
           status: TransactionStatus.VALIDATING,
+          validationDeadline,
         },
       }),
       prisma.order.update({
@@ -82,23 +87,12 @@ export class TransactionService {
     }
 
     if (input.approved) {
-      // IDEMPOTÊNCIA: Verificar se já foi processado
-      const orderCheck = await prisma.order.findUnique({
-        where: { id: transaction.orderId },
-        select: { status: true, collateralLocked: true },
-      });
-
-      if (orderCheck?.status === OrderStatus.COMPLETED && !orderCheck.collateralLocked) {
-        console.log(`⚠️ Pedido ${transaction.orderId} já foi completado anteriormente (idempotência)`);
-        // Retornar transação existente sem reprocessar
-        return transaction;
-      }
-
       // TRANSAÇÃO ATÔMICA: Incluir TODAS as operações críticas
       const updatedTransaction = await prisma.$transaction(async (tx) => {
-        // 1. Aprovar transação
-        const approved = await tx.transaction.update({
-          where: { id: input.transactionId },
+        // SECURITY (H-7): Idempotência atômica — usar UPDATE WHERE status='VALIDATING'
+        // Garante que apenas UM validador pode processar, mesmo com requests simultâneos
+        const claimResult = await tx.transaction.updateMany({
+          where: { id: input.transactionId, status: TransactionStatus.VALIDATING },
           data: {
             status: TransactionStatus.APPROVED,
             validationScore: input.validationScore || 100,
@@ -106,6 +100,19 @@ export class TransactionService {
             validatedAt: new Date(),
           },
         });
+
+        if (claimResult.count === 0) {
+          // Já foi processado por outro validador simultâneo — retornar sem reprocessar
+          const existing = await tx.transaction.findUnique({ where: { id: input.transactionId } });
+          console.log(`⚠️ Transação ${input.transactionId} já foi processada (idempotência atômica)`);
+          return existing!;
+        }
+
+        // Buscar transação atualizada para usar nas etapas seguintes
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        const approved = (await tx.transaction.findUnique({
+          where: { id: input.transactionId },
+        }))!;
 
         // 2. Atualizar status do pedido e transferir cripto
         // NOTA: Para BUY orders, o buyer e order.userId (nao transaction.payerId)
@@ -472,6 +479,7 @@ export class TransactionService {
               cryptoNetwork: true,
               cryptoAmount: true,
               payerReward: true,
+              user: { select: { email: true, legacyRole: true, name: true } },
             },
           });
 
@@ -480,6 +488,20 @@ export class TransactionService {
             const isBuyOrderLog = completedOrder.orderType === OrderType.BUY;
             const logBuyerId = isBuyOrderLog ? completedOrder.userId : transaction.payerId;
             const logSellerId = isBuyOrderLog ? completedOrder.providerId : completedOrder.userId;
+
+            // Buscar email/role/name do segundo participante (provider para BUY, payer para SELL)
+            const secondUserId = isBuyOrderLog ? completedOrder.providerId : transaction.payerId;
+            const secondUser = secondUserId
+              ? await prisma.user.findUnique({ where: { id: secondUserId }, select: { email: true, legacyRole: true, name: true } })
+              : null;
+
+            // Para BUY: buyer=user(creator), seller=provider; Para SELL: buyer=payer, seller=user(creator)
+            const buyerEmail = isBuyOrderLog ? (completedOrder.user?.email ?? '') : (secondUser?.email ?? '');
+            const buyerRole = isBuyOrderLog ? (completedOrder.user?.legacyRole ?? '') : (secondUser?.legacyRole ?? '');
+            const buyerName = isBuyOrderLog ? (completedOrder.user?.name ?? '') : (secondUser?.name ?? '');
+            const sellerEmail = isBuyOrderLog ? (secondUser?.email ?? '') : (completedOrder.user?.email ?? '');
+            const sellerRole = isBuyOrderLog ? (secondUser?.legacyRole ?? '') : (completedOrder.user?.legacyRole ?? '');
+            const sellerName = isBuyOrderLog ? (secondUser?.name ?? '') : (completedOrder.user?.name ?? '');
 
             const cryptoAmountLog = new BigNumber(completedOrder.cryptoAmount);
             const payerRewardLog = isBuyOrderLog
@@ -490,6 +512,9 @@ export class TransactionService {
             // 1. ORDER_COMPLETED - Comprador
             await auditLogService.log({
               userId: logBuyerId,
+              email: buyerEmail,
+              role: buyerRole,
+              name: buyerName,
               action: AUDIT_ACTIONS.ORDER_COMPLETED,
               resource: AUDIT_RESOURCES.TRANSACTION,
               resourceId: completedOrder.id,
@@ -508,6 +533,9 @@ export class TransactionService {
             if (logSellerId) {
               await auditLogService.log({
                 userId: logSellerId,
+                email: sellerEmail,
+                role: sellerRole,
+                name: sellerName,
                 action: AUDIT_ACTIONS.ORDER_COMPLETED,
                 resource: AUDIT_RESOURCES.TRANSACTION,
                 resourceId: completedOrder.id,
@@ -526,6 +554,9 @@ export class TransactionService {
             // 3. CRYPTO_TRANSFER - Comprador (visibilidade)
             await auditLogService.log({
               userId: logBuyerId,
+              email: buyerEmail,
+              role: buyerRole,
+              name: buyerName,
               action: AUDIT_ACTIONS.CRYPTO_TRANSFER,
               resource: AUDIT_RESOURCES.TRANSACTION,
               resourceId: completedOrder.id,
@@ -547,6 +578,9 @@ export class TransactionService {
             if (logSellerId) {
               await auditLogService.log({
                 userId: logSellerId,
+                email: sellerEmail,
+                role: sellerRole,
+                name: sellerName,
                 action: AUDIT_ACTIONS.CRYPTO_TRANSFER,
                 resource: AUDIT_RESOURCES.TRANSACTION,
                 resourceId: completedOrder.id,

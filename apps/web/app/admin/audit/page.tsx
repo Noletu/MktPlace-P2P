@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import StatusBadge from '@/components/admin/shared/StatusBadge';
+import { fetchWithAuth } from '@/utils/api';
 
 interface AuditLog {
   id: string;
   userId?: string;
   email?: string;
   role?: string;
+  name?: string;
   action: string;
   resource: string;
   resourceId?: string;
@@ -23,17 +25,26 @@ export default function AuditLogPage() {
   const [filterAction, setFilterAction] = useState('ALL');
   const [filterSuccess, setFilterSuccess] = useState('ALL');
   const [isExporting, setIsExporting] = useState(false);
+  const [availableActions, setAvailableActions] = useState<string[]>([]);
 
   useEffect(() => {
     fetchLogs();
+    fetchActions();
   }, []);
+
+  const fetchActions = async () => {
+    try {
+      const res = await fetchWithAuth('/admin/audit-logs/actions');
+      const data = await res.json();
+      if (data.success) setAvailableActions(data.data);
+    } catch (error) {
+      console.error('Erro ao buscar ações:', error);
+    }
+  };
 
   const fetchLogs = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3002/api/v1/admin/audit-logs?limit=100', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await fetchWithAuth('/admin/audit-logs?limit=100');
       const data = await res.json();
       if (data.success) setLogs(data.data.logs || []);
     } catch (error) {
@@ -53,12 +64,6 @@ export default function AuditLogPage() {
   const handleExportCSV = async () => {
     setIsExporting(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        alert('Sessão expirada. Faça login novamente.');
-        return;
-      }
-
       // Construir URL com filtros atuais
       const params = new URLSearchParams();
 
@@ -71,15 +76,7 @@ export default function AuditLogPage() {
         params.append('success', filterSuccess);
       }
 
-      // Fazer requisição
-      const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1'}/admin/audit-logs/export?${params.toString()}`;
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth(`/admin/audit-logs/export?${params.toString()}`);
 
       if (!response.ok) {
         throw new Error('Falha ao exportar logs');
@@ -181,11 +178,9 @@ export default function AuditLogPage() {
               className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-600 text-gray-900 dark:text-white rounded-lg"
             >
               <option value="ALL">Todas</option>
-              <option value="LOGIN">Login</option>
-              <option value="LOGOUT">Logout</option>
-              <option value="CREATE_ORDER">Criar Pedido</option>
-              <option value="FREEZE_ACCOUNT">Bloquear Conta</option>
-              <option value="UNFREEZE_ACCOUNT">Desbloquear Conta</option>
+              {availableActions.map(action => (
+                <option key={action} value={action}>{action}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -227,7 +222,10 @@ export default function AuditLogPage() {
                   </td>
                   <td className="px-6 py-4">
                     <div>
-                      <p className="text-sm text-gray-900 dark:text-white">{log.email || 'Sistema'}</p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{log.name || log.email || 'Sistema'}</p>
+                      {log.name && log.email && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{log.email}</p>
+                      )}
                       {log.role && (
                         <StatusBadge
                           status={log.role}

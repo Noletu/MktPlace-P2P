@@ -5,7 +5,7 @@ import { prisma } from '../utils/prisma';
 
 const SubmitProofSchema = z.object({
   transactionId: z.string(),
-  comprovanteData: z.string().min(10, 'Comprovante é obrigatório'),
+  comprovanteData: z.string().min(10, 'Comprovante é obrigatório').max(5_000_000, 'Comprovante muito grande (máximo 5MB)'),
   comprovanteUrl: z.string().optional(),
 });
 

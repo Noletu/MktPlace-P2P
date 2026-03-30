@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { getApiUrl } from '@/config/api';
 
 export default function ResetPasswordForm() {
-  const searchParams = useSearchParams();
+  const searchParams = useSearchParams() ?? new URLSearchParams();
   const router = useRouter();
 
   const token = searchParams.get('token');

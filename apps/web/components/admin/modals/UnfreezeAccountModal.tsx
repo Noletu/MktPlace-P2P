@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface UnfreezeAccountModalProps {
   user: {
@@ -23,15 +24,10 @@ export default function UnfreezeAccountModal({ user, onClose, onSuccess }: Unfre
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
       const adminUserId = localStorage.getItem('userId');
 
-      const response = await fetch('http://localhost:3002/api/v1/admin/funds/unfreeze', {
+      const response = await fetchWithAuth('/admin/funds/unfreeze', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           userId: user.id,
           adminUserId,

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Dispute, DisputeStatus, STATUS_LABELS, CATEGORY_LABELS } from '@/types/dispute';
+import { fetchWithAuth } from '@/utils/api';
 
 interface DisputeStats {
   total: number;
@@ -28,17 +29,7 @@ export default function AdminDisputesPage() {
 
   const fetchDisputes = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const res = await fetch('http://localhost:3002/api/v1/disputes', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const res = await fetchWithAuth('/disputes');
       const data = await res.json();
       if (data.success) {
         // O backend retorna data: {disputes: [], total: number, limit: number, offset: number}
@@ -59,14 +50,7 @@ export default function AdminDisputesPage() {
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
-      const res = await fetch('http://localhost:3002/api/v1/disputes/stats', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const res = await fetchWithAuth('/disputes/stats');
       const data = await res.json();
       if (data.success) {
         setStats(data.data);

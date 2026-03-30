@@ -339,9 +339,16 @@ export class AdminFundsService {
     });
 
     // Registrar no audit log
+    const adminUser = await prisma.user.findUnique({
+      where: { id: adminUserId },
+      select: { email: true, legacyRole: true, name: true },
+    });
     await prisma.auditLog.create({
       data: {
         userId: adminUserId,
+        email: adminUser?.email ?? '',
+        role: adminUser?.legacyRole ?? '',
+        name: adminUser?.name ?? '',
         action: 'FREEZE_ACCOUNT',
         resource: 'USER',
         resourceId: userId,
@@ -371,7 +378,7 @@ export class AdminFundsService {
         title: freezeType === 'TEMPORARY' ? '⚠️ Conta Suspensa Temporariamente' : '🚫 Conta Suspensa',
         message: notificationMessage,
         priority: 'HIGH',
-        actionUrl: '/disputes/create?category=ACCOUNT_BLOCK_APPEAL',
+        actionUrl: '/support/ticket/new?appeal=true',
         actionLabel: 'Apelar da Decisão',
       });
       console.log(`✅ [Freeze] Notificação criada para usuário ${userId}`);
@@ -425,9 +432,16 @@ export class AdminFundsService {
       },
     });
 
+    const unfreezeAdminUser = await prisma.user.findUnique({
+      where: { id: adminUserId },
+      select: { email: true, legacyRole: true, name: true },
+    });
     await prisma.auditLog.create({
       data: {
         userId: adminUserId,
+        email: unfreezeAdminUser?.email ?? '',
+        role: unfreezeAdminUser?.legacyRole ?? '',
+        name: unfreezeAdminUser?.name ?? '',
         action: 'UNFREEZE_ACCOUNT',
         resource: 'USER',
         resourceId: userId,

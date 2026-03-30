@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 // Enum de categorias (deve espelhar o backend)
 export enum LockCategory {
@@ -114,26 +115,18 @@ export default function ManageLockModal({
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
       const endpoint = isLock ? 'lock-balance' : 'unlock-balance';
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api/v1'}/admin/funds/${endpoint}`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            // 'X-2FA-Code': twoFactorCode, // Desabilitado temporariamente
-          },
-          body: JSON.stringify({
-            walletId: wallet.walletId,
-            amount,
-            category,
-            reason: reason.trim(),
-          }),
-        }
-      );
+      const response = await fetchWithAuth(`/admin/funds/${endpoint}`, {
+        method: 'POST',
+        // 'X-2FA-Code': twoFactorCode, // Desabilitado temporariamente
+        body: JSON.stringify({
+          walletId: wallet.walletId,
+          amount,
+          category,
+          reason: reason.trim(),
+        }),
+      });
 
       const data = await response.json();
 

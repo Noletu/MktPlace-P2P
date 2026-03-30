@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import ChatMessage from './ChatMessage';
+import { fetchWithAuth } from '@/utils/api';
 
 interface ArchiveInfo {
   isArchived: boolean;
@@ -25,10 +26,7 @@ export default function ChatHistoryViewer({ chatId }: ChatHistoryViewerProps) {
   useEffect(() => {
     const fetchArchiveStatus = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/chat/${chatId}/archive-status`, {
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
+        const response = await fetchWithAuth(`/chat/${chatId}/archive-status`);
 
         if (response.ok) {
           const data = await response.json();

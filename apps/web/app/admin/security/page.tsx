@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { fetchWithAuth } from '@/utils/api';
 
 interface TwoFactorStatus {
   enabled: boolean;
@@ -30,12 +31,7 @@ export default function AdminSecurityPage() {
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/2fa/status', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/2fa/status');
 
       if (!response.ok) {
         throw new Error('Erro ao carregar status do 2FA');
@@ -56,13 +52,8 @@ export default function AdminSecurityPage() {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/2fa/generate', {
+      const response = await fetchWithAuth('/2fa/generate', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
       });
 
       if (!response.ok) {
@@ -86,13 +77,8 @@ export default function AdminSecurityPage() {
     setLoading(true);
 
     try {
-      const accessToken = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/2fa/enable', {
+      const response = await fetchWithAuth('/2fa/enable', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ token }),
       });
 
@@ -125,13 +111,8 @@ export default function AdminSecurityPage() {
     setLoading(true);
 
     try {
-      const accessToken = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/2fa/disable', {
+      const response = await fetchWithAuth('/2fa/disable', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ token: code }),
       });
 
@@ -157,13 +138,8 @@ export default function AdminSecurityPage() {
     setLoading(true);
 
     try {
-      const accessToken = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/2fa/regenerate-backup-codes', {
+      const response = await fetchWithAuth('/2fa/regenerate-backup-codes', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ token: code }),
       });
 

@@ -13,10 +13,11 @@ import {
   PRIORITY_COLORS,
   TicketStatus,
 } from '../../../../types/support';
+import { fetchWithAuth } from '@/utils/api';
 
 export default function TicketDetailPage() {
   const router = useRouter();
-  const params = useParams();
+  const params = useParams() ?? {};
   const ticketId = params.id as string;
 
   const [ticket, setTicket] = useState<SupportTicket | null>(null);
@@ -34,13 +35,7 @@ export default function TicketDetailPage() {
   const fetchTicket = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch(`http://localhost:3002/api/v1/support/${ticketId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth(`/support/${ticketId}`);
 
       const data = await response.json();
 
@@ -66,14 +61,8 @@ export default function TicketDetailPage() {
 
     try {
       setSending(true);
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch(`http://localhost:3002/api/v1/support/${ticketId}/messages`, {
+      const response = await fetchWithAuth(`/support/${ticketId}/messages`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           message: newMessage,
         }),

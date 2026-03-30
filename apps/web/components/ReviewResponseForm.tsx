@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Send, Loader2 } from 'lucide-react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface ReviewResponseFormProps {
   reviewId: string;
@@ -32,17 +33,8 @@ export function ReviewResponseForm({ reviewId, onSuccess, onCancel }: ReviewResp
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('Você precisa estar logado');
-      }
-
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002/api/v1"}/reviews/${reviewId}/respond`, {
+      const res = await fetchWithAuth(`/reviews/${reviewId}/respond`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({ response: response.trim() }),
       });
 

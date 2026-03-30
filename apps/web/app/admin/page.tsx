@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { formatBRL } from '@/utils/formatters';
+import { fetchWithAuth } from '@/utils/api';
 import FinanceDashboard from '@/components/admin/FinanceDashboard';
 import StatCard from '@/components/admin/shared/StatCard';
 import OrdersStatusChart from '@/components/admin/charts/OrdersStatusChart';
@@ -39,12 +40,7 @@ export default function AdminDashboard() {
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3002/api/v1/admin/dashboard', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/admin/dashboard');
 
       const data = await response.json();
       if (data.success) {

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AdminFundsService } from '../services/adminFunds.service';
 import { LockCategory } from '../types/adminLock.types';
+import { prisma } from '../utils/prisma';
 
 /**
  * Admin Funds Controller
@@ -87,6 +88,29 @@ export class AdminFundsController {
   async getUserWallets(req: Request, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
+
+      // IDOR: verificar se o solicitante tem nível suficiente para ver este usuário
+      const requesterLevel = req.user?.level ?? 0;
+      const targetUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: { select: { level: true } } },
+      });
+
+      if (!targetUser) {
+        res.status(404).json({ success: false, error: 'Usuário não encontrado' });
+        return;
+      }
+
+      const targetLevel = targetUser.role?.level ?? 0;
+      if (requesterLevel <= targetLevel) {
+        res.status(403).json({
+          success: false,
+          error: 'Acesso negado',
+          message: 'Você não tem permissão para visualizar carteiras deste usuário',
+        });
+        return;
+      }
+
       const result = await AdminFundsService.getUserWallets(userId);
       res.status(200).json(result);
     } catch (error) {
@@ -153,7 +177,7 @@ export class AdminFundsController {
   async freezeAccount(req: Request, res: Response): Promise<void> {
     try {
       const { userId, reason, duration } = req.body;
-      const adminUserId = (req as any).user.id;
+      const adminUserId = (req as any).user.userId;
 
       if (!userId || !reason) {
         res.status(400).json({
@@ -203,7 +227,7 @@ export class AdminFundsController {
   async unfreezeAccount(req: Request, res: Response): Promise<void> {
     try {
       const { userId } = req.body;
-      const adminUserId = (req as any).user.id;
+      const adminUserId = (req as any).user.userId;
 
       if (!userId) {
         res.status(400).json({
@@ -239,7 +263,7 @@ export class AdminFundsController {
   async internalTransfer(req: Request, res: Response): Promise<void> {
     try {
       const { fromWalletId, toWalletId, amount, reason } = req.body;
-      const adminUserId = (req as any).user.id;
+      const adminUserId = (req as any).user.userId;
 
       if (!fromWalletId || !toWalletId || !amount || !reason) {
         res.status(400).json({
@@ -278,7 +302,7 @@ export class AdminFundsController {
   async adjustBalance(req: Request, res: Response): Promise<void> {
     try {
       const { walletId, adjustment, reason } = req.body;
-      const adminUserId = (req as any).user.id;
+      const adminUserId = (req as any).user.userId;
 
       if (!walletId || !adjustment || !reason) {
         res.status(400).json({
@@ -407,7 +431,7 @@ export class AdminFundsController {
   async lockBalance(req: Request, res: Response): Promise<void> {
     try {
       const { walletId, amount, category, reason } = req.body;
-      const adminUserId = (req as any).user.id;
+      const adminUserId = (req as any).user.userId;
 
       // Validar campos obrigatórios
       if (!walletId || !amount || !category || !reason) {
@@ -456,7 +480,7 @@ export class AdminFundsController {
   async unlockBalance(req: Request, res: Response): Promise<void> {
     try {
       const { walletId, amount, category, reason } = req.body;
-      const adminUserId = (req as any).user.id;
+      const adminUserId = (req as any).user.userId;
 
       // Validar campos obrigatórios
       if (!walletId || !amount || !category || !reason) {
@@ -504,7 +528,7 @@ export class AdminFundsController {
   async platformRefund(req: Request, res: Response): Promise<void> {
     try {
       const { cryptoType, network, toWalletId, amount, reason, direction } = req.body;
-      const adminUserId = (req as any).user.id;
+      const adminUserId = (req as any).user.userId;
 
       if (!cryptoType || !network || !toWalletId || !amount || !reason) {
         res.status(400).json({

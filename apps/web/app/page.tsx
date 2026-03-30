@@ -2,6 +2,7 @@
 
 import AppHeader from '@/components/AppHeader';
 import { useEffect, useState } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Stats {
   totalUsers: number;
@@ -23,22 +24,17 @@ export default function HomePage() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('accessToken');
-      if (token) {
-        try {
-          const response = await fetch('http://localhost:3002/api/v1/auth/me', {
-            headers: { 'Authorization': `Bearer ${token}` },
-          });
+      try {
+        const response = await fetchWithAuth('/auth/me');
 
-          if (response.ok) {
-            const data = await response.json();
-            setUserRole(data.data.role);
-            setUserLevel(data.data.level || 0);
-            setIsLoggedIn(true);
-          }
-        } catch (error) {
-          console.error('Error fetching user:', error);
+        if (response.ok) {
+          const data = await response.json();
+          setUserRole(data.data.role);
+          setUserLevel(data.data.level || 0);
+          setIsLoggedIn(true);
         }
+      } catch (error) {
+        console.error('Error fetching user:', error);
       }
     };
 

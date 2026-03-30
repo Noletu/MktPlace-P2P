@@ -20,7 +20,7 @@ export interface LoginInput {
 }
 
 export interface AuthResponse {
-  user: Omit<User, 'password'>;
+  user: Omit<User, 'password'> & { role?: string };
   token: string;
   refreshToken: string;
 }
@@ -72,11 +72,14 @@ export class AuthService {
 
     const refreshToken = await refreshTokenService.createRefreshToken(user.id);
 
-    // Remover senha do retorno
-    const { password, ...userWithoutPassword } = user;
+    // Remover senha e role object do retorno; adicionar role como string
+    const { password, role: roleObject, ...userWithoutPassword } = user;
 
     return {
-      user: userWithoutPassword,
+      user: {
+        ...userWithoutPassword,
+        role: roleObject?.slug?.toUpperCase() || user.legacyRole || 'USER',
+      },
       token,
       refreshToken,
     };
@@ -156,13 +159,16 @@ export class AuthService {
     };
   }
 
-  // SECURITY: Renovar access token usando refresh token
-  async refreshAccessToken(refreshToken: string): Promise<{ token: string } | null> {
-    const userId = await refreshTokenService.validateRefreshToken(refreshToken);
+  // SECURITY (H-1): Renovar access token com rotação de refresh token
+  // Retorna novo access token + novo refresh token (token rotation)
+  async refreshAccessToken(refreshToken: string): Promise<{ token: string; newRefreshToken: string } | null> {
+    const result = await refreshTokenService.validateAndRotateRefreshToken(refreshToken);
 
-    if (!userId) {
+    if (!result) {
       return null;
     }
+
+    const { userId, newRefreshToken } = result;
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -185,7 +191,7 @@ export class AuthService {
       role: user.role?.slug || user.legacyRole || 'USER',
     });
 
-    return { token };
+    return { token, newRefreshToken };
   }
 
   // SECURITY: Logout - revogar refresh token

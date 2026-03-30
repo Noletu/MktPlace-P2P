@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { formatBRL } from '@/utils/formatters';
+import { fetchWithAuth } from '@/utils/api';
 
 interface FinanceStats {
   platformFees: {
@@ -26,10 +27,7 @@ export default function FinanceDashboard() {
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3002/api/v1/admin/finance/stats', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await fetchWithAuth('/admin/finance/stats');
       const data = await res.json();
       if (data.success) setStats(data.data);
     } catch (error) {

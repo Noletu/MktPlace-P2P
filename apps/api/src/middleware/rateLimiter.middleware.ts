@@ -135,3 +135,13 @@ export const financialOperationsLimiter = rateLimit({
   legacyHeaders: false,
   handler: rateLimitHandler,
 });
+
+// SECURITY: Rate limiter para verificação de email (prevenir enumeração de usuários em massa)
+export const checkEmailLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutos
+  max: 20, // 20 verificações por 5 minutos por IP
+  message: 'Muitas verificações de email. Aguarde alguns minutos.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: rateLimitHandler,
+});

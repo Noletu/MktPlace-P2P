@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import CryptoIcon from '@/components/ui/CryptoIcon';
 import { CryptoType } from '@mktplace/shared';
 import { formatBRL } from '@/utils/formatters';
+import { fetchWithAuth } from '@/utils/api';
 import PresenceBadge from '@/components/PresenceBadge';
 
 interface Order {
@@ -49,14 +50,7 @@ export default function MarketplacePage() {
 
   const fetchCurrentUser = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
-      const response = await fetch('http://localhost:3002/api/v1/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/auth/me');
 
       if (response.ok) {
         const data = await response.json();
@@ -69,18 +63,7 @@ export default function MarketplacePage() {
 
   const fetchOrders = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        setError('Você precisa fazer login para ver o marketplace');
-        setLoading(false);
-        return;
-      }
-
-      const response = await fetch('http://localhost:3002/api/v1/orders/marketplace', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/orders/marketplace');
 
       if (!response.ok) {
         throw new Error('Erro ao buscar pedidos');

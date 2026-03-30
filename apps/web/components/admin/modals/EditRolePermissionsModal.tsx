@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Permission {
   id: string;
@@ -43,13 +44,7 @@ export default function EditRolePermissionsModal({ role, onClose, onSuccess }: E
   useEffect(() => {
     const loadPermissions = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-
-        const response = await fetch('http://localhost:3002/api/v1/roles/permissions/all', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        const response = await fetchWithAuth('/roles/permissions/all');
 
         const data = await response.json();
 
@@ -116,14 +111,8 @@ export default function EditRolePermissionsModal({ role, onClose, onSuccess }: E
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch(`http://localhost:3002/api/v1/roles/${role.id}/permissions`, {
+      const response = await fetchWithAuth(`/roles/${role.id}/permissions`, {
         method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           permissionIds: Array.from(selectedPermissions),
         }),

@@ -1,15 +1,25 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import AppHeader from '@/components/AppHeader';
 import { TicketCategory, CATEGORY_LABELS } from '../../../../types/support';
+import { fetchWithAuth } from '@/utils/api';
 
 export default function NewTicketPage() {
   const router = useRouter();
-  const [category, setCategory] = useState<TicketCategory | ''>('');
-  const [subject, setSubject] = useState('');
-  const [description, setDescription] = useState('');
+  const searchParams = useSearchParams();
+  const isAppeal = searchParams?.get('appeal') === 'true';
+
+  const [category, setCategory] = useState<TicketCategory | ''>(
+    isAppeal ? TicketCategory.ACCOUNT_ISSUE : ''
+  );
+  const [subject, setSubject] = useState(
+    isAppeal ? 'Recurso de Bloqueio de Conta' : ''
+  );
+  const [description, setDescription] = useState(
+    isAppeal ? 'Minha conta foi suspensa e gostaria de apelar desta decisão. Segue abaixo minha justificativa:\n\n' : ''
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -40,14 +50,8 @@ export default function NewTicketPage() {
 
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
-
-      const response = await fetch('http://localhost:3002/api/v1/support', {
+      const response = await fetchWithAuth('/support', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           category,
           subject,
@@ -86,6 +90,18 @@ export default function NewTicketPage() {
             Descreva seu problema ou dúvida e nossa equipe responderá em breve
           </p>
         </div>
+
+        {/* Banner de apelação */}
+        {isAppeal && (
+          <div className="mb-6 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-300 dark:border-orange-700 rounded-lg">
+            <p className="text-sm font-semibold text-orange-800 dark:text-orange-300 mb-1">
+              ⚖️ Recurso de Bloqueio de Conta
+            </p>
+            <p className="text-sm text-orange-700 dark:text-orange-200">
+              Use este formulário para contestar a suspensão da sua conta. Descreva com detalhes por que acredita que o bloqueio foi indevido. Nossa equipe analisará seu caso.
+            </p>
+          </div>
+        )}
 
         {/* Info Box */}
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">

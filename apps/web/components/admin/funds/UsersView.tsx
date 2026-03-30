@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface UserCrypto {
   cryptoType: string;
@@ -48,13 +49,8 @@ export default function UsersView() {
   }, []);
 
   const loadData = async () => {
-    const token = localStorage.getItem('accessToken');
     try {
-      const response = await fetch('http://localhost:3002/api/v1/admin/funds/users-funds', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/admin/funds/users-funds');
 
       if (!response.ok) {
         throw new Error('Erro ao carregar dados dos usuários');
