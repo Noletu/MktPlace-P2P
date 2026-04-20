@@ -81,6 +81,7 @@ export default function AdminFundsPage() {
   const [freezeUserId, setFreezeUserId] = useState('');
   const [freezeReason, setFreezeReason] = useState('');
   const [freezeLoading, setFreezeLoading] = useState(false);
+  const [freezeTwoFactor, setFreezeTwoFactor] = useState('');
 
   // Operations tab — unified state
   const [operationType, setOperationType] = useState<'transfer' | 'refund' | 'adjust'>('transfer');
@@ -99,6 +100,7 @@ export default function AdminFundsPage() {
   const [toSearchLoading, setToSearchLoading] = useState(false);
   const [transferAmount, setTransferAmount] = useState('');
   const [transferReason, setTransferReason] = useState('');
+  const [transferTwoFactor, setTransferTwoFactor] = useState('');
 
   // Platform operation fields
   const [platformEmail, setPlatformEmail] = useState('');
@@ -108,11 +110,14 @@ export default function AdminFundsPage() {
   const [refundAmount, setRefundAmount] = useState('');
   const [refundReason, setRefundReason] = useState('');
   const [platformDirection, setPlatformDirection] = useState<'TO_USER' | 'FROM_USER'>('TO_USER');
+  const [refundTwoFactor, setRefundTwoFactor] = useState('');
 
   // Adjust fields
   const [adjustWalletId, setAdjustWalletId] = useState('');
   const [adjustment, setAdjustment] = useState('');
   const [adjustReason, setAdjustReason] = useState('');
+  const [adjustTwoFactor, setAdjustTwoFactor] = useState('');
+  const [adjustPending, setAdjustPending] = useState<{ id: string; operationType: string } | null>(null);
 
   // Wallet lookup cache (walletId → data)
   const [walletLookups, setWalletLookups] = useState<Record<string, WalletLookupData>>({});
@@ -264,6 +269,7 @@ export default function AdminFundsPage() {
         body: JSON.stringify({
           userId: freezeUserId,
           reason: freezeReason,
+          twoFactorCode: freezeTwoFactor,
         }),
       });
 
@@ -274,6 +280,7 @@ export default function AdminFundsPage() {
       }
 
       addToast('success', 'Conta congelada com sucesso!');
+      setFreezeTwoFactor('');
       setFreezeUserId('');
       setFreezeReason('');
       loadDashboard();
@@ -302,6 +309,7 @@ export default function AdminFundsPage() {
         method: 'POST',
         body: JSON.stringify({
           userId: freezeUserId,
+          twoFactorCode: freezeTwoFactor,
         }),
       });
 
@@ -312,6 +320,7 @@ export default function AdminFundsPage() {
       }
 
       addToast('success', 'Conta descongelada com sucesso!');
+      setFreezeTwoFactor('');
       setFreezeUserId('');
       loadDashboard();
     } catch (error) {
@@ -346,6 +355,7 @@ export default function AdminFundsPage() {
           toWalletId,
           amount: transferAmount,
           reason: transferReason,
+          twoFactorCode: transferTwoFactor,
         }),
       });
 
@@ -356,6 +366,7 @@ export default function AdminFundsPage() {
       }
 
       addToast('success', 'Transferencia interna realizada com sucesso!');
+      setTransferTwoFactor('');
       setFromWalletId('');
       setToWalletId('');
       setFromEmail('');
@@ -416,6 +427,7 @@ export default function AdminFundsPage() {
           amount: refundAmount,
           reason: refundReason,
           direction: platformDirection,
+          twoFactorCode: refundTwoFactor,
         }),
       });
 
@@ -426,6 +438,7 @@ export default function AdminFundsPage() {
       }
 
       addToast('success', isCollect ? 'Cobrança da plataforma realizada com sucesso!' : 'Reembolso da plataforma realizado com sucesso!');
+      setRefundTwoFactor('');
       setPlatformEmail('');
       setPlatformUserData(null);
       setRefundToWalletId('');
@@ -469,19 +482,32 @@ export default function AdminFundsPage() {
           walletId: adjustWalletId,
           adjustment,
           reason: adjustReason,
+          twoFactorCode: adjustTwoFactor,
         }),
       });
 
       const result = await response.json();
 
+      // Operação enfileirada para aprovação dupla (202 = queued, não executada)
+      if (response.status === 202) {
+        setAdjustPending(result.data);
+        setAdjustWalletId('');
+        setAdjustment('');
+        setAdjustReason('');
+        setAdjustTwoFactor('');
+        addToast('info', 'Ajuste enfileirado! Aguardando aprovação do segundo MASTER em /admin/aprovacoes.');
+        return;
+      }
+
       if (!response.ok) {
-        throw new Error(result.message || 'Erro ao ajustar saldo');
+        throw new Error(result.message || result.error || 'Erro ao ajustar saldo');
       }
 
       addToast('success', 'Saldo ajustado com sucesso!');
       setAdjustWalletId('');
       setAdjustment('');
       setAdjustReason('');
+      setAdjustTwoFactor('');
       loadDashboard();
     } catch (error) {
       console.error('Erro ao ajustar saldo:', error);
@@ -846,6 +872,21 @@ export default function AdminFundsPage() {
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Código 2FA *
+                  <span className="text-gray-500 dark:text-gray-400 ml-2 font-normal">(obrigatório)</span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={freezeTwoFactor}
+                  onChange={(e) => setFreezeTwoFactor(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
+                  className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 font-mono tracking-widest text-center text-lg"
+                />
+              </div>
               <div className="flex gap-3">
                 <button
                   onClick={handleFreezeAccount}
@@ -1093,6 +1134,22 @@ export default function AdminFundsPage() {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Código 2FA *
+                    <span className="text-gray-500 dark:text-gray-400 ml-2 font-normal">(obrigatório)</span>
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={transferTwoFactor}
+                    onChange={(e) => setTransferTwoFactor(e.target.value.replace(/\D/g, ''))}
+                    placeholder="000000"
+                    className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 font-mono tracking-widest text-center text-lg"
+                  />
+                </div>
+
                 <button
                   onClick={handleInternalTransfer}
                   disabled={operationLoading || !fromWalletId || !toWalletId}
@@ -1213,6 +1270,22 @@ export default function AdminFundsPage() {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Código 2FA *
+                    <span className="text-gray-500 dark:text-gray-400 ml-2 font-normal">(obrigatório)</span>
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={refundTwoFactor}
+                    onChange={(e) => setRefundTwoFactor(e.target.value.replace(/\D/g, ''))}
+                    placeholder="000000"
+                    className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 font-mono tracking-widest text-center text-lg"
+                  />
+                </div>
+
                 <button
                   onClick={handlePlatformRefund}
                   disabled={operationLoading}
@@ -1232,6 +1305,23 @@ export default function AdminFundsPage() {
           {operationType === 'adjust' && (
             <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Ajuste Manual de Saldo</h3>
+
+              {adjustPending && (
+                <div className="mb-4 p-4 bg-blue-900/30 border border-blue-500/50 rounded-lg">
+                  <p className="text-blue-300 font-bold mb-1">Solicitação enfileirada para aprovação dupla</p>
+                  <p className="text-blue-200 text-sm">
+                    O ajuste não foi executado ainda. Um segundo MASTER deve aprovar em{' '}
+                    <a href="/admin/aprovacoes" className="underline hover:text-blue-100">Aprovações</a>.
+                  </p>
+                  <p className="text-xs text-blue-400 font-mono mt-2">ID: {adjustPending.id}</p>
+                  <button
+                    onClick={() => setAdjustPending(null)}
+                    className="mt-2 text-xs text-blue-400 hover:text-blue-200 underline"
+                  >
+                    Fechar aviso
+                  </button>
+                </div>
+              )}
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -1293,6 +1383,22 @@ export default function AdminFundsPage() {
                     placeholder="Ex: Correcao de credito duplicado, erro de sistema, etc."
                     rows={3}
                     className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Código 2FA{' '}
+                    <span className="text-gray-500 dark:text-gray-400 font-normal">(obrigatório em produção)</span>
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={adjustTwoFactor}
+                    onChange={(e) => setAdjustTwoFactor(e.target.value.replace(/\D/g, ''))}
+                    placeholder="000000"
+                    className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 font-mono tracking-widest"
                   />
                 </div>
 

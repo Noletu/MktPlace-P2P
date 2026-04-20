@@ -22,6 +22,7 @@ export default function EditOrderModal({ order, onClose, onSuccess }: EditOrderM
   const [cryptoAmount, setCryptoAmount] = useState(order.cryptoAmount);
   const [status, setStatus] = useState(order.status);
   const [notes, setNotes] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -62,7 +63,7 @@ export default function EditOrderModal({ order, onClose, onSuccess }: EditOrderM
 
       const response = await fetchWithAuth(`/admin/orders/${order.id}/edit`, {
         method: 'PUT',
-        body: JSON.stringify(updates),
+        body: JSON.stringify({ ...updates, twoFactorCode }),
       });
 
       const data = await response.json();
@@ -238,6 +239,23 @@ export default function EditOrderModal({ order, onClose, onSuccess }: EditOrderM
             </ul>
           </div>
         )}
+
+        {/* Código 2FA */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Código 2FA *
+            <span className="text-gray-500 dark:text-gray-400 ml-2 font-normal">(obrigatório)</span>
+          </label>
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            value={twoFactorCode}
+            onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, ''))}
+            placeholder="000000"
+            className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 font-mono tracking-widest text-center text-lg"
+          />
+        </div>
 
         {/* Aviso */}
         <div className="bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-lg p-4 mb-6">

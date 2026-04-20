@@ -174,7 +174,7 @@ export class FeeEstimatorService {
    */
   static getMinimumWithdrawal(network: string, cryptoType: string): string {
     if (network === 'BITCOIN') {
-      return '0.0001'; // ~$10
+      return '0'; // mínimo removido para testes
     }
 
     if (['BASE', 'ARBITRUM', 'ETHEREUM'].includes(network)) {

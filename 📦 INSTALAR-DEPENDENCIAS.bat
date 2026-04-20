@@ -30,46 +30,29 @@ echo.
 echo ========================================
 echo.
 
-echo [1/3] Instalando dependencias da API...
+:: Este projeto usa npm workspaces. Instalar da raiz instala tudo de uma vez.
+echo [1/2] Instalando todas as dependencias (workspace)...
 echo.
-cd apps\api
 call npm install
 if errorlevel 1 (
-    echo ERRO: Falha ao instalar dependencias da API!
-    cd ..\..
+    echo ERRO: Falha ao instalar dependencias!
     pause
     exit /b 1
 )
-cd ..\..
-echo OK - Dependencias da API instaladas
+echo OK - Todas as dependencias instaladas
 echo.
 
-echo [2/3] Instalando dependencias do Frontend...
-echo.
-cd apps\web
-call npm install
-if errorlevel 1 (
-    echo ERRO: Falha ao instalar dependencias do Frontend!
-    cd ..\..
-    pause
-    exit /b 1
-)
-cd ..\..
-echo OK - Dependencias do Frontend instaladas
-echo.
-
-echo [3/3] Gerando Prisma Client...
+echo [2/2] Gerando Prisma Client...
 echo.
 cd apps\api
 call npx prisma generate
 if errorlevel 1 (
-    echo ERRO: Falha ao gerar Prisma Client!
+    echo AVISO: Falha ao gerar Prisma Client (tente executar manualmente: cd apps\api && npx prisma generate)
     cd ..\..
-    pause
-    exit /b 1
+) else (
+    cd ..\..
+    echo OK - Prisma Client gerado
 )
-cd ..\..
-echo OK - Prisma Client gerado
 echo.
 
 echo ========================================

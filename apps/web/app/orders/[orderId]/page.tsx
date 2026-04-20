@@ -1345,8 +1345,8 @@ export default function OrderDetailsPage() {
                         </button>
                       )}
 
-                      {/* Cancelar Pedido - Disponivel para criador em status PENDING ou MATCHED (antes do pagamento) */}
-                      {isCreator && (order.status === 'PENDING' || order.status === 'MATCHED') && (
+                      {/* Cancelar Pedido - Disponivel para criador em status PENDING, IN_NEGOTIATION ou MATCHED (antes do pagamento) */}
+                      {isCreator && (order.status === 'PENDING' || order.status === 'IN_NEGOTIATION' || order.status === 'MATCHED') && (
                         <div>
                           <button
                             onClick={() => setShowCancelModal(true)}

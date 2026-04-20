@@ -894,6 +894,22 @@ export class WalletService {
           new BigNumber(0)
         );
 
+        // Incluir bloqueios manuais de admin (ADMIN_LOCK - ADMIN_UNLOCK).
+        // Sem isso, o recalc zera o lockedBalance mesmo quando um admin bloqueou manualmente.
+        const adminLockTxs = await prisma.walletTransaction.findMany({
+          where: { walletId: wallet.id, type: { in: ['ADMIN_LOCK', 'ADMIN_UNLOCK'] } },
+          select: { type: true, amount: true },
+        });
+        const netAdminLockedBN = BigNumber.max(
+          0,
+          adminLockTxs.reduce((sum, tx) => {
+            return tx.type === 'ADMIN_LOCK'
+              ? sum.plus(tx.amount)
+              : sum.minus(tx.amount);
+          }, new BigNumber(0))
+        );
+        realLockedBN = realLockedBN.plus(netAdminLockedBN);
+
         // Saldo bloqueado nunca pode ser negativo
         if (realLockedBN.isNegative()) {
           realLockedBN = new BigNumber(0);

@@ -49,6 +49,10 @@ import { initializeNotificationSocket } from './socket/notification.socket';
 import { MasterSeedService } from './services/hd-wallet/master-seed.service';
 import { KeyManagementService } from './services/hd-wallet/key-management.service';
 import { startAutoUnfreezeJob } from './jobs/autoUnfreeze.job';
+import { startDualApprovalJob } from './jobs/dualApproval.job';
+import { startSuccessionReminderJob } from './jobs/successionReminder.job';
+import adminDelegationRoutes from './routes/adminDelegation.routes';
+import pendingApprovalRoutes from './routes/pendingApproval.routes';
 import { PrismaClient as PrismaForCleanup } from '@prisma/client';
 
 // SECURITY (H-2): Limpeza diária de tokens revogados expirados
@@ -275,6 +279,12 @@ app.use('/api/v1/roles', roleRoutes);
 // Coupon routes (discount coupons system)
 app.use('/api/v1/coupons', couponRoutes);
 
+// Dual-Approval: Delegação de aprovação temporária (MASTER-only)
+app.use('/api/v1/admin/delegations', adminDelegationRoutes);
+
+// Dual-Approval: Fila de aprovações pendentes (DEMOTE_MASTER + operações financeiras críticas)
+app.use('/api/v1/admin/approvals', pendingApprovalRoutes);
+
 // Negotiation routes (pre-match negotiation) - DESABILITADO: Chat disponível apenas após aceitar pedido
 // app.use('/api/v1/negotiation', negotiationRoutes);
 
@@ -360,6 +370,12 @@ httpServer.listen(port, async () => {
 
   // Iniciar job de auto-desbloqueio de contas (freeze temporário)
   startAutoUnfreezeJob();
+
+  // Iniciar job de Dual-Approval (expira aprovações, executa overrides maduros)
+  startDualApprovalJob();
+
+  // Iniciar job de lembrete trimestral do Kit de Sucessão (Cenário C — Plano de Contingência)
+  startSuccessionReminderJob();
 
   // SECURITY (H-2): Limpeza diária de tokens revogados expirados
   cleanupExpiredRevokedTokens(); // Rodar uma vez ao iniciar

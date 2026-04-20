@@ -196,10 +196,24 @@ export class BalanceValidatorService {
         },
       });
 
-      const totalLockedBN = activeOrders.reduce(
+      const orderLockedBN = activeOrders.reduce(
         (sum, order) => sum.plus(order.cryptoAmount),
         new BigNumber(0)
       );
+
+      // Incluir bloqueios manuais de admin para não sobrescrever ADMIN_LOCK
+      const { prisma: db } = await import('../utils/prisma');
+      const adminLockTxs = await db.walletTransaction.findMany({
+        where: { walletId: wallet.id, type: { in: ['ADMIN_LOCK', 'ADMIN_UNLOCK'] } },
+        select: { type: true, amount: true },
+      });
+      const netAdminLockedBN = BigNumber.max(
+        0,
+        adminLockTxs.reduce((sum, tx) => {
+          return tx.type === 'ADMIN_LOCK' ? sum.plus(tx.amount) : sum.minus(tx.amount);
+        }, new BigNumber(0))
+      );
+      const totalLockedBN = orderLockedBN.plus(netAdminLockedBN);
 
       // Atualizar se diferente
       if (!new BigNumber(wallet.lockedBalance).minus(totalLockedBN).abs().lt('0.00000001')) {

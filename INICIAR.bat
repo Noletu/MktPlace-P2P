@@ -29,39 +29,21 @@ if errorlevel 1 (
 echo [1/7] Verificando dependencias...
 echo.
 
-:: Verificar se node_modules existe na API
-if not exist "apps\api\node_modules" (
-    echo Dependencias da API nao encontradas!
-    echo Instalando dependencias da API... (isso pode demorar alguns minutos)
+:: Este projeto usa npm workspaces — node_modules fica na RAIZ, nao em apps/api ou apps/web.
+if not exist "node_modules" (
+    echo Dependencias nao encontradas!
+    echo Instalando todas as dependencias... (isso pode demorar alguns minutos)
     echo.
-    cd apps\api
     call npm install
     if errorlevel 1 (
-        echo ERRO: Falha ao instalar dependencias da API!
-        cd ..\..
+        echo ERRO: Falha ao instalar dependencias!
         pause
         exit /b 1
     )
-    cd ..\..
-    echo OK - Dependencias da API instaladas
+    echo OK - Dependencias instaladas
     echo.
-)
-
-:: Verificar se node_modules existe no Frontend
-if not exist "apps\web\node_modules" (
-    echo Dependencias do Frontend nao encontradas!
-    echo Instalando dependencias do Frontend... (isso pode demorar alguns minutos)
-    echo.
-    cd apps\web
-    call npm install
-    if errorlevel 1 (
-        echo ERRO: Falha ao instalar dependencias do Frontend!
-        cd ..\..
-        pause
-        exit /b 1
-    )
-    cd ..\..
-    echo OK - Dependencias do Frontend instaladas
+) else (
+    echo OK - Dependencias ja instaladas
     echo.
 )
 

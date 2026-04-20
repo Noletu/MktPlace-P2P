@@ -22,7 +22,8 @@ const UpdatePlatformWalletSchema = z.object({
 });
 
 const UpdateUserSchema = z.object({
-  role: z.enum(['USER', 'GERENTE', 'SUPPORT', 'ADMIN', 'MASTER']).optional(),
+  role:   z.enum(['USER', 'GERENTE', 'SUPPORT', 'ADMIN', 'MASTER']).optional(),
+  reason: z.string().optional(),
 });
 
 export class AdminController {
@@ -306,11 +307,21 @@ export class AdminController {
       const { id } = req.params;
       const validatedData = UpdateUserSchema.parse(req.body);
 
-      const user = await adminService.updateUser(id, validatedData, adminId);
+      const result = await adminService.updateUser(id, validatedData, adminId);
+
+      // Demoção de MASTER: operação enfileirada para aprovação dupla (Maker-Checker)
+      if ((result as any)?._pending) {
+        return res.status(202).json({
+          success: true,
+          pending: true,
+          data: (result as any).approval,
+          message: 'Solicitação de rebaixamento enfileirada. Aguardando aprovação de outro MASTER.',
+        });
+      }
 
       res.json({
         success: true,
-        data: user,
+        data: result,
         message: 'Usuário atualizado com sucesso',
       });
     } catch (error: any) {

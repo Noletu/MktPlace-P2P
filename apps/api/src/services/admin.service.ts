@@ -5,6 +5,7 @@ import { notificationService } from './notification.service';
 import { emailService } from './email.service';
 import { clearUserPermissionCache } from '../middleware/permission.middleware';
 import { WalletService } from './wallet.service';
+import { PendingApprovalService } from './pendingApproval.service';
 
 const prisma = new PrismaClient();
 
@@ -410,12 +411,14 @@ export class AdminService {
       }
 
       // 2. Não pode promover alguém acima do seu próprio nível
-      if (newLevel >= adminLevel) {
+      // Exceção: MASTER pode promover outro usuário para MASTER (mesmo nível)
+      if (newLevel >= adminLevel && !(adminRole === 'MASTER' && data.role === 'MASTER')) {
         throw new Error(`Apenas usuários MASTER podem promover para ${data.role}`);
       }
 
-      // 3. Não pode alterar alguém de nível superior ou igual
-      if (targetLevel >= adminLevel) {
+      // 3. Não pode alterar alguém de nível superior ou igual.
+      // Exceção: MASTER pode iniciar demoção de outro MASTER (enfileirada para aprovação dupla).
+      if (targetLevel >= adminLevel && !(adminRole === 'MASTER' && targetRole === 'MASTER')) {
         throw new Error('Você não tem permissão para alterar este usuário');
       }
 
@@ -427,6 +430,24 @@ export class AdminService {
       // 5. MASTER não pode ser rebaixado (apenas por outro MASTER)
       if (targetRole === 'MASTER' && adminRole !== 'MASTER') {
         throw new Error('Apenas MASTER pode alterar outro MASTER');
+      }
+
+      // CRITICAL: Rebaixamento de MASTER exige aprovação dupla (Maker-Checker)
+      // A operação é enfileirada; nenhuma alteração ocorre até um segundo MASTER aprovar.
+      if (targetRole === 'MASTER' && data.role !== 'MASTER') {
+        const approval = await PendingApprovalService.create({
+          initiatorId:      adminId,
+          operationType:    'DEMOTE_MASTER',
+          operationPayload: {
+            targetUserId:    userId,
+            targetUserEmail: targetUser.email,
+            targetUserName:  targetUser.name ?? targetUser.email,
+            newRole:         data.role,
+            newRoleSlug:     data.role.toLowerCase(),
+            reason:          (data as any).reason ?? 'Sem motivo informado',
+          },
+        });
+        return { _pending: true, approval } as any;
       }
 
       // RBAC: Buscar role ID pelo slug
@@ -653,6 +674,7 @@ export class AdminService {
     // 3. Verificar se status permite cancelamento
     const cancelableStatuses = [
       'PENDING',
+      'IN_NEGOTIATION',
       'MATCHED',
       'PAYMENT_SENT',
       'PAYMENT_RECEIVED',
