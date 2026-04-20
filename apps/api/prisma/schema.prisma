@@ -101,6 +101,13 @@ model User {
 
   // Coupon system
   userCoupons UserCoupon[]
+
+  // Dual-Approval system
+  pendingApprovalsInitiated PendingApproval[]  @relation("PendingApprovalInitiator")
+  pendingApprovalsApproved  PendingApproval[]  @relation("PendingApprovalApprover")
+  delegationsGranted        MasterDelegation[] @relation("DelegationGrantor")
+  delegationsReceived       MasterDelegation[] @relation("DelegationGrantee")
+  delegationsRevoked        MasterDelegation[] @relation("DelegationRevoker")
 }
 
 // ============================================
@@ -1302,4 +1309,104 @@ model UserCoupon {
   @@index([couponId])
   @@index([isActive])
   @@index([activatedAt])
+}
+
+// ============================================
+// DUAL-APPROVAL SYSTEM (Maker-Checker)
+// ============================================
+
+// Operações financeiras críticas aguardando aprovação do segundo MASTER
+model PendingApproval {
+  id String @id @default(cuid())
+
+  // Identidade da operação
+  // INTERNAL_TRANSFER | ADJUST_BALANCE | PLATFORM_REFUND | LOCK_BALANCE | UNLOCK_BALANCE
+  operationType    String
+  operationPayload String // JSON.stringify dos parâmetros completos
+
+  // Iniciador (Maker)
+  initiatorId   String
+  initiator     User    @relation("PendingApprovalInitiator", fields: [initiatorId], references: [id])
+  initiatorNote String?
+
+  // Aprovador (Checker)
+  approverId   String?
+  approver     User?   @relation("PendingApprovalApprover", fields: [approverId], references: [id])
+  approverNote String?
+
+  // Status lifecycle:
+  // PENDING_APPROVAL → APPROVED | REJECTED | EXPIRED | OVERRIDE_PENDING | OVERRIDE_EXECUTED | OVERRIDE_CANCELLED
+  status    String   @default("PENDING_APPROVAL")
+  expiresAt DateTime // createdAt + 48h
+
+  // Emergency Override (Cenário A)
+  overrideRequestedAt   DateTime?
+  overrideExecuteAfter  DateTime? // requestedAt + 30min
+  overrideJustification String?   // mínimo 50 chars
+  overrideCancelToken   String?   @unique // crypto.randomBytes(32).toString('hex')
+  overrideCancelledBy   String?   // userId ou "EMAIL_TOKEN"
+  overrideCancelledAt   DateTime?
+
+  // Delegação usada (se aprovado por delegado — Cenário B)
+  delegationId String?
+  delegation   MasterDelegation? @relation(fields: [delegationId], references: [id])
+
+  // Resultado da execução
+  executedAt     DateTime?
+  executionError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([initiatorId])
+  @@index([expiresAt])
+  @@index([overrideCancelToken])
+  @@index([createdAt])
+}
+
+// Delegação temporária de aprovação para ADMIN/GERENTE (Cenário B)
+model MasterDelegation {
+  id String @id @default(cuid())
+
+  // Quem concedeu (deve ser MASTER)
+  grantorId String
+  grantor   User   @relation("DelegationGrantor", fields: [grantorId], references: [id])
+
+  // Quem recebeu (deve ser GERENTE ou ADMIN — nível 60-80)
+  granteeId String
+  grantee   User   @relation("DelegationGrantee", fields: [granteeId], references: [id])
+
+  // Escopo: JSON array de operationTypes; "[]" significa todos os 5 tipos
+  operationScope String @default("[]")
+
+  // Motivo obrigatório
+  reason String
+
+  // Período de validade
+  startsAt  DateTime @default(now())
+  expiresAt DateTime // máximo startsAt + 30 dias
+
+  // Revogação
+  isRevoked   Boolean   @default(false)
+  revokedById String?
+  revokedBy   User?     @relation("DelegationRevoker", fields: [revokedById], references: [id])
+  revokedAt   DateTime?
+  revokeReason String?
+
+  // Estatísticas de uso
+  timesUsed  Int       @default(0)
+  lastUsedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Aprovações feitas usando esta delegação
+  approvals PendingApproval[]
+
+  @@index([granteeId])
+  @@index([grantorId])
+  @@index([isRevoked])
+  @@index([expiresAt])
+  @@index([createdAt])
 }

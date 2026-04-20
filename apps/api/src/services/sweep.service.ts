@@ -518,6 +518,7 @@ export class SweepService {
         where: { id: hotWalletId },
         data: {
           balance: newBalance,
+          availableBalance: newBalance,
           totalDeposited: (parseFloat(hotWallet.totalDeposited) + amountNum).toString(),
         },
       });

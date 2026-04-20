@@ -129,7 +129,8 @@ export const forgotPasswordLimiter = rateLimit({
 // Mais restritivo que adminActionLimiter devido à natureza crítica das operações
 export const financialOperationsLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hora
-  max: 5, // Apenas 5 operações financeiras por hora
+  max: 5, // 5 operações financeiras por hora (produção)
+  skip: () => process.env.NODE_ENV !== 'production', // sem limite em dev
   message: 'Muitas operações financeiras. Tente novamente em 1 hora.',
   standardHeaders: true,
   legacyHeaders: false,

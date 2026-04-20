@@ -6,7 +6,10 @@ import { adminWithdrawalController } from '../controllers/admin-withdrawal.contr
 import { authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
 import { managerMiddleware } from '../middleware/manager.middleware';
 import { supportMiddleware } from '../middleware/support.middleware';
-import { adminActionLimiter } from '../middleware/rateLimiter.middleware';
+import { adminActionLimiter, financialOperationsLimiter } from '../middleware/rateLimiter.middleware';
+import { require2FAMiddleware } from '../middleware/require2FA.middleware';
+import { financialOperationsMiddleware } from '../middleware/financialOperations.middleware';
+import { requireDualApproval } from '../middleware/requireDualApproval.middleware';
 
 const router = Router();
 
@@ -39,7 +42,21 @@ router.delete('/platform-wallets/:id', adminMiddleware, adminActionLimiter, admi
 router.get('/platform-wallets/:id/transfers', adminMiddleware, adminController.getPlatformWalletTransfers.bind(adminController));
 router.get('/platform-wallets/:id/movements', adminMiddleware, adminController.getPlatformWalletMovements.bind(adminController));
 router.get('/platform-wallets/:id/transfer-estimate', adminMiddleware, adminController.getPlatformWalletTransferEstimate.bind(adminController));
-router.post('/platform-wallets/:id/transfer', adminMiddleware, adminActionLimiter, adminController.requestPlatformWalletTransfer.bind(adminController));
+/**
+ * DUAL-APPROVAL: Platform Wallet Transfer (APENAS MASTER)
+ * Envia BTC/EVM/SOL da hot wallet para endereço externo.
+ * Requer aprovação de um segundo MASTER antes de executar on-chain.
+ */
+router.post(
+  '/platform-wallets/:id/transfer',
+  financialOperationsMiddleware,
+  require2FAMiddleware,
+  financialOperationsLimiter,
+  (req, _res, next) => { req.body.platformWalletId = req.params.id; next(); },
+  requireDualApproval('PLATFORM_WALLET_TRANSFER'),
+  // Controller abaixo NUNCA é atingido via HTTP (requireDualApproval é terminal)
+  adminController.requestPlatformWalletTransfer.bind(adminController)
+);
 
 /**
  * OPERACIONAL: Gestão de Usuários - Visualização (SUPPORT + GERENTE + ADMIN + MASTER)
@@ -48,12 +65,12 @@ router.post('/platform-wallets/:id/transfer', adminMiddleware, adminActionLimite
 router.get('/users', supportMiddleware, adminController.getUsers.bind(adminController));
 router.get('/users/:id/details', supportMiddleware, adminController.getUserDetails.bind(adminController));
 // SECURITY: Atualização de usuário (mudança de role) apenas ADMIN/MASTER
-router.put('/users/:id', adminMiddleware, adminActionLimiter, adminController.updateUser.bind(adminController));
+router.put('/users/:id', adminMiddleware, adminActionLimiter, require2FAMiddleware, adminController.updateUser.bind(adminController));
 
-// Resetar senha de usuario (ADMIN + MASTER)
-router.post('/users/:id/reset-password', adminMiddleware, adminActionLimiter, adminController.adminResetUserPassword.bind(adminController));
-// Limite personalizado (ADMIN + MASTER)
-router.post('/users/:id/custom-limit', adminMiddleware, adminActionLimiter, adminController.setCustomLimit.bind(adminController));
+// SECURITY: Reset de senha de usuário por admin exige 2FA (pode ser vetor de account takeover)
+router.post('/users/:id/reset-password', adminMiddleware, adminActionLimiter, require2FAMiddleware, adminController.adminResetUserPassword.bind(adminController));
+// SECURITY: Alteração de limite financeiro exige 2FA (impacto direto em operações de saque/ordem)
+router.post('/users/:id/custom-limit', adminMiddleware, adminActionLimiter, require2FAMiddleware, adminController.setCustomLimit.bind(adminController));
 // Reputação: recalcular + breakdown (ADMIN + MASTER)
 router.post('/users/:id/recalculate-reputation', adminMiddleware, adminActionLimiter, adminController.recalculateReputation.bind(adminController));
 router.get('/users/:id/reputation-breakdown', supportMiddleware, adminController.getReputationBreakdown.bind(adminController));
@@ -69,10 +86,10 @@ router.get('/users/:id/authority-report', managerMiddleware, adminController.gen
  */
 router.get('/orders', supportMiddleware, adminController.getOrders.bind(adminController));
 router.get('/orders/stats', supportMiddleware, adminController.getOrdersStats.bind(adminController));
-// SECURITY: Cancelamento de pedido com rate limiting
-router.post('/orders/:id/cancel', managerMiddleware, adminActionLimiter, adminController.cancelOrder.bind(adminController));
-// SECURITY: Edição de pedido com rate limiting (God Mode)
-router.put('/orders/:id/edit', managerMiddleware, adminActionLimiter, adminController.editOrder.bind(adminController));
+// SECURITY: Cancelamento forçado de pedido exige 2FA (impacto em transações em andamento)
+router.post('/orders/:id/cancel', managerMiddleware, adminActionLimiter, require2FAMiddleware, adminController.cancelOrder.bind(adminController));
+// SECURITY: God Mode de edição de pedido exige 2FA (operação sem restrições)
+router.put('/orders/:id/edit', managerMiddleware, adminActionLimiter, require2FAMiddleware, adminController.editOrder.bind(adminController));
 
 /**
  * OPERACIONAL: Audit Log (SUPPORT + GERENTE + ADMIN + MASTER)
@@ -98,8 +115,8 @@ router.get('/disputes/top-disputants', supportMiddleware, disputeController.getT
  */
 router.get('/withdrawals/pending', adminMiddleware, adminWithdrawalController.getPendingWithdrawals.bind(adminWithdrawalController));
 router.get('/withdrawals/history', managerMiddleware, adminWithdrawalController.getWithdrawalHistory.bind(adminWithdrawalController));
-// SECURITY: Aprovação/rejeição com rate limiting
-router.post('/withdrawals/:id/approve', adminMiddleware, adminActionLimiter, adminWithdrawalController.approveWithdrawal.bind(adminWithdrawalController));
-router.post('/withdrawals/:id/reject', adminMiddleware, adminActionLimiter, adminWithdrawalController.rejectWithdrawal.bind(adminWithdrawalController));
+// SECURITY: Aprovação/rejeição de saque exige 2FA (operação financeira irreversível)
+router.post('/withdrawals/:id/approve', adminMiddleware, adminActionLimiter, require2FAMiddleware, adminWithdrawalController.approveWithdrawal.bind(adminWithdrawalController));
+router.post('/withdrawals/:id/reject', adminMiddleware, adminActionLimiter, require2FAMiddleware, adminWithdrawalController.rejectWithdrawal.bind(adminWithdrawalController));
 
 export default router;

@@ -1465,11 +1465,17 @@ export class AdminFundsService {
       },
     });
 
+    // Filtro numérico estrito: excluir carteiras com lockedBalance efetivamente zero
+    // O filtro Prisma `not: '0'` só exclui a string exata '0', mas valores como
+    // '0.00000000' passam por ele. BigNumber.gt(0) garante exclusão correta.
+    let filteredWallets = wallets.filter((w) =>
+      new BigNumber(w.lockedBalance).gt(0)
+    );
+
     // Filtrar por valor mínimo se especificado
-    let filteredWallets = wallets;
     if (filters?.minAmount) {
       const minBN = new BigNumber(filters.minAmount);
-      filteredWallets = wallets.filter((w) =>
+      filteredWallets = filteredWallets.filter((w) =>
         new BigNumber(w.lockedBalance).gte(minBN)
       );
     }

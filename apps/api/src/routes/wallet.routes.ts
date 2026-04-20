@@ -1,6 +1,7 @@
 import {Router} from 'express';
 import {walletController} from '../controllers/wallet.controller';
 import {authMiddleware} from '../middleware/auth.middleware';
+import { require2FAMiddleware } from '../middleware/require2FA.middleware';
 
 const router = Router();
 
@@ -66,9 +67,10 @@ router.get(
   walletController.getWithdrawalEstimate.bind(walletController)
 );
 
-// Solicitar saque
+// SECURITY: Saque de criptomoedas exige 2FA (operação financeira irreversível)
 router.post(
   '/:id/withdraw',
+  require2FAMiddleware,
   walletController.requestWithdrawal.bind(walletController)
 );
 

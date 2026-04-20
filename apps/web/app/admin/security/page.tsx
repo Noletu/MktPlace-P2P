@@ -206,6 +206,22 @@ export default function AdminSecurityPage() {
         </div>
       )}
 
+      {/* Banner: Kit de Sucessão desatualizado */}
+      {status?.enabled && status.backupCodesCount === 0 && (
+        <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-xl p-4 flex items-start gap-3">
+          <span className="text-2xl flex-shrink-0">🚨</span>
+          <div>
+            <h3 className="font-bold text-red-800 dark:text-red-400">Kit de Sucessão desatualizado</h3>
+            <p className="text-red-700 dark:text-red-300 text-sm mt-1">
+              Você não possui backup codes disponíveis. Se perder acesso ao seu autenticador,
+              não haverá forma de recuperar o acesso ao sistema. Gere novos backup codes abaixo e
+              atualize seu Kit de Sucessão físico executando:{' '}
+              <code className="bg-red-100 dark:bg-red-800 px-1 rounded text-xs">node scripts/gerar-kit-sucessao.js</code>
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Status View */}
       {step === 'status' && status && (
         <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">

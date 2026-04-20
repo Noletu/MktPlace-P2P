@@ -21,6 +21,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const [userRole, setUserRole] = useState('');
   const [userLevel, setUserLevel] = useState(0);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [hasActiveDelegation, setHasActiveDelegation] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -45,6 +46,20 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         setUserName(data.data.name || data.data.email);
         setUserRole(data.data.role);
         setUserLevel(userLevel);
+
+        // Verifica delegação ativa para exibir menu de aprovações a delegados
+        if (userLevel < 100) {
+          try {
+            const delegRes = await fetchWithAuth('/admin/delegations/my-delegation');
+            if (delegRes.ok) {
+              const delegData = await delegRes.json();
+              setHasActiveDelegation(!!delegData.data);
+            }
+          } catch {
+            // Silencioso — se falhar, apenas não exibe o menu
+          }
+        }
+
         setIsLoading(false);
       } catch (error) {
         console.error('Erro ao verificar autenticação:', error);
@@ -383,6 +398,34 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               >
                 <span className="text-lg mb-1">🏦</span>
                 <span>Carteiras</span>
+              </Link>
+            )}
+            {/* Aprovações Duais - MASTER ou delegado com delegação ativa */}
+            {(userLevel >= 100 || hasActiveDelegation) && (
+              <Link
+                href="/admin/aprovacoes"
+                className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
+                  pathname.startsWith('/admin/aprovacoes')
+                    ? 'border-purple-500 text-purple-600 dark:text-purple-400'
+                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
+                }`}
+              >
+                <span className="text-lg mb-1">🔐</span>
+                <span>Aprovações</span>
+              </Link>
+            )}
+            {/* Delegações - MASTER only (level >= 100) */}
+            {userLevel >= 100 && (
+              <Link
+                href="/admin/delegacoes"
+                className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
+                  pathname.startsWith('/admin/delegacoes')
+                    ? 'border-purple-500 text-purple-600 dark:text-purple-400'
+                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
+                }`}
+              >
+                <span className="text-lg mb-1">🤝</span>
+                <span>Delegações</span>
               </Link>
             )}
           </div>

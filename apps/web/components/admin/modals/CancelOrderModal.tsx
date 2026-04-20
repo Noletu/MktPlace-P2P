@@ -17,6 +17,7 @@ interface CancelOrderModalProps {
 export default function CancelOrderModal({ order, onClose, onSuccess }: CancelOrderModalProps) {
   const [reason, setReason] = useState('');
   const [confirmation, setConfirmation] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -38,7 +39,7 @@ export default function CancelOrderModal({ order, onClose, onSuccess }: CancelOr
     try {
       const response = await fetchWithAuth(`/admin/orders/${order.id}/cancel`, {
         method: 'POST',
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify({ reason, twoFactorCode }),
       });
 
       const data = await response.json();
@@ -129,6 +130,23 @@ export default function CancelOrderModal({ order, onClose, onSuccess }: CancelOr
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
             {reason.length}/20 caracteres
           </p>
+        </div>
+
+        {/* Código 2FA */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Código 2FA *
+            <span className="text-gray-500 dark:text-gray-400 ml-2 font-normal">(obrigatório)</span>
+          </label>
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            value={twoFactorCode}
+            onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, ''))}
+            placeholder="000000"
+            className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-red-500 font-mono tracking-widest text-center text-lg"
+          />
         </div>
 
         {/* Confirmação */}

@@ -351,6 +351,10 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                   <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4">
                     <h5 className="font-bold text-gray-900 dark:text-white mb-4">👤 Dados Pessoais</h5>
                     <div className="grid grid-cols-2 gap-4">
+                      <div className="col-span-2">
+                        <p className="text-sm text-gray-600 dark:text-gray-400">ID do Usuário</p>
+                        <p className="text-sm font-mono text-gray-900 dark:text-white break-all">{details.user.id}</p>
+                      </div>
                       <div>
                         <p className="text-sm text-gray-600 dark:text-gray-400">Nome Completo</p>
                         <p className="text-lg font-medium text-gray-900 dark:text-white">{details.user.name || 'N/A'}</p>
@@ -577,6 +581,20 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                                             </span>
                                           )}
                                         </div>
+                                      </div>
+                                      {/* Wallet ID interno — usado em Ajuste de Saldo e Transferência */}
+                                      <div className="flex items-center gap-2 mt-2">
+                                        <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">Wallet ID:</span>
+                                        <code className="text-xs font-mono text-gray-600 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded">
+                                          {wallet.id}
+                                        </code>
+                                        <button
+                                          onClick={() => copyToClipboard(wallet.id)}
+                                          className="text-xs px-2 py-0.5 bg-gray-500 hover:bg-gray-600 text-white rounded transition shrink-0"
+                                          title="Copiar Wallet ID para usar em Ajuste de Saldo"
+                                        >
+                                          {copiedAddress === wallet.id ? 'Copiado!' : 'Copiar ID'}
+                                        </button>
                                       </div>
                                     </div>
                                   ))}

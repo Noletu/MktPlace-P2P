@@ -101,6 +101,7 @@ export default function AdminWithdrawalsPage() {
   const [actionId, setActionId] = useState<string | null>(null);
   const [actionType, setActionType] = useState<'approve' | 'reject' | null>(null);
   const [actionNote, setActionNote] = useState('');
+  const [actionTwoFactor, setActionTwoFactor] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
   // History filter
@@ -187,7 +188,7 @@ export default function AdminWithdrawalsPage() {
     try {
       const res = await fetchWithAuth(`/admin/withdrawals/${actionId}/${actionType}`, {
         method: 'POST',
-        body: JSON.stringify({ note: actionNote.trim() || undefined }),
+        body: JSON.stringify({ note: actionNote.trim() || undefined, twoFactorCode: actionTwoFactor }),
       });
       const data = await res.json();
 
@@ -209,6 +210,7 @@ export default function AdminWithdrawalsPage() {
     setActionId(null);
     setActionType(null);
     setActionNote('');
+    setActionTwoFactor('');
   };
 
   const openApprove = (id: string) => {
@@ -562,6 +564,22 @@ export default function AdminWithdrawalsPage() {
                 }
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 rows={3}
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Código 2FA *
+                <span className="text-gray-500 dark:text-gray-400 ml-2 font-normal">(obrigatório)</span>
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={actionTwoFactor}
+                onChange={(e) => setActionTwoFactor(e.target.value.replace(/\D/g, ''))}
+                placeholder="000000"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 font-mono tracking-widest text-center text-lg"
               />
             </div>
 

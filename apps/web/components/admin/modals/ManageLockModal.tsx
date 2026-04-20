@@ -66,6 +66,7 @@ export default function ManageLockModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState<{ id: string; operationType: string } | null>(null);
 
   const isLock = mode === 'lock';
   const maxAmount = isLock ? wallet.availableBalance : wallet.lockedBalance;
@@ -94,12 +95,6 @@ export default function ManageLockModal({
       return false;
     }
 
-    // 2FA desabilitado temporariamente
-    // if (!twoFactorCode || twoFactorCode.length !== 6) {
-    //   setError('Codigo 2FA deve ter 6 digitos');
-    //   return false;
-    // }
-
     return true;
   };
 
@@ -119,16 +114,21 @@ export default function ManageLockModal({
 
       const response = await fetchWithAuth(`/admin/funds/${endpoint}`, {
         method: 'POST',
-        // 'X-2FA-Code': twoFactorCode, // Desabilitado temporariamente
         body: JSON.stringify({
           walletId: wallet.walletId,
           amount,
           category,
           reason: reason.trim(),
+          twoFactorCode,
         }),
       });
 
       const data = await response.json();
+
+      if (response.status === 202 && data.success) {
+        setPendingApproval(data.data);
+        return;
+      }
 
       if (!response.ok || !data.success) {
         throw new Error(data.message || data.error || `Erro ao ${isLock ? 'bloquear' : 'desbloquear'} saldo`);
@@ -152,6 +152,31 @@ export default function ManageLockModal({
   };
 
   if (!isOpen) return null;
+
+  if (pendingApproval) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-lg w-full mx-4">
+          <div className="text-center">
+            <span className="text-5xl mb-4 block">🔐</span>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+              Solicitação Enviada
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-2">
+              A operação foi criada com sucesso e aguarda aprovação de um segundo MASTER.
+            </p>
+            <p className="text-xs text-gray-500 font-mono mb-6">ID: {pendingApproval.id}</p>
+            <button
+              onClick={() => { setPendingApproval(null); onSuccess(); }}
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -307,21 +332,21 @@ export default function ManageLockModal({
               </p>
             </div>
 
-            {/* 2FA Code - Desabilitado temporariamente */}
-            <div className="opacity-50">
+            {/* 2FA Code */}
+            <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Codigo 2FA (desabilitado)
+                Codigo 2FA *
+                <span className="text-gray-500 ml-2 font-normal">(obrigatorio)</span>
               </label>
               <input
                 type="text"
-                value=""
-                disabled
-                placeholder="2FA desabilitado"
-                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-500 placeholder-gray-600 cursor-not-allowed font-mono text-center text-xl tracking-widest"
+                inputMode="numeric"
+                maxLength={6}
+                value={twoFactorCode}
+                onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, ''))}
+                placeholder="000000"
+                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 text-white rounded-lg focus:ring-2 focus:ring-orange-500 font-mono tracking-widest text-center text-lg"
               />
-              <p className="mt-1 text-xs text-gray-500">
-                Verificacao 2FA sera habilitada futuramente
-              </p>
             </div>
 
             {/* Error */}

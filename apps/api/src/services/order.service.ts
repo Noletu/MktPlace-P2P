@@ -1159,7 +1159,7 @@ export class OrderService {
       throw new Error('Você não tem permissão para cancelar este pedido');
     }
 
-    if (![OrderStatus.PENDING, OrderStatus.MATCHED].includes(order.status as OrderStatus)) {
+    if (![OrderStatus.PENDING, OrderStatus.IN_NEGOTIATION, OrderStatus.MATCHED].includes(order.status as OrderStatus)) {
       throw new Error('Este pedido não pode ser cancelado no status atual');
     }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ManageLockModal from '../modals/ManageLockModal';
 import { fetchWithAuth } from '@/utils/api';
 
@@ -73,6 +73,17 @@ export default function LockedBalancesView() {
   const [modalMode, setModalMode] = useState<'lock' | 'unlock'>('unlock');
   const [selectedWallet, setSelectedWallet] = useState<LockedWallet | null>(null);
 
+  // Novo Bloqueio
+  const [showNewLock, setShowNewLock] = useState(false);
+  const [newLockEmail, setNewLockEmail] = useState('');
+  const [newLockUserData, setNewLockUserData] = useState<{
+    user: { id: string; email: string; name: string | null };
+    wallets: Array<{ id: string; cryptoType: string; network: string; address: string; balance: string; availableBalance: string; lockedBalance: string }>;
+  } | null>(null);
+  const [newLockSearchLoading, setNewLockSearchLoading] = useState(false);
+  const [newLockSelectedWalletId, setNewLockSelectedWalletId] = useState('');
+  const [newLockError, setNewLockError] = useState('');
+
   useEffect(() => {
     loadData();
   }, []);
@@ -126,6 +137,57 @@ export default function LockedBalancesView() {
     setModalOpen(false);
     setSelectedWallet(null);
     loadData();
+  };
+
+  const searchUserForNewLock = async () => {
+    if (!newLockEmail.trim()) return;
+    setNewLockSearchLoading(true);
+    setNewLockUserData(null);
+    setNewLockSelectedWalletId('');
+    setNewLockError('');
+    try {
+      const response = await fetchWithAuth(
+        `/admin/funds/users/search?email=${encodeURIComponent(newLockEmail)}`
+      );
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || 'Usuário não encontrado');
+      }
+      const result = await response.json();
+      setNewLockUserData(result.data);
+      if (result.data.wallets.length === 1) {
+        setNewLockSelectedWalletId(result.data.wallets[0].id);
+      }
+    } catch (error) {
+      setNewLockError((error as Error).message);
+    } finally {
+      setNewLockSearchLoading(false);
+    }
+  };
+
+  const openNewLockModal = () => {
+    const wallet = newLockUserData?.wallets.find(w => w.id === newLockSelectedWalletId);
+    if (!wallet || !newLockUserData) return;
+    const lockedWallet: LockedWallet = {
+      walletId: wallet.id,
+      userId: newLockUserData.user.id,
+      userEmail: newLockUserData.user.email,
+      userName: newLockUserData.user.name,
+      cryptoType: wallet.cryptoType,
+      network: wallet.network,
+      address: wallet.address,
+      balance: wallet.balance,
+      lockedBalance: wallet.lockedBalance,
+      availableBalance: wallet.availableBalance,
+      lastLockDate: null,
+      hasActiveOrder: false,
+      lockHistory: [],
+    };
+    openLockModal(lockedWallet);
+    setShowNewLock(false);
+    setNewLockEmail('');
+    setNewLockUserData(null);
+    setNewLockSelectedWalletId('');
   };
 
   const formatDate = (dateString: string | null) => {
@@ -191,6 +253,76 @@ export default function LockedBalancesView() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Novo Bloqueio */}
+      <div className="bg-gray-800 border border-orange-600/40 rounded-lg p-4">
+        <button
+          onClick={() => setShowNewLock(!showNewLock)}
+          className="flex items-center gap-2 text-orange-400 font-semibold hover:text-orange-300 transition"
+        >
+          <span>{showNewLock ? '▾' : '▸'}</span>
+          🔒 Iniciar Novo Bloqueio de Saldo
+        </button>
+
+        {showNewLock && (
+          <div className="mt-4 space-y-4">
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={newLockEmail}
+                onChange={(e) => setNewLockEmail(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && searchUserForNewLock()}
+                placeholder="Email do usuário"
+                className="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+              />
+              <button
+                onClick={searchUserForNewLock}
+                disabled={newLockSearchLoading}
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 text-white rounded-lg font-medium transition"
+              >
+                {newLockSearchLoading ? 'Buscando...' : 'Buscar'}
+              </button>
+            </div>
+
+            {newLockError && (
+              <p className="text-red-400 text-sm">{newLockError}</p>
+            )}
+
+            {newLockUserData && (
+              <div className="space-y-3">
+                <p className="text-sm text-gray-400">
+                  Usuário: <span className="text-white font-medium">{newLockUserData.user.email}</span>
+                  {newLockUserData.user.name && <span className="text-gray-500 ml-2">({newLockUserData.user.name})</span>}
+                </p>
+
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Selecionar Carteira</label>
+                  <select
+                    value={newLockSelectedWalletId}
+                    onChange={(e) => setNewLockSelectedWalletId(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-orange-500"
+                  >
+                    <option value="">Selecione uma carteira...</option>
+                    {newLockUserData.wallets.map(w => (
+                      <option key={w.id} value={w.id}>
+                        {w.cryptoType}/{w.network} — Disponível: {parseFloat(w.availableBalance).toFixed(8)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  onClick={openNewLockModal}
+                  disabled={!newLockSelectedWalletId}
+                  className="w-full px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition"
+                >
+                  🔒 Prosseguir para Bloqueio
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Filters */}
@@ -281,8 +413,8 @@ export default function LockedBalancesView() {
               </thead>
               <tbody>
                 {data.wallets.map((wallet) => (
-                  <>
-                    <tr key={wallet.walletId} className="border-b border-gray-700/50 hover:bg-gray-700/30">
+                  <React.Fragment key={wallet.walletId}>
+                    <tr className="border-b border-gray-700/50 hover:bg-gray-700/30">
                       <td className="px-4 py-3">
                         <div>
                           <p className="text-sm text-white">{wallet.userEmail}</p>
@@ -393,7 +525,7 @@ export default function LockedBalancesView() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>

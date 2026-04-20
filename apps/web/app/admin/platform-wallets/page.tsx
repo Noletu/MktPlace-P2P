@@ -66,7 +66,7 @@ interface TransferEstimate {
   estimatedTime: string;
 }
 
-type ModalStep = 'form' | 'preview' | 'confirm' | 'result';
+type ModalStep = 'form' | 'preview' | 'confirm' | 'result' | 'pending-approval';
 
 export default function PlatformWalletsPage() {
   const [wallets, setWallets] = useState<PlatformWallet[]>([]);
@@ -85,6 +85,7 @@ export default function PlatformWalletsPage() {
   const [estimateLoading, setEstimateLoading] = useState(false);
   const [transferring, setTransferring] = useState(false);
   const [transferResult, setTransferResult] = useState<PlatformTransfer | null>(null);
+  const [transferPendingApproval, setTransferPendingApproval] = useState<{ id: string; operationType: string } | null>(null);
   const [transferError, setTransferError] = useState<string | null>(null);
 
   // Deposit modal state
@@ -165,13 +166,14 @@ export default function PlatformWalletsPage() {
     setTwoFactorCode('');
     setEstimate(null);
     setTransferResult(null);
+    setTransferPendingApproval(null);
     setTransferError(null);
   };
 
   const closeTransferModal = () => {
     setTransferWallet(null);
-    if (transferResult) {
-      fetchWallets(); // Refresh balances after successful transfer
+    if (transferResult || transferPendingApproval) {
+      fetchWallets();
     }
   };
 
@@ -219,6 +221,13 @@ export default function PlatformWalletsPage() {
       });
 
       const data = await response.json();
+
+      if (response.status === 202 && data.success) {
+        setTransferPendingApproval(data.data);
+        setModalStep('pending-approval');
+        return;
+      }
+
       if (!response.ok) throw new Error(data.error || 'Erro ao transferir');
 
       setTransferResult(data.data);
@@ -771,6 +780,29 @@ export default function PlatformWalletsPage() {
               )}
 
               {/* Step 4: Result */}
+              {modalStep === 'pending-approval' && transferPendingApproval && (
+                <div className="space-y-4 text-center">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/30 mb-2">
+                    <span className="text-3xl">&#128272;</span>
+                  </div>
+                  <h3 className="text-lg font-bold text-blue-700 dark:text-blue-400">
+                    Solicitacao Enviada
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    A transferencia foi registrada e aguarda aprovacao de um segundo MASTER.
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-500 font-mono bg-gray-100 dark:bg-gray-900 rounded px-3 py-1">
+                    ID: {transferPendingApproval.id}
+                  </p>
+                  <button
+                    onClick={closeTransferModal}
+                    className="w-full py-2.5 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              )}
+
               {modalStep === 'result' && transferResult && (
                 <div className="space-y-4 text-center">
                   {transferResult.status === 'COMPLETED' ? (
