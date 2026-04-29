@@ -6,6 +6,7 @@ import CryptoIcon from '@/components/ui/CryptoIcon';
 import { CryptoType, NetworkType, CRYPTO_SUPPORTED_NETWORKS } from '@mktplace/shared';
 import AppHeader from '@/components/AppHeader';
 import { fetchWithAuth } from '@/utils/api';
+import { getTransactionLabel } from '@/utils/transactionLabels';
 
 interface HDWallet {
   id: string;
@@ -199,34 +200,35 @@ export default function WalletsPage() {
 
   const getTransactionIcon = (type: string) => {
     switch (type) {
-      case 'DEPOSIT':
-        return '📥';
-      case 'WITHDRAWAL':
-        return '📤';
-      case 'LOCK':
-        return '🔒';
-      case 'UNLOCK':
-        return '🔓';
-      case 'DEDUCT':
-        return '💸';
-      default:
-        return '💰';
+      case 'DEPOSIT': return '📥';
+      case 'WITHDRAWAL': return '📤';
+      case 'LOCK': return '🔒';
+      case 'UNLOCK': return '🔓';
+      case 'DEDUCT': return '💸';
+      case 'CREDIT': return '💳';
+      case 'REFUND': return '↩️';
+      case 'ADMIN_CREDIT': return '🏦';
+      case 'ADMIN_DEBIT': return '🏦';
+      case 'ADMIN_LOCK': return '🔐';
+      case 'ADMIN_UNLOCK': return '🔑';
+      case 'ADMIN_ADJUSTMENT': return '⚙️';
+      case 'PLATFORM_FEE': return '🏷️';
+      default: return '💰';
     }
   };
 
-  const getTransactionColor = (type: string) => {
-    switch (type) {
-      case 'DEPOSIT':
-      case 'UNLOCK':
-      case 'CREDIT':
-        return 'text-green-600 dark:text-green-400';
-      case 'WITHDRAWAL':
-      case 'DEDUCT':
-      case 'LOCK':
-        return 'text-red-600 dark:text-red-400';
-      default:
-        return 'text-gray-600 dark:text-gray-400';
-    }
+  const isPositiveTransaction = (type: string, amount?: string) => {
+    if (['DEPOSIT', 'UNLOCK', 'CREDIT', 'REFUND', 'ADMIN_CREDIT', 'ADMIN_UNLOCK'].includes(type)) return true;
+    if (['WITHDRAWAL', 'DEDUCT', 'LOCK', 'ADMIN_DEBIT', 'ADMIN_LOCK'].includes(type)) return false;
+    if (type === 'ADMIN_ADJUSTMENT') return parseFloat(amount || '0') >= 0;
+    return false;
+  };
+
+  const getTransactionColor = (type: string, amount?: string) => {
+    if (isPositiveTransaction(type, amount)) return 'text-green-600 dark:text-green-400';
+    if (['WITHDRAWAL', 'DEDUCT', 'LOCK', 'ADMIN_DEBIT', 'ADMIN_LOCK'].includes(type)) return 'text-red-600 dark:text-red-400';
+    if (type === 'ADMIN_ADJUSTMENT') return 'text-red-600 dark:text-red-400';
+    return 'text-gray-600 dark:text-gray-400';
   };
 
   if (loading) {
@@ -471,15 +473,15 @@ export default function WalletsPage() {
                             <div className="flex items-center gap-2">
                               <span className="text-2xl">{getTransactionIcon(tx.type)}</span>
                               <div>
-                                <p className="font-semibold text-gray-900 dark:text-white">{tx.type}</p>
+                                <p className="font-semibold text-gray-900 dark:text-white">{getTransactionLabel(tx.type)}</p>
                                 <p className="text-xs text-gray-600 dark:text-gray-400">
                                   {new Date(tx.createdAt).toLocaleString('pt-BR')}
                                 </p>
                               </div>
                             </div>
-                            <span className={`font-bold text-lg ${getTransactionColor(tx.type)}`}>
-                              {tx.type === 'DEPOSIT' || tx.type === 'UNLOCK' || tx.type === 'CREDIT' ? '+' : '-'}
-                              {parseFloat(tx.amount).toFixed(8)}
+                            <span className={`font-bold text-lg ${getTransactionColor(tx.type, tx.amount)}`}>
+                              {isPositiveTransaction(tx.type, tx.amount) ? '+' : '-'}
+                              {Math.abs(parseFloat(tx.amount)).toFixed(8)}
                             </span>
                           </div>
 

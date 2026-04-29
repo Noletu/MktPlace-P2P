@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-export type TransactionType = 'ALL' | 'DEPOSIT' | 'WITHDRAWAL' | 'LOCK' | 'UNLOCK' | 'DEDUCT';
+export type TransactionType = 'ALL' | 'DEPOSIT' | 'WITHDRAWAL' | 'LOCK' | 'UNLOCK' | 'DEDUCT' | 'CREDIT' | 'REFUND' | 'ADMIN_CREDIT' | 'ADMIN_DEBIT' | 'ADMIN_LOCK' | 'ADMIN_UNLOCK' | 'ADMIN_ADJUSTMENT' | 'PLATFORM_FEE';
 
 interface TransactionTypeFilterProps {
   selectedType: TransactionType;
@@ -15,7 +15,15 @@ const TYPE_OPTIONS: Array<{ value: TransactionType; label: string; icon: string 
   { value: 'WITHDRAWAL', label: 'Saques', icon: '📤' },
   { value: 'LOCK', label: 'Bloqueios', icon: '🔒' },
   { value: 'UNLOCK', label: 'Desbloqueios', icon: '🔓' },
-  { value: 'DEDUCT', label: 'Gastos', icon: '💸' },
+  { value: 'DEDUCT', label: 'Deduções', icon: '💸' },
+  { value: 'CREDIT', label: 'Créditos', icon: '💳' },
+  { value: 'REFUND', label: 'Reembolsos', icon: '↩️' },
+  { value: 'ADMIN_CREDIT', label: 'Créditos Admin', icon: '🏦' },
+  { value: 'ADMIN_DEBIT', label: 'Débitos Admin', icon: '🏦' },
+  { value: 'ADMIN_LOCK', label: 'Bloqueios Admin', icon: '🔐' },
+  { value: 'ADMIN_UNLOCK', label: 'Desbloqueios Admin', icon: '🔑' },
+  { value: 'ADMIN_ADJUSTMENT', label: 'Ajustes Admin', icon: '⚙️' },
+  { value: 'PLATFORM_FEE', label: 'Taxas da Plataforma', icon: '🏷️' },
 ];
 
 export default function TransactionTypeFilter({
