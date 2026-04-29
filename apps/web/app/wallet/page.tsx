@@ -11,6 +11,7 @@ import WithdrawModal from '@/components/modals/WithdrawModal';
 import WithdrawWizardModal from '@/components/modals/WithdrawWizardModal';
 import GenerateWalletModal from '@/components/modals/GenerateWalletModal';
 import { formatBRL } from '@/utils/formatters';
+import { getTransactionLabel } from '@/utils/transactionLabels';
 import { getExplorerUrl, getExplorerName, truncateHash } from '@/utils/blockchainExplorer';
 import type { NetworkType } from '@/utils/blockchainExplorer';
 import { fetchWithAuth } from '@/utils/api';
@@ -238,24 +239,30 @@ export default function WalletHubPage() {
       case 'LOCK': return '🔒';
       case 'UNLOCK': return '🔓';
       case 'DEDUCT': return '💸';
+      case 'CREDIT': return '💳';
+      case 'REFUND': return '↩️';
+      case 'ADMIN_CREDIT': return '🏦';
+      case 'ADMIN_DEBIT': return '🏦';
+      case 'ADMIN_LOCK': return '🔐';
+      case 'ADMIN_UNLOCK': return '🔑';
+      case 'ADMIN_ADJUSTMENT': return '⚙️';
+      case 'PLATFORM_FEE': return '🏷️';
       default: return '💰';
     }
   };
 
-  const getTransactionColor = (type: string) => {
-    switch (type) {
-      case 'DEPOSIT':
-      case 'UNLOCK':
-      case 'CREDIT':
-      case 'REFUND':
-        return 'text-green-600 dark:text-green-400';
-      case 'WITHDRAWAL':
-      case 'DEDUCT':
-      case 'LOCK':
-        return 'text-red-600 dark:text-red-400';
-      default:
-        return 'text-gray-600 dark:text-gray-400';
-    }
+  const isPositiveTransaction = (type: string, amount?: string) => {
+    if (['DEPOSIT', 'UNLOCK', 'CREDIT', 'REFUND', 'ADMIN_CREDIT', 'ADMIN_UNLOCK'].includes(type)) return true;
+    if (['WITHDRAWAL', 'DEDUCT', 'LOCK', 'ADMIN_DEBIT', 'ADMIN_LOCK'].includes(type)) return false;
+    if (type === 'ADMIN_ADJUSTMENT') return parseFloat(amount || '0') >= 0;
+    return false;
+  };
+
+  const getTransactionColor = (type: string, amount?: string) => {
+    if (isPositiveTransaction(type, amount)) return 'text-green-600 dark:text-green-400';
+    if (['WITHDRAWAL', 'DEDUCT', 'LOCK', 'ADMIN_DEBIT', 'ADMIN_LOCK'].includes(type)) return 'text-red-600 dark:text-red-400';
+    if (type === 'ADMIN_ADJUSTMENT') return 'text-red-600 dark:text-red-400';
+    return 'text-gray-600 dark:text-gray-400';
   };
 
   const formatDate = (dateString: string) => {
@@ -580,21 +587,16 @@ export default function WalletHubPage() {
                     <span className="text-xl flex-shrink-0">{getTransactionIcon(tx.type)}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        {tx.type === 'DEPOSIT' && 'Depósito'}
-                        {tx.type === 'WITHDRAWAL' && 'Saque'}
-                        {tx.type === 'LOCK' && 'Bloqueio'}
-                        {tx.type === 'UNLOCK' && 'Desbloqueio'}
-                        {tx.type === 'DEDUCT' && 'Dedução'}
-                        {!['DEPOSIT', 'WITHDRAWAL', 'LOCK', 'UNLOCK', 'DEDUCT'].includes(tx.type) && tx.type}
+                        {getTransactionLabel(tx.type)}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                         {tx.description}
                       </p>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <p className={`text-sm font-semibold ${getTransactionColor(tx.type)}`}>
-                        {(['DEPOSIT', 'UNLOCK', 'CREDIT', 'REFUND'].includes(tx.type)) ? '+' : '-'}
-                        {parseFloat(tx.amount).toFixed(8)}
+                      <p className={`text-sm font-semibold ${getTransactionColor(tx.type, tx.amount)}`}>
+                        {isPositiveTransaction(tx.type, tx.amount) ? '+' : '-'}
+                        {Math.abs(parseFloat(tx.amount)).toFixed(8)}
                       </p>
                       <p className="text-xs text-gray-400 dark:text-gray-500">
                         {tx.type === 'DEPOSIT' && !tx.txHash ? 'PENDING' : formatDate(tx.createdAt)}
