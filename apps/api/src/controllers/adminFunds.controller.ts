@@ -124,17 +124,17 @@ export class AdminFundsController {
   }
 
   /**
-   * GET /api/v1/admin/funds/users/search?email=xxx
-   * Buscar wallets de um usuário por email
+   * GET /api/v1/admin/funds/users/search?query=xxx
+   * Buscar wallets de um usuário por email, userId ou walletId
    */
   async searchUserWallets(req: Request, res: Response): Promise<void> {
     try {
-      const { email } = req.query;
-      if (!email || typeof email !== 'string') {
-        res.status(400).json({ success: false, error: 'email é obrigatório' });
+      const query = (req.query.query || req.query.email) as string;
+      if (!query || typeof query !== 'string') {
+        res.status(400).json({ success: false, error: 'query é obrigatório' });
         return;
       }
-      const result = await AdminFundsService.searchUserWalletsByEmail(email);
+      const result = await AdminFundsService.searchUserWallets(query);
       res.status(200).json(result);
     } catch (error) {
       console.error('[AdminFundsController] searchUserWallets error:', error);
@@ -176,10 +176,10 @@ export class AdminFundsController {
    */
   async freezeAccount(req: Request, res: Response): Promise<void> {
     try {
-      const { userId, reason, duration } = req.body;
+      const { userId: userIdentifier, reason, duration } = req.body;
       const adminUserId = (req as any).user.userId;
 
-      if (!userId || !reason) {
+      if (!userIdentifier || !reason) {
         res.status(400).json({
           success: false,
           error: 'userId e reason são obrigatórios',
@@ -199,8 +199,11 @@ export class AdminFundsController {
         }
       }
 
+      // Resolver identificador genérico para userId real
+      const resolved = await AdminFundsService.resolveUserByIdentifier(userIdentifier);
+
       const result = await AdminFundsService.freezeAccount({
-        userId,
+        userId: resolved.id,
         reason,
         adminUserId,
         duration: duration ? Number(duration) : undefined,
@@ -226,10 +229,10 @@ export class AdminFundsController {
    */
   async unfreezeAccount(req: Request, res: Response): Promise<void> {
     try {
-      const { userId } = req.body;
+      const { userId: userIdentifier } = req.body;
       const adminUserId = (req as any).user.userId;
 
-      if (!userId) {
+      if (!userIdentifier) {
         res.status(400).json({
           success: false,
           error: 'userId é obrigatório',
@@ -237,8 +240,11 @@ export class AdminFundsController {
         return;
       }
 
+      // Resolver identificador genérico para userId real
+      const resolved = await AdminFundsService.resolveUserByIdentifier(userIdentifier);
+
       const result = await AdminFundsService.unfreezeAccount({
-        userId,
+        userId: resolved.id,
         adminUserId,
       });
 
@@ -387,6 +393,35 @@ export class AdminFundsController {
       res.status(500).json({
         success: false,
         error: 'Erro ao buscar transações',
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/funds/frozen-accounts
+   * Listar contas com filtros de congelamento
+   *
+   * Query params: status, search, page, limit
+   * Requires: GERENTE+ role
+   */
+  async getFrozenAccounts(req: Request, res: Response): Promise<void> {
+    try {
+      const { status, search, page, limit } = req.query;
+
+      const result = await AdminFundsService.getFrozenAccounts({
+        status: (status as 'all' | 'frozen' | 'active') || undefined,
+        search: search as string,
+        page: page ? parseInt(page as string) : undefined,
+        limit: limit ? parseInt(limit as string) : undefined,
+      });
+
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[AdminFundsController] getFrozenAccounts error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar contas congeladas',
         message: (error as Error).message,
       });
     }

@@ -450,6 +450,25 @@ export class AdminService {
         return { _pending: true, approval } as any;
       }
 
+      // CRITICAL: Promoção para MASTER exige aprovação dupla (Maker-Checker)
+      // Mesma simetria de segurança do rebaixamento — evita promoção indevida por MASTER comprometido.
+      if (data.role === 'MASTER' && targetRole !== 'MASTER') {
+        const approval = await PendingApprovalService.create({
+          initiatorId:      adminId,
+          operationType:    'PROMOTE_MASTER',
+          operationPayload: {
+            targetUserId:    userId,
+            targetUserEmail: targetUser.email,
+            targetUserName:  targetUser.name ?? targetUser.email,
+            newRole:         'MASTER',
+            newRoleSlug:     'master',
+            previousRole:    targetRole,
+            reason:          (data as any).reason ?? 'Sem motivo informado',
+          },
+        });
+        return { _pending: true, approval } as any;
+      }
+
       // RBAC: Buscar role ID pelo slug
       const newRoleSlug = data.role.toLowerCase();
       const newRoleRecord = await prisma.role.findUnique({

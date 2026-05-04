@@ -7,7 +7,7 @@ import { normalizeNotificationUrl } from '@/utils/notificationUtils';
 import { fetchWithAuth } from '@/utils/api';
 
 export function NotificationBell() {
-  const { notifications, unreadCount, setNotifications, setUnreadCount } = useNotificationContext();
+  const { notifications, unreadCount, setNotifications, setUnreadCount, markAllAsRead } = useNotificationContext();
   const [isOpen, setIsOpen] = useState(false);
   const router = useRouter();
 
@@ -55,9 +55,12 @@ export function NotificationBell() {
 
   const handleMarkAllAsRead = async () => {
     try {
-      await fetchWithAuth('/notifications/mark-all-read', {
+      const response = await fetchWithAuth('/notifications/mark-all-read', {
         method: 'POST',
       });
+      if (response.ok) {
+        markAllAsRead();
+      }
     } catch (error) {
       console.error('Failed to mark all as read:', error);
     }
