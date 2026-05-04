@@ -10,7 +10,7 @@ import DepositModal from '@/components/modals/DepositModal';
 import WithdrawModal from '@/components/modals/WithdrawModal';
 import WithdrawWizardModal from '@/components/modals/WithdrawWizardModal';
 import GenerateWalletModal from '@/components/modals/GenerateWalletModal';
-import { formatBRL } from '@/utils/formatters';
+import { formatBRL, formatCrypto } from '@/utils/formatters';
 import { getTransactionLabel } from '@/utils/transactionLabels';
 import { getExplorerUrl, getExplorerName, truncateHash } from '@/utils/blockchainExplorer';
 import type { NetworkType } from '@/utils/blockchainExplorer';
@@ -39,6 +39,7 @@ interface WalletTransaction {
   description: string;
   txHash: string | null;
   createdAt: string;
+  cryptoType?: string;
 }
 
 interface Withdrawal {
@@ -478,7 +479,7 @@ export default function WalletHubPage() {
                         <div>
                           <p className="text-xs text-gray-500 dark:text-gray-400">Disponível</p>
                           <p className="text-sm font-semibold text-green-600 dark:text-green-400">
-                            {agg.totalAvailable.toFixed(8)} {agg.cryptoType}
+                            {formatCrypto(agg.totalAvailable, agg.cryptoType)} {agg.cryptoType}
                           </p>
                           <p className="text-xs text-gray-400 dark:text-gray-500">
                             ≈ {formatBRL(availBRL)}
@@ -487,7 +488,7 @@ export default function WalletHubPage() {
                         <div>
                           <p className="text-xs text-gray-500 dark:text-gray-400">Bloqueado</p>
                           <p className="text-sm font-semibold text-yellow-600 dark:text-yellow-400">
-                            {agg.totalLocked.toFixed(8)} {agg.cryptoType}
+                            {formatCrypto(agg.totalLocked, agg.cryptoType)} {agg.cryptoType}
                           </p>
                           <p className="text-xs text-gray-400 dark:text-gray-500">
                             ≈ {formatBRL(lockedBRL)}
@@ -546,19 +547,19 @@ export default function WalletHubPage() {
                                 <div>
                                   <span className="text-gray-500 dark:text-gray-400">Saldo: </span>
                                   <span className="font-semibold text-gray-900 dark:text-white">
-                                    {parseFloat(w.balance).toFixed(8)} {w.cryptoType}
+                                    {formatCrypto(parseFloat(w.balance), w.cryptoType)} {w.cryptoType}
                                   </span>
                                 </div>
                                 <div>
                                   <span className="text-gray-500 dark:text-gray-400">Disponível: </span>
                                   <span className="font-semibold text-green-600 dark:text-green-400">
-                                    {parseFloat(w.availableBalance).toFixed(8)}
+                                    {formatCrypto(parseFloat(w.availableBalance), w.cryptoType)}
                                   </span>
                                 </div>
                                 <div>
                                   <span className="text-gray-500 dark:text-gray-400">Bloqueado: </span>
                                   <span className="font-semibold text-yellow-600 dark:text-yellow-400">
-                                    {parseFloat(w.lockedBalance).toFixed(8)}
+                                    {formatCrypto(parseFloat(w.lockedBalance), w.cryptoType)}
                                   </span>
                                 </div>
                               </div>
@@ -596,7 +597,8 @@ export default function WalletHubPage() {
                     <div className="text-right flex-shrink-0">
                       <p className={`text-sm font-semibold ${getTransactionColor(tx.type, tx.amount)}`}>
                         {isPositiveTransaction(tx.type, tx.amount) ? '+' : '-'}
-                        {Math.abs(parseFloat(tx.amount)).toFixed(8)}
+                        {formatCrypto(Math.abs(parseFloat(tx.amount)), tx.cryptoType || 'BTC')}
+                        {tx.cryptoType && <span className="text-xs text-gray-400 ml-1">{tx.cryptoType}</span>}
                       </p>
                       <p className="text-xs text-gray-400 dark:text-gray-500">
                         {tx.type === 'DEPOSIT' && !tx.txHash ? 'PENDING' : formatDate(tx.createdAt)}
@@ -627,7 +629,7 @@ export default function WalletHubPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                              {parseFloat(w.amount).toFixed(8)} {w.wallet.cryptoType}
+                              {formatCrypto(parseFloat(w.amount), w.wallet.cryptoType)} {w.wallet.cryptoType}
                             </p>
                             <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${statusConfig.color}`}>
                               {statusConfig.label}
@@ -764,7 +766,7 @@ export default function WalletHubPage() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold text-green-600 dark:text-green-400">
-                      {parseFloat(w.availableBalance).toFixed(8)}
+                      {formatCrypto(parseFloat(w.availableBalance), w.cryptoType)}
                     </p>
                     <p className="text-xs text-gray-400">disponível</p>
                   </div>

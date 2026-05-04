@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../utils/prisma';
 import BigNumber from 'bignumber.js';
 import { notificationService } from './notification.service';
 import { PlatformWalletService } from './platformWallet.service';
@@ -9,8 +9,6 @@ import {
   LockedWalletInfo,
   LockHistoryEntry,
 } from '../types/adminLock.types';
-
-const prisma = new PrismaClient();
 
 /**
  * Admin Funds Service
@@ -217,15 +215,41 @@ export class AdminFundsService {
   /**
    * Buscar wallets de um usuário por email (para lookup no frontend)
    */
-  static async searchUserWalletsByEmail(email: string) {
-    const user = await prisma.user.findUnique({
-      where: { email },
+  /**
+   * Resolve um identificador genérico (email, userId ou walletId) para um usuário
+   */
+  static async resolveUserByIdentifier(query: string) {
+    const trimmed = query.trim();
+
+    // 1. Email (contém @)
+    if (trimmed.includes('@')) {
+      const user = await prisma.user.findUnique({
+        where: { email: trimmed },
+        select: { id: true, email: true, name: true },
+      });
+      if (user) return user;
+      throw new Error('Usuário não encontrado com este email');
+    }
+
+    // 2. Tentar como userId
+    const userById = await prisma.user.findUnique({
+      where: { id: trimmed },
       select: { id: true, email: true, name: true },
     });
+    if (userById) return userById;
 
-    if (!user) {
-      throw new Error('Usuário não encontrado');
-    }
+    // 3. Tentar como walletId
+    const wallet = await prisma.userWallet.findUnique({
+      where: { id: trimmed },
+      include: { user: { select: { id: true, email: true, name: true } } },
+    });
+    if (wallet) return wallet.user;
+
+    throw new Error('Nenhum usuário encontrado com este identificador');
+  }
+
+  static async searchUserWallets(query: string) {
+    const user = await this.resolveUserByIdentifier(query);
 
     const wallets = await prisma.userWallet.findMany({
       where: { userId: user.id, isActive: true },
@@ -480,6 +504,112 @@ export class AdminFundsService {
   }
 
   /**
+   * Listar contas com filtros de congelamento
+   */
+  static async getFrozenAccounts(filters?: {
+    status?: 'all' | 'frozen' | 'active';
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const status = filters?.status || 'all';
+    const search = filters?.search?.trim() || '';
+    const page = Math.max(1, filters?.page || 1);
+    const limit = Math.min(100, Math.max(1, filters?.limit || 20));
+
+    // Build where clause
+    const where: any = {};
+
+    if (status === 'frozen') {
+      where.accountFrozen = true;
+    } else if (status === 'active') {
+      where.accountFrozen = false;
+    }
+
+    if (search) {
+      where.OR = [
+        { email: { contains: search } },
+        { name: { contains: search } },
+        { id: search },
+      ];
+    }
+
+    // Build search-only where (without status filter) for summary counts
+    const searchWhere: any = {};
+    if (search) {
+      searchWhere.OR = [
+        { email: { contains: search } },
+        { name: { contains: search } },
+        { id: search },
+      ];
+    }
+
+    const [totalFrozen, totalActive, totalFiltered, users] = await Promise.all([
+      prisma.user.count({ where: { ...searchWhere, accountFrozen: true } }),
+      prisma.user.count({ where: { ...searchWhere, accountFrozen: false } }),
+      prisma.user.count({ where }),
+      prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          accountFrozen: true,
+          frozenReason: true,
+          frozenAt: true,
+          frozenBy: true,
+          frozenUntil: true,
+          _count: { select: { userWallets: true } },
+        },
+        orderBy: [
+          { accountFrozen: 'desc' },
+          { frozenAt: 'desc' },
+        ],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    // Resolve frozenBy admin emails
+    const adminIds = [...new Set(users.map((u) => u.frozenBy).filter(Boolean))] as string[];
+    const admins = adminIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: adminIds } },
+          select: { id: true, email: true },
+        })
+      : [];
+    const adminMap = new Map(admins.map((a) => [a.id, a.email]));
+
+    return {
+      success: true,
+      data: {
+        users: users.map((u) => ({
+          id: u.id,
+          email: u.email,
+          name: u.name,
+          accountFrozen: u.accountFrozen,
+          frozenReason: u.frozenReason,
+          frozenAt: u.frozenAt,
+          frozenBy: u.frozenBy,
+          frozenByEmail: u.frozenBy ? adminMap.get(u.frozenBy) || null : null,
+          frozenUntil: u.frozenUntil,
+          walletCount: u._count.userWallets,
+        })),
+        summary: {
+          totalFrozen,
+          totalActive,
+          total: totalFiltered,
+        },
+        pagination: {
+          page,
+          limit,
+          totalPages: Math.ceil(totalFiltered / limit),
+        },
+      },
+    };
+  }
+
+  /**
    * ========================================
    * INTERNAL TRANSFER: Transferência interna
    * ========================================
@@ -616,6 +746,37 @@ export class AdminFundsService {
       return { debitTx, creditTx, updatedFrom, updatedTo };
     });
 
+    // Notificar ambos os usuários
+    try {
+      await notificationService.createNotification({
+        userId: fromWallet.userId,
+        type: 'INTERNAL_TRANSFER',
+        category: 'WALLET',
+        title: 'Transferencia Enviada',
+        message: `${amount} ${fromWallet.cryptoType} foi transferido de sua carteira. Motivo: ${reason.replace(/^\[(DUAL-APPROVED|OVERRIDE)\]\s*/i, '')}`,
+        priority: 'HIGH',
+        actionUrl: '/wallet',
+        actionLabel: 'Ver Carteira',
+      });
+    } catch (e) {
+      console.error('[internalTransfer] Notification error (sender):', e);
+    }
+
+    try {
+      await notificationService.createNotification({
+        userId: toWallet.userId,
+        type: 'INTERNAL_TRANSFER',
+        category: 'WALLET',
+        title: 'Transferencia Recebida',
+        message: `Voce recebeu ${amount} ${toWallet.cryptoType} em sua carteira. Motivo: ${reason.replace(/^\[(DUAL-APPROVED|OVERRIDE)\]\s*/i, '')}`,
+        priority: 'HIGH',
+        actionUrl: '/wallet',
+        actionLabel: 'Ver Carteira',
+      });
+    } catch (e) {
+      console.error('[internalTransfer] Notification error (receiver):', e);
+    }
+
     return {
       success: true,
       message: 'Transferência interna realizada com sucesso',
@@ -727,6 +888,22 @@ export class AdminFundsService {
 
       return updated;
     });
+
+    // Notificar o usuário sobre o ajuste
+    try {
+      await notificationService.createNotification({
+        userId: wallet.userId,
+        type: 'BALANCE_ADJUSTED',
+        category: 'WALLET',
+        title: adjustmentBN.gte(0) ? 'Credito Recebido' : 'Debito Aplicado',
+        message: `${adjustmentBN.abs().toString()} ${wallet.cryptoType} foi ${adjustmentBN.gte(0) ? 'creditado em' : 'debitado de'} sua carteira. Motivo: ${reason.replace(/^\[(DUAL-APPROVED|OVERRIDE)\]\s*/i, '')}`,
+        priority: 'HIGH',
+        actionUrl: '/wallet',
+        actionLabel: 'Ver Carteira',
+      });
+    } catch (e) {
+      console.error('[adjustBalance] Notification error:', e);
+    }
 
     return {
       success: true,
@@ -895,6 +1072,22 @@ export class AdminFundsService {
         return { updatedPlatform, updatedUser, debitTx };
       });
 
+      // Notificar o usuário sobre a cobrança
+      try {
+        await notificationService.createNotification({
+          userId: userWallet.userId,
+          type: 'PLATFORM_COLLECT',
+          category: 'WALLET',
+          title: 'Cobranca da Plataforma',
+          message: `${amount} ${cryptoType} foi cobrado de sua carteira. Motivo: ${reason.replace(/^\[(DUAL-APPROVED|OVERRIDE)\]\s*/i, '')}`,
+          priority: 'HIGH',
+          actionUrl: '/wallet',
+          actionLabel: 'Ver Carteira',
+        });
+      } catch (e) {
+        console.error('[platformRefund/FROM_USER] Notification error:', e);
+      }
+
       return {
         success: true,
         message: 'Cobrança da plataforma realizada com sucesso',
@@ -1013,6 +1206,22 @@ export class AdminFundsService {
 
       return { updatedPlatform, updatedTo, creditTx };
     });
+
+    // Notificar o usuário sobre o reembolso
+    try {
+      await notificationService.createNotification({
+        userId: userWallet.userId,
+        type: 'PLATFORM_REFUND',
+        category: 'WALLET',
+        title: 'Reembolso Recebido',
+        message: `Voce recebeu um reembolso de ${amount} ${cryptoType} em sua carteira. Motivo: ${reason.replace(/^\[(DUAL-APPROVED|OVERRIDE)\]\s*/i, '')}`,
+        priority: 'HIGH',
+        actionUrl: '/wallet',
+        actionLabel: 'Ver Carteira',
+      });
+    } catch (e) {
+      console.error('[platformRefund/TO_USER] Notification error:', e);
+    }
 
     return {
       success: true,
@@ -1424,7 +1633,8 @@ export class AdminFundsService {
     }
 
     if (filters?.userId) {
-      where.userId = filters.userId;
+      const resolved = await this.resolveUserByIdentifier(filters.userId);
+      where.userId = resolved.id;
     }
 
     // Buscar carteiras com saldo bloqueado
@@ -1672,7 +1882,7 @@ export class AdminFundsService {
         type: 'BALANCE_LOCKED',
         category: 'WALLET',
         title: '🔒 Saldo Bloqueado',
-        message: `${amount} ${wallet.cryptoType} foi bloqueado em sua carteira. Motivo: ${LockCategoryLabels[category]} - ${reason}`,
+        message: `${amount} ${wallet.cryptoType} foi bloqueado em sua carteira. Motivo: ${LockCategoryLabels[category]} - ${reason.replace(/^\[(DUAL-APPROVED|OVERRIDE)\]\s*/i, '')}`,
         priority: 'HIGH',
         actionUrl: '/wallets',
         actionLabel: 'Ver Carteiras',
@@ -1817,7 +2027,7 @@ export class AdminFundsService {
         type: 'BALANCE_UNLOCKED',
         category: 'WALLET',
         title: '🔓 Saldo Desbloqueado',
-        message: `${amount} ${wallet.cryptoType} foi desbloqueado em sua carteira. Motivo: ${LockCategoryLabels[category]} - ${reason}`,
+        message: `${amount} ${wallet.cryptoType} foi desbloqueado em sua carteira. Motivo: ${LockCategoryLabels[category]} - ${reason.replace(/^\[(DUAL-APPROVED|OVERRIDE)\]\s*/i, '')}`,
         priority: 'NORMAL',
         actionUrl: '/wallets',
         actionLabel: 'Ver Carteiras',

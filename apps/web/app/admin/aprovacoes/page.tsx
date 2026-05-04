@@ -41,6 +41,7 @@ const OPERATION_LABELS: Record<string, string> = {
   LOCK_BALANCE:      'Bloqueio de Saldo',
   UNLOCK_BALANCE:    'Desbloqueio de Saldo',
   DEMOTE_MASTER:     'Rebaixamento de MASTER',
+  PROMOTE_MASTER:    'Promoção para MASTER',
 };
 
 const OPERATION_COLORS: Record<string, string> = {
@@ -50,6 +51,7 @@ const OPERATION_COLORS: Record<string, string> = {
   LOCK_BALANCE:      'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
   UNLOCK_BALANCE:    'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
   DEMOTE_MASTER:     'bg-red-200 text-red-900 dark:bg-red-900/60 dark:text-red-200',
+  PROMOTE_MASTER:    'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300',
 };
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -80,6 +82,8 @@ function summarizePayload(operationType: string, payloadStr: string): string {
         return `Carteira ${p.walletId?.slice(0, 8)}... | Valor: ${p.amount} | Categoria: ${p.category} | Motivo: ${p.reason}`;
       case 'DEMOTE_MASTER':
         return `Usuário: ${p.targetUserName} (${p.targetUserEmail}) → ${p.newRole} | Motivo: ${p.reason}`;
+      case 'PROMOTE_MASTER':
+        return `Usuário: ${p.targetUserName} (${p.targetUserEmail}) ${p.previousRole} → MASTER | Motivo: ${p.reason}`;
       default:
         return JSON.stringify(p);
     }

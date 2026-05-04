@@ -23,6 +23,7 @@ const OPERATION_LABELS: Record<string, string> = {
   LOCK_BALANCE:             'Bloqueio de Saldo',
   UNLOCK_BALANCE:           'Desbloqueio de Saldo',
   DEMOTE_MASTER:            'Rebaixamento de MASTER',
+  PROMOTE_MASTER:           'Promoção para MASTER',
   PLATFORM_WALLET_TRANSFER: 'Transferência de Carteira da Plataforma',
 };
 
@@ -617,6 +618,36 @@ export class PendingApprovalService {
           description: `[DUAL-APPROVED] Rebaixamento de MASTER: ${payload.targetUserEmail} → ${payload.newRole}`,
           metadata: {
             previousRole: 'MASTER',
+            newRole:       payload.newRole,
+            reason:        payload.reason,
+            executedBy,
+          },
+          success: true,
+        });
+
+        return { targetUserId: payload.targetUserId, newRole: payload.newRole };
+      }
+
+      case 'PROMOTE_MASTER': {
+        // payload: { targetUserId, newRole, newRoleSlug, previousRole, reason, targetUserEmail, targetUserName }
+        const masterRole = await prisma.role.findUnique({ where: { slug: payload.newRoleSlug } });
+        if (!masterRole) throw new Error(`Role '${payload.newRoleSlug}' não encontrado no sistema RBAC.`);
+
+        await prisma.user.update({
+          where: { id: payload.targetUserId },
+          data: { roleId: masterRole.id, legacyRole: payload.newRole },
+        });
+
+        clearUserPermissionCache(payload.targetUserId);
+
+        await auditLogService.log({
+          userId:      adminUserId,
+          action:      'USER_ROLE_CHANGE',
+          resource:    'User',
+          resourceId:  payload.targetUserId,
+          description: `[DUAL-APPROVED] Promoção para MASTER: ${payload.targetUserEmail} (${payload.previousRole} → MASTER)`,
+          metadata: {
+            previousRole: payload.previousRole,
             newRole:       payload.newRole,
             reason:        payload.reason,
             executedBy,

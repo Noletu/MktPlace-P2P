@@ -7,6 +7,7 @@ import { CryptoType, NetworkType, CRYPTO_SUPPORTED_NETWORKS } from '@mktplace/sh
 import AppHeader from '@/components/AppHeader';
 import { fetchWithAuth } from '@/utils/api';
 import { getTransactionLabel } from '@/utils/transactionLabels';
+import { formatCrypto } from '@/utils/formatters';
 
 interface HDWallet {
   id: string;
@@ -239,6 +240,9 @@ export default function WalletsPage() {
     );
   }
 
+  // Crypto type da wallet cujas transações estão sendo visualizadas
+  const txCryptoType = wallets.find(w => w.id === showTransactions)?.cryptoType || 'BTC';
+
   // Agrupar wallets por crypto
   const walletsByCrypto: Record<string, HDWallet[]> = {};
   wallets.forEach(wallet => {
@@ -386,19 +390,19 @@ export default function WalletsPage() {
                             <div className="flex justify-between">
                               <span className="text-gray-600 dark:text-gray-400">Disponível:</span>
                               <span className="font-semibold text-green-600 dark:text-green-400">
-                                {parseFloat(wallet.availableBalance).toFixed(8)}
+                                {formatCrypto(parseFloat(wallet.availableBalance), wallet.cryptoType)}
                               </span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-gray-600 dark:text-gray-400">Bloqueado:</span>
                               <span className="font-semibold text-orange-600 dark:text-orange-400">
-                                {parseFloat(wallet.lockedBalance).toFixed(8)}
+                                {formatCrypto(parseFloat(wallet.lockedBalance), wallet.cryptoType)}
                               </span>
                             </div>
                             <div className="flex justify-between border-t pt-2 dark:border-gray-700">
                               <span className="text-gray-700 dark:text-gray-300 font-medium">Total:</span>
                               <span className="font-bold text-gray-900 dark:text-white">
-                                {parseFloat(wallet.balance).toFixed(8)}
+                                {formatCrypto(parseFloat(wallet.balance), wallet.cryptoType)}
                               </span>
                             </div>
                           </div>
@@ -481,7 +485,8 @@ export default function WalletsPage() {
                             </div>
                             <span className={`font-bold text-lg ${getTransactionColor(tx.type, tx.amount)}`}>
                               {isPositiveTransaction(tx.type, tx.amount) ? '+' : '-'}
-                              {Math.abs(parseFloat(tx.amount)).toFixed(8)}
+                              {formatCrypto(Math.abs(parseFloat(tx.amount)), txCryptoType)}
+                              <span className="text-xs text-gray-400 ml-1">{txCryptoType}</span>
                             </span>
                           </div>
 
@@ -494,9 +499,9 @@ export default function WalletsPage() {
                           )}
 
                           <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-between text-xs text-gray-600 dark:text-gray-400">
-                            <span>Antes: {parseFloat(tx.balanceBefore).toFixed(8)}</span>
+                            <span>Antes: {formatCrypto(parseFloat(tx.balanceBefore), txCryptoType)}</span>
                             <span>→</span>
-                            <span>Depois: {parseFloat(tx.balanceAfter).toFixed(8)}</span>
+                            <span>Depois: {formatCrypto(parseFloat(tx.balanceAfter), txCryptoType)}</span>
                           </div>
                         </div>
                       ))}

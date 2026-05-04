@@ -27,7 +27,7 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
   const [loading, setLoading] = useState(true);
   const [offset, setOffset] = useState(0);
 
-  const fetchNotifications = useCallback(async (customOffset?: number) => {
+  const fetchNotifications = useCallback(async (customOffset?: number, append?: boolean) => {
     try {
       const params = new URLSearchParams();
       params.append('limit', limit.toString());
@@ -41,7 +41,11 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
 
       if (response.ok) {
         const data = await response.json();
-        setNotifications(data.data.notifications || []);
+        if (append) {
+          setNotifications(prev => [...prev, ...(data.data.notifications || [])]);
+        } else {
+          setNotifications(data.data.notifications || []);
+        }
         setUnreadCount(data.data.unreadCount || 0);
         setTotal(data.data.total || 0);
       }
@@ -139,7 +143,7 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
   const loadMore = useCallback(() => {
     const newOffset = offset + limit;
     setOffset(newOffset);
-    fetchNotifications(newOffset);
+    fetchNotifications(newOffset, true);
   }, [offset, limit, fetchNotifications]);
 
   const resetPagination = useCallback(() => {
@@ -157,7 +161,7 @@ export function useNotifications(filters?: NotificationFilters, limit: number = 
     resetPagination();
   }, [filters?.category, filters?.isRead, filters?.priority]);
 
-  const hasMore = offset + notifications.length < total;
+  const hasMore = notifications.length < total;
 
   return {
     notifications,

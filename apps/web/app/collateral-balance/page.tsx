@@ -12,6 +12,7 @@ import { getExplorerUrl, truncateHash } from '@/utils/blockchainExplorer';
 import AggregatedCryptoCard from '@/components/dashboard/AggregatedCryptoCard';
 import { fetchWithAuth } from '@/utils/api';
 import { getTransactionLabel } from '@/utils/transactionLabels';
+import { formatCrypto } from '@/utils/formatters';
 
 interface HDWallet {
   id: string;
@@ -35,6 +36,7 @@ interface WalletTransaction {
   txHash: string | null;
   createdAt: string;
   metadata?: string;
+  cryptoType?: string;
 }
 
 interface AggregatedBalance {
@@ -130,7 +132,7 @@ export default function CollateralBalancePage() {
 
           const data = await response.json();
           if (data.success && data.data) {
-            allTransactions.push(...data.data);
+            allTransactions.push(...data.data.map((tx: WalletTransaction) => ({ ...tx, cryptoType: wallet.cryptoType })));
           }
         } catch (err) {
           console.error(`Erro ao buscar transações da carteira ${wallet.id}:`, err);
@@ -655,14 +657,15 @@ export default function CollateralBalancePage() {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className={`text-sm font-semibold ${getTransactionColor(tx.type, tx.amount)}`}>
                               {isPositiveTransaction(tx.type, tx.amount) ? '+' : '-'}
-                              {Math.abs(parseFloat(tx.amount)).toFixed(8)}
+                              {formatCrypto(Math.abs(parseFloat(tx.amount)), tx.cryptoType || 'BTC')}
+                              {tx.cryptoType && <span className="text-xs text-gray-400 ml-1">{tx.cryptoType}</span>}
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                            {parseFloat(tx.balanceBefore).toFixed(8)}
+                            {formatCrypto(parseFloat(tx.balanceBefore), tx.cryptoType || 'BTC')}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-medium">
-                            {parseFloat(tx.balanceAfter).toFixed(8)}
+                            {formatCrypto(parseFloat(tx.balanceAfter), tx.cryptoType || 'BTC')}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 max-w-xs truncate">
                             {tx.description}

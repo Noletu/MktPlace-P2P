@@ -243,6 +243,12 @@ router.post(
   adminFundsController.unfreezeAccount.bind(adminFundsController)
 );
 
+router.get(
+  '/frozen-accounts',
+  managerMiddleware,
+  adminFundsController.getFrozenAccounts.bind(adminFundsController)
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // FINANCEIRO CRÍTICO: Operações MASTER-only — agora com Dual-Approval
 // Cada rota cria um PendingApproval (202) ao invés de executar imediatamente.

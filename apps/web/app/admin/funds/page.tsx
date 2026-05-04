@@ -27,15 +27,6 @@ interface DashboardData {
   }>;
 }
 
-interface UserWallet {
-  id: string;
-  network: string;
-  crypto: string;
-  address: string;
-  balance: string;
-  lockedBalance: string;
-}
-
 interface SearchedWalletData {
   id: string;
   cryptoType: string;
@@ -75,13 +66,7 @@ export default function AdminFundsPage() {
   const router = useRouter();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'partners' | 'users' | 'total' | 'locked' | 'freeze' | 'operations' | 'audit' | 'analytics'>('partners');
-
-  // Freeze/Unfreeze states
-  const [freezeUserId, setFreezeUserId] = useState('');
-  const [freezeReason, setFreezeReason] = useState('');
-  const [freezeLoading, setFreezeLoading] = useState(false);
-  const [freezeTwoFactor, setFreezeTwoFactor] = useState('');
+  const [activeTab, setActiveTab] = useState<'partners' | 'users' | 'total' | 'locked' | 'operations' | 'audit' | 'analytics'>('partners');
 
   // Operations tab — unified state
   const [operationType, setOperationType] = useState<'transfer' | 'refund' | 'adjust'>('transfer');
@@ -122,10 +107,6 @@ export default function AdminFundsPage() {
   // Wallet lookup cache (walletId → data)
   const [walletLookups, setWalletLookups] = useState<Record<string, WalletLookupData>>({});
   const [lookupLoading, setLookupLoading] = useState<Record<string, boolean>>({});
-
-  // Search states
-  const [searchUserId, setSearchUserId] = useState('');
-  const [searchedWallets, setSearchedWallets] = useState<UserWallet[]>([]);
 
   // Audit Log states
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
@@ -184,7 +165,7 @@ export default function AdminFundsPage() {
     setWallet('');
 
     try {
-      const response = await fetchWithAuth(`/admin/funds/users/search?email=${encodeURIComponent(email)}`);
+      const response = await fetchWithAuth(`/admin/funds/users/search?query=${encodeURIComponent(email)}`);
 
       if (!response.ok) {
         const err = await response.json();
@@ -227,107 +208,6 @@ export default function AdminFundsPage() {
       alert('Erro ao carregar dashboard');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const searchUserWallets = async () => {
-    if (!searchUserId.trim()) {
-      alert('Digite o ID do usuário');
-      return;
-    }
-
-    try {
-      const response = await fetchWithAuth(`/admin/funds/users/${searchUserId}/wallets`);
-
-      if (!response.ok) {
-        throw new Error('Erro ao buscar carteiras');
-      }
-
-      const result = await response.json();
-      setSearchedWallets(result.wallets);
-    } catch (error) {
-      console.error('Erro ao buscar carteiras:', error);
-      alert('Erro ao buscar carteiras do usuário');
-    }
-  };
-
-  const handleFreezeAccount = async () => {
-    if (!freezeUserId.trim() || !freezeReason.trim()) {
-      alert('Preencha todos os campos');
-      return;
-    }
-
-    if (!confirm(`Tem certeza que deseja CONGELAR a conta do usuário ${freezeUserId}?\n\nMotivo: ${freezeReason}`)) {
-      return;
-    }
-
-    setFreezeLoading(true);
-
-    try {
-      const response = await fetchWithAuth('/admin/funds/freeze', {
-        method: 'POST',
-        body: JSON.stringify({
-          userId: freezeUserId,
-          reason: freezeReason,
-          twoFactorCode: freezeTwoFactor,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || 'Erro ao congelar conta');
-      }
-
-      addToast('success', 'Conta congelada com sucesso!');
-      setFreezeTwoFactor('');
-      setFreezeUserId('');
-      setFreezeReason('');
-      loadDashboard();
-    } catch (error) {
-      console.error('Erro ao congelar conta:', error);
-      addToast('error', `Erro ao congelar conta: ${(error as Error).message}`);
-    } finally {
-      setFreezeLoading(false);
-    }
-  };
-
-  const handleUnfreezeAccount = async () => {
-    if (!freezeUserId.trim()) {
-      alert('Digite o ID do usuário');
-      return;
-    }
-
-    if (!confirm(`Tem certeza que deseja DESCONGELAR a conta do usuário ${freezeUserId}?`)) {
-      return;
-    }
-
-    setFreezeLoading(true);
-
-    try {
-      const response = await fetchWithAuth('/admin/funds/unfreeze', {
-        method: 'POST',
-        body: JSON.stringify({
-          userId: freezeUserId,
-          twoFactorCode: freezeTwoFactor,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || 'Erro ao descongelar conta');
-      }
-
-      addToast('success', 'Conta descongelada com sucesso!');
-      setFreezeTwoFactor('');
-      setFreezeUserId('');
-      loadDashboard();
-    } catch (error) {
-      console.error('Erro ao descongelar conta:', error);
-      addToast('error', `Erro ao descongelar conta: ${(error as Error).message}`);
-    } finally {
-      setFreezeLoading(false);
     }
   };
 
@@ -639,16 +519,6 @@ export default function AdminFundsPage() {
             🔒 Saldos Bloqueados
           </button>
           <button
-            onClick={() => setActiveTab('freeze')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
-              activeTab === 'freeze'
-                ? 'border-blue-500 text-blue-400'
-                : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
-            }`}
-          >
-            ❄️ Freeze/Unfreeze
-          </button>
-          <button
             onClick={() => setActiveTab('operations')}
             className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
               activeTab === 'operations'
@@ -786,128 +656,6 @@ export default function AdminFundsPage() {
         </div>
       )}
 
-      {/* Freeze/Unfreeze Tab */}
-      {activeTab === 'freeze' && (
-        <div className="space-y-6">
-          <div className="bg-yellow-900/20 border border-yellow-600/50 rounded-lg p-4">
-            <p className="text-yellow-300 text-sm">
-              ⚠️ <strong>Atenção:</strong> Congelar uma conta impede que o usuário faça qualquer operação (saques, transferências, etc.)
-            </p>
-          </div>
-
-          {/* Search User Wallets */}
-          <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">🔍 Buscar Carteiras do Usuário</h3>
-            <div className="flex gap-3">
-              <input
-                type="text"
-                value={searchUserId}
-                onChange={(e) => setSearchUserId(e.target.value)}
-                placeholder="ID do usuário"
-                className="flex-1 px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-              />
-              <button
-                onClick={searchUserWallets}
-                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-gray-900 dark:text-white rounded-lg font-medium transition"
-              >
-                Buscar
-              </button>
-            </div>
-
-            {searchedWallets.length > 0 && (
-              <div className="mt-6 overflow-x-auto">
-                <table className="min-w-full">
-                  <thead>
-                    <tr className="border-b border-gray-300 dark:border-gray-700">
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Rede</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Crypto</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Endereço</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Saldo</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Bloqueado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {searchedWallets.map((wallet) => (
-                      <tr key={wallet.id} className="border-b border-gray-300 dark:border-gray-700/50">
-                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{wallet.network}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{wallet.crypto}</td>
-                        <td className="px-4 py-3 text-sm font-mono text-gray-600 dark:text-gray-400">{wallet.address.slice(0, 20)}...</td>
-                        <td className="px-4 py-3 text-sm text-green-400">{wallet.balance}</td>
-                        <td className="px-4 py-3 text-sm text-yellow-400">{wallet.lockedBalance}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Freeze/Unfreeze Form */}
-          <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">❄️ Congelar/Descongelar Conta</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  ID do Usuário
-                </label>
-                <input
-                  type="text"
-                  value={freezeUserId}
-                  onChange={(e) => setFreezeUserId(e.target.value)}
-                  placeholder="cmiwzdpca0000m61k925nh8ib"
-                  className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Motivo (obrigatório para congelar)
-                </label>
-                <textarea
-                  value={freezeReason}
-                  onChange={(e) => setFreezeReason(e.target.value)}
-                  placeholder="Ex: Atividade suspeita detectada, conta comprometida, etc."
-                  rows={3}
-                  className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Código 2FA *
-                  <span className="text-gray-500 dark:text-gray-400 ml-2 font-normal">(obrigatório)</span>
-                </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={freezeTwoFactor}
-                  onChange={(e) => setFreezeTwoFactor(e.target.value.replace(/\D/g, ''))}
-                  placeholder="000000"
-                  className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 font-mono tracking-widest text-center text-lg"
-                />
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={handleFreezeAccount}
-                  disabled={freezeLoading}
-                  className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-gray-900 dark:text-white rounded-lg font-medium transition"
-                >
-                  {freezeLoading ? 'Processando...' : '❄️ Congelar Conta'}
-                </button>
-                <button
-                  onClick={handleUnfreezeAccount}
-                  disabled={freezeLoading}
-                  className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-gray-900 dark:text-white rounded-lg font-medium transition"
-                >
-                  {freezeLoading ? 'Processando...' : '✅ Descongelar Conta'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Operations Tab (Unified: Transfer + Refund + Adjust) */}
       {activeTab === 'operations' && (
         <div className="space-y-6">
@@ -1023,14 +771,14 @@ export default function AdminFundsPage() {
 
                 {/* From User */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Origem - Email do usuario</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Origem - Buscar usuario</label>
                   <div className="flex gap-2">
                     <input
-                      type="email"
+                      type="text"
                       value={fromEmail}
                       onChange={(e) => setFromEmail(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && searchUserByEmail(fromEmail, 'from')}
-                      placeholder="usuario@email.com"
+                      placeholder="ID, email ou ID da carteira"
                       className="flex-1 px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                     />
                     <button
@@ -1068,14 +816,14 @@ export default function AdminFundsPage() {
 
                 {/* To User */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Destino - Email do usuario</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Destino - Buscar usuario</label>
                   <div className="flex gap-2">
                     <input
-                      type="email"
+                      type="text"
                       value={toEmail}
                       onChange={(e) => setToEmail(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && searchUserByEmail(toEmail, 'to')}
-                      placeholder="usuario@email.com"
+                      placeholder="ID, email ou ID da carteira"
                       className="flex-1 px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                     />
                     <button
@@ -1199,15 +947,15 @@ export default function AdminFundsPage() {
                 {/* Busca por Email */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    {platformDirection === 'TO_USER' ? 'Destino - Email do usuario' : 'Origem - Email do usuario'}
+                    {platformDirection === 'TO_USER' ? 'Destino - Buscar usuario' : 'Origem - Buscar usuario'}
                   </label>
                   <div className="flex gap-2">
                     <input
-                      type="email"
+                      type="text"
                       value={platformEmail}
                       onChange={(e) => setPlatformEmail(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && searchUserByEmail(platformEmail, 'platform')}
-                      placeholder="usuario@email.com"
+                      placeholder="ID, email ou ID da carteira"
                       className="flex-1 px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                     />
                     <button
