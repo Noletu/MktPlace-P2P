@@ -389,6 +389,63 @@ class EmailService {
     const previewUrl = nodemailer.getTestMessageUrl(info);
     if (previewUrl) console.log('[EMAIL] Succession reminder preview:', previewUrl);
   }
+  // ── BROADCAST EMAILS ──────────────────────────────────────────────────────
+
+  async sendBroadcastEmail(
+    to: string,
+    params: {
+      title: string;
+      message: string;
+      priority: string;
+      actionUrl?: string;
+      actionLabel?: string;
+    },
+  ): Promise<void> {
+    const transporter = await this.getTransporter();
+
+    const priorityColors: Record<string, { bg: string; border: string; text: string }> = {
+      LOW: { bg: '#f0fdf4', border: '#22c55e', text: '#166534' },
+      NORMAL: { bg: '#eff6ff', border: '#2563eb', text: '#1e40af' },
+      HIGH: { bg: '#fffbeb', border: '#d97706', text: '#92400e' },
+      URGENT: { bg: '#fef2f2', border: '#dc2626', text: '#991b1b' },
+    };
+
+    const colors = priorityColors[params.priority] || priorityColors.NORMAL;
+
+    const ctaButton = params.actionUrl
+      ? `<div style="text-align: center; margin: 28px 0;">
+           <a href="${params.actionUrl}" style="background-color: #2563eb; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: bold; display: inline-block;">
+             ${params.actionLabel || 'Ver Detalhes'}
+           </a>
+         </div>`
+      : '';
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: ${colors.bg}; border-left: 4px solid ${colors.border}; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+          <h2 style="color: ${colors.text}; margin: 0 0 12px 0;">${params.title}</h2>
+          <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0; white-space: pre-line;">${params.message}</p>
+        </div>
+        ${ctaButton}
+        <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+          Voce recebeu este email porque esta cadastrado no MktPlace da Liberdade.
+        </p>
+      </div>
+    `;
+
+    const text = `${params.title}\n\n${params.message}${params.actionUrl ? `\n\nAcesse: ${params.actionUrl}` : ''}`;
+
+    const info = await transporter.sendMail({
+      from: process.env.SMTP_FROM || '"MktPlace" <noreply@mktplace.com>',
+      to,
+      subject: `${params.priority === 'URGENT' ? '[URGENTE] ' : ''}${params.title} — MktPlace`,
+      text,
+      html,
+    });
+
+    const previewUrl = nodemailer.getTestMessageUrl(info);
+    if (previewUrl) console.log('[EMAIL] Broadcast preview:', previewUrl);
+  }
 }
 
 export const emailService = new EmailService();

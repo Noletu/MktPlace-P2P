@@ -68,4 +68,18 @@ router.post('/broadcast', adminMiddleware, notificationController.broadcastNotif
  */
 router.post('/system-announcement', adminMiddleware, notificationController.sendSystemAnnouncement.bind(notificationController));
 
+/**
+ * @route   POST /api/v1/notifications/admin-broadcast
+ * @desc    Enviar comunicação admin unificada (notificação + email)
+ * @access  Admin
+ */
+router.post('/admin-broadcast', adminMiddleware, notificationController.sendAdminBroadcast.bind(notificationController));
+
+/**
+ * @route   GET /api/v1/notifications/broadcast-history
+ * @desc    Histórico de broadcasts enviados
+ * @access  Admin
+ */
+router.get('/broadcast-history', adminMiddleware, notificationController.getBroadcastHistory.bind(notificationController));
+
 export default router;

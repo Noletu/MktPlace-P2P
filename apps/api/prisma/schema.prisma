@@ -933,6 +933,35 @@ model Notification {
   @@index([priority])
 }
 
+// Log de Broadcasts enviados pelo admin (auditoria)
+model BroadcastLog {
+  id String @id @default(cuid())
+
+  // Admin que enviou
+  adminId    String
+  adminEmail String
+
+  // Conteúdo
+  title   String
+  message String
+
+  // Configuração
+  priority        String @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  deliveryChannel String @default("NOTIFICATION") // NOTIFICATION, EMAIL, BOTH
+  targetMode      String @default("ALL") // ALL, SELECTED
+  actionUrl       String?
+  actionLabel     String?
+
+  // Resultado
+  recipientCount Int
+  recipientIds   String? // JSON array of user IDs (only for SELECTED mode)
+
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([createdAt])
+}
+
 // Sistema completo de Chat em Tempo Real
 model Chat {
   id String @id @default(cuid())
