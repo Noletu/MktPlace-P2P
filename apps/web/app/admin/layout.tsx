@@ -386,6 +386,20 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 <span>Saques</span>
               </Link>
             )}
+            {/* Comunicações - ADMIN+ (level >= 80) */}
+            {userLevel >= 80 && (
+              <Link
+                href="/admin/comunicacoes"
+                className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
+                  pathname.startsWith('/admin/comunicacoes')
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
+                }`}
+              >
+                <span className="text-lg mb-1">📢</span>
+                <span className="text-center leading-tight">Comuni-<br/>cações</span>
+              </Link>
+            )}
             {/* Carteiras da Plataforma - ADMIN+ (level >= 80) */}
             {userLevel >= 80 && (
               <Link

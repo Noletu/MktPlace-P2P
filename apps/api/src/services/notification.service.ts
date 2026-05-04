@@ -601,35 +601,32 @@ export class NotificationService {
   }
 
   /**
-   * Broadcast - enviar notificação para múltiplos usuários
+   * Broadcast - enviar notificação para múltiplos usuários (com WebSocket)
+   * Processa em batches de 50 para não sobrecarregar SQLite
    */
   async broadcastNotification(userIds: string[], notification: Omit<CreateNotificationInput, 'userId'>) {
-    const notifications = userIds.map(userId =>
-      prisma.notification.create({
-        data: {
-          userId,
-          type: notification.type,
-          category: notification.category,
-          title: notification.title,
-          message: notification.message,
-          actionUrl: notification.actionUrl,
-          actionLabel: notification.actionLabel,
-          relatedId: notification.relatedId,
-          relatedType: notification.relatedType,
-          priority: notification.priority || 'NORMAL',
-          metadata: notification.metadata ? JSON.stringify(notification.metadata) : null,
-        },
-      })
-    );
+    const BATCH_SIZE = 50;
+    let processed = 0;
 
-    await Promise.all(notifications);
+    for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
+      const batch = userIds.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(userId =>
+          this.createNotification({
+            ...notification,
+            userId,
+          })
+        )
+      );
+      processed += batch.length;
+    }
 
     logger.info('[NOTIFICATION] Broadcast sent', {
-      recipientCount: userIds.length,
+      recipientCount: processed,
       type: notification.type,
     });
 
-    return { success: true, count: userIds.length };
+    return { success: true, count: processed };
   }
 }
 
