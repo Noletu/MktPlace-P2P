@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { getNotificationSocket } from '../socket/notification.socket';
+import { notifPrefsService } from './notificationPreferences.service';
 
 const prisma = new PrismaClient();
 
@@ -16,6 +17,7 @@ export interface CreateNotificationInput {
   relatedType?: string;
   priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
   metadata?: Record<string, any>;
+  prefCategory?: string; // Categoria de preferência granular (WITHDRAWALS, DEPOSITS, etc.)
 }
 
 export interface GetNotificationsFilters {
@@ -32,6 +34,19 @@ export class NotificationService {
    */
   async createNotification(input: CreateNotificationInput) {
     try {
+      // Checar preferência de notificação in-app do usuário
+      const prefCat = input.prefCategory || input.category;
+      const user = await prisma.user.findUnique({
+        where: { id: input.userId },
+        select: { notificationPreferences: true },
+      });
+      if (!notifPrefsService.shouldPush(user?.notificationPreferences ?? null, prefCat)) {
+        logger.info('[NOTIFICATION] Skipped (user preference)', {
+          userId: input.userId, type: input.type, prefCategory: prefCat,
+        });
+        return null;
+      }
+
       const notification = await prisma.notification.create({
         data: {
           userId: input.userId,
@@ -279,6 +294,7 @@ export class NotificationService {
         userId: sellerId,
         type: 'ORDER_MATCHED',
         category: 'ORDER',
+        prefCategory: 'ORDER_MATCH',
         title: '🎯 Pedido Pareado!',
         message: `Seu pedido de venda foi pareado! Um comprador está aguardando o pagamento.`,
         actionUrl: `/orders/${orderId}`,
@@ -292,6 +308,7 @@ export class NotificationService {
         userId: buyerId,
         type: 'ORDER_MATCHED',
         category: 'ORDER',
+        prefCategory: 'ORDER_MATCH',
         title: '🎯 Pedido Pareado!',
         message: `Seu pedido foi pareado! Realize o pagamento para continuar.`,
         actionUrl: `/orders/${orderId}`,
@@ -312,6 +329,7 @@ export class NotificationService {
       userId: sellerId,
       type: 'PAYMENT_SENT',
       category: 'ORDER',
+      prefCategory: 'PAYMENTS',
       title: '💰 Pagamento Enviado',
       message: `O comprador enviou o comprovante de pagamento. Verifique e valide.`,
       actionUrl: `/orders/${orderId}`,
@@ -330,6 +348,7 @@ export class NotificationService {
       userId: buyerId,
       type: 'PAYMENT_VALIDATED',
       category: 'ORDER',
+      prefCategory: 'PAYMENTS',
       title: '✅ Pagamento Aprovado!',
       message: `Seu pagamento foi aprovado! Você receberá ${cryptoAmount} ${cryptoType} em breve.`,
       actionUrl: `/orders/${orderId}`,
@@ -348,6 +367,7 @@ export class NotificationService {
       userId,
       type: 'ORDER_COMPLETED',
       category: 'ORDER',
+      prefCategory: 'P2P_COMPLETED',
       title: wasSuccessful ? '🎉 Pedido Concluído!' : '⚠️ Pedido Finalizado',
       message: wasSuccessful
         ? 'Sua transação foi concluída com sucesso! Não se esqueça de avaliar a outra parte.'
@@ -386,6 +406,7 @@ export class NotificationService {
       userId,
       type: 'ORDER_CANCELLED',
       category: 'ORDER',
+      prefCategory: 'CANCELLATIONS',
       title: '🚫 Pedido Cancelado',
       message: reason ? `Pedido cancelado: ${reason}` : 'Seu pedido foi cancelado.',
       actionUrl: `/orders/${orderId}`,
@@ -408,6 +429,7 @@ export class NotificationService {
       userId: counterpartyId,
       type: 'DISPUTE_CREATED',
       category: 'DISPUTE',
+      prefCategory: 'DISPUTES',
       title: '⚠️ Nova Disputa',
       message: `${creatorName} abriu uma disputa sobre seu pedido. Responda para resolver a situação.`,
       actionUrl: `/disputes/${disputeId}`,
@@ -426,6 +448,7 @@ export class NotificationService {
       userId: recipientId,
       type: 'DISPUTE_MESSAGE',
       category: 'DISPUTE',
+      prefCategory: 'DISPUTES',
       title: isAdmin ? '🛡️ Mensagem do Suporte' : '💬 Nova Mensagem na Disputa',
       message: isAdmin
         ? 'O suporte enviou uma mensagem na sua disputa.'
@@ -446,6 +469,7 @@ export class NotificationService {
       userId,
       type: 'DISPUTE_RESOLVED',
       category: 'DISPUTE',
+      prefCategory: 'DISPUTES',
       title: '✅ Disputa Resolvida',
       message: `Sua disputa foi resolvida: ${resolution}`,
       actionUrl: `/disputes/${disputeId}`,
@@ -510,6 +534,7 @@ export class NotificationService {
       userId,
       type: 'DEPOSIT_CONFIRMED',
       category: 'WALLET',
+      prefCategory: 'DEPOSITS',
       title: '💎 Depósito Confirmado',
       message: `Seu depósito de ${amount} ${cryptoType} foi confirmado!`,
       actionUrl: `/wallets`,
@@ -529,6 +554,7 @@ export class NotificationService {
       userId,
       type: 'WITHDRAWAL_PROCESSED',
       category: 'WALLET',
+      prefCategory: 'WITHDRAWALS',
       title: '💸 Saque Processado',
       message: `Seu saque de ${amount} ${cryptoType} foi processado!`,
       actionUrl: `/wallets`,
