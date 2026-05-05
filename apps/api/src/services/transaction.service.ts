@@ -8,6 +8,7 @@ import { KeyManagementService } from './hd-wallet/key-management.service';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from './auditLog.service';
 import BigNumber from 'bignumber.js';
 import { PlatformWalletService } from './platformWallet.service';
+import { emailService } from './email.service';
 
 export class TransactionService {
   /**
@@ -52,7 +53,7 @@ export class TransactionService {
       }),
     ]);
 
-    // Enviar notificação para o vendedor
+    // Enviar notificação + email para o vendedor
     setImmediate(async () => {
       try {
         await notificationService.notifyPaymentSent(
@@ -60,6 +61,23 @@ export class TransactionService {
           transaction.order.userId, // seller
           transaction.payerId // buyer
         );
+
+        // Email para o vendedor
+        const [sellerUser, buyerUser] = await Promise.all([
+          prisma.user.findUnique({ where: { id: transaction.order.userId }, select: { email: true, name: true } }),
+          prisma.user.findUnique({ where: { id: transaction.payerId }, select: { email: true, name: true } }),
+        ]);
+        if (sellerUser?.email) {
+          emailService.sendIfAllowed(transaction.order.userId, 'PAYMENTS', () =>
+            emailService.sendPaymentSentEmail(sellerUser.email, {
+              name: sellerUser.name || 'Usuário',
+              crypto: transaction.order.cryptoType,
+              cryptoAmount: transaction.order.cryptoAmount,
+              brlAmount: transaction.order.brlAmount,
+              buyerName: buyerUser?.name || 'Comprador',
+            })
+          ).catch(() => {});
+        }
       } catch (error) {
         console.error('Failed to send payment sent notification:', error);
       }
@@ -656,6 +674,34 @@ export class TransactionService {
             notifBuyerId,
             true
           );
+
+          // Emails transacionais para ambas as partes
+          const [emailBuyer, emailSeller] = await Promise.all([
+            prisma.user.findUnique({ where: { id: notifBuyerId }, select: { email: true, name: true } }),
+            notifSellerId ? prisma.user.findUnique({ where: { id: notifSellerId }, select: { email: true, name: true } }) : null,
+          ]);
+          if (emailBuyer?.email) {
+            emailService.sendIfAllowed(notifBuyerId, 'P2P_COMPLETED', () =>
+              emailService.sendTransactionCompletedEmail(emailBuyer.email, {
+                name: emailBuyer.name || 'Usuário',
+                orderType: 'compra',
+                crypto: transaction.order.cryptoType,
+                cryptoAmount: transaction.order.cryptoAmount,
+                brlAmount: transaction.order.brlAmount,
+              })
+            ).catch(() => {});
+          }
+          if (emailSeller?.email) {
+            emailService.sendIfAllowed(notifSellerId!, 'P2P_COMPLETED', () =>
+              emailService.sendTransactionCompletedEmail(emailSeller.email, {
+                name: emailSeller.name || 'Usuário',
+                orderType: 'venda',
+                crypto: transaction.order.cryptoType,
+                cryptoAmount: transaction.order.cryptoAmount,
+                brlAmount: transaction.order.brlAmount,
+              })
+            ).catch(() => {});
+          }
         } catch (error) {
           console.error('Failed to send payment validated notifications:', error);
         }
@@ -679,6 +725,42 @@ export class TransactionService {
           data: { status: OrderStatus.PENDING },
         }),
       ]);
+
+      // Notificar comprador (pagador) que o comprovante foi rejeitado
+      setImmediate(async () => {
+        try {
+          await notificationService.createNotification({
+            userId: transaction.payerId,
+            type: 'PAYMENT_REJECTED',
+            category: 'ORDER',
+            prefCategory: 'PAYMENTS',
+            title: 'Comprovante Rejeitado',
+            message: `Seu comprovante de pagamento para ${transaction.order.cryptoAmount} ${transaction.order.cryptoType} foi rejeitado. Envie um novo comprovante.`,
+            actionUrl: `/orders/${transaction.orderId}`,
+            actionLabel: 'Ver Pedido',
+            relatedId: transaction.orderId,
+            relatedType: 'ORDER',
+            priority: 'HIGH',
+          });
+
+          const payerUser = await prisma.user.findUnique({
+            where: { id: transaction.payerId },
+            select: { email: true, name: true },
+          });
+          if (payerUser?.email) {
+            emailService.sendIfAllowed(transaction.payerId, 'PAYMENTS', () =>
+              emailService.sendPaymentRejectedEmail(payerUser.email, {
+                name: payerUser.name || 'Usuário',
+                crypto: transaction.order.cryptoType,
+                cryptoAmount: transaction.order.cryptoAmount,
+                brlAmount: transaction.order.brlAmount,
+              })
+            ).catch(() => {});
+          }
+        } catch (error) {
+          console.error('Failed to send payment rejected notifications:', error);
+        }
+      });
 
       return updatedTransaction;
     }

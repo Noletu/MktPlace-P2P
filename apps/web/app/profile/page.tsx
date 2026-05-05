@@ -392,6 +392,24 @@ export default function ProfilePage() {
           </div>
         </div>
 
+        {/* Preferencias de Notificacao */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Preferências de Notificação</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Controle quais alertas você recebe por email e/ou notificação in-app
+              </p>
+            </div>
+            <button
+              onClick={() => router.push('/settings/notifications')}
+              className="px-6 py-3 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg transition-colors shadow-md hover:shadow-lg"
+            >
+              Configurar
+            </button>
+          </div>
+        </div>
+
         {/* Limites de Transacao */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 mb-6">
           <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Limites de Transacao</h2>

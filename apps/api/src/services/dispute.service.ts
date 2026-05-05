@@ -12,6 +12,7 @@ import {
 } from '../types/dispute.types';
 import { OrderStatus } from '../types/order.types';
 import { logger } from '../utils/logger';
+import { emailService } from './email.service';
 import { DerivationService } from './hd-wallet/derivation.service';
 import BigNumber from 'bignumber.js';
 import { PlatformWalletService } from './platformWallet.service';
@@ -167,6 +168,24 @@ export class DisputeService {
             counterpartyId,
             dispute.creator.name || 'Usuário'
           );
+
+          // Email para a contraparte
+          const counterpartyUser = await prisma.user.findUnique({
+            where: { id: counterpartyId },
+            select: { email: true, name: true },
+          });
+          if (counterpartyUser?.email) {
+            emailService.sendIfAllowed(counterpartyId, 'DISPUTES', () =>
+              emailService.sendDisputeCreatedEmail(counterpartyUser.email, {
+                name: counterpartyUser.name || 'Usuário',
+                disputeTitle: dispute.title,
+                crypto: dispute.order.cryptoType,
+                cryptoAmount: dispute.order.cryptoAmount,
+                brlAmount: dispute.order.brlAmount,
+                creatorName: dispute.creator.name || 'Usuário',
+              })
+            ).catch(() => {});
+          }
         }
       } catch (error) {
         console.error('Failed to send dispute created notification:', error);
@@ -972,6 +991,33 @@ export class DisputeService {
               input.resolution,
               input.resolutionType
             );
+          }
+
+          // Emails de resolução para ambas as partes
+          const emailParams = {
+            disputeTitle: resolvedDispute.title || 'Disputa',
+            resolution: input.resolution,
+            resolutionType: input.resolutionType,
+          };
+          if (resolvedDispute.creator?.email) {
+            emailService.sendIfAllowed(resolvedDispute.createdBy, 'DISPUTES', () =>
+              emailService.sendDisputeResolvedEmail(resolvedDispute.creator.email, {
+                name: resolvedDispute.creator.name || 'Usuário', ...emailParams,
+              })
+            ).catch(() => {});
+          }
+          if (counterpartyId) {
+            const counterpartyUser = await prisma.user.findUnique({
+              where: { id: counterpartyId },
+              select: { email: true, name: true },
+            });
+            if (counterpartyUser?.email) {
+              emailService.sendIfAllowed(counterpartyId, 'DISPUTES', () =>
+                emailService.sendDisputeResolvedEmail(counterpartyUser.email, {
+                  name: counterpartyUser.name || 'Usuário', ...emailParams,
+                })
+              ).catch(() => {});
+            }
           }
         }
       } catch (error) {

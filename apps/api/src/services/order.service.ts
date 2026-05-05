@@ -20,6 +20,7 @@ import { CryptoType } from '../types/crypto.types';
 import { notificationService } from './notification.service';
 import { prisma } from '../utils/prisma';
 import { couponService } from './coupon.service';
+import { emailService } from './email.service';
 
 export class OrderService {
   /**
@@ -802,6 +803,7 @@ export class OrderService {
           userId: result.userId,
           type: 'ORDER_MATCHED',
           category: 'ORDER',
+          prefCategory: 'ORDER_MATCH',
           title: '🎉 Provedor Encontrado!',
           message: `Um provedor aceitou seu pedido de compra. Pague R$ ${result.brlAmount} via PIX para receber ${result.cryptoAmount} ${result.cryptoType}.`,
           actionUrl: `/orders/${result.id}`,
@@ -814,6 +816,7 @@ export class OrderService {
           userId: input.providerId,
           type: 'ORDER_MATCHED',
           category: 'ORDER',
+          prefCategory: 'ORDER_MATCH',
           title: '✅ Você aceitou uma ordem de compra',
           message: `Aguardando pagamento de R$ ${result.brlAmount} do comprador. Seu colateral está bloqueado.`,
           actionUrl: `/orders/${result.id}`,
@@ -822,6 +825,34 @@ export class OrderService {
           relatedType: 'ORDER',
           priority: 'NORMAL',
         });
+
+        // Emails transacionais para ambas as partes
+        const [buyerUser, providerUser] = await Promise.all([
+          prisma.user.findUnique({ where: { id: result.userId }, select: { email: true, name: true } }),
+          prisma.user.findUnique({ where: { id: input.providerId }, select: { email: true, name: true } }),
+        ]);
+        if (buyerUser?.email) {
+          emailService.sendIfAllowed(result.userId, 'ORDER_MATCH', () =>
+            emailService.sendOrderMatchedEmail(buyerUser.email, {
+              name: buyerUser.name || 'Usuário',
+              orderType: 'compra',
+              crypto: result.cryptoType,
+              cryptoAmount: result.cryptoAmount,
+              brlAmount: result.brlAmount,
+            })
+          ).catch(() => {});
+        }
+        if (providerUser?.email) {
+          emailService.sendIfAllowed(input.providerId, 'ORDER_MATCH', () =>
+            emailService.sendOrderMatchedEmail(providerUser.email, {
+              name: providerUser.name || 'Usuário',
+              orderType: 'venda',
+              crypto: result.cryptoType,
+              cryptoAmount: result.cryptoAmount,
+              brlAmount: result.brlAmount,
+            })
+          ).catch(() => {});
+        }
       } catch (error) {
         console.error('Failed to send buy order notifications:', error);
       }
@@ -1127,6 +1158,34 @@ export class OrderService {
               type: order.type,
             }
           );
+
+          // Emails transacionais para ambas as partes
+          const [sellerUser, payerUser] = await Promise.all([
+            prisma.user.findUnique({ where: { id: order.userId }, select: { email: true, name: true } }),
+            prisma.user.findUnique({ where: { id: payerId }, select: { email: true, name: true } }),
+          ]);
+          if (sellerUser?.email) {
+            emailService.sendIfAllowed(order.userId, 'ORDER_MATCH', () =>
+              emailService.sendOrderMatchedEmail(sellerUser.email, {
+                name: sellerUser.name || 'Usuário',
+                orderType: 'venda',
+                crypto: order.cryptoType,
+                cryptoAmount: order.cryptoAmount,
+                brlAmount: order.brlAmount,
+              })
+            ).catch(() => {});
+          }
+          if (payerUser?.email) {
+            emailService.sendIfAllowed(payerId, 'ORDER_MATCH', () =>
+              emailService.sendOrderMatchedEmail(payerUser.email, {
+                name: payerUser.name || 'Usuário',
+                orderType: 'compra',
+                crypto: order.cryptoType,
+                cryptoAmount: order.cryptoAmount,
+                brlAmount: order.brlAmount,
+              })
+            ).catch(() => {});
+          }
         } catch (error) {
           console.error('Failed to send order matched notifications:', error);
         }
@@ -1295,25 +1354,52 @@ export class OrderService {
         await notificationService.notifyOrderCancelled(orderId, userId, notificationMessage);
 
         // Notificar a outra parte se o pedido estava MATCHED
+        let counterpartyId: string | null = null;
         if (order.status === OrderStatus.MATCHED) {
           if (isBuyOrder && order.providerId) {
-            // BUY order: notificar o provedor
+            counterpartyId = order.providerId;
             await notificationService.notifyOrderCancelled(
               orderId,
               order.providerId,
               'Pedido foi cancelado pelo comprador'
             );
           } else {
-            // SELL order: notificar o comprador
             const transactions = await this.getOrderTransactions(orderId);
             if (transactions && transactions.length > 0) {
-              const transaction = transactions[0];
+              counterpartyId = transactions[0].payerId;
               await notificationService.notifyOrderCancelled(
                 orderId,
-                transaction.payerId,
+                transactions[0].payerId,
                 'Pedido foi cancelado pelo vendedor'
               );
             }
+          }
+        }
+
+        // Emails de cancelamento
+        const initiatorUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { email: true, name: true },
+        });
+        const emailParams = { crypto: order.cryptoType, cryptoAmount: order.cryptoAmount, brlAmount: order.brlAmount, reason };
+        if (initiatorUser?.email) {
+          emailService.sendIfAllowed(userId, 'CANCELLATIONS', () =>
+            emailService.sendOrderCancelledEmail(initiatorUser.email, {
+              name: initiatorUser.name || 'Usuário', ...emailParams, isInitiator: true,
+            })
+          ).catch(() => {});
+        }
+        if (counterpartyId) {
+          const counterpartyUser = await prisma.user.findUnique({
+            where: { id: counterpartyId },
+            select: { email: true, name: true },
+          });
+          if (counterpartyUser?.email) {
+            emailService.sendIfAllowed(counterpartyId, 'CANCELLATIONS', () =>
+              emailService.sendOrderCancelledEmail(counterpartyUser.email, {
+                name: counterpartyUser.name || 'Usuário', ...emailParams, isInitiator: false,
+              })
+            ).catch(() => {});
           }
         }
       } catch (error) {
@@ -1432,6 +1518,7 @@ export class OrderService {
           userId: payerId,
           type: 'ORDER_STATUS_CHANGE',
           category: 'ORDER',
+          prefCategory: 'CANCELLATIONS',
           title: penalty.shouldApplyPenalty ? '⚠️ Cancelamento com Penalidade' : '✅ Cancelamento Confirmado',
           message: payerMessage,
           actionUrl: `/orders/${orderId}`,
@@ -1446,6 +1533,7 @@ export class OrderService {
           userId: order.userId,
           type: 'ORDER_STATUS_CHANGE',
           category: 'ORDER',
+          prefCategory: 'CANCELLATIONS',
           title: '🔄 Comprador Cancelou',
           message: 'O comprador cancelou o aceite. Seu pedido voltou ao marketplace e está disponível para outros compradores.',
           actionUrl: `/orders/${orderId}`,
@@ -1454,6 +1542,27 @@ export class OrderService {
           relatedType: 'ORDER',
           priority: 'NORMAL',
         });
+
+        // Emails de cancelamento
+        const emailParams = { crypto: order.cryptoType, cryptoAmount: order.cryptoAmount, brlAmount: order.brlAmount, reason };
+        const [payerUserEmail, sellerUserEmail] = await Promise.all([
+          prisma.user.findUnique({ where: { id: payerId }, select: { email: true, name: true } }),
+          prisma.user.findUnique({ where: { id: order.userId }, select: { email: true, name: true } }),
+        ]);
+        if (payerUserEmail?.email) {
+          emailService.sendIfAllowed(payerId, 'CANCELLATIONS', () =>
+            emailService.sendOrderCancelledEmail(payerUserEmail.email, {
+              name: payerUserEmail.name || 'Usuário', ...emailParams, isInitiator: true,
+            })
+          ).catch(() => {});
+        }
+        if (sellerUserEmail?.email) {
+          emailService.sendIfAllowed(order.userId, 'CANCELLATIONS', () =>
+            emailService.sendOrderCancelledEmail(sellerUserEmail.email, {
+              name: sellerUserEmail.name || 'Usuário', ...emailParams, isInitiator: false,
+            })
+          ).catch(() => {});
+        }
       } catch (error) {
         console.error('Failed to send payer cancellation notifications:', error);
       }
@@ -1602,6 +1711,7 @@ export class OrderService {
           userId: providerId,
           type: 'ORDER_STATUS_CHANGE',
           category: 'ORDER',
+          prefCategory: 'CANCELLATIONS',
           title: penalty.shouldApplyPenalty ? '⚠️ Cancelamento com Penalidade' : '✅ Cancelamento Confirmado',
           message: providerMessage,
           actionUrl: `/orders/${orderId}`,
@@ -1616,6 +1726,7 @@ export class OrderService {
           userId: order.userId,
           type: 'ORDER_STATUS_CHANGE',
           category: 'ORDER',
+          prefCategory: 'CANCELLATIONS',
           title: '🔄 Provedor Cancelou',
           message: 'O provedor cancelou o fornecimento de liquidez. Seu pedido voltou ao marketplace e está aguardando outro provedor.',
           actionUrl: `/orders/${orderId}`,
@@ -1624,6 +1735,27 @@ export class OrderService {
           relatedType: 'ORDER',
           priority: 'NORMAL',
         });
+
+        // Emails de cancelamento
+        const emailParams = { crypto: order.cryptoType, cryptoAmount: order.cryptoAmount, brlAmount: order.brlAmount, reason };
+        const [providerUserEmail, buyerUserEmail] = await Promise.all([
+          prisma.user.findUnique({ where: { id: providerId }, select: { email: true, name: true } }),
+          prisma.user.findUnique({ where: { id: order.userId }, select: { email: true, name: true } }),
+        ]);
+        if (providerUserEmail?.email) {
+          emailService.sendIfAllowed(providerId, 'CANCELLATIONS', () =>
+            emailService.sendOrderCancelledEmail(providerUserEmail.email, {
+              name: providerUserEmail.name || 'Usuário', ...emailParams, isInitiator: true,
+            })
+          ).catch(() => {});
+        }
+        if (buyerUserEmail?.email) {
+          emailService.sendIfAllowed(order.userId, 'CANCELLATIONS', () =>
+            emailService.sendOrderCancelledEmail(buyerUserEmail.email, {
+              name: buyerUserEmail.name || 'Usuário', ...emailParams, isInitiator: false,
+            })
+          ).catch(() => {});
+        }
       } catch (error) {
         console.error('Failed to send provider cancellation notifications:', error);
       }

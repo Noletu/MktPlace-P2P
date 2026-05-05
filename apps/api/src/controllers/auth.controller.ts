@@ -8,6 +8,7 @@ import { emailService } from '../services/email.service';
 import { securityLogger } from '../utils/logger';
 import { setAccessTokenCookie, setRefreshTokenCookie, clearAuthCookies, setUserRoleCookie, extractToken } from '../utils/cookies';
 import { prisma } from '../utils/prisma';
+import { notifPrefsService } from '../services/notificationPreferences.service';
 
 export class AuthController {
   async register(req: Request, res: Response): Promise<void> {
@@ -573,6 +574,37 @@ export class AuthController {
       res.status(200).json({ success: true, ticket });
     } catch (error: any) {
       res.status(500).json({ success: false, error: 'Erro ao gerar socket ticket' });
+    }
+  }
+
+  async getNotificationPreferences(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = req.user.userId;
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { notificationPreferences: true },
+      });
+      const prefs = notifPrefsService.getPreferences(user?.notificationPreferences ?? null);
+      res.json({ success: true, preferences: prefs });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: 'Erro ao buscar preferências de notificação' });
+    }
+  }
+
+  async updateNotificationPreferences(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = req.user.userId;
+      const updates = req.body;
+
+      if (!updates || typeof updates !== 'object') {
+        res.status(400).json({ success: false, error: 'Body inválido' });
+        return;
+      }
+
+      const prefs = await notifPrefsService.updatePreferences(userId, updates);
+      res.json({ success: true, preferences: prefs });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: 'Erro ao atualizar preferências de notificação' });
     }
   }
 }

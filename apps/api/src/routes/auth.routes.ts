@@ -90,4 +90,18 @@ router.post('/reset-password', forgotPasswordLimiter, (req, res) => authControll
  */
 router.get('/socket-ticket', authMiddleware, (req, res) => authController.socketTicket(req, res));
 
+/**
+ * @route   GET /api/v1/auth/notification-preferences
+ * @desc    Obter preferências de notificação do usuário
+ * @access  Private
+ */
+router.get('/notification-preferences', authMiddleware, (req, res) => authController.getNotificationPreferences(req, res));
+
+/**
+ * @route   PUT /api/v1/auth/notification-preferences
+ * @desc    Atualizar preferências de notificação do usuário
+ * @access  Private
+ */
+router.put('/notification-preferences', authMiddleware, (req, res) => authController.updateNotificationPreferences(req, res));
+
 export default router;

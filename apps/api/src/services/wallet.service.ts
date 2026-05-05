@@ -4,6 +4,8 @@ import {DerivationService} from './hd-wallet/derivation.service';
 import {KeyManagementService} from './hd-wallet/key-management.service';
 import {BlockchainService} from './blockchain/blockchain.service';
 import {FeeEstimatorService} from './blockchain/fee-estimator.service';
+import {emailService} from './email.service';
+import {notificationService} from './notification.service';
 
 const prisma = new PrismaClient();
 
@@ -808,6 +810,39 @@ export class WalletService {
     console.log(
       `📤 Withdrawal requested: ${amount} ${wallet.cryptoType} to ${toAddress} [status: ${initialStatus}]`
     );
+
+    // Notificação in-app + Email (fire-and-forget, não bloqueia o saque)
+    try {
+      await notificationService.createNotification({
+        userId: wallet.user.id,
+        type: 'WITHDRAWAL_REQUESTED',
+        category: 'WALLET',
+        prefCategory: 'WITHDRAWALS',
+        title: 'Saque Solicitado',
+        message: `Seu saque de ${amount} ${wallet.cryptoType} para ${toAddress} foi solicitado.${isFrozen ? ' Aguardando aprovação.' : ''}`,
+        actionUrl: '/wallets',
+        actionLabel: 'Ver Carteira',
+        relatedId: withdrawal.id,
+        relatedType: 'WITHDRAWAL',
+        priority: 'HIGH',
+      });
+    } catch (notifError) {
+      console.warn('[WITHDRAWAL] Notification failed for request:', (notifError as Error).message);
+    }
+
+    try {
+      await emailService.sendIfAllowed(wallet.user.id, 'WITHDRAWALS', () =>
+        emailService.sendWithdrawalRequestedEmail(wallet.user.email, {
+          name: wallet.user.name || 'Usuário',
+          amount,
+          crypto: wallet.cryptoType,
+          network: wallet.network,
+          toAddress,
+        })
+      );
+    } catch (emailError) {
+      console.warn('[EMAIL] Failed to send withdrawal requested email:', (emailError as Error).message);
+    }
 
     return {
       ...withdrawal,

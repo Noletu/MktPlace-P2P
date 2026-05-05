@@ -8,6 +8,7 @@ import { WalletService } from './wallet.service';
 import { notificationService } from './notification.service';
 import { logger } from '../utils/logger';
 import { PlatformWalletService } from './platformWallet.service';
+import { emailService } from './email.service';
 
 const prisma = new PrismaClient();
 
@@ -315,6 +316,23 @@ export class WithdrawalProcessorService {
         logger.warn(`[WITHDRAWAL] Notification failed for ${withdrawalId}:`, notifError);
       }
 
+      // 15. Email transacional (fire-and-forget)
+      try {
+        await emailService.sendIfAllowed(wallet.userId, 'WITHDRAWALS', () =>
+          emailService.sendWithdrawalCompletedEmail(wallet.user.email, {
+            name: wallet.user.name || 'Usuário',
+            amount: withdrawal.amount,
+            crypto: wallet.cryptoType,
+            network: wallet.network,
+            toAddress: withdrawal.toAddress,
+            txHash: result.txHash,
+            networkFee: result.networkFee || '0',
+          })
+        );
+      } catch (emailError) {
+        logger.warn(`[WITHDRAWAL] Email failed for ${withdrawalId}:`, emailError);
+      }
+
       logger.info(
         `[WITHDRAWAL] Completed: ${withdrawalId}, txHash: ${result.txHash}, amount: ${amountToSend} ${wallet.cryptoType} (from hot wallet ${fromAddress})`
       );
@@ -388,6 +406,40 @@ export class WithdrawalProcessorService {
       },
     });
 
+    // Notificação in-app + Email (fire-and-forget)
+    try {
+      const withdrawalWithUser = await prisma.withdrawal.findUnique({
+        where: { id: withdrawalId },
+        include: { wallet: { include: { user: { select: { id: true, email: true, name: true } } } } },
+      });
+      if (withdrawalWithUser) {
+        const { user } = withdrawalWithUser.wallet;
+        await notificationService.createNotification({
+          userId: user.id,
+          type: 'WITHDRAWAL_APPROVED',
+          category: 'WALLET',
+          prefCategory: 'WITHDRAWALS',
+          title: 'Saque Aprovado',
+          message: `Seu saque de ${withdrawal.amount} ${withdrawalWithUser.wallet.cryptoType} foi aprovado e será processado em breve.`,
+          actionUrl: '/wallets',
+          actionLabel: 'Ver Carteira',
+          relatedId: withdrawalId,
+          relatedType: 'WITHDRAWAL',
+          priority: 'NORMAL',
+        });
+        await emailService.sendIfAllowed(user.id, 'WITHDRAWALS', () =>
+          emailService.sendWithdrawalApprovedEmail(user.email, {
+            name: user.name || 'Usuário',
+            amount: withdrawal.amount,
+            crypto: withdrawalWithUser.wallet.cryptoType,
+            network: withdrawalWithUser.wallet.network,
+          })
+        );
+      }
+    } catch (error) {
+      logger.warn(`[WITHDRAWAL] Notification/email failed for approval ${withdrawalId}:`, error);
+    }
+
     logger.info(`[WITHDRAWAL] Approved by admin ${adminId}: ${withdrawalId}`);
   }
 
@@ -437,6 +489,7 @@ export class WithdrawalProcessorService {
         userId: withdrawal.wallet.userId,
         type: 'WITHDRAWAL_REJECTED',
         category: 'WALLET',
+        prefCategory: 'WITHDRAWALS',
         title: 'Saque Rejeitado',
         message: `Seu saque de ${withdrawal.amount} ${withdrawal.wallet.cryptoType} foi rejeitado. Motivo: ${note}. O saldo foi desbloqueado.`,
         actionUrl: '/wallets',
@@ -447,6 +500,26 @@ export class WithdrawalProcessorService {
       });
     } catch (notifError) {
       logger.warn(`[WITHDRAWAL] Notification failed for rejection ${withdrawalId}:`, notifError);
+    }
+
+    // Email transacional (fire-and-forget)
+    try {
+      const userForEmail = await prisma.user.findUnique({
+        where: { id: withdrawal.wallet.userId },
+        select: { email: true, name: true },
+      });
+      if (userForEmail?.email) {
+        await emailService.sendIfAllowed(withdrawal.wallet.userId, 'WITHDRAWALS', () =>
+          emailService.sendWithdrawalRejectedEmail(userForEmail.email, {
+            name: userForEmail.name || 'Usuário',
+            amount: withdrawal.amount,
+            crypto: withdrawal.wallet.cryptoType,
+            reason: note,
+          })
+        );
+      }
+    } catch (emailError) {
+      logger.warn(`[WITHDRAWAL] Email failed for rejection ${withdrawalId}:`, emailError);
     }
 
     logger.info(`[WITHDRAWAL] Rejected by admin ${adminId}: ${withdrawalId}`);

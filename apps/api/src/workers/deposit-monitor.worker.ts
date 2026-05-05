@@ -2,6 +2,7 @@ import {PrismaClient} from '@prisma/client';
 import BigNumber from 'bignumber.js';
 import {BlockchainService} from '../services/blockchain/blockchain.service';
 import {NotificationService} from '../services/notification.service';
+import {emailService} from '../services/email.service';
 
 /**
  * SECURITY (H-9): Retry com exponential backoff para chamadas blockchain críticas
@@ -260,6 +261,7 @@ export class DepositMonitorWorker {
           userId: wallet.userId,
           type: 'DEPOSIT_CONFIRMED',
           category: 'WALLET',
+          prefCategory: 'DEPOSITS',
           title: 'Depósito Confirmado',
           message: `Você recebeu ${amount} ${wallet.cryptoType} na rede ${wallet.network}`,
           actionUrl: `/wallets/${wallet.id}`,
@@ -276,6 +278,27 @@ export class DepositMonitorWorker {
         console.log(`   🔔 Notificação enviada ao usuário ${wallet.userId}`);
       } catch (error) {
         console.error('   ⚠️  Erro ao enviar notificação:', (error as Error).message);
+      }
+
+      // Email transacional (fire-and-forget)
+      try {
+        const userForEmail = await prisma.user.findUnique({
+          where: { id: wallet.userId },
+          select: { email: true, name: true },
+        });
+        if (userForEmail?.email) {
+          await emailService.sendIfAllowed(wallet.userId, 'DEPOSITS', () =>
+            emailService.sendDepositConfirmedEmail(userForEmail.email, {
+              name: userForEmail.name || 'Usuário',
+              amount,
+              crypto: wallet.cryptoType,
+              network: wallet.network,
+              txHash: deposit.hash,
+            })
+          );
+        }
+      } catch (emailError) {
+        console.warn('   ⚠️  Erro ao enviar email de depósito:', (emailError as Error).message);
       }
     }
 
