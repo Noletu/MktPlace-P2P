@@ -640,7 +640,16 @@ export class AdminService {
           user: {
             select: { id: true, email: true, name: true },
           },
-          transactions: true,
+          wallet: {
+            select: { id: true, address: true, cryptoType: true, network: true },
+          },
+          transactions: {
+            include: {
+              payer: {
+                select: { id: true, email: true, name: true },
+              },
+            },
+          },
         },
       }),
       prisma.order.count({
@@ -652,7 +661,71 @@ export class AdminService {
       }),
     ]);
 
-    return { orders, total, page, limit, pages: Math.ceil(total / limit) };
+    // Resolve providerId (string sem relation) para providerUser em BUY orders
+    const providerIds = [...new Set(
+      orders.filter(o => o.providerId).map(o => o.providerId!)
+    )];
+
+    let providerMap: Record<string, { id: string; email: string; name: string | null }> = {};
+    if (providerIds.length > 0) {
+      const providers = await prisma.user.findMany({
+        where: { id: { in: providerIds } },
+        select: { id: true, email: true, name: true },
+      });
+      providerMap = Object.fromEntries(providers.map(p => [p.id, p]));
+    }
+
+    // Resolve providerWalletId para endereço (BUY orders)
+    const providerWalletIds = [...new Set(
+      orders.filter(o => o.providerWalletId).map(o => o.providerWalletId!)
+    )];
+    let providerWalletMap: Record<string, { id: string; address: string }> = {};
+    if (providerWalletIds.length > 0) {
+      const wallets = await prisma.userWallet.findMany({
+        where: { id: { in: providerWalletIds } },
+        select: { id: true, address: true },
+      });
+      providerWalletMap = Object.fromEntries(wallets.map(w => [w.id, w]));
+    }
+
+    // Resolve receiver wallets (carteira do comprador por cryptoType+network)
+    // SELL: buyerId = tx[0].payerId | BUY: buyerId = order.userId
+    const receiverKeys = orders
+      .filter(o => o.status !== 'PENDING')
+      .map(o => {
+        const buyerId = o.orderType === 'SELL'
+          ? o.transactions[0]?.payerId
+          : o.userId;
+        return buyerId ? { userId: buyerId, cryptoType: o.cryptoType, network: o.cryptoNetwork } : null;
+      })
+      .filter((k): k is { userId: string; cryptoType: string; network: string } => k !== null);
+
+    let receiverWalletMap: Record<string, { address: string }> = {};
+    if (receiverKeys.length > 0) {
+      const receiverWallets = await prisma.userWallet.findMany({
+        where: { OR: receiverKeys.map(k => ({ userId: k.userId, cryptoType: k.cryptoType, network: k.network })) },
+        select: { userId: true, cryptoType: true, network: true, address: true },
+      });
+      receiverWalletMap = Object.fromEntries(
+        receiverWallets.map(w => [`${w.userId}-${w.cryptoType}-${w.network}`, { address: w.address }])
+      );
+    }
+
+    const enrichedOrders = orders.map(order => {
+      const buyerId = order.orderType === 'SELL'
+        ? order.transactions[0]?.payerId
+        : order.userId;
+      const receiverKey = buyerId ? `${buyerId}-${order.cryptoType}-${order.cryptoNetwork}` : null;
+
+      return {
+        ...order,
+        providerUser: order.providerId ? providerMap[order.providerId] ?? null : null,
+        providerWallet: order.providerWalletId ? providerWalletMap[order.providerWalletId] ?? null : null,
+        receiverWallet: receiverKey ? receiverWalletMap[receiverKey] ?? null : null,
+      };
+    });
+
+    return { orders: enrichedOrders, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
   async cancelOrder(orderId: string, adminId: string, reason: string) {

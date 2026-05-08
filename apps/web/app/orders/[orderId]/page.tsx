@@ -7,7 +7,7 @@ import ChatWindow from '@/components/chat/ChatWindow';
 import ChatHistoryViewer from '@/components/chat/ChatHistoryViewer';
 import Tabs, { Tab } from '@/components/Tabs';
 import CountdownTimer from '@/components/CountdownTimer';
-import { formatBRL } from '@/utils/formatters';
+import { formatBRL, formatCrypto } from '@/utils/formatters';
 import ThemeToggle from '@/components/ThemeToggle';
 import AppHeader from '@/components/AppHeader';
 import ReviewModal, { ReviewData } from '@/components/modals/ReviewModal';
@@ -630,7 +630,7 @@ export default function OrderDetailsPage() {
     try {
       // Calcular colateral: cryptoAmount + 1.5% fee
       const cryptoAmt = parseFloat(order.cryptoAmount);
-      const required = (cryptoAmt * 1.015).toFixed(8);
+      const required = formatCrypto(cryptoAmt * 1.015, order.cryptoType);
       setRequiredCollateral(required);
 
       // Buscar saldo na rede da ordem
@@ -893,7 +893,7 @@ export default function OrderDetailsPage() {
                   <div className="text-right">
                     <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(order.brlAmount)}</p>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                      {parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}
+                      {formatCrypto(order.cryptoAmount, order.cryptoType)} {order.cryptoType}
                     </p>
                   </div>
                 </div>
@@ -909,7 +909,7 @@ export default function OrderDetailsPage() {
                     </div>
                   ) : orderData ? (
                     <div>
-                      <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Dados do Pagamento</h3>
+                      <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Dados do Pagamento (de {isBuyOrder ? (order.provider?.name || 'Provedor') : order.user.name})</h3>
                       {orderData.pixKey ? (
                         <>
                           <p className="text-gray-800 dark:text-gray-300"><strong>Tipo de Chave:</strong> {orderData.pixKeyType}</p>
@@ -1075,7 +1075,7 @@ export default function OrderDetailsPage() {
                           <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
                             <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">VOCE RECEBERA EM CRIPTO:</p>
                             <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                              {parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}
+                              {formatCrypto(order.cryptoAmount, order.cryptoType)} {order.cryptoType}
                             </p>
                             <p className="text-xs text-green-600 dark:text-green-400 mt-1">
                               Direto na sua carteira da plataforma
@@ -1104,11 +1104,11 @@ export default function OrderDetailsPage() {
                             <div className="space-y-2">
                               <div className="flex justify-between items-center">
                                 <p className="text-sm text-gray-600 dark:text-gray-400">Cripto para comprador</p>
-                                <p className="font-semibold text-gray-900 dark:text-white">{parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}</p>
+                                <p className="font-semibold text-gray-900 dark:text-white">{formatCrypto(order.cryptoAmount, order.cryptoType)} {order.cryptoType}</p>
                               </div>
                               <div className="flex justify-between items-center">
                                 <p className="text-sm text-gray-600 dark:text-gray-400">Taxa plataforma (1.5%)</p>
-                                <p className="text-red-600 dark:text-red-400 text-sm">-{parseFloat(order.platformFee).toFixed(8)} {order.cryptoType}</p>
+                                <p className="text-red-600 dark:text-red-400 text-sm">-{formatCrypto(order.platformFee, order.cryptoType)} {order.cryptoType}</p>
                               </div>
                             </div>
                           </div>
@@ -1128,7 +1128,7 @@ export default function OrderDetailsPage() {
                           <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
                             <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">ORDEM DE COMPRA:</p>
                             <p className="text-lg font-bold text-blue-900 dark:text-blue-100">
-                              {parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}
+                              {formatCrypto(order.cryptoAmount, order.cryptoType)} {order.cryptoType}
                             </p>
                             <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
                               por {formatBRL(order.brlAmount)}
@@ -1142,7 +1142,7 @@ export default function OrderDetailsPage() {
                                 ~1% de lucro ao fornecer liquidez
                               </p>
                               <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                                Deposite {(parseFloat(order.cryptoAmount) * 1.015).toFixed(8)} {order.cryptoType} e receba {formatBRL(order.brlAmount)}
+                                Deposite {formatCrypto(parseFloat(order.cryptoAmount) * 1.015, order.cryptoType)} {order.cryptoType} e receba {formatBRL(order.brlAmount)}
                               </p>
                             </div>
                           )}
@@ -1170,11 +1170,11 @@ export default function OrderDetailsPage() {
                             <div className="space-y-2">
                               <div className="flex justify-between items-center">
                                 <p className="text-sm text-gray-600 dark:text-gray-400">Valor depositado</p>
-                                <p className="font-semibold text-gray-900 dark:text-white">{parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}</p>
+                                <p className="font-semibold text-gray-900 dark:text-white">{formatCrypto(order.cryptoAmount, order.cryptoType)} {order.cryptoType}</p>
                               </div>
                               <div className="flex justify-between items-center">
                                 <p className="text-sm text-gray-600 dark:text-gray-400">Taxa total (2.5%)</p>
-                                <p className="text-red-600 dark:text-red-400 text-sm">-{parseFloat(order.totalFee).toFixed(8)} {order.cryptoType}</p>
+                                <p className="text-red-600 dark:text-red-400 text-sm">-{formatCrypto(order.totalFee, order.cryptoType)} {order.cryptoType}</p>
                               </div>
                               <div className="text-xs text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 p-2 rounded mt-2 space-y-1">
                                 <p>1.5% vai para a plataforma</p>
@@ -1208,10 +1208,10 @@ export default function OrderDetailsPage() {
                           <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
                             <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">VOCE RECEBERA EM CRIPTO:</p>
                             <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                              {(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward || '0')).toFixed(8)} {order.cryptoType}
+                              {formatCrypto(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward || '0'), order.cryptoType)} {order.cryptoType}
                             </p>
                             <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                              Inclui +{parseFloat(order.payerReward || '0').toFixed(8)} de cashback (1%)
+                              Inclui +{formatCrypto(order.payerReward || '0', order.cryptoType)} de cashback (1%)
                             </p>
                           </div>
                         </>
@@ -1523,11 +1523,11 @@ export default function OrderDetailsPage() {
                 }`}>
                   {isBuyOrder
                     ? (isCreator
-                        ? `Voce paga ${formatBRL(order.brlAmount)} via PIX e recebe ${parseFloat(order.cryptoAmount).toFixed(8)} ${order.cryptoType}`
+                        ? `Voce paga ${formatBRL(order.brlAmount)} via PIX e recebe ${formatCrypto(order.cryptoAmount, order.cryptoType)} ${order.cryptoType}`
                         : `Voce fornece liquidez e recebe ${formatBRL(order.brlAmount)} apos o comprador pagar`)
                     : (isPayer
-                        ? `Voce paga ${formatBRL(order.brlAmount)} no ${paymentMethod} e recebe ${(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward || '0')).toFixed(8)} ${order.cryptoType} (inclui 1% cashback)`
-                        : `Voce recebera ${formatBRL(order.brlAmount)} via ${paymentMethod}. Seu colateral de ${(parseFloat(order.cryptoAmount) + parseFloat(order.totalFee)).toFixed(8)} ${order.cryptoType} sera liberado`)
+                        ? `Voce paga ${formatBRL(order.brlAmount)} no ${paymentMethod} e recebe ${formatCrypto(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward || '0'), order.cryptoType)} ${order.cryptoType} (inclui 1% cashback)`
+                        : `Voce recebera ${formatBRL(order.brlAmount)} via ${paymentMethod}. Seu colateral de ${formatCrypto(parseFloat(order.cryptoAmount) + parseFloat(order.totalFee), order.cryptoType)} ${order.cryptoType} sera liberado`)
                     }
                 </p>
               </div>
@@ -1747,10 +1747,10 @@ export default function OrderDetailsPage() {
                 <strong>Voce esta aceitando fornecer:</strong>
               </p>
               <p className="text-lg font-bold text-blue-900 dark:text-blue-100">
-                {parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}
+                {formatCrypto(order.cryptoAmount, order.cryptoType)} {order.cryptoType}
               </p>
               <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                + {(parseFloat(order.cryptoAmount) * 0.015).toFixed(8)} {order.cryptoType} de taxa (1.5%)
+                + {formatCrypto(parseFloat(order.cryptoAmount) * 0.015, order.cryptoType)} {order.cryptoType} de taxa (1.5%)
               </p>
               <p className="text-sm text-blue-800 dark:text-blue-200 mt-3">
                 <strong>Colateral necessario:</strong> {requiredCollateral} {order.cryptoType}
@@ -1780,19 +1780,19 @@ export default function OrderDetailsPage() {
                       <div>
                         <p className="text-green-700 dark:text-green-300 text-xs">Total</p>
                         <p className="font-mono font-bold text-green-900 dark:text-green-100">
-                          {parseFloat(providerBalance.total).toFixed(8)}
+                          {formatCrypto(providerBalance.total, order.cryptoType)}
                         </p>
                       </div>
                       <div>
                         <p className="text-green-700 dark:text-green-300 text-xs">Disponivel</p>
                         <p className="font-mono font-bold text-green-900 dark:text-green-100">
-                          {parseFloat(providerBalance.available).toFixed(8)}
+                          {formatCrypto(providerBalance.available, order.cryptoType)}
                         </p>
                       </div>
                       <div>
                         <p className="text-green-700 dark:text-green-300 text-xs">Bloqueado</p>
                         <p className="font-mono font-bold text-yellow-700 dark:text-yellow-400">
-                          {parseFloat(providerBalance.locked).toFixed(8)}
+                          {formatCrypto(providerBalance.locked, order.cryptoType)}
                         </p>
                       </div>
                     </div>
@@ -1811,13 +1811,13 @@ export default function OrderDetailsPage() {
                       <div>
                         <p className="text-red-700 dark:text-red-300 text-xs">Total</p>
                         <p className="font-mono font-bold text-red-900 dark:text-red-100">
-                          {parseFloat(providerBalance.total).toFixed(8)}
+                          {formatCrypto(providerBalance.total, order.cryptoType)}
                         </p>
                       </div>
                       <div>
                         <p className="text-red-700 dark:text-red-300 text-xs">Disponivel</p>
                         <p className="font-mono font-bold text-red-900 dark:text-red-100">
-                          {parseFloat(providerBalance.available).toFixed(8)}
+                          {formatCrypto(providerBalance.available, order.cryptoType)}
                         </p>
                       </div>
                       <div>
@@ -1828,7 +1828,7 @@ export default function OrderDetailsPage() {
                       </div>
                     </div>
                     <p className="text-sm text-red-700 dark:text-red-300">
-                      Faltam: <strong>{(parseFloat(requiredCollateral) - parseFloat(providerBalance.available)).toFixed(8)} {order.cryptoType}</strong>
+                      Faltam: <strong>{formatCrypto(parseFloat(requiredCollateral) - parseFloat(providerBalance.available), order.cryptoType)} {order.cryptoType}</strong>
                     </p>
 
                     {!showProviderDepositQR ? (

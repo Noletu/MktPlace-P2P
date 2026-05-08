@@ -435,12 +435,42 @@ export default function CreateOrderPage() {
     };
   }, [cryptoAmount, crypto, activeCoupon]);
 
+  const checkDuplicateOrders = async (): Promise<boolean> => {
+    try {
+      const response = await fetchWithAuth('/orders/my-orders');
+      const result = await response.json();
+      if (!result.success || !Array.isArray(result.data)) return true;
+
+      const duplicates = result.data.filter(
+        (o: any) =>
+          o.status === 'PENDING' &&
+          o.orderType === orderMode &&
+          o.cryptoType === crypto &&
+          o.cryptoNetwork === network
+      );
+
+      if (duplicates.length > 0) {
+        return window.confirm(
+          `⚠️ Você já possui ${duplicates.length} pedido(s) similar(es) em aberto (${orderMode} ${crypto}/${network}).\n\nDeseja criar outro mesmo assim?`
+        );
+      }
+      return true;
+    } catch {
+      return true;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
+    let navigating = false;
+
     try {
+      const shouldProceed = await checkDuplicateOrders();
+      if (!shouldProceed) { setLoading(false); return; }
+
       // ============ BUY ORDER FLOW ============
       if (orderMode === 'BUY') {
         // Validações para ordem BUY
@@ -488,6 +518,7 @@ export default function CreateOrderPage() {
         }
 
         alert('✅ Ordem de compra criada com sucesso!\n\nSua ordem está no marketplace aguardando um provedor de liquidez.');
+        navigating = true;
         router.push(`/orders/${data.data.id}`);
         return;
       }
@@ -616,7 +647,7 @@ export default function CreateOrderPage() {
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (!navigating) setLoading(false);
     }
   };
 
@@ -724,6 +755,7 @@ export default function CreateOrderPage() {
 
   // Handler: Usar saldo interno para criar pedido
   const handleUseInternalBalance = async () => {
+    let navigating = false;
     try {
       setLoading(true);
       setShowBalanceDecisionModal(false);
@@ -761,6 +793,7 @@ export default function CreateOrderPage() {
 
       if (createData.success && createData.data) {
         alert('✅ Pedido criado com sucesso usando seu saldo interno!\n\nSeu pedido já está no marketplace!');
+        navigating = true;
         router.push(`/orders/${createData.data.id}`);
       } else {
         if (createData.details && createData.details.length > 0) {
@@ -774,7 +807,7 @@ export default function CreateOrderPage() {
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (!navigating) setLoading(false);
     }
   };
 

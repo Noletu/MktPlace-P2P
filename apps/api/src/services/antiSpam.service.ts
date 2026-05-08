@@ -5,19 +5,21 @@ import { OrderStatus } from '@mktplace/shared';
  * Serviço Anti-Spam para Cancelamentos
  *
  * Implementa 3 medidas de proteção:
- * 1. Rate Limiting: Máximo 3 cancelamentos PENDING por dia
- * 2. Cooldown: Mínimo 15 minutos entre criação e cancelamento
- * 3. Soft Warning: Alertas progressivos após muitos cancelamentos
+ * 1. Burst Cooldown: 5 cancelamentos em 15 min → cooldown de 15 min
+ * 2. Rate Limiting: Máximo de cancelamentos PENDING por dia
+ * 3. Soft Warning: Alertas progressivos após muitos cancelamentos em 7 dias
  */
 
 // Configurações
 const CONFIG = {
-  // Rate Limiting
-  MAX_PENDING_CANCELLATIONS_PER_DAY: 3,
-  RATE_LIMIT_WINDOW_HOURS: 24,
+  // Burst Cooldown (substitui o antigo cooldown por pedido)
+  BURST_MAX_CANCELLATIONS: 5,     // Máx cancelamentos permitidos na janela
+  BURST_WINDOW_MINUTES: 15,       // Janela de detecção (15 min)
+  BURST_COOLDOWN_MINUTES: 15,     // Cooldown após estourar o burst
 
-  // Cooldown
-  MIN_MINUTES_BEFORE_CANCEL: 15,
+  // Rate Limiting
+  MAX_PENDING_CANCELLATIONS_PER_DAY: 10,
+  RATE_LIMIT_WINDOW_HOURS: 24,
 
   // Soft Warning
   WARNING_THRESHOLD: 5,      // 5 cancelamentos em 7 dias = aviso
@@ -43,15 +45,15 @@ export class AntiSpamService {
    */
   async canCancelPendingOrder(
     userId: string,
-    orderId: string
+    _orderId: string
   ): Promise<AntiSpamCheckResult> {
-    // 1. Verificar cooldown de criação
-    const cooldownCheck = await this.checkCreationCooldown(orderId);
-    if (!cooldownCheck.allowed) {
-      return cooldownCheck;
+    // 1. Verificar burst cooldown (5 cancelamentos em 15 min → esperar 15 min)
+    const burstCheck = await this.checkBurstCooldown(userId);
+    if (!burstCheck.allowed) {
+      return burstCheck;
     }
 
-    // 2. Verificar rate limiting (3 por dia)
+    // 2. Verificar rate limiting diário
     const rateLimitCheck = await this.checkRateLimit(userId);
     if (!rateLimitCheck.allowed) {
       return rateLimitCheck;
@@ -66,34 +68,53 @@ export class AntiSpamService {
     // Tudo OK, mas incluir warning se estiver próximo do limite
     return {
       allowed: true,
-      warningMessage: warningCheck.warningMessage,
+      warningMessage: burstCheck.warningMessage || warningCheck.warningMessage,
       pendingCancellationsToday: rateLimitCheck.pendingCancellationsToday,
       recentCancellationsCount: warningCheck.recentCancellationsCount,
     };
   }
 
   /**
-   * 1. COOLDOWN: Pedido só pode ser cancelado após 15 minutos da criação
+   * 1. BURST COOLDOWN: Se cancelou 5x em 15 min, bloqueia por 15 min
+   * Permite cancelamentos rápidos para corrigir erros de preenchimento,
+   * mas impede spam de criar/cancelar repetidamente.
    */
-  private async checkCreationCooldown(orderId: string): Promise<AntiSpamCheckResult> {
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
+  private async checkBurstCooldown(userId: string): Promise<AntiSpamCheckResult> {
+    const burstWindow = new Date();
+    burstWindow.setMinutes(burstWindow.getMinutes() - CONFIG.BURST_WINDOW_MINUTES);
+
+    // Contar cancelamentos PENDING na janela de burst
+    const recentCancellations = await prisma.cancellationHistory.findMany({
+      where: {
+        userId,
+        createdAt: { gte: burstWindow },
+        orderStatus: OrderStatus.PENDING,
+      },
+      orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
     });
 
-    if (!order) {
-      return { allowed: false, reason: 'Pedido não encontrado' };
+    if (recentCancellations.length >= CONFIG.BURST_MAX_CANCELLATIONS) {
+      // Calcular quando o cooldown termina (15 min após o 5º cancelamento)
+      const oldestInBurst = recentCancellations[recentCancellations.length - 1];
+      const cooldownEnd = new Date(oldestInBurst.createdAt.getTime() + CONFIG.BURST_COOLDOWN_MINUTES * 60 * 1000);
+      const now = new Date();
+
+      if (now < cooldownEnd) {
+        const remainingMinutes = Math.ceil((cooldownEnd.getTime() - now.getTime()) / 1000 / 60);
+        return {
+          allowed: false,
+          reason: `Você cancelou ${CONFIG.BURST_MAX_CANCELLATIONS} pedidos em menos de ${CONFIG.BURST_WINDOW_MINUTES} minutos. Aguarde ${remainingMinutes} minuto(s) antes de cancelar novamente.`,
+          cooldownUntil: cooldownEnd,
+        };
+      }
     }
 
-    const now = new Date();
-    const createdAt = new Date(order.createdAt);
-    const minutesSinceCreation = (now.getTime() - createdAt.getTime()) / 1000 / 60;
-
-    if (minutesSinceCreation < CONFIG.MIN_MINUTES_BEFORE_CANCEL) {
-      const remainingMinutes = Math.ceil(CONFIG.MIN_MINUTES_BEFORE_CANCEL - minutesSinceCreation);
+    // Aviso se estiver próximo do limite de burst
+    if (recentCancellations.length === CONFIG.BURST_MAX_CANCELLATIONS - 1) {
       return {
-        allowed: false,
-        reason: `Por favor, aguarde ${remainingMinutes} minuto(s) antes de cancelar este pedido. Isso evita cancelamentos impulsivos.`,
+        allowed: true,
+        warningMessage: `⚠️ Atenção: Mais um cancelamento e você entrará em cooldown de ${CONFIG.BURST_COOLDOWN_MINUTES} minutos.`,
       };
     }
 
@@ -258,6 +279,7 @@ export class AntiSpamService {
   async getUserCancellationStats(userId: string): Promise<{
     pendingCancellationsToday: number;
     pendingCancellationsLast7Days: number;
+    burstCancellationsRecent: number;
     totalCancellations: number;
     canCancel: boolean;
     warningLevel: 'none' | 'warning' | 'restricted' | 'penalized';
@@ -268,7 +290,10 @@ export class AntiSpamService {
     const last7Days = new Date();
     last7Days.setDate(last7Days.getDate() - 7);
 
-    const [pendingCancellationsToday, pendingCancellationsLast7Days, user] = await Promise.all([
+    const burstWindow = new Date();
+    burstWindow.setMinutes(burstWindow.getMinutes() - CONFIG.BURST_WINDOW_MINUTES);
+
+    const [pendingCancellationsToday, pendingCancellationsLast7Days, burstCancellationsRecent, user] = await Promise.all([
       prisma.cancellationHistory.count({
         where: {
           userId,
@@ -280,6 +305,13 @@ export class AntiSpamService {
         where: {
           userId,
           createdAt: { gte: last7Days },
+          orderStatus: OrderStatus.PENDING,
+        },
+      }),
+      prisma.cancellationHistory.count({
+        where: {
+          userId,
+          createdAt: { gte: burstWindow },
           orderStatus: OrderStatus.PENDING,
         },
       }),
@@ -307,9 +339,14 @@ export class AntiSpamService {
       canCancel = false;
     }
 
+    if (burstCancellationsRecent >= CONFIG.BURST_MAX_CANCELLATIONS) {
+      canCancel = false;
+    }
+
     return {
       pendingCancellationsToday,
       pendingCancellationsLast7Days,
+      burstCancellationsRecent,
       totalCancellations: user?.totalCancellations || 0,
       canCancel,
       warningLevel,
