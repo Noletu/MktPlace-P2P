@@ -1,15 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchWithAuth } from '@/utils/api';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import ToastContainer from '@/components/admin/ToastContainer';
 import { Toast } from '@/components/admin/ToastNotification';
-import PartnersView from '@/components/admin/funds/PartnersView';
 import UsersView from '@/components/admin/funds/UsersView';
 import TotalView from '@/components/admin/funds/TotalView';
 import LockedBalancesView from '@/components/admin/funds/LockedBalancesView';
+import PlatformWalletsView from '@/components/admin/funds/PlatformWalletsView';
+import WithdrawalsView from '@/components/admin/funds/WithdrawalsView';
 
 interface DashboardData {
   totalCustody: {
@@ -64,9 +65,14 @@ interface AuditLogEntry {
 
 export default function AdminFundsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'partners' | 'users' | 'total' | 'locked' | 'operations' | 'audit' | 'analytics'>('partners');
+
+  const validTabs = ['wallets', 'users', 'withdrawals', 'total', 'locked', 'operations', 'audit', 'analytics'] as const;
+  type FundsTab = typeof validTabs[number];
+  const initialTab = validTabs.includes(searchParams.get('tab') as FundsTab) ? (searchParams.get('tab') as FundsTab) : 'wallets';
+  const [activeTab, setActiveTab] = useState<FundsTab>(initialTab);
 
   // Operations tab — unified state
   const [operationType, setOperationType] = useState<'transfer' | 'refund' | 'adjust'>('transfer');
@@ -479,14 +485,14 @@ export default function AdminFundsPage() {
       <div className="mb-6 border-b border-gray-300 dark:border-gray-700">
         <nav className="flex space-x-8 overflow-x-auto">
           <button
-            onClick={() => setActiveTab('partners')}
+            onClick={() => setActiveTab('wallets')}
             className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
-              activeTab === 'partners'
-                ? 'border-purple-500 text-purple-400'
+              activeTab === 'wallets'
+                ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
             }`}
           >
-            💼 Sócios
+            🏦 Carteiras
           </button>
           <button
             onClick={() => setActiveTab('users')}
@@ -497,6 +503,16 @@ export default function AdminFundsPage() {
             }`}
           >
             👥 Usuários
+          </button>
+          <button
+            onClick={() => setActiveTab('withdrawals')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
+              activeTab === 'withdrawals'
+                ? 'border-yellow-500 text-yellow-400'
+                : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
+            }`}
+          >
+            💸 Saques
           </button>
           <button
             onClick={() => setActiveTab('total')}
@@ -551,14 +567,19 @@ export default function AdminFundsPage() {
         </nav>
       </div>
 
-      {/* FASE 5/7: Partners View */}
-      {activeTab === 'partners' && (
-        <PartnersView />
+      {/* Platform Wallets View */}
+      {activeTab === 'wallets' && (
+        <PlatformWalletsView />
       )}
 
       {/* FASE 5/7: Users View */}
       {activeTab === 'users' && (
         <UsersView />
+      )}
+
+      {/* Withdrawals View */}
+      {activeTab === 'withdrawals' && (
+        <WithdrawalsView />
       )}
 
       {/* FASE 5/7: Total View */}

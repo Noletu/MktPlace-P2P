@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface Statistics {
   summary: {
@@ -22,13 +25,18 @@ interface Statistics {
   };
 }
 
+type DisplayCurrency = 'BRL' | 'BTC';
+
 export default function StatisticsCard() {
   const [stats, setStats] = useState<Statistics | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState<7 | 15 | 30 | 90>(30);
+  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>('BRL');
+  const [btcPrice, setBtcPrice] = useState<number>(0);
 
   useEffect(() => {
     fetchStatistics();
+    fetchBtcPrice();
   }, [selectedPeriod]);
 
   const fetchStatistics = async () => {
@@ -61,6 +69,18 @@ export default function StatisticsCard() {
     }
   };
 
+  const fetchBtcPrice = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/prices`);
+      if (!response.ok) return;
+      const data = await response.json();
+      const btc = data.data?.find((p: { crypto: string; brlPrice: string }) => p.crypto === 'BTC');
+      if (btc) setBtcPrice(parseFloat(btc.brlPrice) || 0);
+    } catch {
+      // silently fail — BRL mode still works
+    }
+  };
+
   const formatBRL = (value: string | number) => {
     const num = typeof value === 'string' ? parseFloat(value) : value;
     return new Intl.NumberFormat('pt-BR', {
@@ -74,56 +94,29 @@ export default function StatisticsCard() {
     return `${amount.toFixed(decimals)} ${crypto}`;
   };
 
-  // Renderizar gráfico SVG simples
-  const renderChart = () => {
-    if (!stats || stats.chartData.length === 0) return null;
+  const chartData = stats?.chartData.map(d => {
+    const brlValue = d.volumeBRL;
+    return {
+      date: format(new Date(d.date + 'T12:00:00'), 'dd/MM', { locale: ptBR }),
+      fullDate: format(new Date(d.date + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR }),
+      value: displayCurrency === 'BRL' ? brlValue : (btcPrice > 0 ? brlValue / btcPrice : 0),
+    };
+  }) || [];
 
-    const width = 100;
-    const height = 60;
-    const padding = 5;
+  const formatYAxis = (value: number) => {
+    if (displayCurrency === 'BTC') {
+      if (value === 0) return '0 ₿';
+      return `${value.toFixed(value < 0.001 ? 6 : 4)} ₿`;
+    }
+    if (value >= 1000) return `R$ ${(value / 1000).toFixed(1)}k`;
+    return `R$ ${value.toFixed(0)}`;
+  };
 
-    const maxValue = Math.max(...stats.chartData.map(d => d.volumeBRL), 100);
-    const points = stats.chartData.map((d, i) => {
-      const x = padding + (i / (stats.chartData.length - 1 || 1)) * (width - 2 * padding);
-      const y = height - padding - ((d.volumeBRL / maxValue) * (height - 2 * padding));
-      return `${x},${y}`;
-    }).join(' ');
-
-    return (
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-24"
-        preserveAspectRatio="none"
-      >
-        {/* Grade de fundo */}
-        <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="currentColor" strokeWidth="0.5" opacity="0.2" />
-        <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="currentColor" strokeWidth="0.5" opacity="0.2" />
-
-        {/* Linha do gráfico */}
-        <polyline
-          points={points}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          className="text-blue-600 dark:text-blue-400"
-        />
-
-        {/* Pontos */}
-        {stats.chartData.map((d, i) => {
-          const x = padding + (i / (stats.chartData.length - 1 || 1)) * (width - 2 * padding);
-          const y = height - padding - ((d.volumeBRL / maxValue) * (height - 2 * padding));
-          return (
-            <circle
-              key={i}
-              cx={x}
-              cy={y}
-              r="1"
-              className="fill-blue-600 dark:fill-blue-400"
-            />
-          );
-        })}
-      </svg>
-    );
+  const formatTooltipValue = (value: number) => {
+    if (displayCurrency === 'BTC') {
+      return `${value.toFixed(8)} BTC`;
+    }
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
   };
 
   if (loading) {
@@ -171,10 +164,74 @@ export default function StatisticsCard() {
         <>
           {/* Gráfico */}
           <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-              Volume Transacionado (BRL)
-            </p>
-            {renderChart()}
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Volume Transacionado ({displayCurrency === 'BRL' ? 'BRL' : 'BTC'})
+              </p>
+              <div className="flex bg-gray-200 dark:bg-gray-600 rounded-lg p-0.5">
+                {(['BRL', 'BTC'] as DisplayCurrency[]).map((cur) => (
+                  <button
+                    key={cur}
+                    onClick={() => setDisplayCurrency(cur)}
+                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
+                      displayCurrency === cur
+                        ? 'bg-white dark:bg-gray-500 text-gray-900 dark:text-white shadow-sm'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    {cur === 'BRL' ? 'R$' : 'BTC'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="colorStats" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--grid-stroke)" />
+                  <XAxis
+                    dataKey="date"
+                    stroke="var(--axis-stroke)"
+                    style={{ fontSize: '11px' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    stroke="var(--axis-stroke)"
+                    style={{ fontSize: '11px' }}
+                    tickFormatter={formatYAxis}
+                    tickLine={false}
+                    width={displayCurrency === 'BTC' ? 80 : 65}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'var(--tooltip-bg)',
+                      border: '1px solid var(--tooltip-border)',
+                      borderRadius: '8px',
+                      color: 'var(--tooltip-text)',
+                      fontSize: '12px',
+                    }}
+                    labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ''}
+                    formatter={(value: number) => [formatTooltipValue(value), 'Volume']}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="value"
+                    stroke="#3b82f6"
+                    fillOpacity={1}
+                    fill="url(#colorStats)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[200px] flex items-center justify-center text-gray-500 dark:text-gray-400 text-sm">
+                Sem dados no período
+              </div>
+            )}
           </div>
 
           {/* Cards de estatísticas */}

@@ -274,17 +274,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               <span>Marketplace</span>
             </Link>
             <Link
-              href="/admin/roles"
-              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                pathname === '/admin/roles'
-                  ? 'border-purple-500 text-purple-600 dark:text-purple-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-              }`}
-            >
-              <span className="text-lg mb-1">👑</span>
-              <span>Roles</span>
-            </Link>
-            <Link
               href="/admin/orders/create"
               className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
                 pathname.startsWith('/admin/orders/create')
@@ -331,24 +320,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             <Link
               href="/admin/security"
               className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                pathname === '/admin/security'
+                pathname.startsWith('/admin/security')
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
               }`}
             >
               <span className="text-lg mb-1">🔒</span>
               <span>Segurança</span>
-            </Link>
-            <Link
-              href="/admin/master-seed"
-              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                pathname === '/admin/master-seed'
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-              }`}
-            >
-              <span className="text-lg mb-1">🔐</span>
-              <span className="text-center leading-tight">Master<br/>Seed</span>
             </Link>
             <Link
               href="/admin/funds"
@@ -372,20 +350,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               <span className="text-lg mb-1">🤖</span>
               <span>Workers</span>
             </Link>
-            {/* Saques - ADMIN+ (level >= 60) */}
-            {userLevel >= 60 && (
-              <Link
-                href="/admin/withdrawals"
-                className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                  pathname.startsWith('/admin/withdrawals')
-                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-                }`}
-              >
-                <span className="text-lg mb-1">💸</span>
-                <span>Saques</span>
-              </Link>
-            )}
             {/* Comunicações - ADMIN+ (level >= 80) */}
             {userLevel >= 80 && (
               <Link
@@ -398,48 +362,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               >
                 <span className="text-lg mb-1">📢</span>
                 <span className="text-center leading-tight">Comuni-<br/>cações</span>
-              </Link>
-            )}
-            {/* Carteiras da Plataforma - ADMIN+ (level >= 80) */}
-            {userLevel >= 80 && (
-              <Link
-                href="/admin/platform-wallets"
-                className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                  pathname.startsWith('/admin/platform-wallets')
-                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-                }`}
-              >
-                <span className="text-lg mb-1">🏦</span>
-                <span>Carteiras</span>
-              </Link>
-            )}
-            {/* Aprovações Duais - MASTER ou delegado com delegação ativa */}
-            {(userLevel >= 100 || hasActiveDelegation) && (
-              <Link
-                href="/admin/aprovacoes"
-                className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                  pathname.startsWith('/admin/aprovacoes')
-                    ? 'border-purple-500 text-purple-600 dark:text-purple-400'
-                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-                }`}
-              >
-                <span className="text-lg mb-1">🔐</span>
-                <span>Aprovações</span>
-              </Link>
-            )}
-            {/* Delegações - MASTER only (level >= 100) */}
-            {userLevel >= 100 && (
-              <Link
-                href="/admin/delegacoes"
-                className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                  pathname.startsWith('/admin/delegacoes')
-                    ? 'border-purple-500 text-purple-600 dark:text-purple-400'
-                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-                }`}
-              >
-                <span className="text-lg mb-1">🤝</span>
-                <span>Delegações</span>
               </Link>
             )}
           </div>

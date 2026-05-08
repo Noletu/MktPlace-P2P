@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import DepositWizardModal from '@/components/modals/DepositWizardModal';
 import WithdrawWizardModal from '@/components/modals/WithdrawWizardModal';
 import { fetchWithAuth } from '@/utils/api';
@@ -34,7 +33,6 @@ interface HDWallet {
 type DisplayCurrency = 'BRL' | 'USD' | 'BTC';
 
 export default function CollateralSummaryWidget() {
-  const router = useRouter();
   const [balances, setBalances] = useState<Balance[]>([]);
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [pricesUsd, setPricesUsd] = useState<Record<string, number>>({});
@@ -356,17 +354,6 @@ export default function CollateralSummaryWidget() {
           Sacar
         </button>
       </div>
-
-      {/* Botão Ver Detalhes */}
-      <button
-        onClick={() => router.push('/wallet')}
-        className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
-      >
-        <span>Ver Detalhes Completos</span>
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
 
       {/* Deposit Wizard Modal */}
       <DepositWizardModal
