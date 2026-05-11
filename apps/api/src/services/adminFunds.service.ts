@@ -1259,6 +1259,7 @@ export class AdminFundsService {
     endDate?: Date;
     adminUserId?: string;
     action?: string;
+    success?: boolean;
     limit?: number;
     offset?: number;
   }) {
@@ -1267,6 +1268,7 @@ export class AdminFundsService {
       endDate,
       adminUserId,
       action,
+      success,
       limit = 50,
       offset = 0,
     } = params;
@@ -1279,6 +1281,10 @@ export class AdminFundsService {
           'AUTO_UNFREEZE_ACCOUNT',
           'INTERNAL_TRANSFER',
           'BALANCE_ADJUSTMENT',
+          'PLATFORM_REFUND',
+          'PLATFORM_COLLECT',
+          'ADMIN_LOCK_BALANCE',
+          'ADMIN_UNLOCK_BALANCE',
         ],
       },
     };
@@ -1291,6 +1297,7 @@ export class AdminFundsService {
 
     if (adminUserId) where.userId = adminUserId;
     if (action) where.action = action;
+    if (success !== undefined) where.success = success;
 
     const [logs, total] = await Promise.all([
       prisma.auditLog.findMany({

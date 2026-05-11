@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import StatusBadge from '@/components/admin/shared/StatusBadge';
 import { fetchWithAuth } from '@/utils/api';
+import { formatActionLabel, formatResourceLabel } from '@/utils/auditLabels';
 
 interface AuditLog {
   id: string;
@@ -179,7 +180,7 @@ export default function AuditLogPage() {
             >
               <option value="ALL">Todas</option>
               {availableActions.map(action => (
-                <option key={action} value={action}>{action}</option>
+                <option key={action} value={action}>{formatActionLabel(action)}</option>
               ))}
             </select>
           </div>
@@ -235,11 +236,11 @@ export default function AuditLogPage() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="text-sm font-medium text-blue-400">{log.action}</span>
+                    <span className="text-sm font-medium text-blue-400">{formatActionLabel(log.action)}</span>
                   </td>
                   <td className="px-6 py-4">
                     <div>
-                      <p className="text-sm text-gray-900 dark:text-white">{log.resource}</p>
+                      <p className="text-sm text-gray-900 dark:text-white">{formatResourceLabel(log.resource)}</p>
                       {log.resourceId && (
                         <p className="text-xs text-gray-600 dark:text-gray-400 font-mono">{log.resourceId.substring(0, 8)}</p>
                       )}

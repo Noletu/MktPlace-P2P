@@ -349,6 +349,7 @@ export class AdminFundsController {
         endDate,
         adminUserId,
         action,
+        success,
         limit,
         offset,
       } = req.query;
@@ -358,6 +359,7 @@ export class AdminFundsController {
         endDate: endDate ? new Date(endDate as string) : undefined,
         adminUserId: adminUserId as string,
         action: action as string,
+        success: success !== undefined ? (success as string) === 'true' : undefined,
         limit: limit ? parseInt(limit as string) : undefined,
         offset: offset ? parseInt(offset as string) : undefined,
       });
