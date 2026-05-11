@@ -2,12 +2,43 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import Link from 'next/link';
 import { getApiUrl } from '@/config/api';
 import { NotificationBell } from '@/components/NotificationBell';
 import ThemeToggle from '@/components/ThemeToggle';
 import CryptoPriceCards from '@/components/CryptoPriceCards';
 import { fetchWithAuth } from '@/utils/api';
+import DraggableTabBar, { TabConfig } from '@/components/admin/DraggableTabBar';
+
+const ADMIN_NAV_TABS: (TabConfig & { minLevel?: number; pathMatch?: 'exact' | 'prefix' })[] = [
+  { key: '/admin',               label: 'Dashboard',   icon: '📊', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'exact' },
+  { key: '/admin/users',         label: 'Usuários',    icon: '👥', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'exact' },
+  { key: '/admin/orders',        label: 'Pedidos',     icon: '📦', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'exact' },
+  { key: '/admin/audit',         label: 'Audit',       labelLine2: 'Log',       icon: '📋', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'exact' },
+  { key: '/admin/marketplace',   label: 'Marketplace', icon: '🛒', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'exact' },
+  { key: '/admin/orders/create', label: 'Criar',       labelLine2: 'Pedido',    icon: '➕', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'prefix' },
+  { key: '/admin/coupons',       label: 'Cupons',      icon: '🎟️', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'exact' },
+  { key: '/admin/disputes',      label: 'Disputas',    icon: '⚖️', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'prefix' },
+  { key: '/admin/support',       label: 'Suporte',     icon: '🎫', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'prefix' },
+  { key: '/admin/security',      label: 'Segurança',   icon: '🔒', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'prefix' },
+  { key: '/admin/funds',         label: 'Controle',    labelLine2: 'de Fundos', icon: '💰', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'prefix' },
+  { key: '/admin/workers',       label: 'Workers',     icon: '🤖', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'exact' },
+  { key: '/admin/comunicacoes',  label: 'Comuni-',     labelLine2: 'cações',    icon: '📢', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'prefix', minLevel: 80 },
+];
+
+function getActiveNavKey(pathname: string): string {
+  // Check prefix matches first (longer paths first to avoid /admin/orders vs /admin/orders/create conflict)
+  const prefixTabs = ADMIN_NAV_TABS
+    .filter(t => t.pathMatch === 'prefix')
+    .sort((a, b) => b.key.length - a.key.length);
+
+  for (const t of prefixTabs) {
+    if (pathname.startsWith(t.key)) return t.key;
+  }
+  for (const t of ADMIN_NAV_TABS) {
+    if (pathname === t.key) return t.key;
+  }
+  return '/admin';
+}
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -217,154 +248,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       {/* Navigation */}
       <nav className="bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-center space-x-1">
-            <Link
-              href="/admin"
-              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                pathname === '/admin'
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-              }`}
-            >
-              <span className="text-lg mb-1">📊</span>
-              <span>Dashboard</span>
-            </Link>
-            <Link
-              href="/admin/users"
-              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                pathname === '/admin/users'
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-              }`}
-            >
-              <span className="text-lg mb-1">👥</span>
-              <span>Usuários</span>
-            </Link>
-            <Link
-              href="/admin/orders"
-              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                pathname === '/admin/orders'
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-              }`}
-            >
-              <span className="text-lg mb-1">📦</span>
-              <span>Pedidos</span>
-            </Link>
-            <Link
-              href="/admin/audit"
-              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                pathname === '/admin/audit'
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-              }`}
-            >
-              <span className="text-lg mb-1">📋</span>
-              <span className="text-center leading-tight">Audit<br/>Log</span>
-            </Link>
-            <Link
-              href="/admin/marketplace"
-              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                pathname === '/admin/marketplace'
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-              }`}
-            >
-              <span className="text-lg mb-1">🛒</span>
-              <span>Marketplace</span>
-            </Link>
-            <Link
-              href="/admin/orders/create"
-              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                pathname.startsWith('/admin/orders/create')
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-              }`}
-            >
-              <span className="text-lg mb-1">➕</span>
-              <span className="text-center leading-tight">Criar<br/>Pedido</span>
-            </Link>
-            <Link
-              href="/admin/coupons"
-              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                pathname === '/admin/coupons'
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-              }`}
-            >
-              <span className="text-lg mb-1">🎟️</span>
-              <span>Cupons</span>
-            </Link>
-            <Link
-              href="/admin/disputes"
-              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                pathname.startsWith('/admin/disputes')
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-              }`}
-            >
-              <span className="text-lg mb-1">⚖️</span>
-              <span>Disputas</span>
-            </Link>
-            <Link
-              href="/admin/support"
-              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                pathname.startsWith('/admin/support')
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-              }`}
-            >
-              <span className="text-lg mb-1">🎫</span>
-              <span>Suporte</span>
-            </Link>
-            <Link
-              href="/admin/security"
-              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                pathname.startsWith('/admin/security')
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-              }`}
-            >
-              <span className="text-lg mb-1">🔒</span>
-              <span>Segurança</span>
-            </Link>
-            <Link
-              href="/admin/funds"
-              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                pathname.startsWith('/admin/funds')
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-              }`}
-            >
-              <span className="text-lg mb-1">💰</span>
-              <span className="text-center leading-tight">Controle<br/>de Fundos</span>
-            </Link>
-            <Link
-              href="/admin/workers"
-              className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                pathname === '/admin/workers'
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-              }`}
-            >
-              <span className="text-lg mb-1">🤖</span>
-              <span>Workers</span>
-            </Link>
-            {/* Comunicações - ADMIN+ (level >= 80) */}
-            {userLevel >= 80 && (
-              <Link
-                href="/admin/comunicacoes"
-                className={`flex flex-col items-center py-3 px-3 border-b-2 font-medium text-xs transition min-w-[70px] ${
-                  pathname.startsWith('/admin/comunicacoes')
-                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-400 dark:hover:border-gray-600'
-                }`}
-              >
-                <span className="text-lg mb-1">📢</span>
-                <span className="text-center leading-tight">Comuni-<br/>cações</span>
-              </Link>
-            )}
-          </div>
+          <DraggableTabBar
+            tabs={ADMIN_NAV_TABS.filter(t => !t.minLevel || userLevel >= t.minLevel)}
+            activeTab={getActiveNavKey(pathname)}
+            onTabChange={(key) => router.push(key)}
+            storageKey="admin-nav-tabs"
+            variant="stacked"
+          />
         </div>
       </nav>
 

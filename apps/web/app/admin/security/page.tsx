@@ -8,6 +8,7 @@ import TwoFactorView from '@/components/admin/security/TwoFactorView';
 import MasterSeedView from '@/components/admin/security/MasterSeedView';
 import ApprovalsView from '@/components/admin/security/ApprovalsView';
 import DelegationsView from '@/components/admin/security/DelegationsView';
+import DraggableTabBar from '@/components/admin/DraggableTabBar';
 
 type SecurityTab = 'roles' | '2fa' | 'master-seed' | 'approvals' | 'delegations';
 
@@ -87,23 +88,12 @@ function SecurityPageContent() {
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Segurança</h1>
 
       {/* Tabs */}
-      <div className="mb-6 border-b border-gray-300 dark:border-gray-700">
-        <nav className="flex space-x-8 overflow-x-auto">
-          {visibleTabs.map(t => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
-                effectiveTab === t.key
-                  ? t.activeColor
-                  : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
-              }`}
-            >
-              {t.icon} {t.label}
-            </button>
-          ))}
-        </nav>
-      </div>
+      <DraggableTabBar
+        tabs={visibleTabs}
+        activeTab={effectiveTab}
+        onTabChange={(key) => setActiveTab(key as SecurityTab)}
+        storageKey="admin-security-tabs"
+      />
 
       {/* Content */}
       {effectiveTab === 'roles' && <RolesView />}

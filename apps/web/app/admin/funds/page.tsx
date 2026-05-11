@@ -8,6 +8,8 @@ import { Toast } from '@/components/admin/ToastNotification';
 import LockedBalancesView from '@/components/admin/funds/LockedBalancesView';
 import PlatformWalletsView from '@/components/admin/funds/PlatformWalletsView';
 import WithdrawalsView from '@/components/admin/funds/WithdrawalsView';
+import { formatActionLabel } from '@/utils/auditLabels';
+import DraggableTabBar, { TabConfig } from '@/components/admin/DraggableTabBar';
 
 
 interface DashboardData {
@@ -68,11 +70,23 @@ interface WalletLookupData {
 
 interface AuditLogEntry {
   id: string;
+  admin: string;
   action: string;
-  userId: string;
-  details: any;
+  resource: string;
+  resourceId: string | null;
+  description: string | null;
+  metadata: any;
+  success: boolean;
   createdAt: string;
 }
+
+const FUNDS_TAB_CONFIG: TabConfig[] = [
+  { key: 'wallets',     label: 'Carteiras',        icon: '🏦', activeColor: 'border-blue-500 text-blue-400' },
+  { key: 'withdrawals', label: 'Saques',            icon: '💸', activeColor: 'border-yellow-500 text-yellow-400' },
+  { key: 'locked',      label: 'Saldos Bloqueados', icon: '🔒', activeColor: 'border-orange-500 text-orange-400' },
+  { key: 'operations',  label: 'Operações',         icon: '⚡', activeColor: 'border-orange-500 text-orange-400' },
+  { key: 'audit',       label: 'Audit Log',         icon: '📝', activeColor: 'border-blue-500 text-blue-400' },
+];
 
 export default function AdminFundsPage() {
   const router = useRouter();
@@ -131,10 +145,12 @@ export default function AdminFundsPage() {
   const [auditFilters, setAuditFilters] = useState({
     action: '',
     adminUserId: '',
+    success: '',
     startDate: '',
     endDate: '',
     limit: '50',
   });
+  const [auditPagination, setAuditPagination] = useState({ total: 0, offset: 0, hasMore: false });
 
   // Toast notifications
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -414,16 +430,19 @@ export default function AdminFundsPage() {
     }
   };
 
-  const loadAuditLog = async () => {
+  const loadAuditLog = async (offsetOverride?: number) => {
     setAuditLoading(true);
 
     try {
       const params = new URLSearchParams();
       if (auditFilters.action) params.append('action', auditFilters.action);
       if (auditFilters.adminUserId) params.append('adminUserId', auditFilters.adminUserId);
+      if (auditFilters.success) params.append('success', auditFilters.success);
       if (auditFilters.startDate) params.append('startDate', auditFilters.startDate);
       if (auditFilters.endDate) params.append('endDate', auditFilters.endDate);
       if (auditFilters.limit) params.append('limit', auditFilters.limit);
+      const currentOffset = offsetOverride !== undefined ? offsetOverride : auditPagination.offset;
+      params.append('offset', String(currentOffset));
 
       const response = await fetchWithAuth(`/admin/funds/audit-log?${params.toString()}`);
 
@@ -433,7 +452,12 @@ export default function AdminFundsPage() {
         throw new Error(result.message || 'Erro ao buscar audit log');
       }
 
-      setAuditLogs(result.logs || []);
+      setAuditLogs(result.data?.logs || []);
+      setAuditPagination({
+        total: result.data?.pagination?.total || 0,
+        offset: result.data?.pagination?.offset || 0,
+        hasMore: result.data?.pagination?.hasMore || false,
+      });
     } catch (error) {
       console.error('Erro ao buscar audit log:', error);
       alert(`Erro: ${(error as Error).message}`);
@@ -449,13 +473,17 @@ export default function AdminFundsPage() {
     }
 
     const csvContent = [
-      ['ID', 'Ação', 'User ID', 'Detalhes', 'Data'].join(','),
+      ['ID', 'Data', 'Ação', 'Admin', 'Descrição', 'Recurso', 'Resource ID', 'Status', 'Metadata'].join(','),
       ...auditLogs.map(log => [
         log.id,
+        new Date(log.createdAt).toLocaleString('pt-BR'),
         log.action,
-        log.userId,
-        JSON.stringify(log.details).replace(/,/g, ';'),
-        new Date(log.createdAt).toLocaleString('pt-BR')
+        log.admin,
+        (log.description || '').replace(/,/g, ';'),
+        log.resource,
+        log.resourceId || '',
+        log.success ? 'OK' : 'FALHA',
+        log.metadata ? JSON.stringify(log.metadata).replace(/,/g, ';') : '',
       ].join(','))
     ].join('\n');
 
@@ -493,60 +521,12 @@ export default function AdminFundsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="mb-6 border-b border-gray-300 dark:border-gray-700">
-        <nav className="flex space-x-8 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('wallets')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
-              activeTab === 'wallets'
-                ? 'border-blue-500 text-blue-400'
-                : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
-            }`}
-          >
-            🏦 Carteiras
-          </button>
-          <button
-            onClick={() => setActiveTab('withdrawals')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
-              activeTab === 'withdrawals'
-                ? 'border-yellow-500 text-yellow-400'
-                : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
-            }`}
-          >
-            💸 Saques
-          </button>
-          <button
-            onClick={() => setActiveTab('locked')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
-              activeTab === 'locked'
-                ? 'border-orange-500 text-orange-400'
-                : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
-            }`}
-          >
-            🔒 Saldos Bloqueados
-          </button>
-          <button
-            onClick={() => setActiveTab('operations')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
-              activeTab === 'operations'
-                ? 'border-orange-500 text-orange-400'
-                : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
-            }`}
-          >
-            ⚡ Operações
-          </button>
-          <button
-            onClick={() => setActiveTab('audit')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
-              activeTab === 'audit'
-                ? 'border-blue-500 text-blue-400'
-                : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
-            }`}
-          >
-            📝 Audit Log
-          </button>
-        </nav>
-      </div>
+      <DraggableTabBar
+        tabs={FUNDS_TAB_CONFIG}
+        activeTab={activeTab}
+        onTabChange={(key) => setActiveTab(key as FundsTab)}
+        storageKey="admin-funds-tabs"
+      />
 
       {/* Platform Wallets View */}
       {activeTab === 'wallets' && (
@@ -1093,12 +1073,9 @@ export default function AdminFundsPage() {
                   className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:border-blue-500"
                 >
                   <option value="">Todas</option>
-                  <option value="ACCOUNT_FROZEN">Congelar Conta</option>
-                  <option value="ACCOUNT_UNFROZEN">Descongelar Conta</option>
-                  <option value="INTERNAL_TRANSFER">Transferência Interna</option>
-                  <option value="PLATFORM_REFUND">Reembolso da Plataforma</option>
-                  <option value="PLATFORM_COLLECT">Cobrança da Plataforma</option>
-                  <option value="BALANCE_ADJUSTMENT">Ajuste de Saldo</option>
+                  {['FREEZE_ACCOUNT', 'UNFREEZE_ACCOUNT', 'AUTO_UNFREEZE_ACCOUNT', 'INTERNAL_TRANSFER', 'BALANCE_ADJUSTMENT', 'PLATFORM_REFUND', 'PLATFORM_COLLECT', 'ADMIN_LOCK_BALANCE', 'ADMIN_UNLOCK_BALANCE'].map(action => (
+                    <option key={action} value={action}>{formatActionLabel(action)}</option>
+                  ))}
                 </select>
               </div>
 
@@ -1113,6 +1090,21 @@ export default function AdminFundsPage() {
                   placeholder="ID do administrador"
                   className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Status
+                </label>
+                <select
+                  value={auditFilters.success}
+                  onChange={(e) => setAuditFilters({ ...auditFilters, success: e.target.value })}
+                  className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">Todos</option>
+                  <option value="true">Sucesso</option>
+                  <option value="false">Falha</option>
+                </select>
               </div>
 
               <div>
@@ -1158,7 +1150,7 @@ export default function AdminFundsPage() {
 
             <div className="flex gap-3 mt-4">
               <button
-                onClick={loadAuditLog}
+                onClick={() => loadAuditLog(0)}
                 disabled={auditLoading}
                 className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-gray-900 dark:text-white rounded-lg font-medium transition"
               >
@@ -1179,7 +1171,7 @@ export default function AdminFundsPage() {
             <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-                  📋 Resultados ({auditLogs.length} registros)
+                  📋 Resultados ({auditPagination.total} registros)
                 </h3>
               </div>
 
@@ -1189,43 +1181,90 @@ export default function AdminFundsPage() {
                     <tr className="border-b border-gray-300 dark:border-gray-700">
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Data/Hora</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Ação</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Admin ID</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Admin</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Descrição</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Recurso</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Status</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Detalhes</th>
                     </tr>
                   </thead>
                   <tbody>
                     {auditLogs.map((log) => (
-                      <tr key={log.id} className="border-b border-gray-300 dark:border-gray-700/50 hover:bg-gray-700/30">
-                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                      <tr key={log.id} className="border-b border-gray-300 dark:border-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700/30">
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
                           {new Date(log.createdAt).toLocaleString('pt-BR')}
                         </td>
                         <td className="px-4 py-3 text-sm">
                           <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            log.action.includes('FROZEN') ? 'bg-blue-900/50 text-blue-300' :
-                            log.action.includes('TRANSFER') ? 'bg-orange-900/50 text-orange-300' :
-                            log.action.includes('PLATFORM_REFUND') ? 'bg-purple-900/50 text-purple-300' :
-                            log.action.includes('PLATFORM_COLLECT') ? 'bg-orange-900/50 text-orange-300' :
-                            log.action.includes('ADJUSTMENT') ? 'bg-red-900/50 text-red-300' :
-                            'bg-gray-700 text-gray-300'
+                            log.action.includes('FREEZE') ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300' :
+                            log.action.includes('UNFREEZE') ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/50 dark:text-cyan-300' :
+                            log.action.includes('TRANSFER') ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-300' :
+                            log.action.includes('REFUND') ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300' :
+                            log.action.includes('COLLECT') ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300' :
+                            log.action.includes('ADJUSTMENT') ? 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300' :
+                            log.action.includes('UNLOCK') ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300' :
+                            log.action.includes('LOCK') ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300' :
+                            'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                           }`}>
-                            {log.action}
+                            {formatActionLabel(log.action)}
                           </span>
                         </td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                          {log.admin}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 max-w-xs truncate" title={log.description || ''}>
+                          {log.description || '—'}
+                        </td>
                         <td className="px-4 py-3 text-sm font-mono text-gray-600 dark:text-gray-400">
-                          {log.userId.slice(0, 12)}...
+                          {log.resource}
+                          {log.resourceId && (
+                            <span className="text-xs text-gray-500 dark:text-gray-500 block">{log.resourceId.slice(0, 12)}...</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            log.success
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300'
+                              : 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300'
+                          }`}>
+                            {log.success ? 'OK' : 'FALHA'}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                          <details className="cursor-pointer">
-                            <summary className="hover:text-gray-900 dark:text-white">Ver detalhes</summary>
-                            <pre className="mt-2 p-2 bg-white dark:bg-gray-900 rounded text-xs overflow-x-auto">
-                              {JSON.stringify(log.details, null, 2)}
-                            </pre>
-                          </details>
+                          {log.metadata && (
+                            <details className="cursor-pointer">
+                              <summary className="hover:text-gray-900 dark:hover:text-white">Ver detalhes</summary>
+                              <pre className="mt-2 p-2 bg-gray-50 dark:bg-gray-900 rounded text-xs overflow-x-auto max-w-md">
+                                {JSON.stringify(log.metadata, null, 2)}
+                              </pre>
+                            </details>
+                          )}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-300 dark:border-gray-700">
+                <button
+                  onClick={() => loadAuditLog(Math.max(0, auditPagination.offset - parseInt(auditFilters.limit || '50')))}
+                  disabled={auditPagination.offset === 0 || auditLoading}
+                  className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-gray-900 dark:text-white rounded-lg text-sm font-medium transition"
+                >
+                  ← Anterior
+                </button>
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  Mostrando {auditPagination.offset + 1}–{Math.min(auditPagination.offset + auditLogs.length, auditPagination.total)} de {auditPagination.total} registros
+                </span>
+                <button
+                  onClick={() => loadAuditLog(auditPagination.offset + parseInt(auditFilters.limit || '50'))}
+                  disabled={!auditPagination.hasMore || auditLoading}
+                  className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-gray-900 dark:text-white rounded-lg text-sm font-medium transition"
+                >
+                  Próximo →
+                </button>
               </div>
             </div>
           )}
