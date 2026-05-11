@@ -60,7 +60,7 @@ export default function ResetPasswordModal({ user, onClose, onSuccess }: ResetPa
               </p>
               {disable2FA && (
                 <p className="text-green-700 dark:text-green-400 text-sm mt-2">
-                  O 2FA do usuario foi desabilitado.
+                  O 2FA do usuário foi desabilitado.
                 </p>
               )}
             </div>
@@ -75,7 +75,7 @@ export default function ResetPasswordModal({ user, onClose, onSuccess }: ResetPa
           <div>
             <div className="mb-4">
               <p className="text-gray-700 dark:text-gray-300 text-sm">
-                Enviar link de redefinicao de senha para:
+                Enviar link de redefinição de senha para:
               </p>
               <p className="text-gray-900 dark:text-white font-semibold mt-1">
                 {user.name || 'Sem nome'} ({user.email})
@@ -84,7 +84,7 @@ export default function ResetPasswordModal({ user, onClose, onSuccess }: ResetPa
 
             <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-400 dark:border-yellow-700 rounded-lg mb-4">
               <p className="text-yellow-800 dark:text-yellow-300 text-sm">
-                O usuario recebera um email com link de redefinicao de senha (expira em 1 hora).
+                O usuário receberá um email com link de redefinição de senha (expira em 1 hora).
               </p>
             </div>
 
@@ -100,10 +100,10 @@ export default function ResetPasswordModal({ user, onClose, onSuccess }: ResetPa
                   />
                   <div>
                     <p className="text-red-800 dark:text-red-300 font-medium text-sm">
-                      Desabilitar 2FA deste usuario
+                      Desabilitar 2FA deste usuário
                     </p>
                     <p className="text-red-700 dark:text-red-400 text-xs mt-1">
-                      Marque se o usuario perdeu acesso ao app autenticador. O 2FA sera removido para que ele consiga redefinir a senha.
+                      Marque se o usuário perdeu acesso ao app autenticador. O 2FA será removido para que ele consiga redefinir a senha.
                     </p>
                   </div>
                 </label>

@@ -52,10 +52,10 @@ export default function ResetPasswordForm() {
               <span className="text-5xl">&#x26A0;&#xFE0F;</span>
             </div>
             <h2 className="text-2xl font-bold text-red-800 dark:text-red-300 mb-2">
-              Link invalido
+              Link inválido
             </h2>
             <p className="text-red-700 dark:text-red-400 mb-4">
-              Este link de redefinicao de senha e invalido ou esta incompleto.
+              Este link de redefinição de senha é inválido ou está incompleto.
             </p>
             <a
               href="/forgot-password"
@@ -81,7 +81,7 @@ export default function ResetPasswordForm() {
               Senha redefinida!
             </h2>
             <p className="text-green-700 dark:text-green-400 mb-4">
-              Sua senha foi alterada com sucesso. Faca login com a nova senha.
+              Sua senha foi alterada com sucesso. Faça login com a nova senha.
             </p>
             <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700">
               <p className="text-blue-800 dark:text-blue-300 font-semibold mb-1">
@@ -108,12 +108,12 @@ export default function ResetPasswordForm() {
     setError('');
 
     if (!passwordValid) {
-      setError('A senha nao atende todos os requisitos.');
+      setError('A senha não atende todos os requisitos.');
       return;
     }
 
     if (!passwordsMatch) {
-      setError('As senhas nao coincidem.');
+      setError('As senhas não coincidem.');
       return;
     }
 
@@ -122,7 +122,7 @@ export default function ResetPasswordForm() {
     try {
       const body: any = { email, token, newPassword };
 
-      // Se 2FA e necessario, incluir o token
+      // Se 2FA é necessário, incluir o token
       if (requiresTwoFactor && twoFactorToken) {
         body.twoFactorToken = twoFactorToken;
       }
@@ -135,7 +135,7 @@ export default function ResetPasswordForm() {
 
       const data = await response.json();
 
-      // Se 2FA e necessario
+      // Se 2FA é necessário
       if (data.requiresTwoFactor) {
         setRequiresTwoFactor(true);
         setLoading(false);
@@ -149,7 +149,7 @@ export default function ResetPasswordForm() {
       setSuccess(true);
     } catch (err: any) {
       if (err.message === 'Failed to fetch') {
-        setError('Nao foi possivel conectar ao servidor.');
+        setError('Não foi possível conectar ao servidor.');
       } else {
         setError(err.message);
       }
@@ -178,16 +178,16 @@ export default function ResetPasswordForm() {
         />
         <div className="text-xs mt-1 space-y-1">
           <p className={passwordChecks.length ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}>
-            {passwordChecks.length ? '\u2713' : '\u25CB'} Minimo 8 caracteres
+            {passwordChecks.length ? '\u2713' : '\u25CB'} Mínimo 8 caracteres
           </p>
           <p className={passwordChecks.uppercase ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}>
-            {passwordChecks.uppercase ? '\u2713' : '\u25CB'} 1 letra maiuscula
+            {passwordChecks.uppercase ? '\u2713' : '\u25CB'} 1 letra maiúscula
           </p>
           <p className={passwordChecks.lowercase ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}>
-            {passwordChecks.lowercase ? '\u2713' : '\u25CB'} 1 letra minuscula
+            {passwordChecks.lowercase ? '\u2713' : '\u25CB'} 1 letra minúscula
           </p>
           <p className={passwordChecks.number ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}>
-            {passwordChecks.number ? '\u2713' : '\u25CB'} 1 numero
+            {passwordChecks.number ? '\u2713' : '\u25CB'} 1 número
           </p>
           <p className={passwordChecks.special ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}>
             {passwordChecks.special ? '\u2713' : '\u25CB'} 1 caractere especial (!@#$%...)
@@ -212,7 +212,7 @@ export default function ResetPasswordForm() {
           placeholder="********"
         />
         {confirmPassword && !passwordsMatch && (
-          <p className="text-xs text-red-600 dark:text-red-400 mt-1">As senhas nao coincidem</p>
+          <p className="text-xs text-red-600 dark:text-red-400 mt-1">As senhas não coincidem</p>
         )}
         {confirmPassword && passwordsMatch && (
           <p className="text-xs text-green-600 mt-1">{'\u2713'} Senhas coincidem</p>
@@ -223,7 +223,7 @@ export default function ResetPasswordForm() {
       {requiresTwoFactor && (
         <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-400 dark:border-yellow-700 rounded-lg">
           <p className="text-sm text-yellow-800 dark:text-yellow-300 mb-3 font-medium">
-            Sua conta possui 2FA ativado. Digite o codigo do seu app autenticador ou um backup code:
+            Sua conta possui 2FA ativado. Digite o código do seu app autenticador ou um backup code:
           </p>
           <input
             type="text"

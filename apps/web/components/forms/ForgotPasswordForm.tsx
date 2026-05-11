@@ -24,13 +24,13 @@ export default function ForgotPasswordForm() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Erro ao enviar solicitacao');
+        throw new Error(data.error || 'Erro ao enviar solicitação');
       }
 
       setSuccess(true);
     } catch (err: any) {
       if (err.message === 'Failed to fetch') {
-        setError('Nao foi possivel conectar ao servidor. Verifique se a API esta rodando.');
+        setError('Não foi possível conectar ao servidor. Verifique se a API está rodando.');
       } else {
         setError(err.message);
       }
@@ -51,7 +51,7 @@ export default function ForgotPasswordForm() {
               Email enviado!
             </h2>
             <p className="text-green-700 dark:text-green-400 mb-4">
-              Se o email <strong>{email}</strong> estiver cadastrado, voce recebera um link para redefinir sua senha.
+              Se o email <strong>{email}</strong> estiver cadastrado, você receberá um link para redefinir sua senha.
             </p>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
               Verifique sua caixa de entrada e spam. O link expira em 1 hora.
@@ -102,7 +102,7 @@ export default function ForgotPasswordForm() {
         disabled={loading}
         className="w-full bg-blue-600 dark:bg-blue-700 text-white py-2 px-4 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {loading ? 'Enviando...' : 'Enviar link de redefinicao'}
+        {loading ? 'Enviando...' : 'Enviar link de redefinição'}
       </button>
 
       <p className="text-center text-sm text-gray-600 dark:text-gray-400">

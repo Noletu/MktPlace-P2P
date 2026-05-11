@@ -423,9 +423,9 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                     </div>
                   </div>
 
-                  {/* Limite Diario */}
+                  {/* Limite Diário */}
                   <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4">
-                    <h5 className="font-bold text-gray-900 dark:text-white mb-4">💰 Limite Diario</h5>
+                    <h5 className="font-bold text-gray-900 dark:text-white mb-4">💰 Limite Diário</h5>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <p className="text-sm text-gray-600 dark:text-gray-400">Limite Ativo</p>
@@ -439,13 +439,13 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                           {details.user.customDailyLimit !== undefined && details.user.customDailyLimit !== null ? (
                             <span className="text-yellow-400 font-bold">✏️ Personalizado</span>
                           ) : (
-                            <span className="text-gray-500">🔄 Automatico (formula)</span>
+                            <span className="text-gray-500">🔄 Automático (fórmula)</span>
                           )}
                         </p>
                       </div>
                       {details.user.formulaLimit !== undefined && (
                         <div>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">Limite pela Formula</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">Limite pela Fórmula</p>
                           <p className="text-sm text-gray-900 dark:text-white">
                             R$ {details.user.formulaLimit.toLocaleString('pt-BR')}
                           </p>
@@ -460,10 +460,10 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                     </div>
                   </div>
 
-                  {/* Composicao da Reputacao */}
+                  {/* Composição da Reputação */}
                   <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-4">
-                      <h5 className="font-bold text-gray-900 dark:text-white">📊 Composicao da Reputacao</h5>
+                      <h5 className="font-bold text-gray-900 dark:text-white">📊 Composição da Reputação</h5>
                       <button
                         onClick={handleRecalculate}
                         disabled={recalculating}
@@ -482,7 +482,7 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                       <div className="space-y-3">
                         {[
                           { label: 'Reviews', emoji: '⭐', color: 'bg-yellow-500', data: breakdown.reviews },
-                          { label: 'Transacoes', emoji: '💸', color: 'bg-blue-500', data: breakdown.transactions },
+                          { label: 'Transações', emoji: '💸', color: 'bg-blue-500', data: breakdown.transactions },
                           { label: 'Disputas', emoji: '⚖️', color: 'bg-purple-500', data: breakdown.disputes },
                           { label: 'Maturidade', emoji: '📅', color: 'bg-green-500', data: breakdown.maturity },
                         ].map(component => (
@@ -541,7 +541,7 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                                 <p className="text-lg font-bold text-blue-400">{balance.totalBalance}</p>
                               </div>
                               <div>
-                                <p className="text-xs text-gray-600 dark:text-gray-400">Disponivel</p>
+                                <p className="text-xs text-gray-600 dark:text-gray-400">Disponível</p>
                                 <p className="text-lg font-bold text-green-400">{balance.availableBalance}</p>
                               </div>
                               <div>
@@ -550,7 +550,7 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                               </div>
                             </div>
 
-                            {/* Lista de carteiras individuais com enderecos */}
+                            {/* Lista de carteiras individuais com endereços */}
                             {balance.wallets && balance.wallets.length > 0 && (
                               <div className="border-t border-gray-200 dark:border-gray-700 pt-3 mt-3">
                                 <p className="text-xs font-bold text-gray-600 dark:text-gray-400 mb-2">Carteiras:</p>
@@ -568,7 +568,7 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                                           <button
                                             onClick={() => copyToClipboard(wallet.address)}
                                             className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition"
-                                            title="Copiar endereco"
+                                            title="Copiar endereço"
                                           >
                                             {copiedAddress === wallet.address ? 'Copiado!' : 'Copiar'}
                                           </button>
@@ -681,7 +681,7 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                   <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4">
                     <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                       <h5 className="font-bold text-gray-900 dark:text-white">
-                        📦 Pedidos do Usuario ({details.orders?.length || 0})
+                        📦 Pedidos do Usuário ({details.orders?.length || 0})
                       </h5>
                     </div>
 
@@ -839,8 +839,8 @@ export default function UserDetailsModal({ userId, onClose }: UserDetailsModalPr
                       <div className="flex items-start gap-2">
                         <span className="text-green-500 text-xl">✓</span>
                         <div>
-                          <p className="font-bold text-gray-900 dark:text-white text-sm">Reputacao e Limites</p>
-                          <p className="text-xs text-gray-600 dark:text-gray-400">Baseado em transacoes</p>
+                          <p className="font-bold text-gray-900 dark:text-white text-sm">Reputação e Limites</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400">Baseado em transações</p>
                         </div>
                       </div>
                       <div className="flex items-start gap-2">

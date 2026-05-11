@@ -196,9 +196,9 @@ export default function PlatformWalletsView() {
       setEstimate(data.data);
 
       if (!data.data.isValidAddress) {
-        setTransferError(`Endereco invalido para a rede ${transferWallet.network}`);
+        setTransferError(`Endereço inválido para a rede ${transferWallet.network}`);
       } else if (!data.data.isAboveMinimum) {
-        setTransferError(`Valor minimo: ${data.data.minimumAmount} ${transferWallet.cryptoType}`);
+        setTransferError(`Valor mínimo: ${data.data.minimumAmount} ${transferWallet.cryptoType}`);
       } else if (!data.data.isValid) {
         setTransferError('Saldo insuficiente');
       } else {
@@ -258,7 +258,7 @@ export default function PlatformWalletsView() {
 
       setMovements(data.data || []);
     } catch (err: any) {
-      console.error('Erro ao buscar movimentacoes:', err);
+      console.error('Erro ao buscar movimentações:', err);
       setMovements([]);
     } finally {
       setMovementsLoading(false);
@@ -280,8 +280,8 @@ export default function PlatformWalletsView() {
       'FEE_RECEIVED': 'Fee Recebida',
       'SWEEP_IN': 'Sweep Recebido',
       'WITHDRAWAL_OUT': 'Saque',
-      'TRANSFER_OUT': 'Transferencia',
-      'DEPOSIT_IN': 'Deposito',
+      'TRANSFER_OUT': 'Transferência',
+      'DEPOSIT_IN': 'Depósito',
       'BALANCE_SYNC': 'Sync',
     };
 
@@ -370,7 +370,7 @@ export default function PlatformWalletsView() {
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Depositado</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Sacado</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Acoes</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Ações</th>
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-300 dark:divide-gray-700">
@@ -394,7 +394,7 @@ export default function PlatformWalletsView() {
                         <button
                           onClick={() => copyAddress(wallet.address)}
                           className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition text-xs"
-                          title="Copiar endereco completo"
+                          title="Copiar endereço completo"
                         >
                           📋
                         </button>
@@ -455,7 +455,7 @@ export default function PlatformWalletsView() {
                         <button
                           onClick={() => openMovementHistory(wallet)}
                           className="p-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 transition"
-                          title="Historico"
+                          title="Histórico"
                         >
                           📜
                         </button>
@@ -473,13 +473,13 @@ export default function PlatformWalletsView() {
       {wallets.length > 0 && (
         <div className="mt-6 p-4 bg-gray-100 dark:bg-gray-900/50 rounded border border-gray-300 dark:border-gray-700">
           <h4 className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-2">
-            Informacoes sobre Carteiras da Plataforma
+            Informações sobre Carteiras da Plataforma
           </h4>
           <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
             <li>- Todas as carteiras usam Account 0 (reservado para plataforma)</li>
             <li>- Derivadas do master seed usando BIP44</li>
             <li>- Private keys criptografadas com AES-256-GCM</li>
-            <li>- Usadas para receber fees de transacoes e depositos dos socios</li>
+            <li>- Usadas para receber fees de transações e depósitos dos sócios</li>
           </ul>
         </div>
       )}
@@ -591,7 +591,7 @@ export default function PlatformWalletsView() {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Endereco destino
+                      Endereço de destino
                     </label>
                     <input
                       type="text"
@@ -626,7 +626,7 @@ export default function PlatformWalletsView() {
                       </button>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Disponivel: {parseFloat(transferWallet.availableBalance).toFixed(8)} {transferWallet.cryptoType}
+                      Disponível: {parseFloat(transferWallet.availableBalance).toFixed(8)} {transferWallet.cryptoType}
                     </p>
                   </div>
 
@@ -679,7 +679,7 @@ export default function PlatformWalletsView() {
                     </div>
                     <hr className="border-gray-300 dark:border-gray-700" />
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600 dark:text-gray-400">Destinatario recebe:</span>
+                      <span className="text-gray-600 dark:text-gray-400">Destinatário recebe:</span>
                       <span className="font-bold text-green-700 dark:text-green-400">{estimate.amountToReceive} {transferWallet.cryptoType}</span>
                     </div>
                     <div className="flex justify-between text-sm">
@@ -734,19 +734,19 @@ export default function PlatformWalletsView() {
                       <span className="text-2xl">🔐</span>
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Insira o codigo 2FA do seu aplicativo autenticador para confirmar a transferencia
+                      Insira o código 2FA do seu aplicativo autenticador para confirmar a transferência
                     </p>
                   </div>
 
                   <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3">
                     <p className="text-xs text-yellow-800 dark:text-yellow-300 font-medium">
-                      Atencao: Esta operacao e irreversivel. Verifique o endereco de destino antes de confirmar.
+                      Atenção: Esta operação é irreversível. Verifique o endereço de destino antes de confirmar.
                     </p>
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Codigo 2FA
+                      Código 2FA
                     </label>
                     <input
                       type="text"
@@ -781,7 +781,7 @@ export default function PlatformWalletsView() {
                           : 'bg-red-600 hover:bg-red-700'
                       }`}
                     >
-                      {transferring ? 'Enviando...' : 'Confirmar Transferencia'}
+                      {transferring ? 'Enviando...' : 'Confirmar Transferência'}
                     </button>
                   </div>
                 </div>
@@ -794,10 +794,10 @@ export default function PlatformWalletsView() {
                     <span className="text-3xl">&#128272;</span>
                   </div>
                   <h3 className="text-lg font-bold text-blue-700 dark:text-blue-400">
-                    Solicitacao Enviada
+                    Solicitação Enviada
                   </h3>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    A transferencia foi registrada e aguarda aprovacao de um segundo MASTER.
+                    A transferência foi registrada e aguarda aprovação de um segundo MASTER.
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-500 font-mono bg-gray-100 dark:bg-gray-900 rounded px-3 py-1">
                     ID: {transferPendingApproval.id}
@@ -819,7 +819,7 @@ export default function PlatformWalletsView() {
                         <span className="text-3xl">&#10003;</span>
                       </div>
                       <h3 className="text-lg font-bold text-green-700 dark:text-green-400">
-                        Transferencia Concluida
+                        Transferência Concluída
                       </h3>
                       <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 space-y-2 text-left">
                         <div className="flex justify-between text-sm">
@@ -853,7 +853,7 @@ export default function PlatformWalletsView() {
                         <span className="text-3xl">!</span>
                       </div>
                       <h3 className="text-lg font-bold text-red-700 dark:text-red-400">
-                        Transferencia Falhou
+                        Transferência Falhou
                       </h3>
                       {transferResult.lastError && (
                         <p className="text-sm text-red-600 dark:text-red-400">{transferResult.lastError}</p>
@@ -884,10 +884,10 @@ export default function PlatformWalletsView() {
             <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                  Historico de Movimentacoes
+                  Histórico de Movimentações
                 </h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {historyWallet.cryptoType} / {historyWallet.network} — Entradas, saidas e fees
+                  {historyWallet.cryptoType} / {historyWallet.network} — Entradas, saídas e fees
                 </p>
               </div>
               <button
@@ -908,7 +908,7 @@ export default function PlatformWalletsView() {
                 </div>
               ) : movements.length === 0 ? (
                 <div className="text-center py-12">
-                  <p className="text-gray-500 dark:text-gray-400">Nenhuma movimentacao registrada</p>
+                  <p className="text-gray-500 dark:text-gray-400">Nenhuma movimentação registrada</p>
                 </div>
               ) : (
                 <div className="space-y-3">

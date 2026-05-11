@@ -15,10 +15,10 @@ export enum LockCategory {
 }
 
 export const LockCategoryLabels: Record<LockCategory, string> = {
-  [LockCategory.ORPHAN_COLLATERAL]: 'Colateral Orfao',
+  [LockCategory.ORPHAN_COLLATERAL]: 'Colateral Órfão',
   [LockCategory.DISPUTE]: 'Disputa',
-  [LockCategory.SECURITY]: 'Seguranca',
-  [LockCategory.FRAUD_INVESTIGATION]: 'Investigacao de Fraude',
+  [LockCategory.SECURITY]: 'Segurança',
+  [LockCategory.FRAUD_INVESTIGATION]: 'Investigação de Fraude',
   [LockCategory.ADMINISTRATIVE]: 'Administrativo',
   [LockCategory.LEGAL_HOLD]: 'Bloqueio Legal',
 };
@@ -225,8 +225,8 @@ export default function LockedBalancesView() {
       {/* Info Banner */}
       <div className="bg-orange-900/20 border border-orange-600/50 rounded-lg p-4">
         <p className="text-orange-300 text-sm">
-          <strong>Saldos Bloqueados:</strong> Esta pagina mostra todas as carteiras com saldo bloqueado (lockedBalance {'>'} 0).
-          Use para identificar colaterais orfaos e gerenciar bloqueios manuais.
+          <strong>Saldos Bloqueados:</strong> Esta página mostra todas as carteiras com saldo bloqueado (lockedBalance {'>'} 0).
+          Use para identificar colaterais órfãos e gerenciar bloqueios manuais.
         </p>
       </div>
 
@@ -384,21 +384,21 @@ export default function LockedBalancesView() {
         {data.wallets.length === 0 ? (
           <div className="p-8 text-center">
             <p className="text-gray-400">Nenhuma carteira com saldo bloqueado encontrada.</p>
-            <p className="text-gray-500 text-sm mt-2">Isso e bom! Significa que nao ha colaterais orfaos.</p>
+            <p className="text-gray-500 text-sm mt-2">Isso é bom! Significa que não há colaterais órfãos.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full">
               <thead>
                 <tr className="bg-gray-900">
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Usuario</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Usuário</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Crypto</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Rede</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Total</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Bloqueado</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Disponivel</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Disponível</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Status</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Acoes</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -429,7 +429,7 @@ export default function LockedBalancesView() {
                           </span>
                         ) : (
                           <span className="px-2 py-1 bg-red-900/50 text-red-300 rounded text-xs font-medium">
-                            Orfao
+                            Órfão
                           </span>
                         )}
                       </td>
@@ -439,7 +439,7 @@ export default function LockedBalancesView() {
                             onClick={() => setExpandedWallet(expandedWallet === wallet.walletId ? null : wallet.walletId)}
                             className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm transition"
                           >
-                            {expandedWallet === wallet.walletId ? 'Ocultar' : 'Historico'}
+                            {expandedWallet === wallet.walletId ? 'Ocultar' : 'Histórico'}
                           </button>
                           <button
                             onClick={() => openUnlockModal(wallet)}
@@ -465,10 +465,10 @@ export default function LockedBalancesView() {
                         <td colSpan={8} className="px-4 py-4">
                           <div className="space-y-2">
                             <h4 className="text-sm font-semibold text-gray-300 mb-3">
-                              Historico de Bloqueios/Desbloqueios (ultimos 10)
+                              Histórico de Bloqueios/Desbloqueios (últimos 10)
                             </h4>
                             {wallet.lockHistory.length === 0 ? (
-                              <p className="text-gray-500 text-sm">Nenhum historico encontrado.</p>
+                              <p className="text-gray-500 text-sm">Nenhum histórico encontrado.</p>
                             ) : (
                               <div className="overflow-x-auto">
                                 <table className="min-w-full text-sm">

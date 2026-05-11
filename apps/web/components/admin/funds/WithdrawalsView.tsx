@@ -51,7 +51,7 @@ type TabFilter = 'ACTION_NEEDED' | 'ALL' | 'COMPLETED' | 'REJECTED' | 'FAILED';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   REQUIRES_APPROVAL: {
-    label: 'Aguardando Aprovacao',
+    label: 'Aguardando Aprovação',
     color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
     icon: '⚠️',
   },
@@ -71,7 +71,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: string
     icon: '🔄',
   },
   COMPLETED: {
-    label: 'Concluido',
+    label: 'Concluído',
     color: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
     icon: '✅',
   },
@@ -178,7 +178,7 @@ export default function WithdrawalsView() {
   const handleAction = async () => {
     if (!actionId || !actionType) return;
     if (actionType === 'reject' && !actionNote.trim()) {
-      alert('Nota obrigatoria ao rejeitar um saque');
+      alert('Nota obrigatória ao rejeitar um saque');
       return;
     }
 
@@ -198,7 +198,7 @@ export default function WithdrawalsView() {
       }
     } catch (error) {
       console.error('Erro na acao:', error);
-      alert('Erro ao processar acao');
+      alert('Erro ao processar ação');
     } finally {
       setActionLoading(false);
     }
@@ -264,7 +264,7 @@ export default function WithdrawalsView() {
             <div className="text-2xl font-bold text-orange-800 dark:text-orange-200">
               {counts.requiresApproval}
             </div>
-            <div className="text-sm text-orange-700 dark:text-orange-300">⚠️ Aguardando Aprovacao</div>
+            <div className="text-sm text-orange-700 dark:text-orange-300">⚠️ Aguardando Aprovação</div>
           </div>
           <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg shadow p-4">
             <div className="text-2xl font-bold text-yellow-800 dark:text-yellow-200">
@@ -292,7 +292,7 @@ export default function WithdrawalsView() {
                 : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
             }`}
           >
-            Acao Necessaria {totalActionNeeded > 0 && (
+            Ação Necessária {totalActionNeeded > 0 && (
               <span className="ml-1 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">
                 {totalActionNeeded}
               </span>
@@ -306,7 +306,7 @@ export default function WithdrawalsView() {
                 : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
             }`}
           >
-            Concluidos
+            Concluídos
           </button>
           <button
             onClick={() => setActiveTab('REJECTED')}
@@ -346,7 +346,7 @@ export default function WithdrawalsView() {
         <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow p-8 text-center">
           <p className="text-gray-600 dark:text-gray-400 text-lg">
             {activeTab === 'ACTION_NEEDED'
-              ? 'Nenhum saque pendente de acao'
+              ? 'Nenhum saque pendente de ação'
               : 'Nenhum saque encontrado'}
           </p>
         </div>
@@ -378,7 +378,7 @@ export default function WithdrawalsView() {
                       </span>
                     </div>
                     <div className="text-sm text-gray-600 dark:text-gray-400">
-                      <span className="font-medium">{w.wallet?.user?.name || w.wallet?.user?.email || 'Usuario'}</span>
+                      <span className="font-medium">{w.wallet?.user?.name || w.wallet?.user?.email || 'Usuário'}</span>
                       <span className="mx-1">-</span>
                       <span className="text-gray-500">{w.wallet?.user?.email}</span>
                       {isFrozen && (
@@ -434,7 +434,7 @@ export default function WithdrawalsView() {
                     Tentativas: {w.retryCount}/3
                     {w.lastError && (
                       <span className="ml-2 text-red-600 dark:text-red-400">
-                        Ultimo erro: {w.lastError.substring(0, 100)}
+                        Último erro: {w.lastError.substring(0, 100)}
                       </span>
                     )}
                   </div>
@@ -443,7 +443,7 @@ export default function WithdrawalsView() {
                 {/* Review info */}
                 {w.reviewNote && (
                   <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3 mb-3 text-sm">
-                    <span className="font-medium text-gray-700 dark:text-gray-300">Nota de revisao:</span>
+                    <span className="font-medium text-gray-700 dark:text-gray-300">Nota de revisão:</span>
                     <span className="ml-1 text-gray-800 dark:text-gray-200">{w.reviewNote}</span>
                     {w.reviewedAt && (
                       <span className="ml-2 text-xs text-gray-500">({formatDate(w.reviewedAt)})</span>
@@ -516,7 +516,7 @@ export default function WithdrawalsView() {
             disabled={historyOffset + historyLimit >= historyTotal}
             className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
           >
-            Proximo
+            Próximo
           </button>
         </div>
       )}
@@ -531,13 +531,13 @@ export default function WithdrawalsView() {
 
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
               {actionType === 'approve'
-                ? 'O saque sera movido para a fila de processamento automatico do worker.'
-                : 'O saque sera cancelado e o saldo bloqueado sera devolvido ao usuario.'}
+                ? 'O saque será movido para a fila de processamento automático do worker.'
+                : 'O saque será cancelado e o saldo bloqueado será devolvido ao usuário.'}
             </p>
 
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                {actionType === 'approve' ? 'Nota (opcional)' : 'Motivo da rejeicao (obrigatorio)'}
+                {actionType === 'approve' ? 'Nota (opcional)' : 'Motivo da rejeição (obrigatório)'}
               </label>
               <textarea
                 value={actionNote}
@@ -545,7 +545,7 @@ export default function WithdrawalsView() {
                 placeholder={
                   actionType === 'approve'
                     ? 'Opcional: adicione uma nota...'
-                    : 'Explique o motivo da rejeicao...'
+                    : 'Explique o motivo da rejeição...'
                 }
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 rows={3}
@@ -588,8 +588,8 @@ export default function WithdrawalsView() {
                 {actionLoading
                   ? 'Processando...'
                   : actionType === 'approve'
-                  ? 'Confirmar Aprovacao'
-                  : 'Confirmar Rejeicao'}
+                  ? 'Confirmar Aprovação'
+                  : 'Confirmar Rejeição'}
               </button>
             </div>
           </div>

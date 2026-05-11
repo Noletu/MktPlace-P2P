@@ -242,14 +242,14 @@ export default function OrderPreviewPage() {
 
       const data = await response.json();
       if (data.success) {
-        alert('✅ Deposito simulado com sucesso! Atualizando saldo...');
+        alert('✅ Depósito simulado com sucesso! Atualizando saldo...');
         await fetchProviderBalance();
       } else {
-        alert(data.message || 'Erro ao simular deposito');
+        alert(data.message || 'Erro ao simular depósito');
       }
     } catch (error: any) {
-      console.error('Erro ao simular deposito:', error);
-      alert('Erro ao simular deposito');
+      console.error('Erro ao simular depósito:', error);
+      alert('Erro ao simular depósito');
     } finally {
       setSimulatingDeposit(false);
     }
@@ -487,7 +487,7 @@ export default function OrderPreviewPage() {
               {isBuyOrder ? (
                 <div className="space-y-3">
                   <div className="bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg p-3">
-                    <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">🔒 COLATERAL NECESSARIO:</p>
+                    <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">🔒 COLATERAL NECESSÁRIO:</p>
                     <div className="flex items-center gap-2">
                       <CryptoIcon crypto={order.cryptoType as CryptoType} size={24} />
                       <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
@@ -511,7 +511,7 @@ export default function OrderPreviewPage() {
                       Via PIX do comprador
                     </p>
                     <p className="text-xs text-green-700 dark:text-green-400 font-semibold mt-2">
-                      ✨ Lucro liquido: ~1% ({formatBRL((parseFloat(order.brlAmount) * 0.01).toFixed(2))})
+                      ✨ Lucro líquido: ~1% ({formatBRL((parseFloat(order.brlAmount) * 0.01).toFixed(2))})
                     </p>
                   </div>
                 </div>
@@ -570,12 +570,12 @@ export default function OrderPreviewPage() {
                       /* SUFFICIENT BALANCE - show PIX form */
                       <>
                         <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3">
-                          <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">✅ Saldo Disponivel</p>
+                          <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">✅ Saldo Disponível</p>
                           <p className="font-mono text-lg text-green-800 dark:text-green-200">
                             {parseFloat(providerBalance.available).toFixed(8)} {order.cryptoType}
                           </p>
                           <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                            Necessario: {collateralAmount} {order.cryptoType}
+                            Necessário: {collateralAmount} {order.cryptoType}
                           </p>
                         </div>
 
@@ -598,7 +598,7 @@ export default function OrderPreviewPage() {
                             <option value="CNPJ">CNPJ</option>
                             <option value="EMAIL">E-mail</option>
                             <option value="PHONE">Telefone</option>
-                            <option value="RANDOM">Chave Aleatoria</option>
+                            <option value="RANDOM">Chave Aleatória</option>
                           </select>
                         </div>
 
@@ -617,13 +617,13 @@ export default function OrderPreviewPage() {
 
                         <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Nome do Beneficiario *
+                            Nome do Beneficiário *
                           </label>
                           <input
                             type="text"
                             value={providerRecipientName}
                             onChange={(e) => setProviderRecipientName(e.target.value)}
-                            placeholder="Nome completo para verificacao"
+                            placeholder="Nome completo para verificação"
                             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                           />
                         </div>
@@ -651,11 +651,11 @@ export default function OrderPreviewPage() {
                           <p className="text-xs text-red-700 dark:text-red-300 font-semibold mb-2">⚠️ Saldo Insuficiente</p>
                           <div className="space-y-1 text-sm">
                             <p className="text-red-800 dark:text-red-200">
-                              <span className="text-red-600 dark:text-red-400">Disponivel:</span>{' '}
+                              <span className="text-red-600 dark:text-red-400">Disponível:</span>{' '}
                               <span className="font-mono">{providerBalance ? parseFloat(providerBalance.available).toFixed(8) : '0.00000000'}</span> {order.cryptoType}
                             </p>
                             <p className="text-red-800 dark:text-red-200">
-                              <span className="text-red-600 dark:text-red-400">Necessario:</span>{' '}
+                              <span className="text-red-600 dark:text-red-400">Necessário:</span>{' '}
                               <span className="font-mono">{collateralAmount}</span> {order.cryptoType}
                             </p>
                             <p className="text-red-800 dark:text-red-200 font-semibold mt-2">
@@ -679,11 +679,11 @@ export default function OrderPreviewPage() {
                         ) : (
                           /* QR Code for deposit - Layout igual a via de venda */
                           <div className="space-y-4">
-                            {/* Titulo */}
+                            {/* Título */}
                             <div className="text-center">
                               <h3 className="text-xl font-bold text-gray-900 dark:text-white">Deposite o Colateral</h3>
                               <p className="text-sm text-gray-600 dark:text-gray-300">
-                                Envie {collateralAmount} {order.cryptoType} para o endereco abaixo
+                                Envie {collateralAmount} {order.cryptoType} para o endereço abaixo
                               </p>
                             </div>
 
@@ -694,10 +694,10 @@ export default function OrderPreviewPage() {
 
                             {providerBalance?.address ? (
                               <>
-                                {/* Endereco + Copiar */}
+                                {/* Endereço + Copiar */}
                                 <div>
                                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                    Endereco de deposito ({order.cryptoNetwork}):
+                                    Endereço de depósito ({order.cryptoNetwork}):
                                   </label>
                                   <div className="flex gap-2">
                                     <input
@@ -709,7 +709,7 @@ export default function OrderPreviewPage() {
                                     <button
                                       onClick={() => {
                                         navigator.clipboard.writeText(providerBalance.address!);
-                                        alert('Endereco copiado!');
+                                        alert('Endereço copiado!');
                                       }}
                                       className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-800"
                                     >
@@ -735,18 +735,18 @@ export default function OrderPreviewPage() {
                                   </p>
                                 </div>
 
-                                {/* Instrucoes */}
+                                {/* Instruções */}
                                 <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
-                                  <h4 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">📌 Instrucoes:</h4>
+                                  <h4 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">📌 Instruções:</h4>
                                   <ol className="text-sm text-blue-800 dark:text-blue-300 space-y-1 list-decimal list-inside">
                                     <li>Envie exatamente {collateralAmount} {order.cryptoType}</li>
                                     <li>Use a rede {order.cryptoNetwork}</li>
-                                    <li>Apos deposito, clique em "Atualizar Saldo"</li>
+                                    <li>Após depósito, clique em "Atualizar Saldo"</li>
                                     <li>Quando saldo suficiente, preencha os dados PIX</li>
                                   </ol>
                                 </div>
 
-                                {/* Botao Atualizar */}
+                                {/* Botão Atualizar */}
                                 <button
                                   onClick={fetchProviderBalance}
                                   className="w-full py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg"
@@ -754,7 +754,7 @@ export default function OrderPreviewPage() {
                                   🔄 Atualizar Saldo
                                 </button>
 
-                                {/* Botao Simular Deposito (Teste) */}
+                                {/* Botão Simular Depósito (Teste) */}
                                 {providerBalance?.id && (
                                   <div className="bg-green-50 dark:bg-green-900/30 border-2 border-green-300 dark:border-green-700 rounded-lg p-3">
                                     <p className="text-xs text-green-800 dark:text-green-200 mb-2 text-center">
@@ -765,7 +765,7 @@ export default function OrderPreviewPage() {
                                       disabled={simulatingDeposit}
                                       className="w-full py-3 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-bold rounded-lg disabled:opacity-50"
                                     >
-                                      {simulatingDeposit ? '🔄 Simulando...' : `⚡ SIMULAR DEPOSITO (${collateralAmount} ${order.cryptoType})`}
+                                      {simulatingDeposit ? '🔄 Simulando...' : `⚡ SIMULAR DEPÓSITO (${collateralAmount} ${order.cryptoType})`}
                                     </button>
                                   </div>
                                 )}
@@ -773,7 +773,7 @@ export default function OrderPreviewPage() {
                             ) : (
                               <div className="text-center py-8">
                                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-orange-600 mx-auto mb-3"></div>
-                                <p className="text-gray-600 dark:text-gray-400">Gerando endereco de deposito...</p>
+                                <p className="text-gray-600 dark:text-gray-400">Gerando endereço de depósito...</p>
                               </div>
                             )}
                           </div>
@@ -797,7 +797,7 @@ export default function OrderPreviewPage() {
                       💰 Fornecer Liquidez
                     </button>
                     <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                      Voce recebera {formatBRL(order.brlAmount)} via PIX
+                      Você receberá {formatBRL(order.brlAmount)} via PIX
                     </p>
                   </>
                 )

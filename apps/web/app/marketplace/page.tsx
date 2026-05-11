@@ -91,14 +91,14 @@ export default function MarketplacePage() {
     router.push(`/orders/${orderId}/preview`);
   };
 
-  // Filtrar por metodo de pagamento (PIX/BOLETO) - so se aplica a SELL orders
+  // Filtrar por método de pagamento (PIX/BOLETO) - só se aplica a SELL orders
   const filteredOrders = orders.filter((order) => {
-    // BUY orders nao tem metodo de pagamento definido ate serem aceitas
+    // BUY orders não tem método de pagamento definido até serem aceitas
     if (order.orderType === 'BUY') {
-      return paymentFilter === 'ALL'; // BUY orders so aparecem no "Todos"
+      return paymentFilter === 'ALL'; // BUY orders só aparecem no "Todos"
     }
     if (paymentFilter === 'ALL') return true;
-    // Para SELL orders, o type e PIX ou BOLETO
+    // Para SELL orders, o type é PIX ou BOLETO
     return order.type === paymentFilter;
   });
 
@@ -174,10 +174,10 @@ export default function MarketplacePage() {
             </div>
           </div>
 
-          {/* Filtro por Metodo de Pagamento (so para SELL orders) */}
+          {/* Filtro por Método de Pagamento (só para SELL orders) */}
           {orderTypeFilter !== 'BUY' && (
             <div>
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Metodo de Pagamento:</p>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Método de Pagamento:</p>
               <div className="flex gap-2">
                 <button
                   onClick={() => setPaymentFilter('ALL')}
@@ -258,7 +258,7 @@ export default function MarketplacePage() {
                       )}
                       {isInNegotiationWithOther && (
                         <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300">
-                          EM NEGOCIACAO
+                          EM NEGOCIAÇÃO
                         </span>
                       )}
                     </div>
@@ -277,10 +277,10 @@ export default function MarketplacePage() {
                     />
                   </div>
 
-                {/* Conteudo diferente para BUY vs SELL orders */}
+                {/* Conteúdo diferente para BUY vs SELL orders */}
                 {isBuyOrder ? (
                   <>
-                    {/* BUY ORDER: Usuario quer comprar cripto */}
+                    {/* BUY ORDER: Usuário quer comprar cripto */}
                     <div className="mb-4">
                       <p className="text-sm text-gray-600 dark:text-gray-400">Quer comprar</p>
                       <div className="flex items-center gap-2">
@@ -295,17 +295,17 @@ export default function MarketplacePage() {
                     </div>
 
                     <div className="mb-4">
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Voce recebera</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Você receberá</p>
                       <p className="text-3xl font-bold text-green-600 dark:text-green-400">{formatBRL(order.brlAmount)}</p>
                       <p className="text-xs text-green-700 dark:text-green-400 font-semibold">
-                        Via PIX (inclui ~1% lucro para voce)
+                        Via PIX (inclui ~1% lucro para você)
                       </p>
                     </div>
 
                     <div className="mb-4 pb-4 border-b dark:border-gray-700">
                       <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Comprador</p>
                       <div className="flex items-center justify-between">
-                        <p className="font-semibold dark:text-gray-200">{order.user.name || 'Anonimo'}</p>
+                        <p className="font-semibold dark:text-gray-200">{order.user.name || 'Anônimo'}</p>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -328,14 +328,14 @@ export default function MarketplacePage() {
                   </>
                 ) : (
                   <>
-                    {/* SELL ORDER: Usuario vende cripto (fluxo original) */}
+                    {/* SELL ORDER: Usuário vende cripto (fluxo original) */}
                     <div className="mb-4">
                       <p className="text-sm text-gray-600 dark:text-gray-400">Valor do Pagamento</p>
                       <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(order.brlAmount)}</p>
                     </div>
 
                     <div className="mb-4">
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Voce recebera</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Você receberá</p>
                       <div className="flex items-center gap-2">
                         <CryptoIcon crypto={order.cryptoType as CryptoType} size={28} />
                         <p className="text-xl font-bold text-green-600 dark:text-green-400">
@@ -353,7 +353,7 @@ export default function MarketplacePage() {
                     <div className="mb-4 pb-4 border-b dark:border-gray-700">
                       <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Vendedor</p>
                       <div className="flex items-center justify-between">
-                        <p className="font-semibold dark:text-gray-200">{order.user.name || 'Anonimo'}</p>
+                        <p className="font-semibold dark:text-gray-200">{order.user.name || 'Anônimo'}</p>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -381,14 +381,14 @@ export default function MarketplacePage() {
                     disabled
                     className="w-full py-3 px-4 bg-gray-400 dark:bg-gray-600 text-white font-semibold rounded-lg cursor-not-allowed"
                   >
-                    Seu Pedido - Nao pode aceitar
+                    Seu Pedido - Não pode aceitar
                   </button>
                 ) : isInNegotiationWithOther ? (
                   <button
                     disabled
                     className="w-full py-3 px-4 bg-gray-400 dark:bg-gray-600 text-white font-semibold rounded-lg cursor-not-allowed"
                   >
-                    Em Negociacao
+                    Em Negociação
                   </button>
                 ) : (
                   <button

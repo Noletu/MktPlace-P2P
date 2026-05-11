@@ -450,7 +450,7 @@ export default function OrdersPage() {
                     ) : isPending ? (
                       <p className="text-sm text-yellow-500 italic">Aguardando match</p>
                     ) : (
-                      <p className="text-sm text-gray-500 italic">Dados indisponiveis</p>
+                      <p className="text-sm text-gray-500 italic">Dados indisponíveis</p>
                     )}
                   </div>
                 </div>
@@ -522,7 +522,7 @@ export default function OrdersPage() {
 
               {/* ======== Seção 3: Transação (merged) ======== */}
               <div>
-                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Transacao</p>
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Transação</p>
 
                 {/* Sub-seção: Dados do Pagamento */}
                 {parsedOrderData && (
@@ -544,7 +544,7 @@ export default function OrdersPage() {
                         )}
                         {parsedOrderData.beneficiaryName && (
                           <div className="flex justify-between">
-                            <span className="text-sm text-gray-600 dark:text-gray-400">Beneficiario</span>
+                            <span className="text-sm text-gray-600 dark:text-gray-400">Beneficiário</span>
                             <span className="text-sm text-gray-900 dark:text-white">{parsedOrderData.beneficiaryName}</span>
                           </div>
                         )}
@@ -554,7 +554,7 @@ export default function OrdersPage() {
                       <>
                         {parsedOrderData.barcode && (
                           <div>
-                            <span className="text-sm text-gray-600 dark:text-gray-400 block">Codigo de Barras</span>
+                            <span className="text-sm text-gray-600 dark:text-gray-400 block">Código de Barras</span>
                             <span className="text-xs font-mono text-gray-900 dark:text-white break-all">{parsedOrderData.barcode}</span>
                           </div>
                         )}
@@ -566,7 +566,7 @@ export default function OrdersPage() {
                         )}
                         {parsedOrderData.beneficiaryName && (
                           <div className="flex justify-between">
-                            <span className="text-sm text-gray-600 dark:text-gray-400">Beneficiario</span>
+                            <span className="text-sm text-gray-600 dark:text-gray-400">Beneficiário</span>
                             <span className="text-sm text-gray-900 dark:text-white">{parsedOrderData.beneficiaryName}</span>
                           </div>
                         )}
@@ -654,7 +654,7 @@ export default function OrdersPage() {
                 {/* Sub-seção: Comprovante & Validação */}
                 {tx && (
                   <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 space-y-2 mb-3">
-                    <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Comprovante e Validacao</p>
+                    <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Comprovante e Validação</p>
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-gray-600 dark:text-gray-400">Status</span>
                       <StatusBadge
@@ -677,7 +677,7 @@ export default function OrdersPage() {
                     )}
                     {tx.validationScore != null && (
                       <div className="flex justify-between">
-                        <span className="text-sm text-gray-600 dark:text-gray-400">Score de Validacao</span>
+                        <span className="text-sm text-gray-600 dark:text-gray-400">Score de Validação</span>
                         <span className="text-sm font-medium text-gray-900 dark:text-white">{tx.validationScore}%</span>
                       </div>
                     )}
@@ -704,7 +704,7 @@ export default function OrdersPage() {
                   )}
                   {selectedOrder.completedAt && (
                     <div className="flex justify-between">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">Concluido em</span>
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Concluído em</span>
                       <span className="text-sm text-green-500">
                         {new Date(selectedOrder.completedAt).toLocaleString('pt-BR')}
                       </span>

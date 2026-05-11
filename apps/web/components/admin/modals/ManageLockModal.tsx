@@ -14,21 +14,21 @@ export enum LockCategory {
 }
 
 export const LockCategoryLabels: Record<LockCategory, string> = {
-  [LockCategory.ORPHAN_COLLATERAL]: 'Colateral Orfao',
+  [LockCategory.ORPHAN_COLLATERAL]: 'Colateral Órfão',
   [LockCategory.DISPUTE]: 'Disputa',
-  [LockCategory.SECURITY]: 'Seguranca',
-  [LockCategory.FRAUD_INVESTIGATION]: 'Investigacao de Fraude',
+  [LockCategory.SECURITY]: 'Segurança',
+  [LockCategory.FRAUD_INVESTIGATION]: 'Investigação de Fraude',
   [LockCategory.ADMINISTRATIVE]: 'Administrativo',
   [LockCategory.LEGAL_HOLD]: 'Bloqueio Legal',
 };
 
 export const LockCategoryDescriptions: Record<LockCategory, string> = {
-  [LockCategory.ORPHAN_COLLATERAL]: 'Saldo bloqueado de um pedido que foi cancelado/finalizado mas nao teve o colateral liberado automaticamente',
-  [LockCategory.DISPUTE]: 'Saldo retido enquanto uma disputa esta sendo analisada',
+  [LockCategory.ORPHAN_COLLATERAL]: 'Saldo bloqueado de um pedido que foi cancelado/finalizado mas não teve o colateral liberado automaticamente',
+  [LockCategory.DISPUTE]: 'Saldo retido enquanto uma disputa está sendo analisada',
   [LockCategory.SECURITY]: 'Bloqueio preventivo por atividade suspeita detectada',
-  [LockCategory.FRAUD_INVESTIGATION]: 'Saldo retido durante investigacao de possivel fraude',
+  [LockCategory.FRAUD_INVESTIGATION]: 'Saldo retido durante investigação de possível fraude',
   [LockCategory.ADMINISTRATIVE]: 'Bloqueio/desbloqueio por motivo administrativo interno',
-  [LockCategory.LEGAL_HOLD]: 'Bloqueio por determinacao judicial ou compliance',
+  [LockCategory.LEGAL_HOLD]: 'Bloqueio por determinação judicial ou compliance',
 };
 
 interface WalletInfo {
@@ -80,13 +80,13 @@ export default function ManageLockModal({
 
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum) || amountNum <= 0) {
-      setError('Valor deve ser um numero positivo');
+      setError('Valor deve ser um número positivo');
       return false;
     }
 
     const maxNum = parseFloat(maxAmount);
     if (amountNum > maxNum) {
-      setError(`Valor excede o maximo permitido (${maxNum} ${wallet.cryptoType})`);
+      setError(`Valor excede o máximo permitido (${maxNum} ${wallet.cryptoType})`);
       return false;
     }
 
@@ -198,19 +198,19 @@ export default function ManageLockModal({
         {/* Warning Banner */}
         <div className={`mb-6 p-4 rounded-lg ${isLock ? 'bg-orange-900/20 border border-orange-600/50' : 'bg-green-900/20 border border-green-600/50'}`}>
           <p className={`text-sm ${isLock ? 'text-orange-300' : 'text-green-300'}`}>
-            <strong>Atencao:</strong>{' '}
+            <strong>Atenção:</strong>{' '}
             {isLock
-              ? 'Bloquear saldo move o valor de "disponivel" para "bloqueado". O usuario nao podera usar esse saldo ate que seja desbloqueado.'
-              : 'Desbloquear saldo move o valor de "bloqueado" para "disponivel". O usuario podera usar esse saldo novamente.'}
+              ? 'Bloquear saldo move o valor de "disponível" para "bloqueado". O usuário não poderá usar esse saldo até que seja desbloqueado.'
+              : 'Desbloquear saldo move o valor de "bloqueado" para "disponível". O usuário poderá usar esse saldo novamente.'}
           </p>
         </div>
 
         {/* Wallet Info */}
         <div className="bg-gray-900/50 rounded-lg p-4 mb-6">
-          <h4 className="text-sm font-semibold text-gray-400 mb-3">Informacoes da Carteira</h4>
+          <h4 className="text-sm font-semibold text-gray-400 mb-3">Informações da Carteira</h4>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="text-gray-500">Usuario:</span>
+              <span className="text-gray-500">Usuário:</span>
               <span className="text-white ml-2">{wallet.userEmail}</span>
             </div>
             <div>
@@ -226,7 +226,7 @@ export default function ManageLockModal({
               <span className="text-yellow-400 ml-2 font-mono font-bold">{wallet.lockedBalance} {wallet.cryptoType}</span>
             </div>
             <div className="col-span-2">
-              <span className="text-gray-500">Disponivel:</span>
+              <span className="text-gray-500">Disponível:</span>
               <span className="text-green-400 ml-2 font-mono">{wallet.availableBalance} {wallet.cryptoType}</span>
             </div>
           </div>
@@ -236,9 +236,9 @@ export default function ManageLockModal({
         {showConfirmation ? (
           <div className="space-y-6">
             <div className="bg-red-900/20 border border-red-600/50 rounded-lg p-4">
-              <h4 className="text-red-300 font-bold mb-2">Confirmar Operacao</h4>
+              <h4 className="text-red-300 font-bold mb-2">Confirmar Operação</h4>
               <div className="text-sm text-gray-300 space-y-2">
-                <p><strong>Acao:</strong> {isLock ? 'BLOQUEAR' : 'DESBLOQUEAR'} saldo</p>
+                <p><strong>Ação:</strong> {isLock ? 'BLOQUEAR' : 'DESBLOQUEAR'} saldo</p>
                 <p><strong>Valor:</strong> {amount} {wallet.cryptoType}</p>
                 <p><strong>Categoria:</strong> {LockCategoryLabels[category]}</p>
                 <p><strong>Justificativa:</strong> {reason}</p>
@@ -318,25 +318,25 @@ export default function ManageLockModal({
             {/* Reason */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Justificativa (minimo 20 caracteres)
+                Justificativa (mínimo 20 caracteres)
               </label>
               <textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Descreva o motivo detalhado para esta operacao..."
+                placeholder="Descreva o motivo detalhado para esta operação..."
                 rows={4}
                 className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 resize-none"
               />
               <p className="mt-1 text-xs text-gray-500">
-                {reason.length}/20 caracteres minimos
+                {reason.length}/20 caracteres mínimos
               </p>
             </div>
 
             {/* 2FA Code */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Codigo 2FA *
-                <span className="text-gray-500 ml-2 font-normal">(obrigatorio)</span>
+                Código 2FA *
+                <span className="text-gray-500 ml-2 font-normal">(obrigatório)</span>
               </label>
               <input
                 type="text"

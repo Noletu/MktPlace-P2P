@@ -35,7 +35,7 @@ export default function AdjustLimitModal({ user, onClose, onSuccess }: AdjustLim
 
   const handleSubmit = async () => {
     if (note.length < 10) {
-      setError('A nota deve ter no minimo 10 caracteres');
+      setError('A nota deve ter no mínimo 10 caracteres');
       return;
     }
 
@@ -77,7 +77,7 @@ export default function AdjustLimitModal({ user, onClose, onSuccess }: AdjustLim
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Ajustar Limite Diario
+            Ajustar Limite Diário
           </h3>
           <button
             onClick={onClose}
@@ -89,7 +89,7 @@ export default function AdjustLimitModal({ user, onClose, onSuccess }: AdjustLim
 
         {/* Info do usuario */}
         <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 mb-6">
-          <h4 className="font-bold text-gray-900 dark:text-white mb-3">Informacoes do Usuario</h4>
+          <h4 className="font-bold text-gray-900 dark:text-white mb-3">Informações do Usuário</h4>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">Nome</p>
@@ -100,7 +100,7 @@ export default function AdjustLimitModal({ user, onClose, onSuccess }: AdjustLim
               <p className="text-lg font-medium text-gray-900 dark:text-white">{user.email}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Reputacao</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Reputação</p>
               <p className="text-lg font-bold text-green-400">{user.reputationScore}/100</p>
             </div>
             <div>
@@ -132,7 +132,7 @@ export default function AdjustLimitModal({ user, onClose, onSuccess }: AdjustLim
             >
               <div className="text-center">
                 <span className="text-3xl mb-2 block">🔄</span>
-                <p className="font-bold text-gray-900 dark:text-white">Automatico (Formula)</p>
+                <p className="font-bold text-gray-900 dark:text-white">Automático (Fórmula)</p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   R$ {formulaLimit.toLocaleString('pt-BR')}/dia
                 </p>
@@ -166,7 +166,7 @@ export default function AdjustLimitModal({ user, onClose, onSuccess }: AdjustLim
         {mode === 'CUSTOM' && (
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Limite Diario (BRL)
+              Limite Diário (BRL)
             </label>
             <div className="grid grid-cols-4 gap-2 mb-3">
               {[1000, 5000, 10000, 25000, 50000, 100000].map(value => (
@@ -202,7 +202,7 @@ export default function AdjustLimitModal({ user, onClose, onSuccess }: AdjustLim
         {/* Preview da mudanca */}
         {hasChanged && (
           <div className="bg-blue-100 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-700 rounded-lg p-4 mb-6">
-            <p className="text-blue-800 dark:text-blue-400 font-bold mb-2">Preview da Mudanca</p>
+            <p className="text-blue-800 dark:text-blue-400 font-bold mb-2">Preview da Mudança</p>
             <div className="flex items-center gap-3 text-sm">
               <span className="text-gray-700 dark:text-gray-300">
                 R$ {currentLimit.toLocaleString('pt-BR')}
@@ -222,7 +222,7 @@ export default function AdjustLimitModal({ user, onClose, onSuccess }: AdjustLim
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Motivo / Nota *
             <span className="text-gray-500 dark:text-gray-400 ml-2 font-normal">
-              (minimo 10 caracteres)
+              (mínimo 10 caracteres)
             </span>
           </label>
           <textarea
@@ -230,7 +230,7 @@ export default function AdjustLimitModal({ user, onClose, onSuccess }: AdjustLim
             onChange={(e) => setNote(e.target.value)}
             rows={3}
             className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500"
-            placeholder="Ex: Usuario VIP com historico comprovado, liberando limite maior..."
+            placeholder="Ex: Usuário VIP com histórico comprovado, liberando limite maior..."
           />
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
             {note.length}/10 caracteres
@@ -261,8 +261,8 @@ export default function AdjustLimitModal({ user, onClose, onSuccess }: AdjustLim
             <div>
               <p className="text-yellow-800 dark:text-yellow-400 font-bold mb-1">Importante</p>
               <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                Esta acao ficara registrada no audit log. O limite personalizado sobrepoe a formula automatica
-                ate ser manualmente resetado para automatico.
+                Esta ação ficará registrada no audit log. O limite personalizado sobrepõe a fórmula automática
+                até ser manualmente resetado para automático.
               </p>
             </div>
           </div>
