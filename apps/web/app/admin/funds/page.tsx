@@ -3,28 +3,39 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchWithAuth } from '@/utils/api';
-import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import ToastContainer from '@/components/admin/ToastContainer';
 import { Toast } from '@/components/admin/ToastNotification';
-import UsersView from '@/components/admin/funds/UsersView';
-import TotalView from '@/components/admin/funds/TotalView';
 import LockedBalancesView from '@/components/admin/funds/LockedBalancesView';
 import PlatformWalletsView from '@/components/admin/funds/PlatformWalletsView';
 import WithdrawalsView from '@/components/admin/funds/WithdrawalsView';
 
+
 interface DashboardData {
-  totalCustody: {
-    [network: string]: {
-      [crypto: string]: string;
-    };
-  };
-  totalUsers: number;
-  totalWallets: number;
+  totalCustody: string;
+  networkSummary: Array<{
+    network: string;
+    balance: string;
+    lockedBalance: string;
+    availableBalance: string;
+    walletsCount: number;
+  }>;
   topUsers: Array<{
     userId: string;
     email: string;
-    wallets: number;
+    name: string | null;
+    accountFrozen: boolean;
     totalBalance: string;
+    walletsCount: number;
+  }>;
+  totalUsers: number;
+  totalWallets: number;
+  solvency: Array<{
+    cryptoType: string;
+    network: string;
+    hotWalletBalance: string;
+    totalUserBalance: string;
+    delta: string;
+    status: 'HEALTHY' | 'WARNING' | 'CRITICAL';
   }>;
 }
 
@@ -69,7 +80,7 @@ export default function AdminFundsPage() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const validTabs = ['wallets', 'users', 'withdrawals', 'total', 'locked', 'operations', 'audit', 'analytics'] as const;
+  const validTabs = ['wallets', 'withdrawals', 'locked', 'operations', 'audit'] as const;
   type FundsTab = typeof validTabs[number];
   const initialTab = validTabs.includes(searchParams.get('tab') as FundsTab) ? (searchParams.get('tab') as FundsTab) : 'wallets';
   const [activeTab, setActiveTab] = useState<FundsTab>(initialTab);
@@ -227,7 +238,7 @@ export default function AdminFundsPage() {
     const fromLabel = `${fromUserData?.user.email} (${fromWallet?.cryptoType}/${fromWallet?.network} - saldo: ${fromWallet?.availableBalance})`;
     const toLabel = `${toUserData?.user.email}`;
 
-    if (!confirm(`Confirmar Transferencia\n\nTransferir ${transferAmount} ${transferCrypto}/${transferNetwork}\n\nDe: ${fromLabel}\nPara: ${toLabel}\n\nMotivo: ${transferReason}\n\nDeseja prosseguir?`)) {
+    if (!confirm(`Confirmar Transferência\n\nTransferir ${transferAmount} ${transferCrypto}/${transferNetwork}\n\nDe: ${fromLabel}\nPara: ${toLabel}\n\nMotivo: ${transferReason}\n\nDeseja prosseguir?`)) {
       return;
     }
 
@@ -251,7 +262,7 @@ export default function AdminFundsPage() {
         throw new Error(result.message || 'Erro ao transferir fundos');
       }
 
-      addToast('success', 'Transferencia interna realizada com sucesso!');
+      addToast('success', 'Transferência interna realizada com sucesso!');
       setTransferTwoFactor('');
       setFromWalletId('');
       setToWalletId('');
@@ -264,7 +275,7 @@ export default function AdminFundsPage() {
       loadDashboard();
     } catch (error) {
       console.error('Erro ao transferir fundos:', error);
-      addToast('error', `Erro na transferencia: ${(error as Error).message}`);
+      addToast('error', `Erro na transferência: ${(error as Error).message}`);
     } finally {
       setOperationLoading(false);
     }
@@ -277,7 +288,7 @@ export default function AdminFundsPage() {
     const network = selectedWallet?.network || '';
 
     if (!crypto || !network || !refundToWalletId.trim() || !refundAmount.trim() || !refundReason.trim()) {
-      alert('Preencha todos os campos (busque o usuario e selecione a carteira)');
+      alert('Preencha todos os campos (busque o usuário e selecione a carteira)');
       return;
     }
 
@@ -292,10 +303,10 @@ export default function AdminFundsPage() {
       return;
     }
 
-    // Dupla confirmacao
+    // Dupla confirmação
     const finalMsg = isCollect
-      ? `CONFIRMACAO FINAL\n\nVoce tem CERTEZA ABSOLUTA que deseja executar esta cobrança?\n\nValor: ${refundAmount} ${crypto}\nRede: ${network}\nOrigem: ${userEmail}`
-      : `CONFIRMACAO FINAL\n\nVoce tem CERTEZA ABSOLUTA que deseja executar este reembolso?\n\nValor: ${refundAmount} ${crypto}\nRede: ${network}\nDestino: ${userEmail}`;
+      ? `CONFIRMAÇÃO FINAL\n\nVocê tem CERTEZA ABSOLUTA que deseja executar esta cobrança?\n\nValor: ${refundAmount} ${crypto}\nRede: ${network}\nOrigem: ${userEmail}`
+      : `CONFIRMAÇÃO FINAL\n\nVocê tem CERTEZA ABSOLUTA que deseja executar este reembolso?\n\nValor: ${refundAmount} ${crypto}\nRede: ${network}\nDestino: ${userEmail}`;
 
     if (!confirm(finalMsg)) {
       return;
@@ -381,7 +392,7 @@ export default function AdminFundsPage() {
         setAdjustment('');
         setAdjustReason('');
         setAdjustTwoFactor('');
-        addToast('info', 'Ajuste enfileirado! Aguardando aprovação do segundo MASTER em /admin/aprovacoes.');
+        addToast('info', 'Ajuste enfileirado! Aguardando aprovação do segundo MASTER em /admin/aprovações.');
         return;
       }
 
@@ -495,16 +506,6 @@ export default function AdminFundsPage() {
             🏦 Carteiras
           </button>
           <button
-            onClick={() => setActiveTab('users')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
-              activeTab === 'users'
-                ? 'border-blue-500 text-blue-400'
-                : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
-            }`}
-          >
-            👥 Usuários
-          </button>
-          <button
             onClick={() => setActiveTab('withdrawals')}
             className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
               activeTab === 'withdrawals'
@@ -513,16 +514,6 @@ export default function AdminFundsPage() {
             }`}
           >
             💸 Saques
-          </button>
-          <button
-            onClick={() => setActiveTab('total')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
-              activeTab === 'total'
-                ? 'border-green-500 text-green-400'
-                : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
-            }`}
-          >
-            🌍 Total
           </button>
           <button
             onClick={() => setActiveTab('locked')}
@@ -542,7 +533,7 @@ export default function AdminFundsPage() {
                 : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
             }`}
           >
-            ⚡ Operacoes
+            ⚡ Operações
           </button>
           <button
             onClick={() => setActiveTab('audit')}
@@ -554,16 +545,6 @@ export default function AdminFundsPage() {
           >
             📝 Audit Log
           </button>
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
-              activeTab === 'analytics'
-                ? 'border-blue-500 text-blue-400'
-                : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
-            }`}
-          >
-            📈 Analytics
-          </button>
         </nav>
       </div>
 
@@ -572,19 +553,9 @@ export default function AdminFundsPage() {
         <PlatformWalletsView />
       )}
 
-      {/* FASE 5/7: Users View */}
-      {activeTab === 'users' && (
-        <UsersView />
-      )}
-
       {/* Withdrawals View */}
       {activeTab === 'withdrawals' && (
         <WithdrawalsView />
-      )}
-
-      {/* FASE 5/7: Total View */}
-      {activeTab === 'total' && (
-        <TotalView />
       )}
 
       {/* Locked Balances View */}
@@ -592,103 +563,18 @@ export default function AdminFundsPage() {
         <LockedBalancesView />
       )}
 
-      {/* Dashboard Tab (OLD - DEPRECATED) */}
-      {(activeTab as string) === 'dashboard' && dashboard && (
-        <div className="space-y-6">
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-gradient-to-br from-blue-600/20 to-blue-800/20 border border-blue-500/30 rounded-lg p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-blue-800 dark:text-blue-300">Total de Usuários</p>
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">{dashboard.totalUsers}</p>
-                </div>
-                <div className="text-4xl">👥</div>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-green-600/20 to-green-800/20 border border-green-500/30 rounded-lg p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-green-800 dark:text-green-300">Total de Carteiras</p>
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">{dashboard.totalWallets}</p>
-                </div>
-                <div className="text-4xl">💼</div>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-purple-600/20 to-purple-800/20 border border-purple-500/30 rounded-lg p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-purple-800 dark:text-purple-300">Redes Suportadas</p>
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">{Object.keys(dashboard.totalCustody).length}</p>
-                </div>
-                <div className="text-4xl">🌐</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Custody by Network */}
-          <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">💰 Fundos em Custódia por Rede</h3>
-            <div className="space-y-4">
-              {Object.entries(dashboard.totalCustody).map(([network, cryptos]) => (
-                <div key={network} className="bg-white dark:bg-gray-900/50 rounded-lg p-4">
-                  <h4 className="text-lg font-semibold text-blue-400 mb-3">{network}</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {Object.entries(cryptos).map(([crypto, amount]) => (
-                      <div key={crypto} className="bg-white dark:bg-gray-800 rounded-lg p-3">
-                        <p className="text-sm text-gray-600 dark:text-gray-400">{crypto}</p>
-                        <p className="text-lg font-bold text-gray-900 dark:text-white">{amount}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Top Users */}
-          <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">🏆 Top 10 Usuários por Saldo</h3>
-            <div className="overflow-x-auto">
-              <table className="min-w-full">
-                <thead>
-                  <tr className="border-b border-gray-300 dark:border-gray-700">
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">#</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Email</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Carteiras</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Saldo Total (USD)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dashboard.topUsers.map((user, index) => (
-                    <tr key={user.userId} className="border-b border-gray-300 dark:border-gray-700/50">
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{index + 1}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{user.email}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{user.wallets}</td>
-                      <td className="px-4 py-3 text-sm font-mono text-green-400">${user.totalBalance}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Operations Tab (Unified: Transfer + Refund + Adjust) */}
       {activeTab === 'operations' && (
         <div className="space-y-6">
           <div className="bg-red-900/20 border border-red-600/50 rounded-lg p-4">
             <p className="text-red-300 text-sm">
-              <strong>Operacoes financeiras:</strong> Afetam saldos reais dos usuarios. Exigem autenticacao 2FA e sao registradas no Audit Log.
+              <strong>Operações financeiras:</strong> Afetam saldos reais dos usuários. Exigem autenticação 2FA e são registradas no Audit Log.
             </p>
           </div>
 
           {/* Operation Type Selector */}
           <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Tipo de Operacao</h3>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Tipo de Operação</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <label
                 className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition ${
@@ -706,7 +592,7 @@ export default function AdminFundsPage() {
                   className="text-blue-500"
                 />
                 <div>
-                  <p className="font-medium text-gray-900 dark:text-white">Transferencia entre Usuarios</p>
+                  <p className="font-medium text-gray-900 dark:text-white">Transferência entre Usuários</p>
                   <p className="text-sm text-gray-600 dark:text-gray-400">UserWallet → UserWallet</p>
                 </div>
               </label>
@@ -758,7 +644,7 @@ export default function AdminFundsPage() {
           {/* Transfer Form */}
           {operationType === 'transfer' && (
             <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Transferencia entre Usuarios</h3>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Transferência entre Usuários</h3>
               <div className="space-y-4">
                 {/* Crypto + Network */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -792,7 +678,7 @@ export default function AdminFundsPage() {
 
                 {/* From User */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Origem - Buscar usuario</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Origem - Buscar usuário</label>
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -824,7 +710,7 @@ export default function AdminFundsPage() {
                           <option value="">Selecione a carteira...</option>
                           {getFilteredWallets(fromUserData).map((w) => (
                             <option key={w.id} value={w.id}>
-                              {w.cryptoType}/{w.network} — Saldo: {w.balance} | Disponivel: {w.availableBalance} | Bloqueado: {w.lockedBalance}
+                              {w.cryptoType}/{w.network} — Saldo: {w.balance} | Disponível: {w.availableBalance} | Bloqueado: {w.lockedBalance}
                             </option>
                           ))}
                         </select>
@@ -837,7 +723,7 @@ export default function AdminFundsPage() {
 
                 {/* To User */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Destino - Buscar usuario</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Destino - Buscar usuário</label>
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -869,7 +755,7 @@ export default function AdminFundsPage() {
                           <option value="">Selecione a carteira...</option>
                           {getFilteredWallets(toUserData).map((w) => (
                             <option key={w.id} value={w.id}>
-                              {w.cryptoType}/{w.network} — Saldo: {w.balance} | Disponivel: {w.availableBalance}
+                              {w.cryptoType}/{w.network} — Saldo: {w.balance} | Disponível: {w.availableBalance}
                             </option>
                           ))}
                         </select>
@@ -893,11 +779,11 @@ export default function AdminFundsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Motivo (obrigatorio)</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Motivo (obrigatório)</label>
                   <textarea
                     value={transferReason}
                     onChange={(e) => setTransferReason(e.target.value)}
-                    placeholder="Ex: Correcao de saldo incorreto, reembolso aprovado, etc."
+                    placeholder="Ex: Correção de saldo incorreto, reembolso aprovado, etc."
                     rows={3}
                     className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                   />
@@ -924,7 +810,7 @@ export default function AdminFundsPage() {
                   disabled={operationLoading || !fromWalletId || !toWalletId}
                   className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-gray-900 dark:text-white rounded-lg font-medium transition"
                 >
-                  {operationLoading ? 'Processando...' : 'Executar Transferencia'}
+                  {operationLoading ? 'Processando...' : 'Executar Transferência'}
                 </button>
               </div>
             </div>
@@ -961,14 +847,14 @@ export default function AdminFundsPage() {
 
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 {platformDirection === 'TO_USER'
-                  ? 'Transfere fundos da PlatformWallet para uma carteira de usuario. Use para devolver fees em caso de reversao de transacao P2P.'
-                  : 'Cobra fundos de uma carteira de usuario para a PlatformWallet. Use para fees nao pagas, creditos indevidos ou reversao de reembolsos incorretos.'}
+                  ? 'Transfere fundos da PlatformWallet para uma carteira de usuário. Use para devolver fees em caso de reversão de transação P2P.'
+                  : 'Cobra fundos de uma carteira de usuário para a PlatformWallet. Use para fees não pagas, créditos indevidos ou reversão de reembolsos incorretos.'}
               </p>
               <div className="space-y-4">
                 {/* Busca por Email */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    {platformDirection === 'TO_USER' ? 'Destino - Buscar usuario' : 'Origem - Buscar usuario'}
+                    {platformDirection === 'TO_USER' ? 'Destino - Buscar usuário' : 'Origem - Buscar usuário'}
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -1001,12 +887,12 @@ export default function AdminFundsPage() {
                           <option value="">Selecione a carteira...</option>
                           {platformUserData.wallets.map((w) => (
                             <option key={w.id} value={w.id}>
-                              {w.cryptoType}/{w.network} — Saldo: {w.balance} | Disponivel: {w.availableBalance} | Bloqueado: {w.lockedBalance}
+                              {w.cryptoType}/{w.network} — Saldo: {w.balance} | Disponível: {w.availableBalance} | Bloqueado: {w.lockedBalance}
                             </option>
                           ))}
                         </select>
                       ) : (
-                        <p className="text-sm text-red-400">Nenhuma carteira encontrada para este usuario</p>
+                        <p className="text-sm text-red-400">Nenhuma carteira encontrada para este usuário</p>
                       )}
                     </div>
                   )}
@@ -1028,12 +914,12 @@ export default function AdminFundsPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Motivo (obrigatorio)
+                    Motivo (obrigatório)
                   </label>
                   <textarea
                     value={refundReason}
                     onChange={(e) => setRefundReason(e.target.value)}
-                    placeholder="Ex: Reversao de transacao #xyz, devolucao de fee por disputa resolvida, etc."
+                    placeholder="Ex: Reversão de transação #xyz, devolução de fee por disputa resolvida, etc."
                     rows={3}
                     className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                   />
@@ -1115,10 +1001,10 @@ export default function AdminFundsPage() {
                   {walletLookups[adjustWalletId] && (
                     <div className="mt-2 p-3 bg-gray-900/50 border border-gray-600 rounded-lg text-sm">
                       <div className="flex flex-wrap gap-x-6 gap-y-1">
-                        <span className="text-gray-400">Usuario: <span className="text-white">{walletLookups[adjustWalletId].user.email}</span></span>
+                        <span className="text-gray-400">Usuário: <span className="text-white">{walletLookups[adjustWalletId].user.email}</span></span>
                         <span className="text-gray-400">Crypto: <span className="text-yellow-400 font-medium">{walletLookups[adjustWalletId].cryptoType}/{walletLookups[adjustWalletId].network}</span></span>
                         <span className="text-gray-400">Saldo: <span className="text-green-400 font-mono">{walletLookups[adjustWalletId].balance}</span></span>
-                        <span className="text-gray-400">Disponivel: <span className="text-green-300 font-mono">{walletLookups[adjustWalletId].availableBalance}</span></span>
+                        <span className="text-gray-400">Disponível: <span className="text-green-300 font-mono">{walletLookups[adjustWalletId].availableBalance}</span></span>
                         <span className="text-gray-400">Bloqueado: <span className="text-yellow-300 font-mono">{walletLookups[adjustWalletId].lockedBalance}</span></span>
                       </div>
                     </div>
@@ -1144,12 +1030,12 @@ export default function AdminFundsPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Motivo (obrigatorio)
+                    Motivo (obrigatório)
                   </label>
                   <textarea
                     value={adjustReason}
                     onChange={(e) => setAdjustReason(e.target.value)}
-                    placeholder="Ex: Correcao de credito duplicado, erro de sistema, etc."
+                    placeholder="Ex: Correção de crédito duplicado, erro de sistema, etc."
                     rows={3}
                     className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                   />
@@ -1209,7 +1095,7 @@ export default function AdminFundsPage() {
                   <option value="">Todas</option>
                   <option value="ACCOUNT_FROZEN">Congelar Conta</option>
                   <option value="ACCOUNT_UNFROZEN">Descongelar Conta</option>
-                  <option value="INTERNAL_TRANSFER">Transferencia Interna</option>
+                  <option value="INTERNAL_TRANSFER">Transferência Interna</option>
                   <option value="PLATFORM_REFUND">Reembolso da Plataforma</option>
                   <option value="PLATFORM_COLLECT">Cobrança da Plataforma</option>
                   <option value="BALANCE_ADJUSTMENT">Ajuste de Saldo</option>
@@ -1354,139 +1240,6 @@ export default function AdminFundsPage() {
         </div>
       )}
 
-      {/* Analytics Tab */}
-      {activeTab === 'analytics' && dashboard && (
-        <div className="space-y-6">
-          {/* Info Banner */}
-          <div className="bg-blue-900/20 border border-blue-600/50 rounded-lg p-4">
-            <p className="text-blue-300 text-sm">
-              📊 <strong>Analytics:</strong> Visualização gráfica dos fundos em custódia e atividades administrativas.
-            </p>
-          </div>
-
-          {/* Network Distribution Pie Chart */}
-          <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6">💼 Distribuição de Carteiras por Rede</h3>
-            <ResponsiveContainer width="100%" height={350}>
-              <PieChart>
-                <Pie
-                  data={Object.entries(dashboard.totalCustody).map(([network, cryptos]) => ({
-                    name: network,
-                    value: Object.keys(cryptos).length,
-                  }))}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }: { name: string; percent: number }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={120}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {Object.keys(dashboard.totalCustody).map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][index % 5]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }} />
-                <Legend wrapperStyle={{ color: '#9ca3af' }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Top Users Bar Chart */}
-          <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6">👥 Top 10 Usuários por Número de Carteiras</h3>
-            <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={dashboard.topUsers}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis
-                  dataKey="email"
-                  angle={-45}
-                  textAnchor="end"
-                  height={100}
-                  tick={{ fill: '#9ca3af', fontSize: 12 }}
-                />
-                <YAxis tick={{ fill: '#9ca3af' }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#1f2937',
-                    border: '1px solid #374151',
-                    borderRadius: '0.5rem',
-                    color: '#fff'
-                  }}
-                />
-                <Legend wrapperStyle={{ color: '#9ca3af' }} />
-                <Bar dataKey="wallets" fill="#3b82f6" name="Carteiras" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Custody by Network Bar Chart */}
-          <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6">💰 Tipos de Criptomoedas por Rede</h3>
-            <ResponsiveContainer width="100%" height={350}>
-              <BarChart
-                data={Object.entries(dashboard.totalCustody).map(([network, cryptos]) => ({
-                  network,
-                  tipos: Object.keys(cryptos).length,
-                }))}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis dataKey="network" tick={{ fill: '#9ca3af' }} />
-                <YAxis tick={{ fill: '#9ca3af' }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#1f2937',
-                    border: '1px solid #374151',
-                    borderRadius: '0.5rem',
-                    color: '#fff'
-                  }}
-                />
-                <Legend wrapperStyle={{ color: '#9ca3af' }} />
-                <Bar dataKey="tipos" fill="#10b981" name="Tipos de Crypto" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Audit Activity Mock Chart (since we don't have historical data) */}
-          <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-6">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6">📊 Atividade Administrativa (Exemplo)</h3>
-            <div className="bg-yellow-900/20 border border-yellow-600/50 rounded-lg p-4 mb-4">
-              <p className="text-yellow-300 text-sm">
-                ⚠️ <strong>Nota:</strong> Gráfico de exemplo. Para dados reais, implementar endpoint de histórico temporal no backend.
-              </p>
-            </div>
-            <ResponsiveContainer width="100%" height={350}>
-              <LineChart
-                data={[
-                  { date: '01/12', freezes: 2, transfers: 1, adjustments: 0 },
-                  { date: '02/12', freezes: 1, transfers: 3, adjustments: 1 },
-                  { date: '03/12', freezes: 3, transfers: 2, adjustments: 0 },
-                  { date: '04/12', freezes: 0, transfers: 4, adjustments: 2 },
-                  { date: '05/12', freezes: 2, transfers: 1, adjustments: 1 },
-                  { date: '06/12', freezes: 1, transfers: 5, adjustments: 0 },
-                  { date: '07/12', freezes: 4, transfers: 2, adjustments: 1 },
-                ]}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis dataKey="date" tick={{ fill: '#9ca3af' }} />
-                <YAxis tick={{ fill: '#9ca3af' }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#1f2937',
-                    border: '1px solid #374151',
-                    borderRadius: '0.5rem',
-                    color: '#fff'
-                  }}
-                />
-                <Legend wrapperStyle={{ color: '#9ca3af' }} />
-                <Line type="monotone" dataKey="freezes" stroke="#ef4444" name="Freezes" strokeWidth={2} />
-                <Line type="monotone" dataKey="transfers" stroke="#3b82f6" name="Transferências" strokeWidth={2} />
-                <Line type="monotone" dataKey="adjustments" stroke="#f59e0b" name="Ajustes" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
