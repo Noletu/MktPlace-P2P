@@ -294,9 +294,9 @@ export default function RegisterForm() {
         <p className="mb-2"><strong>Apos o cadastro:</strong></p>
         <ul className="list-disc list-inside space-y-1">
           <li>✅ Use a plataforma imediatamente (limite: R$ 1.000/dia)</li>
-          <li>📈 Complete transacoes para aumentar sua reputacao</li>
-          <li>⭐ Cada transacao = +10 pontos de reputacao</li>
-          <li>🚀 Reputacao 100 = limite de R$ 11.000/dia</li>
+          <li>📈 Complete transações para aumentar sua reputação</li>
+          <li>⭐ Cada transação = +10 pontos de reputação</li>
+          <li>🚀 Reputação 100 = limite de R$ 11.000/dia</li>
         </ul>
       </div>
 

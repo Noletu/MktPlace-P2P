@@ -114,7 +114,7 @@ export default function UsersPage() {
           <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">{users.length}</p>
         </div>
         <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-6">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Alta Reputacao (70+)</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Alta Reputação (70+)</p>
           <p className="text-3xl font-bold text-green-400 mt-2">
             {users.filter(u => u.reputationScore >= 70).length}
           </p>
@@ -160,7 +160,7 @@ export default function UsersPage() {
             </select>
           </div>
           <div>
-            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Reputacao</label>
+            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Reputação</label>
             <select
               value={filterReputation}
               onChange={(e) => setFilterReputation(e.target.value)}
@@ -169,7 +169,7 @@ export default function UsersPage() {
               <option value="ALL">Todos</option>
               <option value="NEW">Novos (0)</option>
               <option value="LOW">Baixa (1-29)</option>
-              <option value="MID">Media (30-69)</option>
+              <option value="MID">Média (30-69)</option>
               <option value="HIGH">Alta (70+)</option>
             </select>
           </div>
@@ -182,8 +182,8 @@ export default function UsersPage() {
           <table className="w-full">
             <thead className="bg-white dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Usuario</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Reputacao</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Usuário</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Reputação</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Limite</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Role</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Trans.</th>
@@ -264,7 +264,7 @@ export default function UsersPage() {
                           setShowAdjustLimitModal(true);
                         }}
                         className="p-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-sm transition"
-                        title="Ajustar limite diario"
+                        title="Ajustar limite diário"
                       >
                         ✏️
                       </button>

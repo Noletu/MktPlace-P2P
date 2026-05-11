@@ -85,12 +85,12 @@ export default function DisputeMessageThread({
     if (!file) return;
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      alert('Tipo de arquivo nao permitido. Use imagens (JPG, PNG, GIF, WebP) ou PDF.');
+      alert('Tipo de arquivo não permitido. Use imagens (JPG, PNG, GIF, WebP) ou PDF.');
       return;
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      alert('Arquivo muito grande. O tamanho maximo e 10MB.');
+      alert('Arquivo muito grande. O tamanho máximo é 10MB.');
       return;
     }
 
@@ -173,7 +173,7 @@ export default function DisputeMessageThread({
                     {isAdmin && <span className="text-blue-600 dark:text-blue-400 font-semibold">&#128737;&#65039; Plataforma</span>}
                     {!isAdmin && (
                       <span className={`text-sm font-semibold ${isCurrentUser || visibleTo ? 'text-green-700 dark:text-green-300' : 'text-gray-700 dark:text-gray-300'}`}>
-                        {isCurrentUser ? 'Voce' : msg.author.name}
+                        {isCurrentUser ? 'Você' : msg.author.name}
                       </span>
                     )}
                   </div>

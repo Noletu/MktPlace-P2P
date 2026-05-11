@@ -247,15 +247,15 @@ export default function ProfilePage() {
     );
   }
 
-  // Calcula limite diario baseado em reputacao
-  // Formula: 1000 + (reputationScore * 100) BRL
+  // Calcula limite diário baseado em reputação
+  // Fórmula: 1000 + (reputationScore * 100) BRL
   const getDailyLimit = (reputationScore: number) => {
     const limit = 1000 + (reputationScore * 100);
     return `R$ ${limit.toLocaleString('pt-BR')}/dia`;
   };
 
   const getReputationLevel = (score: number) => {
-    if (score === 0) return { name: 'Novo Usuario', color: 'gray' };
+    if (score === 0) return { name: 'Novo Usuário', color: 'gray' };
     if (score < 30) return { name: 'Iniciante', color: 'blue' };
     if (score < 60) return { name: 'Regular', color: 'green' };
     if (score < 90) return { name: 'Experiente', color: 'purple' };
@@ -392,7 +392,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Preferencias de Notificacao */}
+        {/* Preferências de Notificação */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 mb-6">
           <div className="flex items-center justify-between">
             <div>
@@ -410,27 +410,27 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Limites de Transacao */}
+        {/* Limites de Transação */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 mb-6">
-          <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Limites de Transacao</h2>
+          <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Limites de Transação</h2>
 
-          {/* Resumo do nivel atual */}
+          {/* Resumo do nível atual */}
           <div className="flex items-center justify-between mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 rounded-lg border border-blue-200 dark:border-blue-700">
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Nivel de Reputacao</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Nível de Reputação</p>
               <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{reputationLevel.name}</p>
               <p className="text-lg text-gray-600 dark:text-gray-400">{profile?.reputationScore || 0}/100 pontos</p>
             </div>
             <div className="text-right">
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Limite Diario</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Limite Diário</p>
               <p className="text-3xl font-bold text-green-600 dark:text-green-400">{getDailyLimit(profile?.reputationScore || 0)}</p>
             </div>
           </div>
 
-          {/* Barra de progresso da reputacao */}
+          {/* Barra de progresso da reputação */}
           <div className="mb-6">
             <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
-              <span>Progresso da Reputacao</span>
+              <span>Progresso da Reputação</span>
               <span>{profile?.reputationScore || 0}/100</span>
             </div>
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
@@ -441,14 +441,14 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Mensagem de limite maximo */}
+          {/* Mensagem de limite máximo */}
           {(profile?.reputationScore || 0) >= 100 && (
             <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg flex items-center gap-3">
               <span className="text-3xl">🎉</span>
               <div>
-                <p className="font-bold text-green-800 dark:text-green-200">Parabens!</p>
+                <p className="font-bold text-green-800 dark:text-green-200">Parabéns!</p>
                 <p className="text-green-700 dark:text-green-300 text-sm">
-                  Voce atingiu o nivel maximo de reputacao e tem o limite diario maximo de R$ 11.000!
+                  Você atingiu o nível máximo de reputação e tem o limite diário máximo de R$ 11.000!
                 </p>
               </div>
             </div>
@@ -462,19 +462,19 @@ export default function ProfilePage() {
             <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
               <li className="flex items-start gap-2">
                 <span className="text-green-500">✓</span>
-                <span>Cada transacao bem-sucedida aumenta sua reputacao em 10 pontos</span>
+                <span>Cada transação bem-sucedida aumenta sua reputação em 10 pontos</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-green-500">✓</span>
-                <span>Seu limite diario e calculado como: R$ 1.000 + (reputacao x R$ 100)</span>
+                <span>Seu limite diário é calculado como: R$ 1.000 + (reputação x R$ 100)</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-green-500">✓</span>
-                <span>Limite inicial: R$ 1.000/dia | Limite maximo: R$ 11.000/dia</span>
+                <span>Limite inicial: R$ 1.000/dia | Limite máximo: R$ 11.000/dia</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-500">💡</span>
-                <span>Complete mais transacoes para aumentar seu limite!</span>
+                <span>Complete mais transações para aumentar seu limite!</span>
               </li>
             </ul>
           </div>
@@ -730,7 +730,7 @@ export default function ProfilePage() {
 
             <div className="p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg">
               <p className="text-xs text-yellow-800 dark:text-yellow-200">
-                💡 <strong>Nota:</strong> CPF e telefone nao podem ser alterados apos o cadastro.
+                💡 <strong>Nota:</strong> CPF e telefone não podem ser alterados após o cadastro.
               </p>
             </div>
           </div>

@@ -176,7 +176,7 @@ export default function PublicUserProfilePage() {
               <div className="flex items-center gap-2">
                 <Shield className={`${profile.reputationScore >= 50 ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`} size={24} />
                 <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Limite Diario</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Limite Diário</p>
                   <p className="font-bold text-gray-900 dark:text-white">R$ {(1000 + profile.reputationScore * 100).toLocaleString('pt-BR')}</p>
                 </div>
               </div>

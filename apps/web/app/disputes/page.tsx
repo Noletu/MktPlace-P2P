@@ -11,11 +11,11 @@ type FilterType = 'ALL' | 'OPEN' | 'UNDER_REVIEW' | 'RESOLVED' | 'CANCELLED';
 function getParties(dispute: Dispute) {
   const order = dispute.order;
   const creatorId = dispute.createdBy;
-  const creatorName = dispute.creator.name || 'Usuario';
+  const creatorName = dispute.creator.name || 'Usuário';
   const isBuy = order.orderType === 'BUY';
 
-  const orderOwnerName = order.user?.name || 'Usuario';
-  const payerName = order.transactions?.[0]?.payer?.name || 'Usuario';
+  const orderOwnerName = order.user?.name || 'Usuário';
+  const payerName = order.transactions?.[0]?.payer?.name || 'Usuário';
   const providerName = order.providerName || 'Provedor';
 
   let creatorRole: string;
@@ -178,7 +178,7 @@ export default function DisputesPage() {
           {/* Header da tabela - hidden no mobile */}
           <div className="hidden md:grid md:grid-cols-[180px_1fr_120px_120px_100px_120px] gap-4 px-5 py-3 border-b border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
             <span>Status</span>
-            <span>Titulo</span>
+            <span>Título</span>
             <span>Criado por</span>
             <span>Valor</span>
             <span>Data</span>

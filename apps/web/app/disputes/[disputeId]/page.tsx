@@ -297,7 +297,7 @@ export default function DisputeDetailPage() {
         {/* Order Info */}
         <div className="bg-gray-50 dark:bg-gray-900 rounded p-4 mb-4">
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-            Informacoes do Pedido
+            Informações do Pedido
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
             <div>
@@ -340,12 +340,12 @@ export default function DisputeDetailPage() {
             {/* Mensagem personalizada */}
             <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
               {dispute.createdBy === currentUserId ? (
-                <>Voce abriu esta disputa contra <strong>{
+                <>Você abriu esta disputa contra <strong>{
                   seller && seller.id !== currentUserId ? seller.name || 'Vendedor' :
                   buyer && buyer.id !== currentUserId ? buyer.name || 'Comprador' : 'a contraparte'
                 }</strong></>
               ) : (
-                <><strong>{dispute.creator.name}</strong> abriu esta disputa contra voce</>
+                <><strong>{dispute.creator.name}</strong> abriu esta disputa contra você</>
               )}
             </p>
             {/* Partes com roles */}
@@ -354,7 +354,7 @@ export default function DisputeDetailPage() {
                 <div className="bg-white dark:bg-gray-800 rounded p-3 border border-blue-100 dark:border-blue-800">
                   <div className="text-xs font-semibold text-purple-600 dark:text-purple-400 mb-1">Vendedor</div>
                   <div className="text-sm font-medium text-gray-900 dark:text-white">
-                    {seller.id === currentUserId ? 'Voce' : seller.name || 'Vendedor'}
+                    {seller.id === currentUserId ? 'Você' : seller.name || 'Vendedor'}
                   </div>
                   {dispute.createdBy === seller.id && (
                     <span className="text-xs text-red-500 dark:text-red-400">Abriu a disputa</span>
@@ -365,7 +365,7 @@ export default function DisputeDetailPage() {
                 <div className="bg-white dark:bg-gray-800 rounded p-3 border border-blue-100 dark:border-blue-800">
                   <div className="text-xs font-semibold text-green-600 dark:text-green-400 mb-1">Comprador</div>
                   <div className="text-sm font-medium text-gray-900 dark:text-white">
-                    {buyer.id === currentUserId ? 'Voce' : buyer.name || 'Comprador'}
+                    {buyer.id === currentUserId ? 'Você' : buyer.name || 'Comprador'}
                   </div>
                   {dispute.createdBy === buyer.id && (
                     <span className="text-xs text-red-500 dark:text-red-400">Abriu a disputa</span>
@@ -466,7 +466,7 @@ export default function DisputeDetailPage() {
         {(dispute.status === DisputeStatus.RESOLVED_BUYER || dispute.status === DisputeStatus.RESOLVED_SELLER) && dispute.resolution && (
           <div className="mt-4 p-4 bg-green-50 dark:bg-green-900 border border-green-200 dark:border-green-700 rounded">
             <h3 className="text-sm font-semibold text-green-800 dark:text-green-200 mb-2">
-              Resolucao
+              Resolução
             </h3>
             <p className="text-sm text-green-700 dark:text-green-300 whitespace-pre-wrap">
               {dispute.resolution}
@@ -505,7 +505,7 @@ export default function DisputeDetailPage() {
           {isStaff() && disputeParties.length >= 2 ? (
             <div>
               <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
-                Canais de Comunicacao
+                Canais de Comunicação
               </h2>
               <div className="flex gap-1 flex-wrap">
                 <button
@@ -537,7 +537,7 @@ export default function DisputeDetailPage() {
               </div>
               {activeTab === 'BROADCAST' && (
                 <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                  Mensagens enviadas aqui serao visiveis para ambas as partes.
+                  Mensagens enviadas aqui serão visíveis para ambas as partes.
                 </p>
               )}
             </div>
@@ -569,25 +569,25 @@ export default function DisputeDetailPage() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Tipo de Resolucao
+                Tipo de Resolução
               </label>
               <select
                 value={resolutionType}
                 onChange={(e) => setResolutionType(e.target.value)}
                 className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
               >
-                <option value="">Selecione a decisao...</option>
-                <option value="RELEASE_TO_BUYER">Liberar Cripto para Pagador do PIX (comprovante valido)</option>
-                <option value="RETURN_TO_SELLER">Devolver Cripto ao Vendedor (comprovante invalido)</option>
-                <option value="CANCEL_NO_PENALTY">Cancelar Negociacao (sem penalidade)</option>
+                <option value="">Selecione a decisão...</option>
+                <option value="RELEASE_TO_BUYER">Liberar Cripto para Pagador do PIX (comprovante válido)</option>
+                <option value="RETURN_TO_SELLER">Devolver Cripto ao Vendedor (comprovante inválido)</option>
+                <option value="CANCEL_NO_PENALTY">Cancelar Negociação (sem penalidade)</option>
                 <option value="PENALTY_BUYER">Penalizar Pagador do PIX (fraude)</option>
-                <option value="PENALTY_SELLER">Penalizar Vendedor (ma-fe)</option>
+                <option value="PENALTY_SELLER">Penalizar Vendedor (má-fé)</option>
               </select>
               {resolutionType && (
                 <p className="mt-2 text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900 p-2 rounded">
-                  {resolutionType === 'RELEASE_TO_BUYER' && 'A cripto sera transferida para a carteira do pagador do PIX.'}
-                  {resolutionType === 'RETURN_TO_SELLER' && 'A cripto sera desbloqueada e devolvida ao vendedor.'}
-                  {resolutionType === 'CANCEL_NO_PENALTY' && 'A cripto sera desbloqueada para o vendedor. Nenhuma penalidade.'}
+                  {resolutionType === 'RELEASE_TO_BUYER' && 'A cripto será transferida para a carteira do pagador do PIX.'}
+                  {resolutionType === 'RETURN_TO_SELLER' && 'A cripto será desbloqueada e devolvida ao vendedor.'}
+                  {resolutionType === 'CANCEL_NO_PENALTY' && 'A cripto será desbloqueada para o vendedor. Nenhuma penalidade.'}
                   {resolutionType === 'PENALTY_BUYER' && 'Cripto devolvida ao vendedor + penalidade ao comprador.'}
                   {resolutionType === 'PENALTY_SELLER' && 'Cripto liberada ao comprador + penalidade ao vendedor.'}
                 </p>

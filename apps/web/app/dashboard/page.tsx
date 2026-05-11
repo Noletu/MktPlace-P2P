@@ -59,15 +59,15 @@ export default function DashboardPage() {
     }
   };
 
-  // Calcula limite diario baseado em reputacao
-  // Formula: 1000 + (reputationScore * 100) BRL
+  // Calcula limite diário baseado em reputação
+  // Fórmula: 1000 + (reputationScore * 100) BRL
   const getDailyLimit = (reputationScore: number) => {
     const limit = 1000 + (reputationScore * 100);
     return `R$ ${limit.toLocaleString('pt-BR')}/dia`;
   };
 
   const getReputationDisplay = (score: number) => {
-    if (score === 0) return 'Novo Usuario';
+    if (score === 0) return 'Novo Usuário';
     if (score < 30) return 'Iniciante';
     if (score < 60) return 'Regular';
     if (score < 90) return 'Experiente';
@@ -118,7 +118,7 @@ export default function DashboardPage() {
             </div>
             <div className="bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 px-4 py-3 rounded-lg border border-blue-200 dark:border-blue-800">
               <p className="text-sm text-blue-800 dark:text-blue-200 font-semibold">
-                ⭐ Reputacao: {user.reputationScore}/100 - {getReputationDisplay(user.reputationScore)}
+                ⭐ Reputação: {user.reputationScore}/100 - {getReputationDisplay(user.reputationScore)}
               </p>
               <p className="text-xs text-blue-600 dark:text-blue-300">
                 Limite: {getDailyLimit(user.reputationScore)}

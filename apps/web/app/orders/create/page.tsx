@@ -1120,7 +1120,7 @@ export default function CreateOrderPage() {
               {/* Modo da Ordem: SELL ou BUY */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  O que voce quer fazer?
+                  O que você quer fazer?
                 </label>
                 <div className="flex gap-4">
                   <button
@@ -1159,18 +1159,18 @@ export default function CreateOrderPage() {
                   <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
                     <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">Como funciona a compra:</h3>
                     <ol className="text-sm text-blue-800 dark:text-blue-300 space-y-1 list-decimal list-inside">
-                      <li>Voce informa quanto cripto quer comprar</li>
+                      <li>Você informa quanto cripto quer comprar</li>
                       <li>Sua ordem aparece no marketplace</li>
                       <li>Um provedor aceita e deposita o cripto como garantia</li>
-                      <li>Voce paga via PIX e envia o comprovante</li>
-                      <li>Provedor confirma e o cripto e liberado para voce!</li>
+                      <li>Você paga via PIX e envia o comprovante</li>
+                      <li>Provedor confirma e o cripto é liberado para você!</li>
                     </ol>
                   </div>
 
                   {/* Criptomoeda */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Qual cripto voce quer comprar?
+                      Qual cripto você quer comprar?
                     </label>
                     <div className="space-y-2">
                       {['BTC', 'USDC', 'USDT'].map((c) => (
@@ -1214,8 +1214,8 @@ export default function CreateOrderPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       {buyInputCurrency === 'CRYPTO'
-                        ? `Quantidade de ${crypto} que voce quer comprar`
-                        : 'Valor em BRL que voce quer gastar'}
+                        ? `Quantidade de ${crypto} que você quer comprar`
+                        : 'Valor em BRL que você quer gastar'}
                     </label>
 
                     {buyInputCurrency === 'CRYPTO' ? (
@@ -1270,7 +1270,7 @@ export default function CreateOrderPage() {
 
                     {prices[crypto] && (
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Cotacao atual: 1 {crypto} = {formatBRL(prices[crypto].toString())}
+                        Cotação atual: 1 {crypto} = {formatBRL(prices[crypto].toString())}
                       </p>
                     )}
                   </div>
@@ -1279,7 +1279,7 @@ export default function CreateOrderPage() {
                   {buyBrlAmount !== '0' && (
                     <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 border-2 border-blue-300 dark:border-blue-700 rounded-lg p-4">
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm text-blue-800 dark:text-blue-200">Valor que voce vai pagar:</span>
+                        <span className="text-sm text-blue-800 dark:text-blue-200">Valor que você vai pagar:</span>
                         <span className="text-2xl font-bold text-blue-900 dark:text-blue-100">
                           {formatBRL(buyBrlAmount)}
                         </span>
@@ -1297,10 +1297,10 @@ export default function CreateOrderPage() {
                     </div>
                   )}
 
-                  {/* Tempo de Expiracao */}
+                  {/* Tempo de Expiração */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Tempo de Expiracao da Oferta
+                      Tempo de Expiração da Oferta
                     </label>
                     <select
                       value={expirationTime}
@@ -1309,16 +1309,16 @@ export default function CreateOrderPage() {
                     >
                       <option value={6}>6 horas</option>
                       <option value={12}>12 horas</option>
-                      <option value={24}>24 horas (padrao)</option>
+                      <option value={24}>24 horas (padrão)</option>
                       <option value={48}>48 horas (2 dias)</option>
                       <option value={72}>72 horas (3 dias)</option>
                       <option value={168}>7 dias</option>
-                      <option value="indefinite">Indefinido (ate 6 meses)</option>
+                      <option value="indefinite">Indefinido (até 6 meses)</option>
                     </select>
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                       {expirationTime === 'indefinite'
-                        ? 'Sua oferta ficara ativa por ate 6 meses ou ate voce cancelar manualmente'
-                        : `Sua oferta ficara disponivel por ${expirationTime} horas`}
+                        ? 'Sua oferta ficará ativa por até 6 meses ou até você cancelar manualmente'
+                        : `Sua oferta ficará disponível por ${expirationTime} horas`}
                     </p>
                   </div>
 
@@ -1500,7 +1500,7 @@ export default function CreateOrderPage() {
                 {cryptoAmount !== '0' && prices[crypto] && (
                   <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 border-2 border-blue-300 dark:border-blue-700 rounded-lg p-4">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm text-blue-800 dark:text-blue-200">Voce vai receber:</span>
+                      <span className="text-sm text-blue-800 dark:text-blue-200">Você vai receber:</span>
                       <span className="text-2xl font-bold text-blue-900 dark:text-blue-100">
                         {formatBRL((parseFloat(fees.netAmount) * parseFloat(prices[crypto])).toFixed(2))}
                       </span>
@@ -1714,7 +1714,7 @@ export default function CreateOrderPage() {
                 {accountStatus?.frozen
                   ? 'Conta Suspensa'
                   : loading
-                    ? 'Gerando endereco...'
+                    ? 'Gerando endereço...'
                     : 'Depositar Colateral em Cripto'}
               </button>
               </>
@@ -1732,20 +1732,20 @@ export default function CreateOrderPage() {
                   <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 mb-2">
                     <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">Ordem de Compra:</p>
                     <p className="text-xs text-blue-700 dark:text-blue-300">
-                      Voce quer comprar cripto. Um provedor de liquidez vai aceitar sua ordem,
-                      depositar o cripto como garantia, e voce paga via PIX.
+                      Você quer comprar cripto. Um provedor de liquidez vai aceitar sua ordem,
+                      depositar o cripto como garantia, e você paga via PIX.
                     </p>
                   </div>
 
                   <div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Voce quer comprar</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Você quer comprar</p>
                     <p className="text-xl font-bold text-gray-900 dark:text-white">
                       {effectiveBuyCryptoAmount || '0'} {crypto}
                     </p>
                   </div>
 
                   <div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Voce vai pagar</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Você vai pagar</p>
                     <p className="text-xl font-bold text-blue-600 dark:text-blue-400">
                       {formatBRL(buyBrlAmount)}
                     </p>
@@ -1757,7 +1757,7 @@ export default function CreateOrderPage() {
                   <hr className="border-gray-200 dark:border-gray-700" />
 
                   <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3">
-                    <p className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">Voce recebe:</p>
+                    <p className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">Você recebe:</p>
                     <p className="text-lg font-bold text-green-700 dark:text-green-300">
                       {effectiveBuyCryptoAmount || '0'} {crypto}
                     </p>
@@ -1771,13 +1771,13 @@ export default function CreateOrderPage() {
               {/* === RESUMO SELL ORDER (existente) === */}
               {orderMode === 'SELL' && (
               <>
-              {/* Saldo Disponivel */}
+              {/* Saldo Disponível */}
               {internalBalance && parseFloat(internalBalance.availableBalance) > 0 && (
                 <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/30 dark:to-emerald-900/30 border-2 border-green-300 dark:border-green-700 rounded-lg p-4 mb-3">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-2xl">💰</span>
                     <h3 className="font-bold text-green-800 dark:text-green-200">
-                      Saldo Disponivel
+                      Saldo Disponível
                     </h3>
                   </div>
                   <div className="space-y-2">
@@ -1788,7 +1788,7 @@ export default function CreateOrderPage() {
                       </p>
                     </div>
                     <div className="flex justify-between text-xs">
-                      <span className="text-green-700 dark:text-green-300">Disponivel:</span>
+                      <span className="text-green-700 dark:text-green-300">Disponível:</span>
                       <span className="font-semibold text-green-800 dark:text-green-200">
                         {internalBalance.availableBalance} {crypto}
                       </span>
@@ -1804,7 +1804,7 @@ export default function CreateOrderPage() {
                   </div>
                   <div className="mt-3 pt-3 border-t border-green-300 dark:border-green-700">
                     <p className="text-xs text-green-700 dark:text-green-300">
-                      Use seu saldo interno e economize ate 99% em taxas de rede!
+                      Use seu saldo interno e economize até 99% em taxas de rede!
                     </p>
                   </div>
                 </div>
@@ -1813,8 +1813,8 @@ export default function CreateOrderPage() {
               <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 mb-2">
                 <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">Como funciona:</p>
                 <p className="text-xs text-blue-700 dark:text-blue-300">
-                  Voce deposita {crypto} como garantia. Alguem paga seu {orderType === 'PIX' ? 'PIX' : 'boleto'}.
-                  Apos confirmacao, seu {crypto} e liberado para quem pagou.
+                  Você deposita {crypto} como garantia. Alguém paga seu {orderType === 'PIX' ? 'PIX' : 'boleto'}.
+                  Após confirmação, seu {crypto} é liberado para quem pagou.
                 </p>
               </div>
 
@@ -1913,7 +1913,7 @@ export default function CreateOrderPage() {
               <hr className="border-gray-200 dark:border-gray-700" />
 
               <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
-                <p className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">Voce recebe:</p>
+                <p className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">Você recebe:</p>
                 <p className="text-xs text-green-700 dark:text-green-300">
                   Seu {orderType === 'PIX' ? 'PIX' : 'boleto'} de {formatBRL(effectiveBrlAmount || '0')} pago!
                 </p>

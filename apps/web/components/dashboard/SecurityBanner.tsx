@@ -8,15 +8,15 @@ interface User {
   has2FA: boolean;
 }
 
-// Calcula limite diario baseado em reputacao
-// Formula: 1000 + (reputationScore * 100) BRL
+// Calcula limite diário baseado em reputação
+// Fórmula: 1000 + (reputationScore * 100) BRL
 const getDailyLimit = (reputationScore: number) => {
   const limit = 1000 + (reputationScore * 100);
   return `R$ ${limit.toLocaleString('pt-BR')}/dia`;
 };
 
 const getReputationLevel = (score: number) => {
-  if (score === 0) return { name: 'Novo Usuario', color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' };
+  if (score === 0) return { name: 'Novo Usuário', color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' };
   if (score < 30) return { name: 'Iniciante', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' };
   if (score < 60) return { name: 'Regular', color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' };
   if (score < 90) return { name: 'Experiente', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300' };
@@ -39,7 +39,7 @@ export default function SecurityBanner() {
       const data = await apiGet('/auth/me');
       setUser(data.data);
     } catch (err) {
-      console.error('Erro ao buscar dados do usuario:', err);
+      console.error('Erro ao buscar dados do usuário:', err);
     } finally {
       setLoading(false);
     }
@@ -61,7 +61,7 @@ export default function SecurityBanner() {
   const dailyLimit = getDailyLimit(user.reputationScore || 0);
   const needs2FA = !user.has2FA;
 
-  // Se 2FA esta ativado, mostrar banner de sucesso
+  // Se 2FA está ativado, mostrar banner de sucesso
   if (!needs2FA) {
     return (
       <div className="bg-green-50 dark:bg-green-900 border border-green-200 dark:border-green-700 rounded-lg p-4">
@@ -69,10 +69,10 @@ export default function SecurityBanner() {
           <span className="text-3xl">✅</span>
           <div>
             <p className="font-semibold text-green-800 dark:text-green-200">
-              Seguranca em Dia!
+              Segurança em Dia!
             </p>
             <p className="text-sm text-green-600 dark:text-green-300">
-              Reputacao: <span className={`px-2 py-0.5 rounded text-xs font-semibold ${reputationLevel.color}`}>
+              Reputação: <span className={`px-2 py-0.5 rounded text-xs font-semibold ${reputationLevel.color}`}>
                 {reputationLevel.name}
               </span> | Limite: {dailyLimit}
             </p>
@@ -84,17 +84,17 @@ export default function SecurityBanner() {
 
   return (
     <div className="space-y-3">
-      {/* Info de Reputacao */}
+      {/* Info de Reputação */}
       <div className="bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-1">
             <span className="text-2xl">⭐</span>
             <div>
               <p className="font-semibold text-blue-800 dark:text-blue-200">
-                Seu Limite Diario
+                Seu Limite Diário
               </p>
               <p className="text-sm text-blue-700 dark:text-blue-300">
-                Reputacao: <span className={`px-2 py-0.5 rounded text-xs font-semibold ${reputationLevel.color}`}>
+                Reputação: <span className={`px-2 py-0.5 rounded text-xs font-semibold ${reputationLevel.color}`}>
                   {user.reputationScore || 0}/100
                 </span> | Limite: {dailyLimit}
               </p>
@@ -117,10 +117,10 @@ export default function SecurityBanner() {
               <span className="text-2xl">🔐</span>
               <div>
                 <p className="font-semibold text-orange-800 dark:text-orange-200">
-                  Ative a Autenticacao de Dois Fatores (2FA)
+                  Ative a Autenticação de Dois Fatores (2FA)
                 </p>
                 <p className="text-sm text-orange-700 dark:text-orange-300">
-                  Proteja sua conta com uma camada extra de seguranca
+                  Proteja sua conta com uma camada extra de segurança
                 </p>
               </div>
             </div>

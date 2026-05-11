@@ -38,9 +38,9 @@ const PRIORITY_OPTIONS: { value: Priority; label: string; color: string }[] = [
 ];
 
 const CHANNEL_OPTIONS: { value: DeliveryChannel; label: string; icon: string }[] = [
-  { value: 'NOTIFICATION', label: 'Apenas Notificacao', icon: '🔔' },
+  { value: 'NOTIFICATION', label: 'Apenas Notificação', icon: '🔔' },
   { value: 'EMAIL', label: 'Apenas Email', icon: '📧' },
-  { value: 'BOTH', label: 'Notificacao + Email', icon: '🔔📧' },
+  { value: 'BOTH', label: 'Notificação + Email', icon: '🔔📧' },
 ];
 
 export default function ComunicacoesPage() {
@@ -49,7 +49,7 @@ export default function ComunicacoesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Comunicacoes</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Comunicações</h1>
       </div>
 
       {/* Tab selector */}
@@ -62,7 +62,7 @@ export default function ComunicacoesPage() {
               : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
           }`}
         >
-          Enviar Comunicacao
+          Enviar Comunicação
         </button>
         <button
           onClick={() => setActiveTab('history')}
@@ -72,7 +72,7 @@ export default function ComunicacoesPage() {
               : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
           }`}
         >
-          Historico
+          Histórico
         </button>
       </div>
 
@@ -177,13 +177,13 @@ function SendBroadcastForm() {
 
       {/* Title */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Titulo</label>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Título</label>
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           maxLength={200}
-          placeholder="Ex: Manutencao programada..."
+          placeholder="Ex: Manutenção programada..."
           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         />
       </div>
@@ -197,7 +197,7 @@ function SendBroadcastForm() {
           value={message}
           onChange={(e) => setMessage(e.target.value.slice(0, 2000))}
           rows={5}
-          placeholder="Escreva a mensagem que sera enviada aos usuarios..."
+          placeholder="Escreva a mensagem que será enviada aos usuários..."
           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
         />
       </div>
@@ -254,7 +254,7 @@ function SendBroadcastForm() {
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             }`}
           >
-            Todos os Usuarios {totalUsers !== null && `(${totalUsers})`}
+            Todos os Usuários {totalUsers !== null && `(${totalUsers})`}
           </button>
           <button
             onClick={() => setTargetMode('SELECTED')}
@@ -264,7 +264,7 @@ function SendBroadcastForm() {
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             }`}
           >
-            Usuarios Especificos
+            Usuários Específicos
           </button>
         </div>
       </div>
@@ -291,12 +291,12 @@ function SendBroadcastForm() {
           className="text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
         >
           <span className={`transition-transform inline-block ${showAdvanced ? 'rotate-90' : ''}`}>▶</span>
-          Opcoes avancadas
+          Opções avançadas
         </button>
         {showAdvanced && (
           <div className="mt-3 space-y-3 pl-4 border-l-2 border-gray-200 dark:border-gray-700">
             <div>
-              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">URL de acao (botao CTA)</label>
+              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">URL de ação (botão CTA)</label>
               <input
                 type="url"
                 value={actionUrl}
@@ -333,7 +333,7 @@ function SendBroadcastForm() {
               Enviando...
             </>
           ) : (
-            'Enviar Comunicacao'
+            'Enviar Comunicação'
           )}
         </button>
       </div>
@@ -462,7 +462,7 @@ function UserSelector({
       </div>
 
       <p className="text-xs text-gray-500 dark:text-gray-400">
-        {selectedUsers.length} usuario(s) selecionado(s)
+        {selectedUsers.length} usuário(s) selecionado(s)
       </p>
     </div>
   );
@@ -499,7 +499,7 @@ function ConfirmDialog({
 
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
-            <span className="text-gray-500 dark:text-gray-400">Titulo:</span>
+            <span className="text-gray-500 dark:text-gray-400">Título:</span>
             <span className="text-gray-900 dark:text-white font-medium text-right max-w-[60%] truncate">{title}</span>
           </div>
           <div className="flex justify-between">
@@ -522,7 +522,7 @@ function ConfirmDialog({
 
         {channel !== 'NOTIFICATION' && (
           <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-800 dark:text-amber-300">
-            ⚠️ Emails serao enviados. Esta acao nao pode ser desfeita.
+            ⚠️ Emails serão enviados. Esta ação não pode ser desfeita.
           </div>
         )}
 
@@ -576,7 +576,7 @@ function BroadcastHistory() {
   const channelBadge = (ch: string) => {
     switch (ch) {
       case 'NOTIFICATION':
-        return <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">🔔 Notificacao</span>;
+        return <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700">🔔 Notificação</span>;
       case 'EMAIL':
         return <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-700">📧 Email</span>;
       case 'BOTH':
@@ -606,7 +606,7 @@ function BroadcastHistory() {
   if (logs.length === 0) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-12 text-center">
-        <p className="text-gray-500 dark:text-gray-400">Nenhuma comunicacao enviada ainda.</p>
+        <p className="text-gray-500 dark:text-gray-400">Nenhuma comunicação enviada ainda.</p>
       </div>
     );
   }
@@ -618,7 +618,7 @@ function BroadcastHistory() {
           <thead>
             <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
               <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Data</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Titulo</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Título</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Destinatarios</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Canal</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Prioridade</th>
@@ -682,7 +682,7 @@ function BroadcastHistory() {
             disabled={page === totalPages}
             className="px-3 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-600 disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
           >
-            Proximo
+            Próximo
           </button>
         </div>
       )}

@@ -605,7 +605,7 @@ export default function OrderDetailsPage() {
       }
 
       const message = data.penaltyApplied
-        ? `Ordem cancelada! Penalidade: -${data.penaltyPoints} pontos de reputacao.`
+        ? `Ordem cancelada! Penalidade: -${data.penaltyPoints} pontos de reputação.`
         : 'Ordem cancelada com sucesso!';
 
       alert(message);
@@ -645,7 +645,7 @@ export default function OrderDetailsPage() {
           address: data.data.balance.address,
         });
       } else {
-        // Nao tem carteira ainda
+        // Não tem carteira ainda
         setProviderBalance({ available: '0', locked: '0', total: '0' });
       }
     } catch (error) {
@@ -656,7 +656,7 @@ export default function OrderDetailsPage() {
     }
   }, [order]);
 
-  // Inicializar carteira do provedor (se nao existir)
+  // Inicializar carteira do provedor (se não existir)
   const initializeProviderWallet = async () => {
     if (!order) return;
 
@@ -688,7 +688,7 @@ export default function OrderDetailsPage() {
     fetchProviderBalance();
   };
 
-  // Polling do saldo do provedor quando QR Code esta visivel
+  // Polling do saldo do provedor quando QR Code está visível
   useEffect(() => {
     if (!showProviderDepositQR || !providerBalance?.address) return;
 
@@ -761,16 +761,16 @@ export default function OrderDetailsPage() {
   // Detectar tipo de ordem: BUY ou SELL (usando campo orderType)
   const isBuyOrder = order.orderType === 'BUY';
 
-  // Detectar metodo de pagamento a partir do orderData (pode ser null para BUY orders PENDING)
+  // Detectar método de pagamento a partir do orderData (pode ser null para BUY orders PENDING)
   const paymentMethod = orderData?.pixKey ? 'PIX' : (orderData?.barcode ? 'BOLETO' : 'PIX');
 
   // currentUserId now comes from useState (loaded in useEffect)
   const isCreator = order.user.id === currentUserId;
   const isPayer = transaction?.payer?.id === currentUserId;
-  // Para BUY orders: provider e quem aceita a ordem e fornece liquidez
+  // Para BUY orders: provider é quem aceita a ordem e fornece liquidez
   const isProvider = isBuyOrder && order.providerId === currentUserId;
 
-  // Debug: mostrar informacoes detalhadas no console
+  // Debug: mostrar informações detalhadas no console
   console.log('Debug Order Details:', {
     orderId: order.id,
     orderType: order.orderType,
@@ -904,7 +904,7 @@ export default function OrderDetailsPage() {
                     <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4">
                       <h3 className="font-bold mb-2 text-yellow-800 dark:text-yellow-200">Aguardando Provedor</h3>
                       <p className="text-yellow-700 dark:text-yellow-300 text-sm">
-                        Esta ordem aguarda um provedor de liquidez que ira fornecer os dados de pagamento PIX.
+                        Esta ordem aguarda um provedor de liquidez que irá fornecer os dados de pagamento PIX.
                       </p>
                     </div>
                   ) : orderData ? (
@@ -914,34 +914,34 @@ export default function OrderDetailsPage() {
                         <>
                           <p className="text-gray-800 dark:text-gray-300"><strong>Tipo de Chave:</strong> {orderData.pixKeyType}</p>
                           <p className="text-gray-800 dark:text-gray-300"><strong>Chave PIX:</strong> {orderData.pixKey}</p>
-                          <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiario:</strong> {orderData.recipientName}</p>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiário:</strong> {orderData.recipientName}</p>
                         </>
                       ) : orderData.barcode ? (
                         <>
-                          <p className="text-gray-800 dark:text-gray-300"><strong>Codigo de Barras:</strong></p>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Código de Barras:</strong></p>
                           <p className="font-mono text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white p-2 rounded break-all">
                             {orderData.barcode}
                           </p>
                           <p className="text-gray-800 dark:text-gray-300"><strong>Vencimento:</strong> {new Date(orderData.dueDate).toLocaleDateString()}</p>
-                          <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiario:</strong> {orderData.recipientName}</p>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiário:</strong> {orderData.recipientName}</p>
                         </>
                       ) : null}
                     </div>
                   ) : null}
 
-                  {/* Participantes da Transacao */}
+                  {/* Participantes da Transação */}
                   {isBuyOrder ? (
                     <>
                       <div>
                         <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Comprador (Criador)</h3>
                         <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {order.user.name}</p>
-                        <p className="text-gray-800 dark:text-gray-300"><strong>Reputacao:</strong> {order.user.reputationScore}/100</p>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Reputação:</strong> {order.user.reputationScore}/100</p>
                       </div>
                       {order.provider && (
                         <div>
                           <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Provedor (Vendedor)</h3>
                           <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {order.provider.name}</p>
-                          <p className="text-gray-800 dark:text-gray-300"><strong>Reputacao:</strong> {order.provider.reputationScore}/100</p>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Reputação:</strong> {order.provider.reputationScore}/100</p>
                         </div>
                       )}
                     </>
@@ -950,7 +950,7 @@ export default function OrderDetailsPage() {
                       <div>
                         <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Vendedor</h3>
                         <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {order.user.name}</p>
-                        <p className="text-gray-800 dark:text-gray-300"><strong>Reputacao:</strong> {order.user.reputationScore}/100</p>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Reputação:</strong> {order.user.reputationScore}/100</p>
                       </div>
                       {transaction && (
                         <div>
@@ -1063,7 +1063,7 @@ export default function OrderDetailsPage() {
                         <>
                           {/* COMPRADOR (criador da ordem BUY): Paga BRL, recebe cripto */}
                           <div className="bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg p-3">
-                            <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">VOCE PAGARA EM BRL:</p>
+                            <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">VOCÊ PAGARÁ EM BRL:</p>
                             <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
                               {formatBRL(order.brlAmount)}
                             </p>
@@ -1073,7 +1073,7 @@ export default function OrderDetailsPage() {
                           </div>
 
                           <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
-                            <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">VOCE RECEBERA EM CRIPTO:</p>
+                            <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">VOCÊ RECEBERÁ EM CRIPTO:</p>
                             <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                               {formatCrypto(order.cryptoAmount, order.cryptoType)} {order.cryptoType}
                             </p>
@@ -1083,14 +1083,14 @@ export default function OrderDetailsPage() {
                           </div>
 
                           <div className="text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 p-2 rounded mt-2">
-                            <p>Taxa de 2.5% ja inclusa no valor em BRL</p>
+                            <p>Taxa de 2.5% já inclusa no valor em BRL</p>
                           </div>
                         </>
                       ) : isProvider ? (
                         <>
                           {/* PROVEDOR (quem aceita ordem BUY): Deposita cripto, recebe BRL */}
                           <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
-                            <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">VOCE RECEBERA EM BRL:</p>
+                            <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">VOCÊ RECEBERÁ EM BRL:</p>
                             <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                               {formatBRL(order.brlAmount)}
                             </p>
@@ -1156,12 +1156,12 @@ export default function OrderDetailsPage() {
                         <>
                           {/* CRIADOR: Pediu BRL, depositou cripto como colateral */}
                           <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
-                            <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">VOCE RECEBERA EM BRL:</p>
+                            <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">VOCÊ RECEBERÁ EM BRL:</p>
                             <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                               {formatBRL(order.brlAmount)}
                             </p>
                             <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                              Quando alguem pagar seu {paymentMethod}
+                              Quando alguém pagar seu {paymentMethod}
                             </p>
                           </div>
 
@@ -1184,19 +1184,19 @@ export default function OrderDetailsPage() {
 
                             <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded p-2 mt-3">
                               <p className="text-xs text-yellow-900 dark:text-yellow-200 font-semibold">
-                                O colateral NAO sera devolvido
+                                O colateral NÃO será devolvido
                               </p>
                               <p className="text-xs text-yellow-800 dark:text-yellow-300 mt-1">
-                                Ele sera transferido para quem pagar seu {paymentMethod}. Voce recebera os {formatBRL(order.brlAmount)} em BRL.
+                                Ele será transferido para quem pagar seu {paymentMethod}. Você receberá os {formatBRL(order.brlAmount)} em BRL.
                               </p>
                             </div>
                           </div>
                         </>
                       ) : (
                         <>
-                          {/* PAGADOR: Pagara BRL, recebera cripto */}
+                          {/* PAGADOR: Pagará BRL, receberá cripto */}
                           <div className="bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg p-3">
-                            <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">VOCE PAGARA EM BRL:</p>
+                            <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">VOCÊ PAGARÁ EM BRL:</p>
                             <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
                               {formatBRL(order.brlAmount)}
                             </p>
@@ -1206,7 +1206,7 @@ export default function OrderDetailsPage() {
                           </div>
 
                           <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
-                            <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">VOCE RECEBERA EM CRIPTO:</p>
+                            <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">VOCÊ RECEBERÁ EM CRIPTO:</p>
                             <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                               {formatCrypto(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward || '0'), order.cryptoType)} {order.cryptoType}
                             </p>
@@ -1221,11 +1221,11 @@ export default function OrderDetailsPage() {
                 </div>
               </div>
 
-              {/* Acoes */}
+              {/* Ações */}
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Acoes</h3>
+                <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Ações</h3>
                 <div className="space-y-2">
-                  {/* === ACOES PARA BUY ORDERS === */}
+                  {/* === AÇÕES PARA BUY ORDERS === */}
                   {isBuyOrder && (
                     <>
                       {/* Aceitar Ordem BUY - Para provedores em ordem PENDING */}
@@ -1249,7 +1249,7 @@ export default function OrderDetailsPage() {
                         </button>
                       )}
 
-                      {/* Confirmar Pagamento Recebido - Provedor apos comprovante enviado */}
+                      {/* Confirmar Pagamento Recebido - Provedor após comprovante enviado */}
                       {isProvider && (order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
                         <button
                           onClick={handleConfirmPaymentReceived}
@@ -1295,7 +1295,7 @@ export default function OrderDetailsPage() {
                     </>
                   )}
 
-                  {/* === ACOES PARA SELL ORDERS (existente) === */}
+                  {/* === AÇÕES PARA SELL ORDERS (existente) === */}
                   {!isBuyOrder && (
                     <>
                       {/* Confirmar Pagamento Feito - Pagador no status MATCHED */}
@@ -1324,7 +1324,7 @@ export default function OrderDetailsPage() {
                         </div>
                       )}
 
-                      {/* Confirmar Pagamento Recebido - Vendedor apos comprovante enviado */}
+                      {/* Confirmar Pagamento Recebido - Vendedor após comprovante enviado */}
                       {isCreator && (order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
                         <button
                           onClick={handleConfirmPaymentReceived}
@@ -1335,7 +1335,7 @@ export default function OrderDetailsPage() {
                         </button>
                       )}
 
-                      {/* Editar Pedido - Disponivel para criador em status PENDING */}
+                      {/* Editar Pedido - Disponível para criador em status PENDING */}
                       {isCreator && order.status === 'PENDING' && (
                         <button
                           onClick={() => setShowEditModal(true)}
@@ -1345,7 +1345,7 @@ export default function OrderDetailsPage() {
                         </button>
                       )}
 
-                      {/* Cancelar Pedido - Disponivel para criador em status PENDING, IN_NEGOTIATION ou MATCHED (antes do pagamento) */}
+                      {/* Cancelar Pedido - Disponível para criador em status PENDING, IN_NEGOTIATION ou MATCHED (antes do pagamento) */}
                       {isCreator && (order.status === 'PENDING' || order.status === 'IN_NEGOTIATION' || order.status === 'MATCHED') && (
                         <div>
                           <button
@@ -1355,7 +1355,7 @@ export default function OrderDetailsPage() {
                             Cancelar Pedido
                           </button>
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-                            Taxa de rede sera cobrada para devolver colateral
+                            Taxa de rede será cobrada para devolver colateral
                           </p>
                         </div>
                       )}
@@ -1481,7 +1481,7 @@ export default function OrderDetailsPage() {
           </div>
         )}
 
-        {/* Banner de Identificacao de Papel */}
+        {/* Banner de Identificação de Papel */}
         {order && currentUserId && (isCreator || isPayer || isProvider) && (
           <div className={`mb-6 p-4 rounded-lg border-2 ${
             isBuyOrder
@@ -1509,8 +1509,8 @@ export default function OrderDetailsPage() {
                         : 'text-green-800 dark:text-green-200')
                 }`}>
                   {isBuyOrder
-                    ? (isCreator ? 'VOCE E O COMPRADOR' : 'VOCE E O PROVEDOR (VENDEDOR)')
-                    : (isPayer ? 'VOCE E O COMPRADOR' : 'VOCE E O VENDEDOR')}
+                    ? (isCreator ? 'VOCÊ É O COMPRADOR' : 'VOCÊ É O PROVEDOR (VENDEDOR)')
+                    : (isPayer ? 'VOCÊ É O COMPRADOR' : 'VOCÊ É O VENDEDOR')}
                 </h2>
                 <p className={`text-sm ${
                   isBuyOrder
@@ -1523,11 +1523,11 @@ export default function OrderDetailsPage() {
                 }`}>
                   {isBuyOrder
                     ? (isCreator
-                        ? `Voce paga ${formatBRL(order.brlAmount)} via PIX e recebe ${formatCrypto(order.cryptoAmount, order.cryptoType)} ${order.cryptoType}`
-                        : `Voce fornece liquidez e recebe ${formatBRL(order.brlAmount)} apos o comprador pagar`)
+                        ? `Você paga ${formatBRL(order.brlAmount)} via PIX e recebe ${formatCrypto(order.cryptoAmount, order.cryptoType)} ${order.cryptoType}`
+                        : `Você fornece liquidez e recebe ${formatBRL(order.brlAmount)} após o comprador pagar`)
                     : (isPayer
-                        ? `Voce paga ${formatBRL(order.brlAmount)} no ${paymentMethod} e recebe ${formatCrypto(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward || '0'), order.cryptoType)} ${order.cryptoType} (inclui 1% cashback)`
-                        : `Voce recebera ${formatBRL(order.brlAmount)} via ${paymentMethod}. Seu colateral de ${formatCrypto(parseFloat(order.cryptoAmount) + parseFloat(order.totalFee), order.cryptoType)} ${order.cryptoType} sera liberado`)
+                        ? `Você paga ${formatBRL(order.brlAmount)} no ${paymentMethod} e recebe ${formatCrypto(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward || '0'), order.cryptoType)} ${order.cryptoType} (inclui 1% cashback)`
+                        : `Você receberá ${formatBRL(order.brlAmount)} via ${paymentMethod}. Seu colateral de ${formatCrypto(parseFloat(order.cryptoAmount) + parseFloat(order.totalFee), order.cryptoType)} ${order.cryptoType} será liberado`)
                     }
                 </p>
               </div>
@@ -1549,7 +1549,7 @@ export default function OrderDetailsPage() {
         />
       </div>
 
-      {/* Botao Flutuante de Chat */}
+      {/* Botão Flutuante de Chat */}
       {shouldShowChat() && activeTab !== 'chat' && (
         <button
           onClick={() => {
@@ -1735,7 +1735,7 @@ export default function OrderDetailsPage() {
         }}
       />
 
-      {/* Modal para Aceitar Ordem BUY (Provedor) - Com verificacao de saldo */}
+      {/* Modal para Aceitar Ordem BUY (Provedor) - Com verificação de saldo */}
       {showAcceptBuyModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
@@ -1744,7 +1744,7 @@ export default function OrderDetailsPage() {
             {/* Info da Ordem */}
             <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-4">
               <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
-                <strong>Voce esta aceitando fornecer:</strong>
+                <strong>Você está aceitando fornecer:</strong>
               </p>
               <p className="text-lg font-bold text-blue-900 dark:text-blue-100">
                 {formatCrypto(order.cryptoAmount, order.cryptoType)} {order.cryptoType}
@@ -1753,10 +1753,10 @@ export default function OrderDetailsPage() {
                 + {formatCrypto(parseFloat(order.cryptoAmount) * 0.015, order.cryptoType)} {order.cryptoType} de taxa (1.5%)
               </p>
               <p className="text-sm text-blue-800 dark:text-blue-200 mt-3">
-                <strong>Colateral necessario:</strong> {requiredCollateral} {order.cryptoType}
+                <strong>Colateral necessário:</strong> {requiredCollateral} {order.cryptoType}
               </p>
               <p className="text-sm text-blue-800 dark:text-blue-200 mt-1">
-                <strong>Voce recebera:</strong> {formatBRL(order.brlAmount)}
+                <strong>Você receberá:</strong> {formatBRL(order.brlAmount)}
               </p>
             </div>
 
@@ -1774,7 +1774,7 @@ export default function OrderDetailsPage() {
                   <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-4 mb-4">
                     <div className="flex items-center gap-2 mb-3">
                       <span className="text-2xl">✅</span>
-                      <h4 className="font-bold text-green-800 dark:text-green-200">Saldo Disponivel</h4>
+                      <h4 className="font-bold text-green-800 dark:text-green-200">Saldo Disponível</h4>
                     </div>
                     <div className="grid grid-cols-3 gap-3 text-sm">
                       <div>
@@ -1784,7 +1784,7 @@ export default function OrderDetailsPage() {
                         </p>
                       </div>
                       <div>
-                        <p className="text-green-700 dark:text-green-300 text-xs">Disponivel</p>
+                        <p className="text-green-700 dark:text-green-300 text-xs">Disponível</p>
                         <p className="font-mono font-bold text-green-900 dark:text-green-100">
                           {formatCrypto(providerBalance.available, order.cryptoType)}
                         </p>
@@ -1815,13 +1815,13 @@ export default function OrderDetailsPage() {
                         </p>
                       </div>
                       <div>
-                        <p className="text-red-700 dark:text-red-300 text-xs">Disponivel</p>
+                        <p className="text-red-700 dark:text-red-300 text-xs">Disponível</p>
                         <p className="font-mono font-bold text-red-900 dark:text-red-100">
                           {formatCrypto(providerBalance.available, order.cryptoType)}
                         </p>
                       </div>
                       <div>
-                        <p className="text-red-700 dark:text-red-300 text-xs">Necessario</p>
+                        <p className="text-red-700 dark:text-red-300 text-xs">Necessário</p>
                         <p className="font-mono font-bold text-red-900 dark:text-red-100">
                           {requiredCollateral}
                         </p>
@@ -1844,10 +1844,10 @@ export default function OrderDetailsPage() {
                         Depositar {order.cryptoType}
                       </button>
                     ) : (
-                      /* QR Code para Deposito */
+                      /* QR Code para Depósito */
                       <div className="mt-4 bg-white dark:bg-gray-700 rounded-lg p-4">
                         <p className="text-sm text-center text-gray-700 dark:text-gray-300 mb-3">
-                          Deposite {order.cryptoType} no endereco abaixo ({order.cryptoNetwork})
+                          Deposite {order.cryptoType} no endereço abaixo ({order.cryptoNetwork})
                         </p>
                         {providerBalance.address ? (
                           <>
@@ -1864,11 +1864,11 @@ export default function OrderDetailsPage() {
                             <button
                               onClick={() => {
                                 navigator.clipboard.writeText(providerBalance.address!);
-                                alert('Endereco copiado!');
+                                alert('Endereço copiado!');
                               }}
                               className="w-full mt-2 px-3 py-1 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 text-sm rounded"
                             >
-                              Copiar Endereco
+                              Copiar Endereço
                             </button>
                             <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-3">
                               Atualizando saldo automaticamente a cada 15s...
@@ -1883,7 +1883,7 @@ export default function OrderDetailsPage() {
                         ) : (
                           <div className="text-center py-4">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto mb-2"></div>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">Gerando endereco...</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Gerando endereço...</p>
                           </div>
                         )}
                       </div>
@@ -1891,7 +1891,7 @@ export default function OrderDetailsPage() {
                   </div>
                 )}
 
-                {/* Formulario PIX - So mostra se tiver saldo suficiente */}
+                {/* Formulário PIX - Só mostra se tiver saldo suficiente */}
                 {parseFloat(providerBalance.available) >= parseFloat(requiredCollateral) && (
                   <>
                     <div className="space-y-4 mb-6">
@@ -1908,7 +1908,7 @@ export default function OrderDetailsPage() {
                           <option value="CNPJ">CNPJ</option>
                           <option value="EMAIL">Email</option>
                           <option value="PHONE">Telefone</option>
-                          <option value="RANDOM">Chave Aleatoria</option>
+                          <option value="RANDOM">Chave Aleatória</option>
                         </select>
                       </div>
 
@@ -1927,7 +1927,7 @@ export default function OrderDetailsPage() {
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Nome do Beneficiario
+                          Nome do Beneficiário
                         </label>
                         <input
                           type="text"
@@ -1941,7 +1941,7 @@ export default function OrderDetailsPage() {
 
                     <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3 mb-4">
                       <p className="text-xs text-yellow-800 dark:text-yellow-200">
-                        <strong>Atencao:</strong> Ao confirmar, seu colateral de {requiredCollateral} {order.cryptoType} sera bloqueado ate o comprador efetuar o pagamento.
+                        <strong>Atenção:</strong> Ao confirmar, seu colateral de {requiredCollateral} {order.cryptoType} será bloqueado até o comprador efetuar o pagamento.
                       </p>
                     </div>
                   </>
