@@ -6,11 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
-// SQLite não suporta ENUMs - usando String com defaults
 
 model User {
   id       String  @id @default(cuid())
