@@ -1,5 +1,6 @@
 import { Order } from '@prisma/client';
 import BigNumber from 'bignumber.js';
+import { toBN, sumBN } from '../utils/money';
 import {
   OrderType,
   OrderStatus,
@@ -162,7 +163,7 @@ export class OrderService {
     // Validar limite diario baseado em reputacao
     const limitCheck = await limitService.canUserTransact(
       input.userId,
-      parseFloat(input.brlAmount)
+      toBN(input.brlAmount).toNumber()
     );
 
     if (!limitCheck.allowed) {
@@ -231,7 +232,7 @@ export class OrderService {
 
     // Validar valores mínimos
     const minBRL = 10;
-    if (parseFloat(input.brlAmount) < minBRL) {
+    if (toBN(input.brlAmount).toNumber() < minBRL) {
       throw new Error(`Valor mínimo é R$ ${minBRL}`);
     }
 
@@ -266,7 +267,7 @@ export class OrderService {
       // Extrair e validar valor do boleto
       const boletoValue = boletoOCRService.extractValue(boletoData.barcode);
       if (boletoValue > 0) {
-        const expectedValue = parseFloat(input.brlAmount);
+        const expectedValue = toBN(input.brlAmount).toNumber();
         // Permitir 1% de diferença devido a arredondamentos
         if (Math.abs(boletoValue - expectedValue) > expectedValue * 0.01) {
           console.log(`⚠️ Valor do boleto (R$ ${boletoValue}) difere do valor do pedido (R$ ${expectedValue})`);
@@ -507,7 +508,7 @@ export class OrderService {
 
     // Validar limite diario baseado em reputacao (usando o brlAmount calculado)
     const brlAmount = await this.calculateBuyOrderBrlAmount(input.cryptoAmount, input.cryptoType);
-    const limitCheck = await limitService.canUserTransact(input.userId, parseFloat(brlAmount));
+    const limitCheck = await limitService.canUserTransact(input.userId, toBN(brlAmount).toNumber());
 
     if (!limitCheck.allowed) {
       throw new Error(
@@ -665,7 +666,7 @@ export class OrderService {
       // Verificar limite diario do provedor (baseado em reputacao)
       const limitCheck = await limitService.canUserTransact(
         input.providerId,
-        parseFloat(order.brlAmount)
+        toBN(order.brlAmount).toNumber()
       );
 
       if (!limitCheck.allowed) {
@@ -1078,7 +1079,7 @@ export class OrderService {
       // Verificar limite diario do pagador (baseado em reputacao)
       const limitCheck = await limitService.canUserTransact(
         payerId,
-        parseFloat(order.brlAmount)
+        toBN(order.brlAmount).toNumber()
       );
 
       if (!limitCheck.allowed) {
@@ -1983,12 +1984,12 @@ export class OrderService {
       }
 
       // Volume em BRL
-      const brlAmount = parseFloat(order.brlAmount);
+      const brlAmount = toBN(order.brlAmount).toNumber();
       totalVolumeBRL += brlAmount;
 
       // Volume em Crypto (diferente para vendedor e comprador)
-      const cryptoAmount = parseFloat(order.cryptoAmount);
-      const payerReward = parseFloat(order.payerReward);
+      const cryptoAmount = toBN(order.cryptoAmount).toNumber();
+      const payerReward = toBN(order.payerReward).toNumber();
 
       if (!totalVolumeCrypto[order.cryptoType]) {
         totalVolumeCrypto[order.cryptoType] = 0;

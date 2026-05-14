@@ -2,6 +2,7 @@ import {Request, Response} from 'express';
 import {PrismaClient} from '@prisma/client';
 import {WalletService} from '../services/wallet.service';
 import {z} from 'zod';
+import { toBN } from '../utils/money';
 
 const prisma = new PrismaClient();
 
@@ -248,7 +249,7 @@ export class WalletController {
       const {amount} = req.body;
 
       // Validar amount
-      if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+      if (!amount || isNaN(Number(amount)) || toBN(amount).toNumber() <= 0) {
         return res.status(400).json({
           error: 'Invalid amount. Must be a positive number.',
         });

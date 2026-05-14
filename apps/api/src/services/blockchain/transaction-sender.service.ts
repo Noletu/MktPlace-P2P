@@ -1,6 +1,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { BIP32Factory } from 'bip32';
 import * as ecc from 'tiny-secp256k1';
+import { toBN } from '../../utils/money';
 import { Wallet as EthereumWallet } from '@ethereumjs/wallet';
 import {
   Connection,
@@ -256,7 +257,7 @@ export class TransactionSenderService {
       }
 
       // USDT/USDC têm 6 decimais
-      const amountInSmallestUnit = BigInt(Math.floor(parseFloat(amount) * 1e6));
+      const amountInSmallestUnit = BigInt(toBN(amount).multipliedBy(1e6).integerValue().toNumber());
 
       // transfer(address,uint256) function selector: 0xa9059cbb
       const paddedTo = toAddress.replace('0x', '').padStart(64, '0');
@@ -267,7 +268,7 @@ export class TransactionSenderService {
       gasLimit = 65000;
     } else {
       // ETH nativo
-      txValue = BigInt(Math.floor(parseFloat(amount) * 1e18));
+      txValue = BigInt(toBN(amount).multipliedBy(1e18).integerValue().toNumber());
       txDataHex = '0x';
       txTo = toAddress;
       gasLimit = 21000;
@@ -353,7 +354,7 @@ export class TransactionSenderService {
       const mint = new PublicKey(mintStr);
 
       // USDT/USDC no Solana tem 6 decimais
-      const amountLamports = BigInt(Math.floor(parseFloat(amount) * 1e6));
+      const amountLamports = BigInt(toBN(amount).multipliedBy(1e6).integerValue().toNumber());
 
       // Obter/criar ATA do destinatário
       const fromATA = await getAssociatedTokenAddress(mint, keypair.publicKey);
@@ -391,7 +392,7 @@ export class TransactionSenderService {
       });
     } else {
       // SOL nativo
-      const lamports = Math.floor(parseFloat(amount) * 1e9);
+      const lamports = toBN(amount).multipliedBy(1e9).integerValue().toNumber();
 
       const transaction = new SolanaTransaction().add(
         SystemProgram.transfer({

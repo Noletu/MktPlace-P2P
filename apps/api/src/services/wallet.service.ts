@@ -1,5 +1,6 @@
 import {PrismaClient} from '@prisma/client';
 import BigNumber from 'bignumber.js';
+import { toBN } from '../utils/money';
 import {DerivationService} from './hd-wallet/derivation.service';
 import {KeyManagementService} from './hd-wallet/key-management.service';
 import {BlockchainService} from './blockchain/blockchain.service';
@@ -711,8 +712,8 @@ export class WalletService {
 
     // Estimar fee
     const feeEstimate = await FeeEstimatorService.estimateFee(wallet.network, wallet.cryptoType);
-    const networkFee = parseFloat(feeEstimate.estimatedFee);
-    const amountNum = parseFloat(amount);
+    const networkFee = toBN(feeEstimate.estimatedFee).toNumber();
+    const amountNum = toBN(amount).toNumber();
 
     // Para tokens (USDT/USDC), a fee é paga em moeda nativa
     const isToken = ['USDT', 'USDC'].includes(wallet.cryptoType);
@@ -722,7 +723,7 @@ export class WalletService {
 
     // Verificar valor mínimo
     const minimumAmount = FeeEstimatorService.getMinimumWithdrawal(wallet.network, wallet.cryptoType);
-    const isAboveMinimum = amountNum >= parseFloat(minimumAmount);
+    const isAboveMinimum = amountNum >= toBN(minimumAmount).toNumber();
 
     return {
       amount,
@@ -732,7 +733,7 @@ export class WalletService {
       feeNote: isToken
         ? `A taxa de rede é paga em ${wallet.network === 'SOLANA' ? 'SOL' : 'ETH'} (separada do valor do saque)`
         : `A taxa de rede será descontada do valor enviado`,
-      isValid: isValidAddress && isAboveMinimum && amountNum <= parseFloat(wallet.availableBalance),
+      isValid: isValidAddress && isAboveMinimum && amountNum <= toBN(wallet.availableBalance).toNumber(),
       isValidAddress,
       isAboveMinimum,
       minimumAmount,
@@ -770,15 +771,15 @@ export class WalletService {
 
     // 2. Validar valor mínimo
     const minimumAmount = FeeEstimatorService.getMinimumWithdrawal(wallet.network, wallet.cryptoType);
-    const withdrawAmount = parseFloat(amount);
-    if (withdrawAmount < parseFloat(minimumAmount)) {
+    const withdrawAmount = toBN(amount).toNumber();
+    if (withdrawAmount < toBN(minimumAmount).toNumber()) {
       throw new Error(
         `Valor mínimo de saque para ${wallet.cryptoType}/${wallet.network}: ${minimumAmount}`
       );
     }
 
     // 3. Verificar saldo disponível
-    const availableBalance = parseFloat(wallet.availableBalance);
+    const availableBalance = toBN(wallet.availableBalance).toNumber();
     if (availableBalance < withdrawAmount) {
       throw new Error(
         `Saldo insuficiente. Disponível: ${availableBalance}, Solicitado: ${withdrawAmount}`

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { WalletService } from '../services/wallet.service';
+import { toBN, sumBN, gteBN } from '../utils/money';
 
 const prisma = new PrismaClient();
 
@@ -252,11 +253,11 @@ export class CollateralBalanceController {
 
       // Calcular estatísticas
       const stats = {
-        totalBalance: wallets.reduce((sum, w) => sum + parseFloat(w.balance), 0).toString(),
-        totalAvailable: wallets.reduce((sum, w) => sum + parseFloat(w.availableBalance), 0).toString(),
-        totalLocked: wallets.reduce((sum, w) => sum + parseFloat(w.lockedBalance), 0).toString(),
-        totalDeposited: wallets.reduce((sum, w) => sum + parseFloat(w.totalDeposited), 0).toString(),
-        totalWithdrawn: wallets.reduce((sum, w) => sum + parseFloat(w.totalWithdrawn), 0).toString(),
+        totalBalance: sumBN(wallets.map(w => w.balance)),
+        totalAvailable: sumBN(wallets.map(w => w.availableBalance)),
+        totalLocked: sumBN(wallets.map(w => w.lockedBalance)),
+        totalDeposited: sumBN(wallets.map(w => w.totalDeposited)),
+        totalWithdrawn: sumBN(wallets.map(w => w.totalWithdrawn)),
         walletsCount: wallets.length,
       };
 
@@ -356,17 +357,16 @@ export class CollateralBalanceController {
         network
       );
 
-      const available = wallet ? parseFloat(wallet.availableBalance) : 0;
-      const required = parseFloat(amount);
-      const hasSufficient = available >= required;
+      const availableStr = wallet ? wallet.availableBalance : '0';
+      const hasSufficient = gteBN(availableStr, amount);
 
       return res.json({
         success: true,
         data: {
           hasSufficient,
-          available: available.toFixed(8),
-          required: required.toFixed(8),
-          missing: hasSufficient ? '0' : (required - available).toFixed(8),
+          available: toBN(availableStr).toFixed(8),
+          required: toBN(amount).toFixed(8),
+          missing: hasSufficient ? '0' : toBN(amount).minus(toBN(availableStr)).toFixed(8),
         },
       });
     } catch (error: any) {
