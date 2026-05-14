@@ -1,5 +1,6 @@
 import { prisma } from '../utils/prisma';
 import BigNumber from 'bignumber.js';
+import { toBN } from '../utils/money';
 import { notificationService } from './notification.service';
 import { PlatformWalletService } from './platformWallet.service';
 import {
@@ -59,16 +60,16 @@ export class AdminFundsService {
       const key = `${wallet.cryptoType}/${wallet.network}`;
       if (!totals[key]) {
         totals[key] = {
-          balance: new BigNumber(0),
-          locked: new BigNumber(0),
-          available: new BigNumber(0),
+          balance: toBN("0"),
+          locked: toBN("0"),
+          available: toBN("0"),
           count: 0,
         };
       }
 
-      totals[key].balance = totals[key].balance.plus(wallet.balance);
-      totals[key].locked = totals[key].locked.plus(wallet.lockedBalance);
-      totals[key].available = totals[key].available.plus(wallet.availableBalance);
+      totals[key].balance = totals[key].balance.plus(toBN(wallet.balance));
+      totals[key].locked = totals[key].locked.plus(toBN(wallet.lockedBalance));
+      totals[key].available = totals[key].available.plus(toBN(wallet.availableBalance));
       totals[key].count++;
     });
 
@@ -87,19 +88,19 @@ export class AdminFundsService {
     wallets.forEach((wallet) => {
       const existing = userBalances.get(wallet.userId);
       if (existing) {
-        existing.totalBalance = existing.totalBalance.plus(wallet.balance);
+        existing.totalBalance = existing.totalBalance.plus(toBN(wallet.balance));
         existing.wallets.push(wallet);
       } else {
         userBalances.set(wallet.userId, {
           user: wallet.user,
-          totalBalance: new BigNumber(wallet.balance),
+          totalBalance: toBN(wallet.balance),
           wallets: [wallet],
         });
       }
     });
 
     const topUsers = Array.from(userBalances.values())
-      .sort((a, b) => b.totalBalance.comparedTo(a.totalBalance))
+      .sort((a, b) => b.totalBalance.comparedTo(a.totalBalance) ?? 0)
       .slice(0, 10)
       .map((item) => ({
         userId: item.user.id,
@@ -112,7 +113,7 @@ export class AdminFundsService {
 
     // Total geral em custódia
     const totalCustody = Array.from(userBalances.values())
-      .reduce((sum, item) => sum.plus(item.totalBalance), new BigNumber(0));
+      .reduce((sum, item) => sum.plus(item.totalBalance), toBN("0"));
 
     // Verificação de solvência: PlatformWallet.balance vs SUM(UserWallet.balance) por crypto/rede
     const platformWallets = await prisma.platformWallet.findMany({
@@ -133,9 +134,9 @@ export class AdminFundsService {
       const totalForNetwork = totals[key];
       const totalUserBalance = totalForNetwork
         ? totalForNetwork.balance
-        : new BigNumber(0);
+        : toBN("0");
 
-      const hotBalance = new BigNumber(hotWallet.balance);
+      const hotBalance = toBN(hotWallet.balance);
       const delta = hotBalance.minus(totalUserBalance);
 
       let status: 'HEALTHY' | 'WARNING' | 'CRITICAL' = 'HEALTHY';
@@ -631,7 +632,7 @@ export class AdminFundsService {
     const { fromWalletId, toWalletId, amount, reason, adminUserId } = params;
 
     // Validar amount
-    const amountBN = new BigNumber(amount);
+    const amountBN = toBN(amount);
     if (amountBN.isNaN() || amountBN.lte(0)) {
       throw new Error('Valor inválido');
     }
@@ -657,7 +658,7 @@ export class AdminFundsService {
     }
 
     // Verificar saldo disponível
-    const availableBN = new BigNumber(fromWallet.availableBalance);
+    const availableBN = toBN(fromWallet.availableBalance);
     if (availableBN.lt(amountBN)) {
       throw new Error('Saldo insuficiente');
     }
@@ -665,8 +666,8 @@ export class AdminFundsService {
     // Executar transferência (transação atômica)
     const result = await prisma.$transaction(async (tx) => {
       // 1. Debitar da carteira de origem
-      const newFromBalance = new BigNumber(fromWallet.balance).minus(amountBN).toString();
-      const newFromAvailable = new BigNumber(fromWallet.availableBalance).minus(amountBN).toString();
+      const newFromBalance = toBN(fromWallet.balance).minus(amountBN).toString();
+      const newFromAvailable = toBN(fromWallet.availableBalance).minus(amountBN).toString();
 
       const updatedFrom = await tx.userWallet.update({
         where: { id: fromWalletId },
@@ -677,8 +678,8 @@ export class AdminFundsService {
       });
 
       // 2. Creditar na carteira de destino
-      const newToBalance = new BigNumber(toWallet.balance).plus(amountBN).toString();
-      const newToAvailable = new BigNumber(toWallet.availableBalance).plus(amountBN).toString();
+      const newToBalance = toBN(toWallet.balance).plus(amountBN).toString();
+      const newToAvailable = toBN(toWallet.availableBalance).plus(amountBN).toString();
 
       const updatedTo = await tx.userWallet.update({
         where: { id: toWalletId },
@@ -820,7 +821,7 @@ export class AdminFundsService {
   }) {
     const { walletId, adjustment, reason, adminUserId } = params;
 
-    const adjustmentBN = new BigNumber(adjustment);
+    const adjustmentBN = toBN(adjustment);
     if (adjustmentBN.isNaN() || adjustmentBN.isZero()) {
       throw new Error('Ajuste inválido');
     }
@@ -835,8 +836,8 @@ export class AdminFundsService {
     }
 
     // Calcular novos saldos
-    const newBalance = new BigNumber(wallet.balance).plus(adjustmentBN);
-    const newAvailable = new BigNumber(wallet.availableBalance).plus(adjustmentBN);
+    const newBalance = toBN(wallet.balance).plus(adjustmentBN);
+    const newAvailable = toBN(wallet.availableBalance).plus(adjustmentBN);
 
     // Não permitir saldo negativo
     if (newBalance.lt(0) || newAvailable.lt(0)) {
@@ -943,7 +944,7 @@ export class AdminFundsService {
     const { cryptoType, network, toWalletId, amount, reason, adminUserId, direction = 'TO_USER' } = params;
 
     // Validar amount
-    const amountBN = new BigNumber(amount);
+    const amountBN = toBN(amount);
     if (amountBN.isNaN() || amountBN.lte(0)) {
       throw new Error('Valor inválido');
     }
@@ -979,7 +980,7 @@ export class AdminFundsService {
     // ========== BRANCH: FROM_USER (Cobrança: UserWallet → PlatformWallet) ==========
     if (direction === 'FROM_USER') {
       // Validar saldo suficiente no UserWallet (respeitar lockedBalance)
-      const userAvailable = new BigNumber(userWallet.availableBalance);
+      const userAvailable = toBN(userWallet.availableBalance);
       if (userAvailable.lt(amountBN)) {
         throw new Error(
           `Saldo disponível insuficiente na carteira do usuário: disponível ${userWallet.availableBalance}, requerido ${amount}`
@@ -988,8 +989,8 @@ export class AdminFundsService {
 
       const result = await prisma.$transaction(async (tx) => {
         // 1. Debitar UserWallet (balance e availableBalance, respeitar lockedBalance)
-        const newUserBalance = new BigNumber(userWallet.balance).minus(amountBN).toString();
-        const newUserAvailable = new BigNumber(userWallet.availableBalance).minus(amountBN).toString();
+        const newUserBalance = toBN(userWallet.balance).minus(amountBN).toString();
+        const newUserAvailable = toBN(userWallet.availableBalance).minus(amountBN).toString();
 
         const updatedUser = await tx.userWallet.update({
           where: { id: toWalletId },
@@ -1000,9 +1001,9 @@ export class AdminFundsService {
         });
 
         // 2. Creditar PlatformWallet (balance, availableBalance, totalCollected)
-        const newPlatformBalance = new BigNumber(platformWallet.balance).plus(amountBN).toString();
-        const newPlatformAvailable = new BigNumber(platformWallet.availableBalance).plus(amountBN).toString();
-        const newTotalCollected = new BigNumber(platformWallet.totalCollected).plus(amountBN).toString();
+        const newPlatformBalance = toBN(platformWallet.balance).plus(amountBN).toString();
+        const newPlatformAvailable = toBN(platformWallet.availableBalance).plus(amountBN).toString();
+        const newTotalCollected = toBN(platformWallet.totalCollected).plus(amountBN).toString();
 
         const updatedPlatform = await tx.platformWallet.update({
           where: { id: platformWallet.id },
@@ -1034,7 +1035,7 @@ export class AdminFundsService {
           type: 'COLLECT_IN',
           direction: 'IN',
           amount: amount,
-          balanceBefore: platformWallet.balance,
+          balanceBefore: platformWallet.balance.toString(),
           balanceAfter: newPlatformBalance,
           description: `Cobrança de ${userWallet.user.email} (${userWallet.cryptoType}/${userWallet.network})`,
           userId: userWallet.userId,
@@ -1113,7 +1114,7 @@ export class AdminFundsService {
     // ========== BRANCH: TO_USER (Reembolso: PlatformWallet → UserWallet) ==========
 
     // Validar saldo suficiente na PlatformWallet
-    const platformAvailable = new BigNumber(platformWallet.availableBalance);
+    const platformAvailable = toBN(platformWallet.availableBalance);
     if (platformAvailable.lt(amountBN)) {
       throw new Error(
         `Saldo insuficiente na PlatformWallet: disponível ${platformWallet.availableBalance}, requerido ${amount}`
@@ -1123,9 +1124,9 @@ export class AdminFundsService {
     // Executar reembolso (transação atômica)
     const result = await prisma.$transaction(async (tx) => {
       // 1. Debitar PlatformWallet
-      const newPlatformBalance = new BigNumber(platformWallet.balance).minus(amountBN).toString();
-      const newPlatformAvailable = new BigNumber(platformWallet.availableBalance).minus(amountBN).toString();
-      const newTotalRefunded = new BigNumber(platformWallet.totalRefunded).plus(amountBN).toString();
+      const newPlatformBalance = toBN(platformWallet.balance).minus(amountBN).toString();
+      const newPlatformAvailable = toBN(platformWallet.availableBalance).minus(amountBN).toString();
+      const newTotalRefunded = toBN(platformWallet.totalRefunded).plus(amountBN).toString();
 
       const updatedPlatform = await tx.platformWallet.update({
         where: { id: platformWallet.id },
@@ -1137,8 +1138,8 @@ export class AdminFundsService {
       });
 
       // 2. Creditar UserWallet
-      const newToBalance = new BigNumber(userWallet.balance).plus(amountBN).toString();
-      const newToAvailable = new BigNumber(userWallet.availableBalance).plus(amountBN).toString();
+      const newToBalance = toBN(userWallet.balance).plus(amountBN).toString();
+      const newToAvailable = toBN(userWallet.availableBalance).plus(amountBN).toString();
 
       const updatedTo = await tx.userWallet.update({
         where: { id: toWalletId },
@@ -1169,7 +1170,7 @@ export class AdminFundsService {
         type: 'REFUND_OUT',
         direction: 'OUT',
         amount: amount,
-        balanceBefore: platformWallet.balance,
+        balanceBefore: platformWallet.balance.toString(),
         balanceAfter: newPlatformBalance,
         description: `Reembolso para ${userWallet.user.email} (${userWallet.cryptoType}/${userWallet.network})`,
         userId: userWallet.userId,
@@ -1404,30 +1405,30 @@ export class AdminFundsService {
       });
 
       // Aggregate totals (string arithmetic for precision)
-      const balance = new BigNumber(wallet.balance || '0');
-      const fees = new BigNumber(wallet.totalFeesCollected || '0');
-      const deposits = new BigNumber(wallet.totalDeposited || '0');
-      const withdrawals = new BigNumber(wallet.totalWithdrawn || '0');
+      const balance = toBN(wallet.balance || '0');
+      const fees = toBN(wallet.totalFeesCollected || '0');
+      const deposits = toBN(wallet.totalDeposited || '0');
+      const withdrawals = toBN(wallet.totalWithdrawn || '0');
 
-      byCrypto[wallet.cryptoType].totalBalance = new BigNumber(
+      byCrypto[wallet.cryptoType].totalBalance = toBN(
         byCrypto[wallet.cryptoType].totalBalance
       )
         .plus(balance)
         .toString();
 
-      byCrypto[wallet.cryptoType].totalFees = new BigNumber(
+      byCrypto[wallet.cryptoType].totalFees = toBN(
         byCrypto[wallet.cryptoType].totalFees
       )
         .plus(fees)
         .toString();
 
-      byCrypto[wallet.cryptoType].totalDeposits = new BigNumber(
+      byCrypto[wallet.cryptoType].totalDeposits = toBN(
         byCrypto[wallet.cryptoType].totalDeposits
       )
         .plus(deposits)
         .toString();
 
-      byCrypto[wallet.cryptoType].totalWithdrawals = new BigNumber(
+      byCrypto[wallet.cryptoType].totalWithdrawals = toBN(
         byCrypto[wallet.cryptoType].totalWithdrawals
       )
         .plus(withdrawals)
@@ -1483,15 +1484,15 @@ export class AdminFundsService {
         };
       }
 
-      const balance = new BigNumber(wallet.balance || '0');
-      byCrypto[wallet.cryptoType].totalBalance = new BigNumber(
+      const balance = toBN(wallet.balance || '0');
+      byCrypto[wallet.cryptoType].totalBalance = toBN(
         byCrypto[wallet.cryptoType].totalBalance
       )
         .plus(balance)
         .toString();
 
       byCrypto[wallet.cryptoType].networks[wallet.network].balance =
-        new BigNumber(byCrypto[wallet.cryptoType].networks[wallet.network].balance)
+        toBN(byCrypto[wallet.cryptoType].networks[wallet.network].balance)
           .plus(balance)
           .toString();
 
@@ -1520,7 +1521,7 @@ export class AdminFundsService {
         byUser[wallet.userId].totalBalance[wallet.cryptoType] = '0';
       }
 
-      byUser[wallet.userId].totalBalance[wallet.cryptoType] = new BigNumber(
+      byUser[wallet.userId].totalBalance[wallet.cryptoType] = toBN(
         byUser[wallet.userId].totalBalance[wallet.cryptoType]
       )
         .plus(balance)
@@ -1582,7 +1583,7 @@ export class AdminFundsService {
 
       totalByCrypto[crypto.cryptoType].usersBalance = crypto.totalBalance;
 
-      totalByCrypto[crypto.cryptoType].totalBalance = new BigNumber(
+      totalByCrypto[crypto.cryptoType].totalBalance = toBN(
         totalByCrypto[crypto.cryptoType].partnersBalance
       )
         .plus(crypto.totalBalance)
@@ -1686,14 +1687,14 @@ export class AdminFundsService {
     // O filtro Prisma `not: '0'` só exclui a string exata '0', mas valores como
     // '0.00000000' passam por ele. BigNumber.gt(0) garante exclusão correta.
     let filteredWallets = wallets.filter((w) =>
-      new BigNumber(w.lockedBalance).gt(0)
+      toBN(w.lockedBalance).gt(0)
     );
 
     // Filtrar por valor mínimo se especificado
     if (filters?.minAmount) {
-      const minBN = new BigNumber(filters.minAmount);
+      const minBN = toBN(filters.minAmount);
       filteredWallets = filteredWallets.filter((w) =>
-        new BigNumber(w.lockedBalance).gte(minBN)
+        toBN(w.lockedBalance).gte(minBN)
       );
     }
 
@@ -1719,7 +1720,7 @@ export class AdminFundsService {
         return {
           id: tx.id,
           type: tx.type,
-          amount: tx.amount,
+          amount: tx.amount.toString(),
           category,
           reason: tx.description || tx.adminReason,
           adminUserId: tx.adminUserId,
@@ -1737,9 +1738,9 @@ export class AdminFundsService {
         cryptoType: wallet.cryptoType,
         network: wallet.network,
         address: wallet.address,
-        balance: wallet.balance,
-        lockedBalance: wallet.lockedBalance,
-        availableBalance: wallet.availableBalance,
+        balance: wallet.balance.toString(),
+        lockedBalance: wallet.lockedBalance.toString(),
+        availableBalance: wallet.availableBalance.toString(),
         lastLockDate: lastLockTx?.createdAt || null,
         hasActiveOrder: wallet.ordersAsCollateral.length > 0,
         lockHistory,
@@ -1753,8 +1754,8 @@ export class AdminFundsService {
       if (!totalLockedAmount[key]) {
         totalLockedAmount[key] = '0';
       }
-      totalLockedAmount[key] = new BigNumber(totalLockedAmount[key])
-        .plus(wallet.lockedBalance)
+      totalLockedAmount[key] = toBN(totalLockedAmount[key])
+        .plus(toBN(wallet.lockedBalance))
         .toString();
     }
 
@@ -1784,7 +1785,7 @@ export class AdminFundsService {
     const { walletId, amount, category, reason, adminUserId } = params;
 
     // Validar amount
-    const amountBN = new BigNumber(amount);
+    const amountBN = toBN(amount);
     if (amountBN.isNaN() || amountBN.lte(0)) {
       throw new Error('Valor inválido. Deve ser um número positivo.');
     }
@@ -1810,7 +1811,7 @@ export class AdminFundsService {
     }
 
     // Verificar saldo disponível suficiente
-    const availableBN = new BigNumber(wallet.availableBalance);
+    const availableBN = toBN(wallet.availableBalance);
     if (availableBN.lt(amountBN)) {
       throw new Error(
         `Saldo disponível insuficiente. Disponível: ${wallet.availableBalance} ${wallet.cryptoType}`
@@ -1819,7 +1820,7 @@ export class AdminFundsService {
 
     // Calcular novos saldos
     const newAvailableBalance = availableBN.minus(amountBN).toString();
-    const newLockedBalance = new BigNumber(wallet.lockedBalance)
+    const newLockedBalance = toBN(wallet.lockedBalance)
       .plus(amountBN)
       .toString();
 
@@ -1929,7 +1930,7 @@ export class AdminFundsService {
     const { walletId, amount, category, reason, adminUserId } = params;
 
     // Validar amount
-    const amountBN = new BigNumber(amount);
+    const amountBN = toBN(amount);
     if (amountBN.isNaN() || amountBN.lte(0)) {
       throw new Error('Valor inválido. Deve ser um número positivo.');
     }
@@ -1955,7 +1956,7 @@ export class AdminFundsService {
     }
 
     // Verificar saldo bloqueado suficiente
-    const lockedBN = new BigNumber(wallet.lockedBalance);
+    const lockedBN = toBN(wallet.lockedBalance);
     if (lockedBN.lt(amountBN)) {
       throw new Error(
         `Saldo bloqueado insuficiente. Bloqueado: ${wallet.lockedBalance} ${wallet.cryptoType}`
@@ -1964,7 +1965,7 @@ export class AdminFundsService {
 
     // Calcular novos saldos
     const newLockedBalance = lockedBN.minus(amountBN).toString();
-    const newAvailableBalance = new BigNumber(wallet.availableBalance)
+    const newAvailableBalance = toBN(wallet.availableBalance)
       .plus(amountBN)
       .toString();
 

@@ -146,12 +146,12 @@ export class PlatformWalletService {
 
       balances[wallet.cryptoType].networks.push({
         network: wallet.network,
-        balance: wallet.balance,
+        balance: wallet.balance.toString(),
         address: wallet.address,
       });
 
-      balances[wallet.cryptoType].totalBalance += toBN(wallet.balance || '0').toNumber();
-      balances[wallet.cryptoType].totalFees += toBN(wallet.totalFeesCollected || '0').toNumber();
+      balances[wallet.cryptoType].totalBalance += toBN(wallet.balance?.toString() || '0').toNumber();
+      balances[wallet.cryptoType].totalFees += toBN(wallet.totalFeesCollected?.toString() || '0').toNumber();
     }
 
     return Object.values(balances);

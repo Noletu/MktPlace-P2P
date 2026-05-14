@@ -94,7 +94,7 @@ export class FinanceService {
    * Calcular taxas por mês (últimos 12 meses)
    */
   private calculateByMonth(
-    orders: Array<{ platformFee: string | null; createdAt: Date }>
+    orders: Array<{ platformFee: { toString(): string } | null; createdAt: Date }>
   ): Array<{ month: string; amount: string }> {
     const monthlyData: Record<string, number> = {};
     const now = new Date();
@@ -106,7 +106,7 @@ export class FinanceService {
           order.createdAt.getMonth() + 1
         ).padStart(2, '0')}`;
         monthlyData[monthKey] =
-          (monthlyData[monthKey] || 0) + toBN(order.platformFee || '0').toNumber();
+          (monthlyData[monthKey] || 0) + toBN(order.platformFee?.toString() || '0').toNumber();
       }
     });
 
@@ -122,14 +122,14 @@ export class FinanceService {
    * Calcular taxas por tipo de crypto
    */
   private calculateByCrypto(
-    orders: Array<{ platformFee: string | null; cryptoType: string }>
+    orders: Array<{ platformFee: { toString(): string } | null; cryptoType: string }>
   ): Array<{ crypto: string; amount: string }> {
     const cryptoData: Record<string, number> = {};
 
     orders.forEach((order) => {
       cryptoData[order.cryptoType] =
         (cryptoData[order.cryptoType] || 0) +
-        toBN(order.platformFee || '0').toNumber();
+        toBN(order.platformFee?.toString() || '0').toNumber();
     });
 
     return Object.entries(cryptoData).map(([crypto, amount]) => ({

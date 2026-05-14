@@ -527,7 +527,7 @@ export class SweepService {
         type: 'SWEEP_IN',
         direction: 'IN',
         amount: amount,
-        balanceBefore: hotWallet.balance,
+        balanceBefore: hotWallet.balance.toString(),
         balanceAfter: newBalance,
         description: `Sweep recebido de user wallet ${walletId}`,
         txHash,
@@ -646,7 +646,7 @@ export class SweepService {
               sweep.userWalletId,
               sweep.platformWalletId,
               sweep.sweepTxHash,
-              sweep.amount
+              sweep.amount.toString()
             );
             logger.info(`[SWEEP] Sweep confirmed on-chain: ${sweep.id}`);
           }

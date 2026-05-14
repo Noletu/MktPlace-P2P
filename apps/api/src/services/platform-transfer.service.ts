@@ -175,7 +175,7 @@ export class PlatformTransferService {
           txResult = await TransactionSenderService.sendEVMTransaction(
             privateKey,
             transfer.toAddress,
-            transfer.amount,
+            transfer.amount.toString(),
             wallet.network,
             wallet.cryptoType
           );
@@ -185,7 +185,7 @@ export class PlatformTransferService {
           txResult = await TransactionSenderService.sendSolanaTransaction(
             privateKey,
             transfer.toAddress,
-            transfer.amount,
+            transfer.amount.toString(),
             wallet.cryptoType
           );
           break;
@@ -211,7 +211,7 @@ export class PlatformTransferService {
       await platformWalletService.recordWithdrawal(
         wallet.cryptoType,
         wallet.network,
-        transfer.amount
+        transfer.amount.toString()
       );
       const walletAfter = await platformWalletService.getPlatformWallet(wallet.cryptoType, wallet.network);
 
@@ -221,9 +221,9 @@ export class PlatformTransferService {
           platformWalletId: wallet.id,
           type: 'TRANSFER_OUT',
           direction: 'OUT',
-          amount: transfer.amount,
-          balanceBefore: walletBefore.balance,
-          balanceAfter: walletAfter.balance,
+          amount: transfer.amount.toString(),
+          balanceBefore: walletBefore.balance.toString(),
+          balanceAfter: walletAfter.balance.toString(),
           description: `Transferência para ${transfer.toAddress}`,
           txHash: txResult.txHash,
           toAddress: transfer.toAddress,

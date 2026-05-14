@@ -53,9 +53,9 @@ export class BalanceValidatorService {
     const issues: Array<any> = [];
 
     for (const wallet of wallets) {
-      const balanceBN = new BigNumber(wallet.balance);
-      const availableBN = new BigNumber(wallet.availableBalance);
-      const lockedBN = new BigNumber(wallet.lockedBalance);
+      const balanceBN = toBN(wallet.balance);
+      const availableBN = toBN(wallet.availableBalance);
+      const lockedBN = toBN(wallet.lockedBalance);
 
       // Validar: balance = available + locked
       const expectedBN = availableBN.plus(lockedBN);
@@ -96,12 +96,12 @@ export class BalanceValidatorService {
     let updated = 0;
 
     for (const wallet of wallets) {
-      const balanceBN = new BigNumber(wallet.balance);
-      const lockedBN = new BigNumber(wallet.lockedBalance);
+      const balanceBN = toBN(wallet.balance);
+      const lockedBN = toBN(wallet.lockedBalance);
       const expectedAvailableBN = balanceBN.minus(lockedBN);
 
       // Se available está incorreto, corrigir
-      if (!new BigNumber(wallet.availableBalance).minus(expectedAvailableBN).abs().lt('0.00000001')) {
+      if (!toBN(wallet.availableBalance).minus(expectedAvailableBN).abs().lt('0.00000001')) {
         await WalletService.updateBalance(wallet.id, {
           availableBalance: expectedAvailableBN.toFixed(8),
         });
@@ -134,9 +134,9 @@ export class BalanceValidatorService {
     }));
 
     const totals = {
-      totalBalance: wallets.reduce((sum, w) => sum.plus(w.balance), new BigNumber(0)).toFixed(8),
-      totalAvailable: wallets.reduce((sum, w) => sum.plus(w.availableBalance), new BigNumber(0)).toFixed(8),
-      totalLocked: wallets.reduce((sum, w) => sum.plus(w.lockedBalance), new BigNumber(0)).toFixed(8),
+      totalBalance: wallets.reduce((sum, w) => sum.plus(w.balance), toBN("0")).toFixed(8),
+      totalAvailable: wallets.reduce((sum, w) => sum.plus(w.availableBalance), toBN("0")).toFixed(8),
+      totalLocked: wallets.reduce((sum, w) => sum.plus(w.lockedBalance), toBN("0")).toFixed(8),
     };
 
     return {
@@ -198,8 +198,8 @@ export class BalanceValidatorService {
       });
 
       const orderLockedBN = activeOrders.reduce(
-        (sum, order) => sum.plus(order.cryptoAmount),
-        new BigNumber(0)
+        (sum, order) => sum.plus(toBN(order.cryptoAmount)),
+        toBN("0")
       );
 
       // Incluir bloqueios manuais de admin para não sobrescrever ADMIN_LOCK
@@ -211,14 +211,14 @@ export class BalanceValidatorService {
       const netAdminLockedBN = BigNumber.max(
         0,
         adminLockTxs.reduce((sum, tx) => {
-          return tx.type === 'ADMIN_LOCK' ? sum.plus(tx.amount) : sum.minus(tx.amount);
-        }, new BigNumber(0))
+          return tx.type === 'ADMIN_LOCK' ? sum.plus(toBN(tx.amount)) : sum.minus(toBN(tx.amount));
+        }, toBN("0"))
       );
       const totalLockedBN = orderLockedBN.plus(netAdminLockedBN);
 
       // Atualizar se diferente
-      if (!new BigNumber(wallet.lockedBalance).minus(totalLockedBN).abs().lt('0.00000001')) {
-        const newAvailableBN = new BigNumber(wallet.balance).minus(totalLockedBN);
+      if (!toBN(wallet.lockedBalance).minus(totalLockedBN).abs().lt('0.00000001')) {
+        const newAvailableBN = toBN(wallet.balance).minus(totalLockedBN);
         await WalletService.updateBalance(wallet.id, {
           lockedBalance: totalLockedBN.toFixed(8),
           availableBalance: newAvailableBN.toFixed(8),

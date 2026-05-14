@@ -116,7 +116,7 @@ export class RefundService {
         userId,
         order.cryptoType,
         order.cryptoNetwork,
-        order.cryptoAmount
+        order.cryptoAmount.toString()
       );
 
       // Atualizar ordem

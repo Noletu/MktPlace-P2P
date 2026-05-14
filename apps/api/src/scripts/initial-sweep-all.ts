@@ -134,11 +134,11 @@ async function initialSweep() {
     });
 
     const totalUserBalance = userWallets.reduce(
-      (sum, w) => sum.plus(w.balance),
-      new BigNumber(0)
+      (sum, w) => sum.plus(toBN(w.balance)),
+      toBN("0")
     );
 
-    const hotBalance = new BigNumber(hotWallet.balance);
+    const hotBalance = toBN(hotWallet.balance);
     const delta = hotBalance.minus(totalUserBalance);
 
     const status = delta.gte(0) ? '✅ SOLVENT' : '🚨 INSOLVENT';

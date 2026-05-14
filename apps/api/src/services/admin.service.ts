@@ -785,7 +785,7 @@ export class AdminService {
       try {
         await WalletService.unlockBalance(
           collateralWalletId,
-          order.collateralLockedAmount,
+          order.collateralLockedAmount.toString(),
           orderId,
           `Colateral desbloqueado - pedido cancelado pelo admin`
         );
@@ -1122,9 +1122,9 @@ export class AdminService {
         id: wallet.id,
         address: wallet.address,
         network: wallet.network,
-        balance: wallet.balance || '0',
-        availableBalance: wallet.availableBalance || '0',
-        lockedBalance: wallet.lockedBalance || '0',
+        balance: wallet.balance?.toString() || '0',
+        availableBalance: wallet.availableBalance?.toString() || '0',
+        lockedBalance: wallet.lockedBalance?.toString() || '0',
       });
     });
 

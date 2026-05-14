@@ -103,24 +103,24 @@ class LimitService {
 
     // Somar ordens SELL criadas
     for (const order of sellOrdersCreated) {
-      amounts.push(order.brlAmount);
+      amounts.push(order.brlAmount.toString());
     }
 
     // Somar ordens BUY criadas
     for (const order of buyOrdersCreated) {
-      amounts.push(order.brlAmount);
+      amounts.push(order.brlAmount.toString());
     }
 
     // Somar transacoes como pagador (apenas de ordens SELL para evitar duplicacao)
     for (const tx of transactionsAsPayer) {
       if (tx.order.orderType === 'SELL') {
-        amounts.push(tx.order.brlAmount);
+        amounts.push(tx.order.brlAmount.toString());
       }
     }
 
     // Somar ordens como provedor
     for (const order of ordersAsProvider) {
-      amounts.push(order.brlAmount);
+      amounts.push(order.brlAmount.toString());
     }
 
     return toBN(sumBN(amounts)).toNumber();
