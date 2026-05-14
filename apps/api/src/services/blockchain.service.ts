@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { toBN } from '../utils/money';
 
 /**
  * Serviço para monitorar blockchain e verificar transações
@@ -62,7 +63,7 @@ export class BlockchainService {
       );
 
       const balanceBTC = response.data.balance / 100000000; // Satoshis para BTC
-      const expected = parseFloat(expectedAmount);
+      const expected = toBN(expectedAmount).toNumber();
 
       // Verificar se recebeu pelo menos o valor esperado
       if (balanceBTC >= expected) {
@@ -116,8 +117,8 @@ export class BlockchainService {
 
       if (response.data.status === '1') {
         const balanceWei = response.data.result;
-        const balanceEth = parseFloat(balanceWei) / 1e18;
-        const expected = parseFloat(expectedAmount);
+        const balanceEth = toBN(balanceWei).toNumber() / 1e18;
+        const expected = toBN(expectedAmount).toNumber();
 
         if (balanceEth >= expected) {
           // Buscar última transação
@@ -182,8 +183,8 @@ export class BlockchainService {
       });
 
       if (response.data.status === '1') {
-        const balance = parseFloat(response.data.result) / 1e6; // USDT/USDC tem 6 decimais
-        const expected = parseFloat(expectedAmount);
+        const balance = toBN(response.data.result).toNumber() / 1e6; // USDT/USDC tem 6 decimais
+        const expected = toBN(expectedAmount).toNumber();
 
         if (balance >= expected) {
           // Buscar transferências de token

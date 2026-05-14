@@ -9,6 +9,7 @@
 
 import { WalletService } from './wallet.service';
 import { prisma } from '../utils/prisma';
+import { sumBN, toFixed } from '../utils/money';
 
 export type CollateralTransactionType =
   | 'DEPOSIT'
@@ -134,11 +135,11 @@ export class CollateralTransactionService {
 
     // Calcular estatísticas
     const stats = {
-      totalBalance: wallets.reduce((sum, w) => sum + parseFloat(w.balance), 0).toFixed(8),
-      totalAvailable: wallets.reduce((sum, w) => sum + parseFloat(w.availableBalance), 0).toFixed(8),
-      totalLocked: wallets.reduce((sum, w) => sum + parseFloat(w.lockedBalance), 0).toFixed(8),
-      totalDeposited: wallets.reduce((sum, w) => sum + parseFloat(w.totalDeposited), 0).toFixed(8),
-      totalWithdrawn: wallets.reduce((sum, w) => sum + parseFloat(w.totalWithdrawn), 0).toFixed(8),
+      totalBalance: toFixed(sumBN(wallets.map(w => w.balance)), 8),
+      totalAvailable: toFixed(sumBN(wallets.map(w => w.availableBalance)), 8),
+      totalLocked: toFixed(sumBN(wallets.map(w => w.lockedBalance)), 8),
+      totalDeposited: toFixed(sumBN(wallets.map(w => w.totalDeposited)), 8),
+      totalWithdrawn: toFixed(sumBN(wallets.map(w => w.totalWithdrawn)), 8),
       walletsCount: wallets.length,
     };
 

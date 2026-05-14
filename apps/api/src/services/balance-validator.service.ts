@@ -7,6 +7,7 @@
 import BigNumber from 'bignumber.js';
 import { WalletService } from './wallet.service';
 import { internalBalanceService } from './internal-balance.service';
+import { toBN } from '../utils/money';
 
 export class BalanceValidatorService {
   /**
@@ -24,7 +25,7 @@ export class BalanceValidatorService {
       network
     );
 
-    const required = parseFloat(requiredAmount);
+    const required = toBN(requiredAmount).toNumber();
 
     if (available < required) {
       return {

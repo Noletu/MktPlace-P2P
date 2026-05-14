@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { toBN, ltBN } from '../utils/money';
 import { PendingApproval } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { AdminFundsService } from './adminFunds.service';
@@ -665,11 +666,9 @@ export class PendingApprovalService {
         });
         if (!wallet) throw new Error('Carteira da plataforma não encontrada.');
         if (!wallet.isActive) throw new Error('Carteira da plataforma está inativa.');
-        const availableBalance = parseFloat(wallet.availableBalance);
-        const transferAmount = parseFloat(payload.amount);
-        if (availableBalance < transferAmount) {
+        if (ltBN(wallet.availableBalance, payload.amount)) {
           throw new Error(
-            `Saldo insuficiente na execução. Disponível: ${availableBalance}, Solicitado: ${transferAmount}`
+            `Saldo insuficiente na execução. Disponível: ${wallet.availableBalance}, Solicitado: ${payload.amount}`
           );
         }
         // Create PlatformTransfer record and execute on-chain

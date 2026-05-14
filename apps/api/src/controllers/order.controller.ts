@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { orderService } from '../services/order.service';
 import { OrderType, PaymentMethod } from '../types/order.types';
 import { z } from 'zod';
+import { gtBN } from '../utils/money';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from '../services/auditLog.service';
 import { auditLogger } from '../utils/logger';
 import { Transaction } from '@prisma/client';
@@ -27,10 +28,10 @@ const CreateSellOrderSchema = z.object({
   cryptoNetwork: z.string().min(1, 'Rede blockchain é obrigatória'),
   cryptoAmount: z.string()
     .min(1, 'Valor em criptomoeda é obrigatório')
-    .refine((val) => parseFloat(val) > 0, 'Valor em criptomoeda deve ser maior que zero'),
+    .refine((val) => gtBN(val, '0'), 'Valor em criptomoeda deve ser maior que zero'),
   brlAmount: z.string()
     .min(1, 'Valor em BRL é obrigatório')
-    .refine((val) => parseFloat(val) > 0, 'Valor em BRL deve ser maior que zero'),
+    .refine((val) => gtBN(val, '0'), 'Valor em BRL deve ser maior que zero'),
   orderData: z.union([BoletoDataSchema, PixDataSchema]),
   collateralAddressId: z.string().optional(),
   customExpirationHours: z.number().int().min(1).max(720).optional(),
@@ -44,7 +45,7 @@ const CreateBuyOrderSchema = z.object({
   cryptoNetwork: z.string().min(1, 'Rede blockchain é obrigatória'),
   cryptoAmount: z.string()
     .min(1, 'Valor em criptomoeda é obrigatório')
-    .refine((val) => parseFloat(val) > 0, 'Valor em criptomoeda deve ser maior que zero'),
+    .refine((val) => gtBN(val, '0'), 'Valor em criptomoeda deve ser maior que zero'),
   // brlAmount é calculado automaticamente pelo sistema para BUY orders
   customExpirationHours: z.number().int().min(1).max(720).optional(),
   manualCancelOnly: z.boolean().optional(),

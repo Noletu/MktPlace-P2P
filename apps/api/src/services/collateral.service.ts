@@ -10,6 +10,7 @@
 
 import { WalletService } from './wallet.service';
 import { internalBalanceService } from './internal-balance.service';
+import { toBN, addBN } from '../utils/money';
 
 export class CollateralService {
   /**
@@ -115,7 +116,7 @@ export class CollateralService {
       network
     );
 
-    return available >= parseFloat(requiredAmount);
+    return available >= toBN(requiredAmount).toNumber();
   }
 
   /**
@@ -182,7 +183,7 @@ export class CollateralService {
     }
 
     // Verificar se há saldo na carteira
-    const balance = parseFloat(wallet.balance);
+    const balance = toBN(wallet.balance).toNumber();
 
     return {
       paid: balance > 0,
@@ -214,7 +215,7 @@ export class CollateralService {
       success: true,
       message: `Payment simulated: ${amount} ${wallet.cryptoType}`,
       address: wallet.address,
-      newBalance: (parseFloat(wallet.balance) + parseFloat(amount)).toFixed(8),
+      newBalance: toBN(addBN(wallet.balance, amount)).toFixed(8),
     };
   }
 }

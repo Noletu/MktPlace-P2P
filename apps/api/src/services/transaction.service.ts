@@ -7,6 +7,7 @@ import { DerivationService } from './hd-wallet/derivation.service';
 import { KeyManagementService } from './hd-wallet/key-management.service';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from './auditLog.service';
 import BigNumber from 'bignumber.js';
+import { toBN, sumBN } from '../utils/money';
 import { PlatformWalletService } from './platformWallet.service';
 import { emailService } from './email.service';
 
@@ -1018,8 +1019,8 @@ export class TransactionService {
       include: { order: true },
     });
 
-    const totalSent = sentTxs.reduce((sum, tx) => sum + parseFloat(tx.order.brlAmount), 0);
-    const totalReceived = receivedTxs.reduce((sum, tx) => sum + parseFloat(tx.order.brlAmount), 0);
+    const totalSent = toBN(sumBN(sentTxs.map(tx => tx.order.brlAmount))).toNumber();
+    const totalReceived = toBN(sumBN(receivedTxs.map(tx => tx.order.brlAmount))).toNumber();
 
     return {
       totalTransactions,

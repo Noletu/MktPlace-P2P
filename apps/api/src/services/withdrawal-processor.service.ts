@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import BigNumber from 'bignumber.js';
+import { toBN } from '../utils/money';
 import { KeyManagementService } from './hd-wallet/key-management.service';
 import { TransactionSenderService } from './blockchain/transaction-sender.service';
 import { FeeEstimatorService } from './blockchain/fee-estimator.service';
@@ -166,7 +167,7 @@ export class WithdrawalProcessorService {
             privateKey,
             fromAddress,          // hot wallet address
             withdrawal.toAddress,
-            parseFloat(amountToSend),
+            toBN(amountToSend).toNumber(),
             feeEstimate.feeRate || 10
           );
           break;

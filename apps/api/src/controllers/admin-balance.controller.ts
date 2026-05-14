@@ -18,6 +18,7 @@
 import { Request, Response } from 'express';
 import { balanceValidatorService } from '../services/balance-validator.service';
 import { PrismaClient } from '@prisma/client';
+import { toBN, sumBN, subBN } from '../utils/money';
 
 const prisma = new PrismaClient();
 
@@ -103,21 +104,18 @@ export const auditUserBalance = async (req: Request, res: Response) => {
       });
 
       // 3. Calcular lockedAmount esperado
-      let expectedLocked = 0;
-      for (const order of activeOrders) {
-        expectedLocked += parseFloat(order.collateralLockedAmount || '0');
-      }
-
-      const currentLocked = parseFloat(balance.lockedAmount);
-      const currentAvailable = parseFloat(balance.availableAmount);
-      const total = parseFloat(balance.balance);
+      const expectedLockedStr = sumBN(activeOrders.map(o => o.collateralLockedAmount || '0'));
+      const currentLocked = toBN(balance.lockedAmount).toNumber();
+      const currentAvailable = toBN(balance.availableAmount).toNumber();
+      const total = toBN(balance.balance).toNumber();
+      const expectedLocked = toBN(expectedLockedStr).toNumber();
       const difference = currentLocked - expectedLocked;
       const tolerance = 0.00000001;
       const isValid = Math.abs(difference) < tolerance;
 
       // 4. Calcular valores corretos
       const correctLocked = expectedLocked;
-      const correctAvailable = total - correctLocked;
+      const correctAvailable = toBN(subBN(balance.balance, expectedLockedStr)).toNumber();
 
       // 5. Construir resultado
       auditResults.push({

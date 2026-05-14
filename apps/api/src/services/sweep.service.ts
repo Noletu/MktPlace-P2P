@@ -4,6 +4,7 @@ import { TransactionSenderService } from './blockchain/transaction-sender.servic
 import { BlockchainService } from './blockchain/blockchain.service';
 import { logger } from '../utils/logger';
 import { PlatformWalletService } from './platformWallet.service';
+import { toBN, addBN } from '../utils/money';
 
 const prisma = new PrismaClient();
 
@@ -77,7 +78,7 @@ export class SweepService {
     }
 
     // Verificar threshold mínimo
-    const pendingAmount = parseFloat(wallet.pendingSweepAmount || '0');
+    const pendingAmount = toBN(wallet.pendingSweepAmount || '0').toNumber();
     const threshold = this.MIN_SWEEP_THRESHOLD[wallet.cryptoType] || 0.001;
 
     if (pendingAmount < threshold) {
@@ -104,7 +105,7 @@ export class SweepService {
       wallet.address,
       wallet.network
     );
-    const realBalance = parseFloat(onChainBalance);
+    const realBalance = toBN(onChainBalance).toNumber();
 
     if (realBalance < threshold) {
       logger.info(`[SWEEP] ${wallet.cryptoType}/${wallet.network}: on-chain balance ${realBalance} below threshold, skipping`);
@@ -169,7 +170,7 @@ export class SweepService {
 
     // Verificar saldo on-chain
     const onChainBalance = await BlockchainService.getBalance(wallet.address, 'BITCOIN');
-    const balance = parseFloat(onChainBalance);
+    const balance = toBN(onChainBalance).toNumber();
 
     await prisma.$transaction([
       prisma.sweepTransaction.update({
@@ -211,7 +212,7 @@ export class SweepService {
     );
 
     const onChainBalance = await BlockchainService.getBalance(wallet.address, wallet.network);
-    const balance = parseFloat(onChainBalance);
+    const balance = toBN(onChainBalance).toNumber();
 
     // Gas para transferência simples: 21000 gas
     // Reservar margem generosa para gas
@@ -261,7 +262,7 @@ export class SweepService {
 
     // Verificar saldo do token on-chain
     const tokenBalance = await BlockchainService.getBalance(wallet.address, wallet.network);
-    const tokenAmount = parseFloat(tokenBalance);
+    const tokenAmount = toBN(tokenBalance).toNumber();
 
     // Passo 1: Enviar gas do hot wallet para user address
     const gasAmount = this.GAS_AMOUNTS[wallet.network] || 0.003;
@@ -356,7 +357,7 @@ export class SweepService {
     );
 
     const onChainBalance = await BlockchainService.getBalance(wallet.address, 'SOLANA');
-    const balance = parseFloat(onChainBalance);
+    const balance = toBN(onChainBalance).toNumber();
 
     const solFee = 0.000005; // 5000 lamports
     const amountToSend = balance - solFee;
@@ -401,7 +402,7 @@ export class SweepService {
     logger.info(`[SWEEP] Solana Token sweep (${wallet.cryptoType}): ${wallet.address} → ${hotWallet.address}`);
 
     const tokenBalance = await BlockchainService.getBalance(wallet.address, 'SOLANA');
-    const tokenAmount = parseFloat(tokenBalance);
+    const tokenAmount = toBN(tokenBalance).toNumber();
 
     // Passo 1: Enviar SOL do hot wallet para user address
     const solForGas = this.GAS_AMOUNTS['SOLANA'] || 0.005;
@@ -482,8 +483,6 @@ export class SweepService {
     txHash: string,
     amount: string
   ): Promise<void> {
-    const amountNum = parseFloat(amount);
-
     // Buscar hot wallet ANTES da transaction para calcular novos valores
     const hotWallet = await prisma.platformWallet.findUnique({
       where: { id: hotWalletId },
@@ -495,7 +494,7 @@ export class SweepService {
     }
 
     // Transaction atômica: SweepTransaction + UserWallet + PlatformWallet + Movement
-    const newBalance = (parseFloat(hotWallet.balance) + amountNum).toString();
+    const newBalance = addBN(hotWallet.balance, amount);
     await prisma.$transaction(async (tx) => {
       await tx.sweepTransaction.update({
         where: { id: sweepTxId },
@@ -519,7 +518,7 @@ export class SweepService {
         data: {
           balance: newBalance,
           availableBalance: newBalance,
-          totalDeposited: (parseFloat(hotWallet.totalDeposited) + amountNum).toString(),
+          totalDeposited: addBN(hotWallet.totalDeposited, amount),
         },
       });
       // Registrar movimentação no ledger
@@ -527,7 +526,7 @@ export class SweepService {
         platformWalletId: hotWalletId,
         type: 'SWEEP_IN',
         direction: 'IN',
-        amount: amountNum.toString(),
+        amount: amount,
         balanceBefore: hotWallet.balance,
         balanceAfter: newBalance,
         description: `Sweep recebido de user wallet ${walletId}`,
