@@ -25,7 +25,7 @@ if %NODE_MAJOR% LSS 18 (
     echo.
 )
 
-echo [1/5] Configurando variaveis de ambiente...
+echo [1/6] Configurando variaveis de ambiente...
 echo.
 
 :: Criar apps/api/.env se nao existir
@@ -60,11 +60,20 @@ if not exist "apps\web\.env.local" (
 
 echo.
 
-echo [2/5] Instalando dependencias...
+echo [2/6] Encerrando instancias anteriores...
+echo.
+
+:: Matar processos nas portas 3000 e 3001 via PowerShell
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 3001,3000 -State Listen -EA 0 | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -EA 0 }"
+ping 127.0.0.1 -n 3 >nul
+echo OK - Portas liberadas
+echo.
+
+echo [3/6] Instalando dependencias...
 echo.
 
 if not exist "node_modules" (
-    echo Instalando dependencias (pode demorar alguns minutos na primeira vez)...
+    echo Instalando dependencias ^(pode demorar alguns minutos na primeira vez^)...
     call npm install
     if errorlevel 1 (
         echo ERRO: Falha ao instalar dependencias!
@@ -77,7 +86,7 @@ if not exist "node_modules" (
 )
 echo.
 
-echo [3/5] Configurando banco de dados...
+echo [4/6] Configurando banco de dados...
 echo.
 cd apps\api
 call npx prisma generate >nul 2>&1
@@ -97,7 +106,7 @@ if errorlevel 1 (
 cd ..\..
 echo.
 
-echo [4/5] Iniciando servicos...
+echo [5/6] Iniciando servicos...
 echo.
 
 :: Iniciar API
@@ -115,7 +124,7 @@ start "MktPlace-Frontend" cmd /k "title MktPlace-Frontend && cd apps\web && npm 
 ping 127.0.0.1 -n 10 > nul
 
 echo.
-echo [5/5] Abrindo navegador...
+echo [6/6] Abrindo navegador...
 start http://localhost:3000
 
 echo.

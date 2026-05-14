@@ -212,23 +212,6 @@ export default function FreezeAccountModal({ user, onClose, onSuccess }: FreezeA
           </div>
         )}
 
-        {/* Código 2FA */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Código 2FA *
-            <span className="text-gray-500 dark:text-gray-400 ml-2 font-normal">(obrigatório em produção)</span>
-          </label>
-          <input
-            type="text"
-            inputMode="numeric"
-            maxLength={6}
-            value={twoFactorCode}
-            onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, ''))}
-            placeholder="000000"
-            className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 font-mono tracking-widest text-center text-lg"
-          />
-        </div>
-
         {/* Motivo do Bloqueio */}
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -247,6 +230,23 @@ export default function FreezeAccountModal({ user, onClose, onSuccess }: FreezeA
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
             {reason.length}/10 caracteres
           </p>
+        </div>
+
+        {/* Código 2FA */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Código 2FA *
+            <span className="text-gray-500 dark:text-gray-400 ml-2 font-normal">(obrigatório em produção)</span>
+          </label>
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            value={twoFactorCode}
+            onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, ''))}
+            placeholder="000000"
+            className="w-full px-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 font-mono tracking-widest text-center text-lg"
+          />
         </div>
 
         {/* Aviso */}
