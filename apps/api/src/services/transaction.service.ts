@@ -73,8 +73,8 @@ export class TransactionService {
             emailService.sendPaymentSentEmail(sellerUser.email, {
               name: sellerUser.name || 'Usuário',
               crypto: transaction.order.cryptoType,
-              cryptoAmount: transaction.order.cryptoAmount,
-              brlAmount: transaction.order.brlAmount,
+              cryptoAmount: transaction.order.cryptoAmount.toString(),
+              brlAmount: transaction.order.brlAmount.toString(),
               buyerName: buyerUser?.name || 'Comprador',
             })
           ).catch(() => {});
@@ -240,14 +240,14 @@ export class TransactionService {
         // 3.6 Calcular valor total a transferir
         // SELL: crypto + payerReward (1% cashback para comprador)
         // BUY: apenas crypto (sem cashback - provedor já recebe 2.5% no BRL)
-        const cryptoAmountBN = new BigNumber(completedOrder.cryptoAmount);
+        const cryptoAmountBN = toBN(completedOrder.cryptoAmount);
         const payerRewardBN = isBuyOrder
-          ? new BigNumber('0') // BUY orders: sem cashback
-          : new BigNumber(completedOrder.payerReward || '0'); // SELL orders: 1% cashback
+          ? toBN('0') // BUY orders: sem cashback
+          : toBN(completedOrder.payerReward || '0'); // SELL orders: 1% cashback
         const totalToTransferBN = cryptoAmountBN.plus(payerRewardBN);
 
         // 3.6 Validacao: verificar se vendedor tem saldo bloqueado suficiente
-        const sellerLockedBalanceBN = new BigNumber(sellerWallet.lockedBalance);
+        const sellerLockedBalanceBN = toBN(sellerWallet.lockedBalance);
         if (sellerLockedBalanceBN.lt(totalToTransferBN)) {
           throw new Error(
             `Insufficient locked balance. Seller has ${sellerLockedBalanceBN.toFixed(8)} locked, needs ${totalToTransferBN.toFixed(8)}`
@@ -256,27 +256,27 @@ export class TransactionService {
 
         // 3.7 DEDUZIR do vendedor (do saldo LOCKED)
         const sellerNewLockedBN = sellerLockedBalanceBN.minus(totalToTransferBN);
-        const sellerNewBalanceBN = new BigNumber(sellerWallet.balance).minus(totalToTransferBN);
+        const sellerNewBalanceBN = toBN(sellerWallet.balance).minus(totalToTransferBN);
 
         await tx.userWallet.update({
           where: { id: sellerWallet.id },
           data: {
             balance: sellerNewBalanceBN.toFixed(8),
             lockedBalance: sellerNewLockedBN.toFixed(8),
-            totalUsed: new BigNumber(sellerWallet.totalUsed).plus(totalToTransferBN).toFixed(8),
+            totalUsed: toBN(sellerWallet.totalUsed).plus(totalToTransferBN).toFixed(8),
           },
         });
 
         // 3.8 CREDITAR no comprador (no saldo AVAILABLE)
-        const buyerNewBalanceBN = new BigNumber(buyerWallet.balance).plus(totalToTransferBN);
-        const buyerNewAvailableBN = new BigNumber(buyerWallet.availableBalance).plus(totalToTransferBN);
+        const buyerNewBalanceBN = toBN(buyerWallet.balance).plus(totalToTransferBN);
+        const buyerNewAvailableBN = toBN(buyerWallet.availableBalance).plus(totalToTransferBN);
 
         await tx.userWallet.update({
           where: { id: buyerWallet.id },
           data: {
             balance: buyerNewBalanceBN.toFixed(8),
             availableBalance: buyerNewAvailableBN.toFixed(8),
-            totalDeposited: new BigNumber(buyerWallet.totalDeposited).plus(totalToTransferBN).toFixed(8),
+            totalDeposited: toBN(buyerWallet.totalDeposited).plus(totalToTransferBN).toFixed(8),
           },
         });
 
@@ -334,7 +334,7 @@ export class TransactionService {
         console.log(`   Vendedor: ${sellerId} → Comprador: ${buyerId}`);
 
         // 3.12 TRANSFERIR PLATFORM FEE para carteira da plataforma
-        const platformFeeBN = new BigNumber(completedOrder.platformFee || '0');
+        const platformFeeBN = toBN(completedOrder.platformFee || '0');
 
         if (platformFeeBN.gt(0)) {
           // Buscar/criar carteira da plataforma
@@ -384,11 +384,11 @@ export class TransactionService {
           // SELL: fee vem do available (NÃO faz parte do colateral locked)
           // BUY: fee vem do locked (JÁ estava incluída no colateral do provedor)
           const sellerCurrentWallet = await tx.userWallet.findUnique({ where: { id: sellerWallet.id } });
-          const sellerCurrentBalance = new BigNumber(sellerCurrentWallet?.balance || '0');
+          const sellerCurrentBalance = toBN(sellerCurrentWallet?.balance || '0');
           const sellerAfterFeeBN = sellerCurrentBalance.minus(platformFeeBN);
 
-          const sellerCurrentLocked = new BigNumber(sellerCurrentWallet?.lockedBalance || '0');
-          const sellerCurrentAvailable = new BigNumber(sellerCurrentWallet?.availableBalance || '0');
+          const sellerCurrentLocked = toBN(sellerCurrentWallet?.lockedBalance || '0');
+          const sellerCurrentAvailable = toBN(sellerCurrentWallet?.availableBalance || '0');
 
           if (isBuyOrder) {
             // BUY: deduzir fee do locked (faz parte do colateral do provedor)
@@ -414,8 +414,8 @@ export class TransactionService {
           }
 
           // Creditar na carteira da plataforma
-          const platformNewBalanceBN = new BigNumber(platformWallet.balance).plus(platformFeeBN);
-          const currentTotalFees = new BigNumber(platformWallet.totalFeesCollected || '0');
+          const platformNewBalanceBN = toBN(platformWallet.balance).plus(platformFeeBN);
+          const currentTotalFees = toBN(platformWallet.totalFeesCollected || '0');
           const newTotalFees = currentTotalFees.plus(platformFeeBN);
 
           await tx.platformWallet.update({
@@ -458,7 +458,7 @@ export class TransactionService {
             type: 'FEE_RECEIVED',
             direction: 'IN',
             amount: platformFeeBN.toFixed(8),
-            balanceBefore: platformWallet.balance,
+            balanceBefore: platformWallet.balance.toString(),
             balanceAfter: platformNewBalanceBN.toFixed(8),
             description: `Fee recebida da order ${completedOrder.id} (${completedOrder.cryptoType})`,
             orderId: completedOrder.id,
@@ -522,10 +522,10 @@ export class TransactionService {
             const sellerRole = isBuyOrderLog ? (secondUser?.legacyRole ?? '') : (completedOrder.user?.legacyRole ?? '');
             const sellerName = isBuyOrderLog ? (secondUser?.name ?? '') : (completedOrder.user?.name ?? '');
 
-            const cryptoAmountLog = new BigNumber(completedOrder.cryptoAmount);
+            const cryptoAmountLog = toBN(completedOrder.cryptoAmount);
             const payerRewardLog = isBuyOrderLog
-              ? new BigNumber('0')
-              : new BigNumber(completedOrder.payerReward || '0');
+              ? toBN('0')
+              : toBN(completedOrder.payerReward || '0');
             const totalTransferred = cryptoAmountLog.plus(payerRewardLog);
 
             // 1. ORDER_COMPLETED - Comprador
@@ -656,7 +656,7 @@ export class TransactionService {
           await notificationService.notifyPaymentValidated(
             transaction.orderId,
             notifBuyerId,
-            transaction.order.cryptoAmount,
+            transaction.order.cryptoAmount.toString(),
             transaction.order.cryptoType
           );
 
@@ -687,8 +687,8 @@ export class TransactionService {
                 name: emailBuyer.name || 'Usuário',
                 orderType: 'compra',
                 crypto: transaction.order.cryptoType,
-                cryptoAmount: transaction.order.cryptoAmount,
-                brlAmount: transaction.order.brlAmount,
+                cryptoAmount: transaction.order.cryptoAmount.toString(),
+                brlAmount: transaction.order.brlAmount.toString(),
               })
             ).catch(() => {});
           }
@@ -698,8 +698,8 @@ export class TransactionService {
                 name: emailSeller.name || 'Usuário',
                 orderType: 'venda',
                 crypto: transaction.order.cryptoType,
-                cryptoAmount: transaction.order.cryptoAmount,
-                brlAmount: transaction.order.brlAmount,
+                cryptoAmount: transaction.order.cryptoAmount.toString(),
+                brlAmount: transaction.order.brlAmount.toString(),
               })
             ).catch(() => {});
           }
@@ -753,8 +753,8 @@ export class TransactionService {
               emailService.sendPaymentRejectedEmail(payerUser.email, {
                 name: payerUser.name || 'Usuário',
                 crypto: transaction.order.cryptoType,
-                cryptoAmount: transaction.order.cryptoAmount,
-                brlAmount: transaction.order.brlAmount,
+                cryptoAmount: transaction.order.cryptoAmount.toString(),
+                brlAmount: transaction.order.brlAmount.toString(),
               })
             ).catch(() => {});
           }

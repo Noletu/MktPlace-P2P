@@ -99,7 +99,7 @@ export class PriceService {
       if (lastQuote) {
         return {
           crypto,
-          brlPrice: lastQuote.brlPrice,
+          brlPrice: lastQuote.brlPrice.toString(),
           usdPrice: '0', // Não temos USD no banco
           timestamp: lastQuote.createdAt,
         };

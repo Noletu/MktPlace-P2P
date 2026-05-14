@@ -133,24 +133,24 @@ model UserWallet {
   encryptedPrivateKey String // Private key criptografada (nunca em plain text!)
 
   // Controle de saldo (consultado on-chain + bloqueios locais)
-  balance          String @default("0") // Saldo total on-chain
-  lockedBalance    String @default("0") // Bloqueado em pedidos ativos
-  availableBalance String @default("0") // Disponível = balance - locked
+  balance          Decimal @default(0) @db.Decimal(38, 18) // Saldo total on-chain
+  lockedBalance    Decimal @default(0) @db.Decimal(38, 18) // Bloqueado em pedidos ativos
+  availableBalance Decimal @default(0) @db.Decimal(38, 18) // Disponível = balance - locked
 
   // Estatísticas
-  totalDeposited String @default("0") // Total depositado historicamente
-  totalWithdrawn String @default("0") // Total sacado
-  totalUsed      String @default("0") // Total usado como colateral
+  totalDeposited Decimal @default(0) @db.Decimal(38, 18) // Total depositado historicamente
+  totalWithdrawn Decimal @default(0) @db.Decimal(38, 18) // Total sacado
+  totalUsed      Decimal @default(0) @db.Decimal(38, 18) // Total usado como colateral
 
   // Sincronização blockchain
   lastSyncedAt    DateTime? // Última vez que saldo foi sincronizado
   lastBlockHeight Int?      // Último bloco verificado
 
   // Omnibus / Sweep (Hot Wallet Architecture)
-  onChainSnapshot    String    @default("0")    // Último saldo on-chain conhecido (separado do ledger)
-  lastSweptAt        DateTime?                   // Quando fundos foram varridos para hot wallet
-  sweepStatus        String    @default("NONE") // NONE | PENDING | GAS_FUNDING | SWEEPING | COMPLETED | FAILED
-  pendingSweepAmount String    @default("0")    // Valor aguardando sweep
+  onChainSnapshot    Decimal   @default(0) @db.Decimal(38, 18) // Último saldo on-chain conhecido (separado do ledger)
+  lastSweptAt        DateTime?                                  // Quando fundos foram varridos para hot wallet
+  sweepStatus        String    @default("NONE")                // NONE | PENDING | GAS_FUNDING | SWEEPING | COMPLETED | FAILED
+  pendingSweepAmount Decimal   @default(0) @db.Decimal(38, 18) // Valor aguardando sweep
 
   // Estado
   isActive Boolean @default(true)
@@ -196,11 +196,11 @@ model WalletTransaction {
   type String
 
   // Valores
-  amount        String // Valor da transação
-  balanceBefore String // Saldo total antes
-  balanceAfter  String // Saldo total depois
-  lockedBefore  String? // Saldo bloqueado antes (para LOCK/UNLOCK)
-  lockedAfter   String? // Saldo bloqueado depois
+  amount        Decimal  @db.Decimal(38, 18) // Valor da transação
+  balanceBefore Decimal  @db.Decimal(38, 18) // Saldo total antes
+  balanceAfter  Decimal  @db.Decimal(38, 18) // Saldo total depois
+  lockedBefore  Decimal? @db.Decimal(38, 18) // Saldo bloqueado antes (para LOCK/UNLOCK)
+  lockedAfter   Decimal? @db.Decimal(38, 18) // Saldo bloqueado depois
 
   // Blockchain (se aplicável)
   txHash        String? // Hash da transação blockchain
@@ -233,15 +233,15 @@ model Withdrawal {
   wallet   UserWallet @relation(fields: [walletId], references: [id])
 
   toAddress String
-  amount    String
+  amount    Decimal @db.Decimal(38, 18)
 
   // Blockchain
   txHash String? @unique
   status String  @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED, REQUIRES_APPROVAL, APPROVED, REJECTED
 
   // Taxas
-  networkFee  String? // Taxa de rede
-  platformFee String? // Taxa da plataforma
+  networkFee  Decimal? @db.Decimal(38, 18) // Taxa de rede
+  platformFee Decimal? @db.Decimal(38, 18) // Taxa da plataforma
 
   // Admin review (para saques que requerem aprovação)
   reviewedBy String?   // ID do admin que revisou
@@ -281,22 +281,22 @@ model Order {
   // Crypto side
   cryptoType    String
   cryptoNetwork String
-  cryptoAmount  String
+  cryptoAmount  Decimal @db.Decimal(38, 18)
 
   // BRL side
-  brlAmount String
+  brlAmount Decimal @db.Decimal(38, 18)
 
   // Fee calculation
-  platformFee String
-  payerReward String
-  totalFee    String
+  platformFee Decimal @db.Decimal(38, 18)
+  payerReward Decimal @db.Decimal(38, 18)
+  totalFee    Decimal @db.Decimal(38, 18)
 
   // Coupon discount tracking
-  appliedCouponId        String? // ID do cupom aplicado
-  appliedCouponCode      String? // Código do cupom (denormalizado para histórico)
-  appliedCouponDiscount  Int?    // Percentual aplicado (snapshot)
-  originalPlatformFee    String? // Taxa original antes do desconto
-  discountAmount         String? // Valor economizado
+  appliedCouponId        String?  // ID do cupom aplicado
+  appliedCouponCode      String?  // Código do cupom (denormalizado para histórico)
+  appliedCouponDiscount  Int?     // Percentual aplicado (snapshot)
+  originalPlatformFee    Decimal? @db.Decimal(38, 18) // Taxa original antes do desconto
+  discountAmount         Decimal? @db.Decimal(38, 18) // Valor economizado
 
   // Order specific data (JSON string)
   orderData String
@@ -305,9 +305,9 @@ model Order {
   walletId               String? // ID da carteira HD usada para colateral
   wallet                 UserWallet? @relation("WalletCollateral", fields: [walletId], references: [id])
   collateralSource       String? // Fonte do colateral: HD_WALLET, EXTERNAL_DEPOSIT (legacy)
-  collateralConfirmed    Boolean @default(false) // Se o colateral foi confirmado
-  collateralLocked       Boolean @default(false) // Se o colateral está bloqueado
-  collateralLockedAmount String? // Valor bloqueado
+  collateralConfirmed    Boolean  @default(false) // Se o colateral foi confirmado
+  collateralLocked       Boolean  @default(false) // Se o colateral está bloqueado
+  collateralLockedAmount Decimal? @db.Decimal(38, 18) // Valor bloqueado
   collateralUnlockedAt   DateTime? // Quando foi desbloqueado
 
   // Just-in-time deposit (híbrido)
@@ -325,11 +325,11 @@ model Order {
 
   // Refund system
   refundStatus        String    @default("NOT_REQUIRED") // NOT_REQUIRED, PENDING_USER_CHOICE, PROCESSING, COMPLETED, FAILED
-  refundMethod        String? // BLOCKCHAIN, INTERNAL_CREDIT
-  refundTxHash        String? // Hash da transação de devolução
-  refundAmount        String? // Valor devolvido (após taxas)
-  refundNetworkFee    String? // Taxa de rede cobrada
-  refundProcessingFee String? // Taxa de processamento (margem)
+  refundMethod        String?  // BLOCKCHAIN, INTERNAL_CREDIT
+  refundTxHash        String?  // Hash da transação de devolução
+  refundAmount        Decimal? @db.Decimal(38, 18) // Valor devolvido (após taxas)
+  refundNetworkFee    Decimal? @db.Decimal(38, 18) // Taxa de rede cobrada
+  refundProcessingFee Decimal? @db.Decimal(38, 18) // Taxa de processamento (margem)
   refundedAt          DateTime?
   cancelReason        String? // AUTO_EXPIRED_BOLETO, AUTO_EXPIRED_PIX, USER_CANCELLED
 
@@ -419,8 +419,8 @@ model Fee {
 
   type          String
   cryptoType    String
-  cryptoAmount  String
-  brlEquivalent String
+  cryptoAmount  Decimal @db.Decimal(38, 18)
+  brlEquivalent Decimal @db.Decimal(38, 18)
 
   createdAt DateTime @default(now())
 }
@@ -447,15 +447,15 @@ model PlatformWallet {
   encryptedPrivateKey String // Private key criptografada
 
   // Saldo (atualizado via sync blockchain)
-  balance          String @default("0") // Saldo on-chain
-  availableBalance String @default("0") // Disponível (após reservas)
+  balance          Decimal @default(0) @db.Decimal(38, 18) // Saldo on-chain
+  availableBalance Decimal @default(0) @db.Decimal(38, 18) // Disponível (após reservas)
 
   // Estatísticas (fees acumuladas)
-  totalFeesCollected String @default("0") // Total de fees recebidas
-  totalDeposited     String @default("0") // Total depositado pelos sócios
-  totalWithdrawn     String @default("0") // Total sacado pelos sócios
-  totalRefunded      String @default("0") // Total reembolsado (platform → user)
-  totalCollected     String @default("0") // Total cobrado de usuarios (user → platform)
+  totalFeesCollected Decimal @default(0) @db.Decimal(38, 18) // Total de fees recebidas
+  totalDeposited     Decimal @default(0) @db.Decimal(38, 18) // Total depositado pelos sócios
+  totalWithdrawn     Decimal @default(0) @db.Decimal(38, 18) // Total sacado pelos sócios
+  totalRefunded      Decimal @default(0) @db.Decimal(38, 18) // Total reembolsado (platform → user)
+  totalCollected     Decimal @default(0) @db.Decimal(38, 18) // Total cobrado de usuarios (user → platform)
 
   // Sincronização blockchain
   lastSyncedAt    DateTime? // Última sincronização
@@ -489,8 +489,8 @@ model PlatformTransfer {
   platformWallet   PlatformWallet @relation(fields: [platformWalletId], references: [id])
 
   toAddress   String   // Endereço destino (cold wallet, etc)
-  amount      String   // Valor enviado
-  networkFee  String?  // Fee de rede paga
+  amount      Decimal  @db.Decimal(38, 18) // Valor enviado
+  networkFee  Decimal? @db.Decimal(38, 18) // Fee de rede paga
   txHash      String?  // Hash da transação on-chain
   status      String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
 
@@ -528,11 +528,11 @@ model PlatformWalletMovement {
 
   // Direção e valor
   direction String // IN, OUT
-  amount    String // Valor absoluto da movimentação
+  amount    Decimal @db.Decimal(38, 18) // Valor absoluto da movimentação
 
   // Saldos antes/depois (para auditoria)
-  balanceBefore String
-  balanceAfter  String
+  balanceBefore Decimal @db.Decimal(38, 18)
+  balanceAfter  Decimal @db.Decimal(38, 18)
 
   // Referências opcionais (para rastreabilidade)
   orderId    String? // ID do order (para fees)
@@ -577,11 +577,11 @@ model SweepTransaction {
   network            String   // BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA
 
   // Valor varrido
-  amount             String
+  amount             Decimal @db.Decimal(38, 18)
 
   // Gas funding (para tokens ERC-20/SPL que precisam de moeda nativa para gas)
   gasFundingTxHash   String?
-  gasFundingAmount   String?
+  gasFundingAmount   Decimal? @db.Decimal(38, 18)
   gasFundingStatus   String?  // PENDING | CONFIRMED | FAILED
 
   // Transação de sweep principal
@@ -656,8 +656,8 @@ model PriceQuote {
   id String @id @default(cuid())
 
   cryptoType String
-  brlPrice   String
-  source     String @default("coingecko")
+  brlPrice   Decimal @db.Decimal(38, 18)
+  source     String  @default("coingecko")
 
   createdAt DateTime @default(now())
 }
@@ -1122,8 +1122,8 @@ model CancellationHistory {
   reputationAfter  Int? // Reputação após a penalidade
 
   // Contexto do cancelamento
-  orderStatus String // Status do pedido no momento do cancelamento
-  orderValue  String // Valor do pedido (para análise)
+  orderStatus String  // Status do pedido no momento do cancelamento
+  orderValue  Decimal @db.Decimal(38, 18) // Valor do pedido (para análise)
 
   createdAt DateTime @default(now())
 
@@ -1256,8 +1256,8 @@ model WorkerState {
 model ExchangeRate {
   id String @id @default(cuid())
 
-  rate         String // Taxa USD/BRL
-  source       String // awesomeapi, banco_central, coingecko_brz, etc
+  rate         Decimal @db.Decimal(38, 18) // Taxa USD/BRL
+  source       String  // awesomeapi, banco_central, coingecko_brz, etc
   responseTime Int // Tempo de resposta em ms
   timestamp    DateTime @default(now())
 
