@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { CryptoType, COINGECKO_IDS, PriceQuote } from '../types/crypto.types';
+import { ExchangeRateService } from './exchange-rate.service';
 
 const prisma = new PrismaClient();
 
@@ -17,6 +18,38 @@ export class PriceService {
 
     try {
       const coinId = COINGECKO_IDS[crypto];
+
+      // Para USDC e USDT, usar ExchangeRateService (stablecoins = 1 USD)
+      if (crypto === CryptoType.USDC || crypto === CryptoType.USDT) {
+        const exchangeRate = await ExchangeRateService.getUsdBrlRate();
+
+        const quote: PriceQuote = {
+          crypto,
+          brlPrice: exchangeRate.rate.toString(),
+          usdPrice: '1.00', // Stablecoin sempre = 1 USD
+          timestamp: exchangeRate.timestamp,
+        };
+
+        // Atualizar cache
+        this.priceCache.set(crypto, {price: quote, timestamp: Date.now()});
+
+        // Salvar no banco
+        await prisma.priceQuote.create({
+          data: {
+            cryptoType: crypto,
+            brlPrice: quote.brlPrice,
+            source: exchangeRate.source, // awesomeapi, banco_central, etc
+          },
+        });
+
+        console.log(
+          `💰 [PriceService] ${crypto} price: 1 ${crypto} = R$ ${exchangeRate.rate.toFixed(4)} (fonte: ${exchangeRate.source})`
+        );
+
+        return quote;
+      }
+
+      // Para outras criptos (BTC, etc), continuar usando CoinGecko normalmente
       const response = await fetch(
         `${this.COINGECKO_API}/simple/price?ids=${coinId}&vs_currencies=brl,usd`
       );
@@ -25,7 +58,7 @@ export class PriceService {
         throw new Error('Erro ao buscar cotação');
       }
 
-      const data = await response.json();
+      const data = await response.json() as Record<string, { brl?: number; usd?: number }>;
       const brlPrice = data[coinId]?.brl;
       const usdPrice = data[coinId]?.usd;
 
@@ -77,9 +110,27 @@ export class PriceService {
 
   async getAllPrices(): Promise<PriceQuote[]> {
     const cryptos = Object.values(CryptoType);
-    const prices = await Promise.all(
+
+    // Use Promise.allSettled to handle individual failures gracefully
+    const results = await Promise.allSettled(
       cryptos.map((crypto) => this.getPrice(crypto))
     );
+
+    // Filter successful results and log failures
+    const prices: PriceQuote[] = [];
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        prices.push(result.value);
+      } else {
+        console.error(`Failed to fetch price for ${cryptos[index]}:`, result.reason?.message || result.reason);
+      }
+    });
+
+    // If no prices were successfully fetched, throw error
+    if (prices.length === 0) {
+      throw new Error('Não foi possível obter nenhuma cotação');
+    }
+
     return prices;
   }
 

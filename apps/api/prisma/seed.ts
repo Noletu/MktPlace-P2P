@@ -6,6 +6,20 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Iniciando seed do banco de dados...');
 
+  // ============ BUSCAR ROLES RBAC ============
+  const masterRole = await prisma.role.findUnique({
+    where: { slug: 'master' },
+  });
+
+  const adminRole = await prisma.role.findUnique({
+    where: { slug: 'admin' },
+  });
+
+  if (!masterRole || !adminRole) {
+    console.error('❌ Roles RBAC não encontrados! Execute primeiro: npx tsx prisma/seeds/rbac-seed.ts');
+    process.exit(1);
+  }
+
   // ============ CRIAR USUÁRIO MASTER ============
   const masterEmail = 'master@mktplace.com';
   const masterPassword = 'Master@2025!'; // MUDAR EM PRODUÇÃO!
@@ -22,7 +36,8 @@ async function main() {
     await prisma.user.update({
       where: { id: existingMaster.id },
       data: {
-        role: 'MASTER',
+        roleId: masterRole.id,
+        legacyRole: 'MASTER',
         password: hashedMasterPassword,
         name: 'Master Administrator',
       },
@@ -39,7 +54,8 @@ async function main() {
         email: masterEmail,
         password: hashedMasterPassword,
         name: 'Master Administrator',
-        role: 'MASTER',
+        roleId: masterRole.id,
+        legacyRole: 'MASTER',
       },
     });
 
@@ -63,7 +79,8 @@ async function main() {
     await prisma.user.update({
       where: { id: existingAdmin.id },
       data: {
-        role: 'ADMIN',
+        roleId: adminRole.id,
+        legacyRole: 'ADMIN',
         password: hashedPassword,
       },
     });
@@ -79,20 +96,21 @@ async function main() {
         email: adminEmail,
         password: hashedPassword,
         name: 'Administrador',
-        role: 'ADMIN',
+        roleId: adminRole.id,
+        legacyRole: 'ADMIN',
       },
     });
 
     console.log('✅ Usuário admin criado:', admin.email);
   }
 
-  // Criar endereços da plataforma de exemplo (OPCIONAL - apenas para testes)
-  console.log('\n📝 Verificando endereços de exemplo...');
+  // NOTA: Carteiras da plataforma devem ser criadas via painel admin HD Wallet
+  // Comentado para permitir seed funcionar - criar carteiras manualmente no admin
+  console.log('\n⚠️  Carteiras da plataforma devem ser criadas via painel admin');
 
   // Endereços válidos para TESTE (NÃO enviar fundos reais!)
   const BITCOIN_ADDRESS = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh';
   const EVM_ADDRESS = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb';
-  const TRON_ADDRESS = 'TRX9sW6qJjhPNaPKjUbVKMNqvz4RqDfWjM';
   const SOLANA_ADDRESS = '7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV';
 
   const platformWallets = [
@@ -102,111 +120,61 @@ async function main() {
       network: 'BITCOIN',
       address: BITCOIN_ADDRESS,
       label: 'Carteira Principal Bitcoin',
-    },
-    // Ethereum
-    {
-      cryptoType: 'ETH',
-      network: 'ETHEREUM',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal Ethereum',
+      derivationPath: "m/84'/0'/0'/0/0",
     },
     // USDT - Múltiplas redes
-    {
-      cryptoType: 'USDT',
-      network: 'TRC20',
-      address: TRON_ADDRESS,
-      label: 'Carteira Principal USDT TRC20',
-    },
-    {
-      cryptoType: 'USDT',
-      network: 'ETHEREUM',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDT Ethereum',
-    },
     {
       cryptoType: 'USDT',
       network: 'BASE',
       address: EVM_ADDRESS,
       label: 'Carteira Principal USDT Base',
+      derivationPath: "m/44'/60'/0'/0/0",
     },
     {
       cryptoType: 'USDT',
-      network: 'ARBITRUM',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDT Arbitrum',
-    },
-    {
-      cryptoType: 'USDT',
-      network: 'POLYGON',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDT Polygon',
-    },
-    {
-      cryptoType: 'USDT',
-      network: 'BSC',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDT BSC',
+      network: 'SOLANA',
+      address: SOLANA_ADDRESS,
+      label: 'Carteira Principal USDT Solana',
+      derivationPath: "m/44'/501'/0'/0'",
     },
     // USDC - Múltiplas redes
-    {
-      cryptoType: 'USDC',
-      network: 'ETHEREUM',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDC Ethereum',
-    },
     {
       cryptoType: 'USDC',
       network: 'BASE',
       address: EVM_ADDRESS,
       label: 'Carteira Principal USDC Base',
-    },
-    {
-      cryptoType: 'USDC',
-      network: 'ARBITRUM',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDC Arbitrum',
-    },
-    {
-      cryptoType: 'USDC',
-      network: 'POLYGON',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDC Polygon',
-    },
-    {
-      cryptoType: 'USDC',
-      network: 'BSC',
-      address: EVM_ADDRESS,
-      label: 'Carteira Principal USDC BSC',
+      derivationPath: "m/44'/60'/0'/0/0",
     },
     {
       cryptoType: 'USDC',
       network: 'SOLANA',
       address: SOLANA_ADDRESS,
       label: 'Carteira Principal USDC Solana',
+      derivationPath: "m/44'/501'/0'/0'",
     },
   ];
 
-  for (const wallet of platformWallets) {
-    // Check by cryptoType + network (not just address, since EVM addresses are reused)
-    const existing = await prisma.platformWallet.findFirst({
-      where: {
-        cryptoType: wallet.cryptoType,
-        network: wallet.network,
-      },
-    });
-
-    if (!existing) {
-      await prisma.platformWallet.create({
-        data: {
-          ...wallet,
-          isActive: true,
-        },
-      });
-      console.log(`✅ Criado: ${wallet.label}`);
-    } else {
-      console.log(`⚠️ Já existe: ${wallet.label}`);
-    }
-  }
+  // COMENTADO: Usar painel admin para criar carteiras com HD Wallet
+  // for (const wallet of platformWallets) {
+  //   const existing = await prisma.platformWallet.findFirst({
+  //     where: {
+  //       cryptoType: wallet.cryptoType,
+  //       network: wallet.network,
+  //     },
+  //   });
+  //
+  //   if (!existing) {
+  //     await prisma.platformWallet.create({
+  //       data: {
+  //         ...wallet,
+  //         isActive: true,
+  //       },
+  //     });
+  //     console.log(`✅ Criado: ${wallet.label}`);
+  //   } else {
+  //     console.log(`⚠️ Já existe: ${wallet.label}`);
+  //   }
+  // }
 
   console.log('\n✅ Seed completo!');
   console.log('\n📋 CREDENCIAIS DO MASTER:');

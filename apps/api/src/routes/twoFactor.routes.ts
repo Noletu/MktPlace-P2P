@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { twoFactorController } from '../controllers/twoFactor.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { twoFactorLimiter } from '../middleware/rateLimiter.middleware';
+import { require2FAMiddleware } from '../middleware/require2FA.middleware';
 
 const router = Router();
 
@@ -35,7 +36,15 @@ router.post('/enable', twoFactorLimiter, twoFactorController.enable.bind(twoFact
  * @desc    Desabilitar 2FA
  * @access  Private
  */
-// SECURITY: Rate limiting para prevenir brute force de códigos 2FA
-router.post('/disable', twoFactorLimiter, twoFactorController.disable.bind(twoFactorController));
+// SECURITY: Desabilitar 2FA exige confirmação do próprio 2FA (prevenção de account takeover)
+router.post('/disable', twoFactorLimiter, require2FAMiddleware, twoFactorController.disable.bind(twoFactorController));
+
+/**
+ * @route   POST /api/v1/2fa/regenerate-backup-codes
+ * @desc    Regenerar backup codes (requer token 2FA)
+ * @access  Private
+ */
+// SECURITY: Regenerar backup codes exige 2FA ativo (acesso a backup codes pode substituir 2FA)
+router.post('/regenerate-backup-codes', twoFactorLimiter, require2FAMiddleware, twoFactorController.regenerateBackupCodes.bind(twoFactorController));
 
 export default router;

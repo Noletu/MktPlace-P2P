@@ -3,6 +3,9 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/Providers";
 
+// Disable static prerendering — all pages require authentication
+export const dynamic = 'force-dynamic';
+
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
@@ -16,22 +19,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning>
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                const theme = localStorage.getItem('theme') || 'dark';
-                if (theme === 'dark') {
-                  document.documentElement.classList.add('dark');
-                }
-              })();
-            `,
-          }}
-        />
-      </head>
-      <body className={inter.className}>
+    <html lang="pt-BR" suppressHydrationWarning className="dark">
+      <body className={inter.className} suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>

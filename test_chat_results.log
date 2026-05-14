@@ -1,0 +1,8 @@
+========================================
+TESTE AUTOMATIZADO - CHAT API REST
+Data: Mon, Oct 20, 2025  7:50:22 PM
+========================================
+[0;34m[19:50:22][0m Iniciando testes da API de Chat...
+[0;34m[19:50:22][0m Verificando se API está online...
+[0;31m❌ API não está respondendo em http://localhost:3001/api/v1[0m
+[0;31m❌ Certifique-se de iniciar o backend: cd apps/api && npm run dev[0m

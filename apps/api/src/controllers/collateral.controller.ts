@@ -75,6 +75,7 @@ export class CollateralController {
   async simulatePayment(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const { amount, txHash } = req.body;
 
       if (process.env.NODE_ENV === 'production') {
         return res.status(403).json({
@@ -83,7 +84,14 @@ export class CollateralController {
         });
       }
 
-      const collateralAddress = await collateralService.simulatePaymentReceived(id);
+      if (!amount) {
+        return res.status(400).json({
+          success: false,
+          error: 'Parâmetro "amount" é obrigatório',
+        });
+      }
+
+      const collateralAddress = await collateralService.simulatePaymentReceived(id, amount, txHash);
 
       res.json({
         success: true,

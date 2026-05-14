@@ -13,6 +13,7 @@ const CreateDisputeSchema = z.object({
     'FAKE_RECEIPT',
     'WRONG_AMOUNT',
     'WRONG_RECIPIENT',
+    'ACCOUNT_BLOCK_APPEAL',
     'OTHER'
   ]),
   title: z.string().min(10, 'Título deve ter no mínimo 10 caracteres'),
@@ -21,9 +22,13 @@ const CreateDisputeSchema = z.object({
 });
 
 const AddMessageSchema = z.object({
-  message: z.string().min(1, 'Mensagem não pode ser vazia'),
-  attachments: z.array(z.string().url()).optional(),
-});
+  message: z.string(),
+  attachments: z.array(z.string()).optional(),
+  visibleTo: z.string().optional(),
+}).refine(
+  (data) => data.message.trim().length > 0 || (data.attachments && data.attachments.length > 0),
+  { message: 'Mensagem ou anexo é obrigatório', path: ['message'] }
+);
 
 const RespondDisputeSchema = z.object({
   contestation: z.string().min(50, 'Contestação deve ter no mínimo 50 caracteres'),
@@ -33,12 +38,11 @@ const RespondDisputeSchema = z.object({
 const ResolveDisputeSchema = z.object({
   resolution: z.string().min(20, 'Resolução deve ter no mínimo 20 caracteres'),
   resolutionType: z.enum([
-    'REFUND_BUYER_FULL',
-    'REFUND_BUYER_PARTIAL',
-    'RELEASE_SELLER',
-    'CANCEL_NO_PENALTY',
-    'PENALTY_BUYER',
-    'PENALTY_SELLER'
+    'RELEASE_TO_BUYER',   // Liberar cripto para o pagador do PIX (comprovante valido)
+    'RETURN_TO_SELLER',   // Devolver cripto ao vendedor (comprovante invalido)
+    'CANCEL_NO_PENALTY',  // Cancelar negociacao sem penalidade
+    'PENALTY_BUYER',      // Penalizar pagador do PIX (fraude)
+    'PENALTY_SELLER',     // Penalizar vendedor (ma-fe)
   ]),
 });
 
@@ -194,13 +198,14 @@ export class DisputeController {
    */
   async resolveDispute(req: Request, res: Response) {
     try {
+      // Autorização gerenciada por managerMiddleware (level >= 60)
+      // GERENTE, ADMIN, MASTER têm acesso
       const userId = req.user?.userId;
-      const userRole = req.user?.role;
 
-      if (!userId || (userRole !== 'ADMIN' && userRole !== 'MASTER')) {
-        return res.status(403).json({
+      if (!userId) {
+        return res.status(401).json({
           success: false,
-          error: 'Apenas administradores podem resolver disputas',
+          error: 'Usuário não autenticado',
         });
       }
 
@@ -262,7 +267,7 @@ export class DisputeController {
 
       const { disputeId } = req.params;
 
-      const dispute = await disputeService.getDisputeById(disputeId);
+      const dispute = await disputeService.getDisputeById(disputeId, userId);
 
       if (!dispute) {
         return res.status(404).json({
@@ -272,12 +277,14 @@ export class DisputeController {
       }
 
       // SECURITY: Verificar se usuário tem permissão
-      const isAdmin = userRole === 'ADMIN' || userRole === 'MASTER';
+      const userLevel = (req as any).user?.level || 0;
+      const isStaff = userLevel >= 40; // SUPPORT+ pode ver todas as disputas
       const isCreator = dispute.createdBy === userId;
       const isOrderOwner = dispute.order.userId === userId;
       const isPayer = dispute.order.transactions.some(t => t.payerId === userId);
+      const isProvider = (dispute.order as any).providerId === userId;
 
-      if (!isAdmin && !isCreator && !isOrderOwner && !isPayer) {
+      if (!isStaff && !isCreator && !isOrderOwner && !isPayer && !isProvider) {
         return res.status(403).json({
           success: false,
           error: 'Você não tem permissão para visualizar esta disputa',
@@ -324,19 +331,11 @@ export class DisputeController {
   }
 
   /**
-   * Listar todas as disputas (admin)
+   * Listar todas as disputas (SUPPORT+)
+   * Autorização gerenciada por supportMiddleware (level >= 40)
    */
   async getAllDisputes(req: Request, res: Response) {
     try {
-      const userRole = req.user?.role;
-
-      if (userRole !== 'ADMIN' && userRole !== 'MASTER') {
-        return res.status(403).json({
-          success: false,
-          error: 'Apenas administradores podem visualizar todas as disputas',
-        });
-      }
-
       const { status, category, limit, offset } = req.query;
 
       const result = await disputeService.getAllDisputes({
@@ -364,19 +363,11 @@ export class DisputeController {
   }
 
   /**
-   * Estatísticas de disputas (admin)
+   * Estatísticas de disputas (SUPPORT+)
+   * Autorização gerenciada por supportMiddleware (level >= 40)
    */
   async getDisputeStats(req: Request, res: Response) {
     try {
-      const userRole = req.user?.role;
-
-      if (userRole !== 'ADMIN' && userRole !== 'MASTER') {
-        return res.status(403).json({
-          success: false,
-          error: 'Apenas administradores podem visualizar estatísticas',
-        });
-      }
-
       const stats = await disputeService.getDisputeStats();
 
       res.json({
@@ -392,19 +383,11 @@ export class DisputeController {
   }
 
   /**
-   * Analytics de disputas por período (admin)
+   * Analytics de disputas por período (SUPPORT+)
+   * Autorização gerenciada por supportMiddleware (level >= 40)
    */
   async getDisputeAnalytics(req: Request, res: Response) {
     try {
-      const userRole = req.user?.role;
-
-      if (userRole !== 'ADMIN' && userRole !== 'MASTER') {
-        return res.status(403).json({
-          success: false,
-          error: 'Apenas administradores podem visualizar analytics',
-        });
-      }
-
       const { days } = req.query;
       const daysNum = days ? parseInt(days as string) : 30;
 
@@ -423,19 +406,11 @@ export class DisputeController {
   }
 
   /**
-   * Top disputantes (admin)
+   * Top disputantes (SUPPORT+)
+   * Autorização gerenciada por supportMiddleware (level >= 40)
    */
   async getTopDisputants(req: Request, res: Response) {
     try {
-      const userRole = req.user?.role;
-
-      if (userRole !== 'ADMIN' && userRole !== 'MASTER') {
-        return res.status(403).json({
-          success: false,
-          error: 'Apenas administradores podem visualizar top disputantes',
-        });
-      }
-
       const { limit } = req.query;
       const limitNum = limit ? parseInt(limit as string) : 10;
 

@@ -1,8 +1,11 @@
+import AppHeader from '@/components/AppHeader';
 import RegisterForm from '@/components/forms/RegisterForm';
 
 export default function RegisterPage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-gray-50 dark:bg-gray-900">
+    <>
+      <AppHeader />
+      <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-gray-50 dark:bg-gray-900">
       <div className="z-10 w-full max-w-5xl items-center justify-center font-mono text-sm flex flex-col">
         <h1 className="text-4xl font-bold text-center mb-2 text-gray-900 dark:text-white">
           Criar Conta
@@ -14,5 +17,6 @@ export default function RegisterPage() {
         <RegisterForm />
       </div>
     </main>
+    </>
   );
 }

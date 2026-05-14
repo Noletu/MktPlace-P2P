@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
 import { orderService } from '../services/order.service';
-import { OrderType } from '../types/order.types';
+import { OrderType, PaymentMethod } from '../types/order.types';
 import { z } from 'zod';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from '../services/auditLog.service';
 import { auditLogger } from '../utils/logger';
+import { Transaction } from '@prisma/client';
 
 const BoletoDataSchema = z.object({
   barcode: z.string().min(44, 'Código de barras do boleto deve ter no mínimo 44 caracteres'),
@@ -18,9 +19,10 @@ const PixDataSchema = z.object({
   recipientName: z.string().min(3, 'Nome do beneficiário é obrigatório'),
 });
 
-const CreateOrderSchema = z.object({
-  type: z.nativeEnum(OrderType),
-  paymentMethod: z.enum(['PIX', 'BOLETO']).optional(), // Método de pagamento (PIX ou Boleto)
+// Schema para ordens SELL (criador fornece dados de pagamento)
+const CreateSellOrderSchema = z.object({
+  type: z.literal('SELL'),
+  paymentMethod: z.nativeEnum(PaymentMethod).optional(),
   cryptoType: z.string().min(1, 'Tipo de criptomoeda é obrigatório'),
   cryptoNetwork: z.string().min(1, 'Rede blockchain é obrigatória'),
   cryptoAmount: z.string()
@@ -30,8 +32,35 @@ const CreateOrderSchema = z.object({
     .min(1, 'Valor em BRL é obrigatório')
     .refine((val) => parseFloat(val) > 0, 'Valor em BRL deve ser maior que zero'),
   orderData: z.union([BoletoDataSchema, PixDataSchema]),
-  collateralAddressId: z.string().optional(), // ID do colateral confirmado
-  useInternalBalance: z.boolean().optional(), // Flag para usar saldo interno
+  collateralAddressId: z.string().optional(),
+  customExpirationHours: z.number().int().min(1).max(720).optional(),
+  manualCancelOnly: z.boolean().optional(),
+});
+
+// Schema para ordens BUY (criador NÃO fornece dados de pagamento - provedor fornecerá)
+const CreateBuyOrderSchema = z.object({
+  type: z.literal('BUY'),
+  cryptoType: z.string().min(1, 'Tipo de criptomoeda é obrigatório'),
+  cryptoNetwork: z.string().min(1, 'Rede blockchain é obrigatória'),
+  cryptoAmount: z.string()
+    .min(1, 'Valor em criptomoeda é obrigatório')
+    .refine((val) => parseFloat(val) > 0, 'Valor em criptomoeda deve ser maior que zero'),
+  // brlAmount é calculado automaticamente pelo sistema para BUY orders
+  customExpirationHours: z.number().int().min(1).max(720).optional(),
+  manualCancelOnly: z.boolean().optional(),
+});
+
+// Schema discriminado que valida diferentemente baseado no tipo
+const CreateOrderSchema = z.discriminatedUnion('type', [
+  CreateSellOrderSchema,
+  CreateBuyOrderSchema,
+]);
+
+// Schema para provedor aceitar ordem BUY
+const AcceptBuyOrderSchema = z.object({
+  pixKey: z.string().min(3, 'Chave PIX é obrigatória'),
+  pixKeyType: z.enum(['CPF', 'CNPJ', 'EMAIL', 'PHONE', 'RANDOM']),
+  recipientName: z.string().min(3, 'Nome do beneficiário é obrigatório'),
 });
 
 export class OrderController {
@@ -42,15 +71,39 @@ export class OrderController {
         return res.status(401).json({ error: 'Não autorizado' });
       }
 
+      // SECURITY: Verificação rápida de conta congelada (segunda camada)
+      if ((req.user as any)?.accountFrozen) {
+        return res.status(403).json({
+          success: false,
+          error: 'Sua conta está suspensa. Você não pode criar pedidos.',
+          code: 'ACCOUNT_FROZEN',
+        });
+      }
+
       // Log completo do body para debug
       console.log('📦 [ORDER] Request body:', JSON.stringify(req.body, null, 2));
 
       const validatedData = CreateOrderSchema.parse(req.body);
 
-      const result = await orderService.createOrder({
-        userId,
-        ...validatedData,
-      });
+      let result;
+
+      // BUY orders usam método específico (não requer colateral nem dados de pagamento)
+      if (validatedData.type === 'BUY') {
+        result = await orderService.createBuyOrder({
+          userId,
+          cryptoType: validatedData.cryptoType,
+          cryptoNetwork: validatedData.cryptoNetwork,
+          cryptoAmount: validatedData.cryptoAmount,
+          customExpirationHours: validatedData.customExpirationHours,
+          manualCancelOnly: validatedData.manualCancelOnly,
+        });
+      } else {
+        // SELL orders usam método existente
+        result = await orderService.createOrder({
+          userId,
+          ...validatedData,
+        } as any);
+      }
 
       // Verificar se é necessário depósito
       if ('requiresDeposit' in result && result.requiresDeposit) {
@@ -62,7 +115,10 @@ export class OrderController {
         });
       }
 
-      // Pedido criado com sucesso
+      // Pedido criado com sucesso - garantir que é um Order
+      if (!('id' in result)) {
+        throw new Error('Falha ao criar pedido: ID não retornado');
+      }
       const order = result;
 
       // SECURITY: Audit log - pedido criado
@@ -125,10 +181,13 @@ export class OrderController {
     try {
       const userId = req.user?.userId;
 
-      // Excluir pedidos do próprio usuário
-      const orders = await orderService.getAvailableOrders(userId);
+      // Filtro por tipo de ordem (BUY, SELL, ou ALL)
+      const { type } = req.query;
+      const orderType = type === 'BUY' || type === 'SELL' ? type : 'ALL';
 
-      console.log(`📊 Marketplace: userId=${userId}, found ${orders.length} orders`);
+      const orders = await orderService.getAvailableOrders(userId, orderType);
+
+      console.log(`📊 Marketplace: userId=${userId}, type=${orderType}, found ${orders.length} orders`);
 
       res.json({
         success: true,
@@ -176,16 +235,20 @@ export class OrderController {
         return res.status(404).json({ error: 'Pedido não encontrado' });
       }
 
+      // Buscar transactions para verificar permissão
+      const transactions = await orderService.getOrderTransactions(orderId);
+
       // SECURITY: Verificar se usuário tem permissão para ver este pedido
       const isOwner = order.userId === userId;
-      const isPayer = order.transactions.some((t: any) => t.payerId === userId);
+      const isPayer = transactions.some((t: Transaction) => t.payerId === userId);
+      const isProvider = order.providerId === userId; // BUY orders: provedor de liquidez
       const isAdmin = req.user?.role === 'ADMIN';
       const isMarketplaceOrder = ['PENDING', 'IN_NEGOTIATION'].includes(order.status);
 
       // Permitir acesso se:
-      // 1. É owner/payer/admin (sempre)
+      // 1. É owner/payer/provider/admin (sempre)
       // 2. Pedido está no marketplace (PENDING ou IN_NEGOTIATION) - qualquer usuário pode ver
-      if (!isOwner && !isPayer && !isAdmin && !isMarketplaceOrder) {
+      if (!isOwner && !isPayer && !isProvider && !isAdmin && !isMarketplaceOrder) {
         return res.status(403).json({ error: 'Acesso negado' });
       }
 
@@ -234,6 +297,63 @@ export class OrderController {
     }
   }
 
+  async updateOrder(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { orderId } = req.params;
+      const { customExpirationHours, orderData } = req.body;
+
+      // Validar que pelo menos um campo foi enviado
+      if (customExpirationHours === undefined && !orderData) {
+        return res.status(400).json({
+          error: 'Nenhum dado para atualizar. Forneça customExpirationHours ou orderData.',
+        });
+      }
+
+      // Atualizar pedido
+      const updatedOrder = await orderService.updateOrder(orderId, userId, {
+        customExpirationHours,
+        orderData,
+      });
+
+      // SECURITY: Audit log - order updated
+      auditLogService.logFromRequest(
+        req,
+        AUDIT_ACTIONS.UPDATE,
+        AUDIT_RESOURCES.ORDER,
+        orderId,
+        { customExpirationHours, orderData }
+      );
+
+      res.json({
+        success: true,
+        data: updatedOrder,
+        message: 'Pedido atualizado com sucesso',
+      });
+    } catch (error: any) {
+      // SECURITY: Audit log do erro
+      if (req.user) {
+        auditLogService.logFromRequest(
+          req,
+          AUDIT_ACTIONS.UPDATE,
+          AUDIT_RESOURCES.ORDER,
+          req.params.orderId,
+          { error: error.message },
+          false,
+          error.message
+        );
+      }
+
+      res.status(400).json({
+        error: error.message || 'Erro ao atualizar pedido',
+      });
+    }
+  }
+
   async cancelOrder(req: Request, res: Response) {
     try {
       const userId = req.user?.userId;
@@ -242,20 +362,294 @@ export class OrderController {
       }
 
       const { orderId } = req.params;
+      const { reason, note } = req.body;
 
-      await orderService.cancelOrder(orderId, userId);
+      // Validar inputs obrigatórios
+      if (!reason || typeof reason !== 'string') {
+        return res.status(400).json({ error: 'Motivo do cancelamento é obrigatório' });
+      }
+
+      if (!note || typeof note !== 'string' || note.trim().length < 20) {
+        return res.status(400).json({
+          error: 'Por favor, forneça uma justificativa com pelo menos 20 caracteres',
+        });
+      }
+
+      const result = await orderService.cancelOrder(orderId, userId, reason, note);
 
       // SECURITY: Audit log - order cancelled
       auditLogService.logFromRequest(
         req,
         AUDIT_ACTIONS.ORDER_CANCEL,
         AUDIT_RESOURCES.ORDER,
-        orderId
+        orderId,
+        { reason, penaltyApplied: result.penaltyApplied },
+        true
       );
 
       res.json({
         success: true,
-        message: 'Pedido cancelado com sucesso',
+        message: result.message,
+        penaltyApplied: result.penaltyApplied,
+        penaltyPoints: result.penaltyPoints,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Erro ao cancelar pedido',
+      });
+    }
+  }
+
+  async cancelOrderByPayer(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { orderId } = req.params;
+      const { reason, note } = req.body;
+
+      // Validar inputs obrigatórios
+      if (!reason || typeof reason !== 'string') {
+        return res.status(400).json({ error: 'Motivo do cancelamento é obrigatório' });
+      }
+
+      if (!note || typeof note !== 'string' || note.trim().length < 20) {
+        return res.status(400).json({
+          error: 'Por favor, forneça uma justificativa com pelo menos 20 caracteres',
+        });
+      }
+
+      const result = await orderService.cancelOrderByPayer(orderId, userId, reason, note);
+
+      // SECURITY: Audit log - order cancelled by payer
+      auditLogService.logFromRequest(
+        req,
+        'ORDER_CANCEL_BY_PAYER',
+        AUDIT_RESOURCES.ORDER,
+        orderId,
+        { reason, penaltyApplied: result.penaltyApplied },
+        true
+      );
+
+      res.json({
+        success: true,
+        message: result.message,
+        penaltyApplied: result.penaltyApplied,
+        penaltyPoints: result.penaltyPoints,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Erro ao cancelar pedido',
+      });
+    }
+  }
+
+  async getCancellationWarning(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { penaltyService } = await import('../services/penalty.service');
+      const warning = await penaltyService.shouldWarnBeforeCancellation(userId);
+
+      res.json({
+        success: true,
+        data: warning,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Erro ao verificar advertência',
+      });
+    }
+  }
+
+  async getCancellationStats(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { penaltyService } = await import('../services/penalty.service');
+      const stats = await penaltyService.getCancellationStats(userId);
+
+      res.json({
+        success: true,
+        data: stats,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Erro ao buscar estatísticas de cancelamento',
+      });
+    }
+  }
+
+  async getCancellationHistory(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { limit = '20', offset = '0' } = req.query;
+      const { cancellationHistoryService } = await import('../services/cancellationHistory.service');
+
+      const history = await cancellationHistoryService.getUserHistory(userId, {
+        limit: parseInt(limit as string),
+        offset: parseInt(offset as string),
+      });
+
+      res.json({
+        success: true,
+        data: history,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Erro ao buscar histórico de cancelamentos',
+      });
+    }
+  }
+
+  async getUserStatistics(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { days = '30' } = req.query;
+      const daysNum = parseInt(days as string);
+
+      const stats = await orderService.getUserStatistics(userId, daysNum);
+
+      res.json({
+        success: true,
+        data: stats,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        error: error.message || 'Erro ao buscar estatísticas',
+      });
+    }
+  }
+
+  // ANTI-SPAM: Obter estatísticas de cancelamento para proteção anti-spam
+  async getAntiSpamStats(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { antiSpamService } = await import('../services/antiSpam.service');
+      const stats = await antiSpamService.getUserCancellationStats(userId);
+
+      res.json({
+        success: true,
+        data: stats,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message || 'Erro ao buscar estatísticas anti-spam',
+      });
+    }
+  }
+
+  /**
+   * Provedor aceita ordem BUY (fornece liquidez)
+   * POST /orders/:orderId/accept-buy
+   */
+  async acceptBuyOrder(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { orderId } = req.params;
+      const validatedData = AcceptBuyOrderSchema.parse(req.body);
+
+      const order = await orderService.acceptBuyOrder({
+        orderId,
+        providerId: userId,
+        ...validatedData,
+      });
+
+      // SECURITY: Audit log - BUY order accepted
+      auditLogService.logFromRequest(
+        req,
+        'BUY_ORDER_ACCEPTED',
+        AUDIT_RESOURCES.ORDER,
+        orderId,
+        { providerId: userId, pixKey: validatedData.pixKey }
+      );
+
+      res.json({
+        success: true,
+        data: order,
+        message: 'Você aceitou fornecer liquidez! Aguardando pagamento do comprador.',
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Dados inválidos',
+          details: error.errors,
+        });
+      }
+
+      res.status(400).json({
+        error: error.message || 'Erro ao aceitar ordem de compra',
+      });
+    }
+  }
+
+  /**
+   * Provedor cancela ordem BUY (desiste de fornecer liquidez)
+   * POST /orders/:orderId/cancel-by-provider
+   */
+  async cancelOrderByProvider(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const { orderId } = req.params;
+      const { reason, note } = req.body;
+
+      // Validar inputs obrigatórios
+      if (!reason || typeof reason !== 'string') {
+        return res.status(400).json({ error: 'Motivo do cancelamento é obrigatório' });
+      }
+
+      if (!note || typeof note !== 'string' || note.trim().length < 20) {
+        return res.status(400).json({
+          error: 'Por favor, forneça uma justificativa com pelo menos 20 caracteres',
+        });
+      }
+
+      const result = await orderService.cancelOrderByProvider(orderId, userId, reason, note);
+
+      // SECURITY: Audit log - provider cancelled
+      auditLogService.logFromRequest(
+        req,
+        'BUY_ORDER_CANCELLED_BY_PROVIDER',
+        AUDIT_RESOURCES.ORDER,
+        orderId,
+        { reason, penaltyApplied: result.penaltyApplied },
+        true
+      );
+
+      res.json({
+        success: true,
+        message: result.message,
+        penaltyApplied: result.penaltyApplied,
+        penaltyPoints: result.penaltyPoints,
       });
     } catch (error: any) {
       res.status(400).json({

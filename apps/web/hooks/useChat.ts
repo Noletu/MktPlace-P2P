@@ -1,15 +1,23 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import * as encryptionUtils from '@/utils/encryption.utils';
+import { getWsUrl } from '@/config/api';
+import { fetchWithAuth } from '@/utils/api';
+
+// Guard de módulo: evita que múltiplos mounts (React StrictMode) disparem
+// inicialização de chaves simultânea e registrem a chave pública duas vezes.
+let _encryptionInitPromise: Promise<void> | null = null;
 
 export interface ChatMessage {
   id: string;
   chatId: string;
   senderId: string;
   message?: string; // Mensagens antigas (não criptografadas)
-  encryptedContent?: string; // Mensagens novas (criptografadas)
+  encryptedContent?: string; // Criptografado para o DESTINATÁRIO
+  encryptedForSender?: string; // Criptografado para o REMETENTE (E2E correto)
   isEncrypted?: boolean; // Flag de criptografia
-  iv?: string; // Initialization Vector
+  iv?: string; // IV para encryptedContent (destinatário)
+  ivForSender?: string; // IV para encryptedForSender (remetente)
   type: string;
   attachmentUrl?: string;
   attachmentType?: string;
@@ -35,7 +43,11 @@ export interface Chat {
   messages: ChatMessage[];
 }
 
-export function useChat(chatId?: string) {
+interface UseChatOptions {
+  onNewMessage?: (message: ChatMessage, isMine: boolean) => void;
+}
+
+export function useChat(chatId?: string, options?: UseChatOptions) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -47,6 +59,12 @@ export function useChat(chatId?: string) {
   const privateKeyRef = useRef<CryptoKey | null>(null);
   const publicKeyRef = useRef<CryptoKey | null>(null);
   const recipientPublicKeyRef = useRef<CryptoKey | null>(null);
+  // Map para guardar mensagens próprias antes da criptografia
+  const ownMessagesRef = useRef<Map<string, string>>(new Map());
+  // Texto da mensagem que acabou de ser enviada (esperando ID do servidor)
+  const pendingMessageRef = useRef<string | null>(null);
+  // Callback ref para evitar re-renders
+  const onNewMessageRef = useRef(options?.onNewMessage);
 
   // Inicializar chaves de criptografia
   const initializeEncryption = useCallback(async () => {
@@ -55,58 +73,61 @@ export function useChat(chatId?: string) {
       return;
     }
 
-    try {
-      // Tentar recuperar chaves existentes
-      let privateKey = await encryptionUtils.getPrivateKey();
-      let publicKey = await encryptionUtils.getPublicKey();
-
-      // Se não existir, gerar novas chaves
-      if (!privateKey || !publicKey) {
-        console.log('🔑 Generating new encryption keys...');
-        const keyPair = await encryptionUtils.generateKeyPair();
-        privateKey = keyPair.privateKey;
-        publicKey = keyPair.publicKey;
-
-        // Armazenar localmente
-        await encryptionUtils.storePrivateKey(privateKey);
-        await encryptionUtils.storePublicKey(publicKey);
-
-        // Enviar chave pública ao servidor
-        const token = localStorage.getItem('accessToken');
-        const publicKeyExported = await encryptionUtils.exportPublicKey(publicKey);
-
-        await fetch('http://localhost:3001/api/v1/keys/public-key', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ publicKey: publicKeyExported }),
-        });
-
-        console.log('✅ Public key sent to server');
-      }
-
-      privateKeyRef.current = privateKey;
-      publicKeyRef.current = publicKey;
-      setEncryptionEnabled(true);
-      console.log('🔐 Encryption enabled');
-    } catch (error) {
-      console.error('Failed to initialize encryption:', error);
-      setEncryptionEnabled(false);
+    // Se já existe uma inicialização em andamento (React StrictMode monta 2x),
+    // aguardar a mesma Promise em vez de iniciar uma segunda.
+    if (_encryptionInitPromise) {
+      await _encryptionInitPromise;
+      return;
     }
+
+    const doInit = async () => {
+      try {
+        // Tentar recuperar chaves existentes
+        let privateKey = await encryptionUtils.getPrivateKey();
+        let publicKey = await encryptionUtils.getPublicKey();
+
+        // Se não existir, gerar novas chaves
+        if (!privateKey || !publicKey) {
+          console.log('🔑 Generating new encryption keys...');
+          const keyPair = await encryptionUtils.generateKeyPair();
+          privateKey = keyPair.privateKey;
+          publicKey = keyPair.publicKey;
+
+          // Armazenar localmente
+          await encryptionUtils.storePrivateKey(privateKey);
+          await encryptionUtils.storePublicKey(publicKey);
+
+          // Enviar chave pública ao servidor
+          const publicKeyExported = await encryptionUtils.exportPublicKey(publicKey);
+
+          await fetchWithAuth('/keys/public-key', {
+            method: 'POST',
+            body: JSON.stringify({ publicKey: publicKeyExported }),
+          });
+
+          console.log('✅ Public key sent to server');
+        }
+
+        privateKeyRef.current = privateKey;
+        publicKeyRef.current = publicKey;
+        setEncryptionEnabled(true);
+        console.log('🔐 Encryption enabled');
+      } catch (error) {
+        console.error('Failed to initialize encryption:', error);
+        setEncryptionEnabled(false);
+      } finally {
+        _encryptionInitPromise = null;
+      }
+    };
+
+    _encryptionInitPromise = doInit();
+    await _encryptionInitPromise;
   }, []);
 
   // Buscar chave pública do destinatário
   const fetchRecipientPublicKey = useCallback(async (recipientId: string) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(
-        `http://localhost:3001/api/v1/keys/public-key/${recipientId}`,
-        {
-          headers: { 'Authorization': `Bearer ${token}` },
-        }
-      );
+      const response = await fetchWithAuth(`/keys/public-key/${recipientId}`);
 
       if (response.ok) {
         const data = await response.json();
@@ -123,8 +144,13 @@ export function useChat(chatId?: string) {
 
   // Descriptografar mensagem
   const decryptMessageContent = useCallback(async (msg: ChatMessage): Promise<ChatMessage> => {
-    if (!msg.isEncrypted || !msg.encryptedContent || !msg.iv) {
+    if (!msg.isEncrypted) {
       // Mensagem não criptografada (retrocompatibilidade)
+      return { ...msg, decryptedMessage: msg.message };
+    }
+
+    // Verificar se tenho algum conteúdo criptografado
+    if (!msg.encryptedContent && !msg.encryptedForSender) {
       return { ...msg, decryptedMessage: msg.message };
     }
 
@@ -133,10 +159,39 @@ export function useChat(chatId?: string) {
       return { ...msg, decryptedMessage: '🔒 Mensagem criptografada' };
     }
 
+    // Determinar se sou o remetente ou destinatário
+    const userStr = localStorage.getItem('user');
+    const currentUser = userStr ? JSON.parse(userStr) : null;
+    const isMine = currentUser && msg.senderId === currentUser.id;
+
+    // Escolher a versão criptografada correta e seu IV:
+    // - Se sou o remetente: usar encryptedForSender + ivForSender
+    // - Se sou o destinatário: usar encryptedContent + iv
+    const contentToDecrypt = isMine ? msg.encryptedForSender : msg.encryptedContent;
+    const ivToUse = isMine ? msg.ivForSender : msg.iv;
+
+    if (!contentToDecrypt || !ivToUse) {
+      // Fallback: tentar a outra versão ou mensagem em texto
+      console.warn('[Chat] No encrypted content/IV for my role, trying fallback');
+      if (msg.encryptedContent && msg.iv) {
+        try {
+          const decrypted = await encryptionUtils.decryptMessage(
+            msg.encryptedContent,
+            msg.iv,
+            privateKeyRef.current
+          );
+          return { ...msg, decryptedMessage: decrypted };
+        } catch {
+          // Não conseguiu descriptografar
+        }
+      }
+      return { ...msg, decryptedMessage: msg.message || '🔒 Mensagem criptografada' };
+    }
+
     try {
       const decrypted = await encryptionUtils.decryptMessage(
-        msg.encryptedContent,
-        msg.iv,
+        contentToDecrypt,
+        ivToUse,
         privateKeyRef.current
       );
       return { ...msg, decryptedMessage: decrypted };
@@ -146,54 +201,104 @@ export function useChat(chatId?: string) {
     }
   }, []);
 
+  // Atualizar ref do callback quando options mudar
+  useEffect(() => {
+    onNewMessageRef.current = options?.onNewMessage;
+  }, [options?.onNewMessage]);
+
   // Conectar ao WebSocket
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    if (!token) return;
+    let newSocket: ReturnType<typeof io> | null = null;
 
-    const newSocket = io('http://localhost:3001', {
-      auth: { token },
-      path: '/socket.io/',
-    });
+    const connectSocket = async () => {
+      let ticket: string | null = null;
+      try {
+        const res = await fetchWithAuth('/auth/socket-ticket');
+        if (res.ok) {
+          const data = await res.json();
+          ticket = data.ticket ?? null;
+        }
+      } catch {
+        // sem ticket — ainda tenta conectar (backend aceita cookie como fallback)
+      }
+      if (!ticket) return;
 
-    newSocket.on('connect', () => {
-      console.log('✅ Connected to chat server');
-      setIsConnected(true);
-    });
+      newSocket = io(getWsUrl('chat'), {
+        path: '/socket.io/',
+        withCredentials: true,
+        auth: { token: ticket },
+      });
 
-    newSocket.on('disconnect', () => {
-      console.log('❌ Disconnected from chat server');
-      setIsConnected(false);
-    });
+      newSocket.on('connect', () => {
+        console.log('✅ Connected to chat server');
+        setIsConnected(true);
+      });
 
-    newSocket.on('error', (error: any) => {
-      console.error('Socket error:', error.message);
-    });
+      newSocket.on('disconnect', () => {
+        console.log('❌ Disconnected from chat server');
+        setIsConnected(false);
+      });
 
-    newSocket.on('message:new', async (message: ChatMessage) => {
-      // Descriptografar mensagem se necessário
-      const decryptedMsg = await decryptMessageContent(message);
-      setMessages((prev) => [...prev, decryptedMsg]);
-    });
+      newSocket.on('error', (error: any) => {
+        console.error('Socket error:', error.message);
+      });
 
-    newSocket.on('user:typing', (data: any) => {
-      setIsTyping(data.isTyping);
-    });
+      newSocket.on('message:new', async (message: ChatMessage) => {
+        // Verificar se é própria mensagem para guardar no cache
+        const userStr = localStorage.getItem('user');
+        const currentUser = userStr ? JSON.parse(userStr) : null;
+        const isMine = currentUser && message.senderId === currentUser.id;
 
-    socketRef.current = newSocket;
-    setSocket(newSocket);
+        console.log('[Chat] New message received:', {
+          id: message.id.slice(0, 8),
+          isEncrypted: message.isEncrypted,
+          hasIV: !!message.iv,
+          senderId: message.senderId.slice(0, 8),
+          isMine,
+        });
 
-    // Inicializar criptografia ao conectar
-    initializeEncryption();
+        // Se é minha mensagem e tenho pendingMessage, guardar no cache
+        if (isMine && pendingMessageRef.current) {
+          console.log('[Chat] Storing own message plaintext:', message.id.slice(0, 8));
+          ownMessagesRef.current.set(message.id, pendingMessageRef.current);
+          pendingMessageRef.current = null; // Limpar após usar
+        }
+
+        // Descriptografar mensagem se necessário
+        const decryptedMsg = await decryptMessageContent(message);
+        setMessages((prev) => [...prev, decryptedMsg]);
+
+        // Notificar componente pai sobre nova mensagem (para atualizar badge)
+        if (onNewMessageRef.current) {
+          onNewMessageRef.current(decryptedMsg, !!isMine);
+        }
+      });
+
+      newSocket.on('user:typing', (data: any) => {
+        setIsTyping(data.isTyping);
+      });
+
+      socketRef.current = newSocket;
+      setSocket(newSocket);
+
+      // Inicializar criptografia ao conectar
+      initializeEncryption();
+    };
+
+    connectSocket();
 
     return () => {
-      newSocket.disconnect();
+      if (newSocket) newSocket.disconnect();
     };
   }, [initializeEncryption]);
 
   // Entrar no chat quando chatId mudar
   useEffect(() => {
     if (socket && chatId) {
+      // Limpar cache de mensagens próprias ao trocar de chat
+      ownMessagesRef.current.clear();
+      pendingMessageRef.current = null;
+
       socket.emit('chat:join', { chatId });
 
       socket.once('chat:joined', () => {
@@ -211,13 +316,10 @@ export function useChat(chatId?: string) {
     if (!chatId) return;
 
     try {
-      const token = localStorage.getItem('accessToken');
       const userStr = localStorage.getItem('user');
       const currentUser = userStr ? JSON.parse(userStr) : null;
 
-      const response = await fetch(`http://localhost:3001/api/v1/chat/${chatId}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await fetchWithAuth(`/chat/${chatId}`);
 
       if (response.ok) {
         const data = await response.json();
@@ -269,21 +371,30 @@ export function useChat(chatId?: string) {
     if (!message.trim() && !attachment) return;
 
     try {
-      // Tentar criptografar se possível
-      if (encryptionEnabled && recipientPublicKeyRef.current && !attachment) {
-        const encrypted = await encryptionUtils.encryptMessage(
+      // Tentar criptografar se possível (precisa das duas chaves: minha e do destinatário)
+      if (encryptionEnabled && recipientPublicKeyRef.current && publicKeyRef.current && !attachment) {
+        // Criptografar para o DESTINATÁRIO (ele vai usar sua chave privada para ler)
+        const encryptedForRecipient = await encryptionUtils.encryptMessage(
           message.trim(),
           recipientPublicKeyRef.current
         );
 
+        // Criptografar para MIM MESMO (vou usar minha chave privada para ler no histórico)
+        const encryptedForMe = await encryptionUtils.encryptMessage(
+          message.trim(),
+          publicKeyRef.current
+        );
+
         socket.emit('message:send', {
           chatId,
-          encryptedContent: encrypted.encryptedContent,
+          encryptedContent: encryptedForRecipient.encryptedContent, // Para destinatário
+          encryptedForSender: encryptedForMe.encryptedContent, // Para mim (remetente)
           isEncrypted: true,
-          iv: encrypted.iv,
+          iv: encryptedForRecipient.iv, // IV para destinatário
+          ivForSender: encryptedForMe.iv, // IV para remetente
         });
 
-        console.log('🔐 Sent encrypted message');
+        console.log('🔐 Sent E2E encrypted message (for both parties)');
       } else {
         // Fallback para mensagem não criptografada
         socket.emit('message:send', {
@@ -310,6 +421,30 @@ export function useChat(chatId?: string) {
     socket.emit('messages:read', { chatId });
   }, [socket, chatId]);
 
+  const loadChatHistory = useCallback(async () => {
+    if (!chatId) return;
+
+    try {
+      const response = await fetchWithAuth(`/chat/${chatId}/history`);
+
+      if (response.ok) {
+        const data = await response.json();
+        setChat(data.data.chat);
+
+        // Descriptografar mensagens (incluindo arquivadas)
+        const allMessages = data.data.messages || [];
+        const decryptedMessages = await Promise.all(
+          allMessages.map((msg: ChatMessage) => decryptMessageContent(msg))
+        );
+        setMessages(decryptedMessages);
+
+        return data.data;
+      }
+    } catch (error) {
+      console.error('Failed to load chat history:', error);
+    }
+  }, [chatId, decryptMessageContent]);
+
   return {
     socket,
     messages,
@@ -322,5 +457,6 @@ export function useChat(chatId?: string) {
     stopTyping,
     markAsRead,
     loadChatMessages,
+    loadChatHistory,
   };
 }

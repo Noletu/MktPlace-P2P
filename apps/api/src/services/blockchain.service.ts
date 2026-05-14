@@ -41,11 +41,6 @@ export class BlockchainService {
         }
       }
 
-      // Tron (TRC20)
-      if (network === 'TRC20') {
-        return await this.checkTronPayment(address, cryptoType, expectedAmount);
-      }
-
       throw new Error(`Rede não suportada: ${network}`);
     } catch (error: any) {
       console.error('❌ Erro ao verificar pagamento blockchain:', error.message);
@@ -221,51 +216,6 @@ export class BlockchainService {
       return { received: false };
     } catch (error: any) {
       console.error('Erro ao verificar ERC20:', error.message);
-      return { received: false };
-    }
-  }
-
-  /**
-   * Verifica pagamento Tron (TRC20)
-   */
-  private async checkTronPayment(
-    address: string,
-    tokenSymbol: string,
-    expectedAmount: string
-  ): Promise<{ received: boolean; txHash?: string; amount?: string; timestamp?: number }> {
-    try {
-      // TronGrid API
-      const response = await axios.get(
-        `https://api.trongrid.io/v1/accounts/${address}/transactions/trc20`,
-        {
-          params: {
-            limit: 10,
-            only_to: true,
-          },
-        }
-      );
-
-      const transactions = response.data.data || [];
-      const expected = parseFloat(expectedAmount) * 1e6; // USDT TRC20 tem 6 decimais
-
-      for (const tx of transactions) {
-        if (tx.token_info.symbol === tokenSymbol) {
-          const amount = parseFloat(tx.value);
-
-          if (amount >= expected) {
-            return {
-              received: true,
-              txHash: tx.transaction_id,
-              amount: (amount / 1e6).toString(),
-              timestamp: tx.block_timestamp,
-            };
-          }
-        }
-      }
-
-      return { received: false };
-    } catch (error: any) {
-      console.error('Erro ao verificar Tron:', error.message);
       return { received: false };
     }
   }

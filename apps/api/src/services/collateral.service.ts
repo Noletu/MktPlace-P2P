@@ -1,333 +1,221 @@
-import { randomBytes } from 'crypto';
-import { blockchainService } from './blockchain.service';
-import { adminService } from './admin.service';
-import { prisma } from '../utils/prisma';
+/**
+ * Collateral Service (ADAPTER)
+ *
+ * MIGRADO: Este service agora é um ADAPTER que usa HD Wallet System.
+ * Em vez de gerar endereços temporários (CollateralAddress deprecado),
+ * agora retorna endereços de carteiras HD permanentes.
+ *
+ * Mantém compatibilidade com código legado.
+ */
+
+import { WalletService } from './wallet.service';
+import { internalBalanceService } from './internal-balance.service';
 
 export class CollateralService {
   /**
-   * Gera endereço de depósito para colateral
-   * Busca endereço ativo da plataforma no banco de dados
+   * Gerar endereço de colateral (adapter - retorna carteira HD)
+   *
+   * NOTA: No sistema antigo, cada pedido gerava um endereço único.
+   * No sistema HD Wallet, usamos a carteira permanente do usuário.
    */
   async generateCollateralAddress(
     userId: string,
     cryptoType: string,
-    cryptoNetwork: string,
+    network: string,
     expectedAmount: string
   ) {
-    // Buscar endereço ativo da plataforma para esta cripto/rede
-    const platformWallet = await adminService.getActivePlatformWallet(
-      cryptoType,
-      cryptoNetwork
-    );
+    // Buscar ou criar carteira HD para o usuário
+    let wallet = await WalletService.getWalletByUserAndCrypto(userId, cryptoType, network);
 
-    if (!platformWallet) {
-      throw new Error(
-        `Nenhum endereço da plataforma ativo encontrado para ${cryptoType} na rede ${cryptoNetwork}. ` +
-        `Por favor, configure um endereço da plataforma no painel de administração.`
-      );
+    if (!wallet) {
+      // Criar nova carteira HD
+      wallet = await WalletService.createWallet(userId, cryptoType, network, {
+        source: 'COLLATERAL_GENERATE',
+        details: { endpoint: 'POST /collateral/generate', trigger: 'collateral_address' },
+      });
     }
 
-    console.log(`✅ Usando endereço da plataforma: ${platformWallet.address}`);
-
-    // Expira em 30 minutos
-    const expiresAt = new Date();
-    expiresAt.setMinutes(expiresAt.getMinutes() + 30);
-
-    const collateralAddress = await prisma.collateralAddress.create({
-      data: {
-        userId,
-        cryptoType,
-        cryptoNetwork,
-        address: platformWallet.address,
-        expectedAmount,
-        status: 'AWAITING_PAYMENT',
-        expiresAt,
-      },
-    });
-
-    return collateralAddress;
-  }
-
-
-  /**
-   * Verifica status do pagamento do colateral na blockchain
-   */
-  async checkCollateralPayment(collateralAddressId: string) {
-    const collateralAddress = await prisma.collateralAddress.findUnique({
-      where: { id: collateralAddressId },
-    });
-
-    if (!collateralAddress) {
-      throw new Error('Endereço de colateral não encontrado');
-    }
-
-    // Se já foi confirmado, retornar status atual
-    if (collateralAddress.status === 'CONFIRMED') {
-      return collateralAddress;
-    }
-
-    // Verificar pagamento na blockchain
-    const payment = await blockchainService.checkPayment(
-      collateralAddress.address,
-      collateralAddress.cryptoNetwork,
-      collateralAddress.cryptoType,
-      collateralAddress.expectedAmount
-    );
-
-    // Se recebeu pagamento, confirmar automaticamente
-    if (payment.received && payment.txHash) {
-      console.log(`✅ Pagamento confirmado! TxHash: ${payment.txHash}, Amount: ${payment.amount}`);
-
-      return await this.confirmCollateralPayment(
-        collateralAddressId,
-        payment.txHash,
-        payment.amount || collateralAddress.expectedAmount
-      );
-    }
-
-    return collateralAddress;
+    // Retornar no formato antigo para compatibilidade
+    return {
+      id: wallet.id,
+      userId: wallet.userId,
+      cryptoType: wallet.cryptoType,
+      cryptoNetwork: wallet.network,
+      address: wallet.address,
+      expectedAmount: expectedAmount,
+      actualAmount: null,
+      status: 'AWAITING_PAYMENT', // Simula estado antigo
+      txHash: null,
+      createdAt: wallet.createdAt,
+      confirmedAt: null,
+      // Campos adicionais para compatibilidade
+      qrCode: `${network}:${wallet.address}?amount=${expectedAmount}`,
+    };
   }
 
   /**
-   * Marca colateral como confirmado (chamado após detectar pagamento on-chain)
+   * Buscar endereços de colateral do usuário (adapter)
    */
-  async confirmCollateralPayment(
-    collateralAddressId: string,
-    txHash: string,
-    actualAmount: string
-  ) {
-    const collateralAddress = await prisma.collateralAddress.update({
-      where: { id: collateralAddressId },
-      data: {
+  async getUserCollateralAddresses(userId: string) {
+    // Retornar todas as carteiras HD como "endereços de colateral"
+    const wallets = await WalletService.getUserWallets(userId);
+
+    return wallets.map(w => ({
+      id: w.id,
+      userId: w.userId,
+      cryptoType: w.cryptoType,
+      cryptoNetwork: w.network,
+      address: w.address,
+      expectedAmount: '0', // Sem valor esperado fixo
+      actualAmount: w.balance,
+      status: 'CONFIRMED', // Carteiras HD estão sempre "confirmadas"
+      txHash: null,
+      createdAt: w.createdAt,
+      confirmedAt: w.createdAt,
+    }));
+  }
+
+  /**
+   * Buscar endereço específico (adapter)
+   */
+  async getCollateralAddress(addressId: string) {
+    try {
+      const wallet = await WalletService.getWallet(addressId);
+
+      return {
+        id: wallet.id,
+        userId: wallet.userId,
+        cryptoType: wallet.cryptoType,
+        cryptoNetwork: wallet.network,
+        address: wallet.address,
+        expectedAmount: '0',
+        actualAmount: wallet.balance,
         status: 'CONFIRMED',
-        txHash,
-        actualAmount,
-        confirmedAt: new Date(),
-      },
-    });
-
-    console.log(`✅ Colateral confirmado: ${collateralAddressId}`);
-    console.log(`   TxHash: ${txHash}`);
-    console.log(`   Amount: ${actualAmount}`);
-
-    return collateralAddress;
-  }
-
-  /**
-   * Expira endereços de colateral antigos
-   */
-  async expireOldAddresses() {
-    const now = new Date();
-
-    await prisma.collateralAddress.updateMany({
-      where: {
-        status: 'AWAITING_PAYMENT',
-        expiresAt: { lt: now },
-      },
-      data: {
-        status: 'EXPIRED',
-      },
-    });
-  }
-
-  /**
-   * Simula recebimento de pagamento (APENAS PARA DESENVOLVIMENTO)
-   */
-  async simulatePaymentReceived(collateralAddressId: string) {
-    console.log('⚠️ SIMULANDO RECEBIMENTO DE PAGAMENTO (desenvolvimento)');
-
-    const mockTxHash = `0x${randomBytes(32).toString('hex')}`;
-
-    return await this.confirmCollateralPayment(
-      collateralAddressId,
-      mockTxHash,
-      '1.0'
-    );
-  }
-
-  /**
-   * Valida formato de endereço crypto
-   */
-  private validateCryptoAddress(address: string, cryptoType: string, network: string): boolean {
-    const patterns: Record<string, RegExp> = {
-      'BTC-BITCOIN': /^([13][a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-z0-9]{39,59})$/,
-      'USDT-ETHEREUM': /^0x[a-fA-F0-9]{40}$/,
-      'USDT-TRC20': /^T[a-zA-Z0-9]{33}$/,
-      'USDT-BASE': /^0x[a-fA-F0-9]{40}$/,
-      'USDT-ARBITRUM': /^0x[a-fA-F0-9]{40}$/,
-      'USDT-SOLANA': /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
-      'USDC-ETHEREUM': /^0x[a-fA-F0-9]{40}$/,
-      'USDC-TRC20': /^T[a-zA-Z0-9]{33}$/,
-      'USDC-BASE': /^0x[a-fA-F0-9]{40}$/,
-      'USDC-ARBITRUM': /^0x[a-fA-F0-9]{40}$/,
-      'USDC-SOLANA': /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
-    };
-
-    const key = `${cryptoType}-${network}`;
-    const pattern = patterns[key];
-
-    if (!pattern) {
-      console.warn(`⚠️ Padrão de validação não encontrado para ${key}`);
-      return false;
+        txHash: null,
+        createdAt: wallet.createdAt,
+        confirmedAt: wallet.createdAt,
+      };
+    } catch (error) {
+      return null;
     }
-
-    return pattern.test(address);
   }
 
   /**
-   * Obtém limites de saque por cripto/rede
+   * Verificar saldo suficiente (adapter)
    */
-  private getWithdrawalLimits(cryptoType: string): { min: number; max: number } {
-    const limits: Record<string, { min: number; max: number }> = {
-      'BTC': { min: 0.0001, max: 10 },
-      'USDT': { min: 10, max: 100000 },
-      'USDC': { min: 10, max: 100000 },
-    };
-
-    return limits[cryptoType] || { min: 0, max: Infinity };
-  }
-
-  /**
-   * Requisita saque de colateral
-   */
-  async requestWithdrawal(
+  async checkSufficientBalance(
     userId: string,
     cryptoType: string,
-    cryptoNetwork: string,
-    amount: string,
-    destinationAddress: string
-  ) {
-    const numAmount = parseFloat(amount);
+    network: string,
+    requiredAmount: string
+  ): Promise<boolean> {
+    const available = await internalBalanceService.getAvailableBalance(
+      userId,
+      cryptoType,
+      network
+    );
 
-    // Validação 1: Formato do endereço
-    if (!this.validateCryptoAddress(destinationAddress, cryptoType, cryptoNetwork)) {
-      throw new Error(`Endereço ${cryptoType} inválido para a rede ${cryptoNetwork}`);
-    }
-
-    // Validação 2: Limites mínimos/máximos
-    const limits = this.getWithdrawalLimits(cryptoType);
-    if (numAmount < limits.min) {
-      throw new Error(`Valor mínimo para saque: ${limits.min} ${cryptoType}`);
-    }
-    if (numAmount > limits.max) {
-      throw new Error(`Valor máximo para saque: ${limits.max} ${cryptoType}`);
-    }
-
-    // Validação 3: Saldo disponível
-    const balance = await prisma.collateralBalance.findUnique({
-      where: {
-        userId_cryptoType_network: {
-          userId,
-          cryptoType,
-          network: cryptoNetwork,
-        },
-      },
-    });
-
-    if (!balance || parseFloat(balance.availableBalance) < numAmount) {
-      throw new Error(`Saldo insuficiente. Disponível: ${balance?.availableBalance || 0} ${cryptoType}`);
-    }
-
-    // Criar registro de saque
-    const withdrawal = await prisma.collateralTransaction.create({
-      data: {
-        userId,
-        type: 'WITHDRAWAL_REQUEST',
-        cryptoType,
-        cryptoNetwork,
-        amount,
-        destinationAddress,
-        status: 'PENDING',
-        metadata: JSON.stringify({
-          requestedAt: new Date().toISOString(),
-        }),
-      },
-    });
-
-    // Bloquear saldo temporariamente
-    await prisma.collateralBalance.update({
-      where: {
-        userId_cryptoType_network: {
-          userId,
-          cryptoType,
-          network: cryptoNetwork,
-        },
-      },
-      data: {
-        availableBalance: {
-          decrement: numAmount,
-        },
-        lockedAmount: {
-          increment: numAmount,
-        },
-      },
-    });
-
-    console.log(`✅ Saque solicitado: ${withdrawal.id}`);
-    console.log(`   User: ${userId}`);
-    console.log(`   Amount: ${amount} ${cryptoType}`);
-    console.log(`   To: ${destinationAddress}`);
-
-    return withdrawal;
+    return available >= parseFloat(requiredAmount);
   }
 
   /**
-   * Simula conclusão de saque (APENAS PARA DESENVOLVIMENTO)
+   * Bloquear colateral para pedido (adapter)
    */
-  async simulateWithdrawalComplete(withdrawalId: string) {
-    console.log('⚠️ SIMULANDO CONCLUSÃO DE SAQUE (desenvolvimento)');
+  async lockCollateral(
+    userId: string,
+    cryptoType: string,
+    network: string,
+    amount: string,
+    orderId: string
+  ) {
+    await internalBalanceService.lockBalance(
+      userId,
+      cryptoType,
+      network,
+      amount,
+      orderId
+    );
 
-    const withdrawal = await prisma.collateralTransaction.findUnique({
-      where: { id: withdrawalId },
-    });
+    return {
+      success: true,
+      message: `Collateral locked: ${amount} ${cryptoType}`,
+    };
+  }
 
-    if (!withdrawal) {
-      throw new Error('Saque não encontrado');
+  /**
+   * Liberar colateral (adapter)
+   */
+  async releaseCollateral(
+    userId: string,
+    cryptoType: string,
+    network: string,
+    amount: string,
+    orderId: string
+  ) {
+    await internalBalanceService.unlockBalance(
+      userId,
+      cryptoType,
+      network,
+      amount,
+      orderId
+    );
+
+    return {
+      success: true,
+      message: `Collateral released: ${amount} ${cryptoType}`,
+    };
+  }
+
+  /**
+   * Verificar pagamento de colateral (adapter)
+   */
+  async checkCollateralPayment(addressId: string) {
+    // No sistema HD Wallet, usamos WalletService para verificar saldo
+    const wallet = await WalletService.getWallet(addressId);
+
+    if (!wallet) {
+      return {
+        paid: false,
+        actualAmount: '0',
+        status: 'NOT_FOUND',
+      };
     }
 
-    if (withdrawal.type !== 'WITHDRAWAL_REQUEST') {
-      throw new Error('Transação não é um saque');
+    // Verificar se há saldo na carteira
+    const balance = parseFloat(wallet.balance);
+
+    return {
+      paid: balance > 0,
+      actualAmount: wallet.balance,
+      status: balance > 0 ? 'CONFIRMED' : 'AWAITING_PAYMENT',
+      address: wallet.address,
+      txHash: null, // Não rastreamos TX específica aqui
+    };
+  }
+
+  /**
+   * Simular pagamento recebido (adapter - apenas para testes)
+   */
+  async simulatePaymentReceived(
+    addressId: string,
+    amount: string,
+    txHash?: string
+  ) {
+    const wallet = await WalletService.getWallet(addressId);
+
+    if (!wallet) {
+      throw new Error('Wallet not found');
     }
 
-    const mockTxHash = `0x${randomBytes(32).toString('hex')}`;
+    // Creditar saldo via ledger interno (produção-safe)
+    await WalletService.creditBalance(wallet.id, amount, `Collateral payment: ${txHash || 'simulated'}`);
 
-    // Atualizar status do saque
-    const completed = await prisma.collateralTransaction.update({
-      where: { id: withdrawalId },
-      data: {
-        status: 'COMPLETED',
-        txHash: mockTxHash,
-        metadata: JSON.stringify({
-          ...JSON.parse(withdrawal.metadata || '{}'),
-          completedAt: new Date().toISOString(),
-          simulatedTxHash: mockTxHash,
-        }),
-      },
-    });
-
-    // Deduzir do saldo bloqueado (já foi deduzido do availableBalance)
-    await prisma.collateralBalance.update({
-      where: {
-        userId_cryptoType_network: {
-          userId: withdrawal.userId,
-          cryptoType: withdrawal.cryptoType,
-          network: withdrawal.cryptoNetwork,
-        },
-      },
-      data: {
-        balance: {
-          decrement: parseFloat(withdrawal.amount),
-        },
-        lockedAmount: {
-          decrement: parseFloat(withdrawal.amount),
-        },
-      },
-    });
-
-    console.log(`✅ Saque completado: ${withdrawalId}`);
-    console.log(`   TxHash: ${mockTxHash}`);
-
-    return completed;
+    return {
+      success: true,
+      message: `Payment simulated: ${amount} ${wallet.cryptoType}`,
+      address: wallet.address,
+      newBalance: (parseFloat(wallet.balance) + parseFloat(amount)).toFixed(8),
+    };
   }
 }
 

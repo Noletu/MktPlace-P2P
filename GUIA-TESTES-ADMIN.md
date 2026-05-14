@@ -1,0 +1,678 @@
+# 🧪 Guia de Testes - Painel Administrador
+
+**Versão:** 1.0
+**Data:** 05/01/2026
+**Branch:** feature/rbac-and-crypto-cards-complete
+
+---
+
+## 📋 Índice
+
+1. [Preparação](#preparação)
+2. [Sistema RBAC](#sistema-rbac)
+3. [Crypto Price Cards](#crypto-price-cards)
+4. [Dashboard Admin](#dashboard-admin)
+5. [Auto-Unfreeze](#auto-unfreeze)
+6. [Checklist Final](#checklist-final)
+
+---
+
+## 🎯 Preparação
+
+### Credenciais de Teste
+
+**MASTER (Acesso Total):**
+- Email: `master@mktplace.com`
+- Senha: `Master@2025!`
+
+**ADMIN:**
+- Email: `admin@mktplace.com`
+- Senha: `Admin@123`
+
+### Verificar Aplicação Está Rodando
+
+1. **Backend** rodando em http://localhost:3001
+2. **Frontend** rodando em http://localhost:3000
+3. Banco de dados com roles criados
+
+**Verificação rápida:**
+```bash
+# Verificar roles no banco
+cd C:/Projects/MktPlace-P2P/apps/api
+node check-roles.js
+```
+
+**Resultado esperado:**
+```
+Total de roles: 5
+- user (Usuário Padrão)
+- support (Suporte)
+- gerente (Gerente)
+- admin (Administrador)
+- master (Master)
+```
+
+---
+
+## 🔐 Sistema RBAC (Role-Based Access Control)
+
+### Teste 1: Login e Badge de Role
+
+**Objetivo:** Verificar que o badge do role aparece corretamente no header
+
+**Passos:**
+1. Acesse http://localhost:3000
+2. Clique em "Entrar" (canto superior direito)
+3. Faça login com credenciais MASTER:
+   - Email: `master@mktplace.com`
+   - Senha: `Master@2025!`
+4. Após login, verifique o header
+
+**✅ Sucesso:**
+- Badge **ROXO** aparece com texto "MASTER"
+- Nome/email do usuário aparece ao lado do avatar
+- Dropdown abre ao clicar no avatar
+
+**📸 Screenshot esperado:**
+```
+┌─────────────────────────────────────┐
+│ 🏠 MP P2P  │  💰 Preços  │  [MASTER] 👤 Master │
+└─────────────────────────────────────┘
+```
+
+---
+
+### Teste 2: Acessar Painel de Roles
+
+**Objetivo:** Verificar acesso à página de gestão de roles (MASTER only)
+
+**Passos:**
+1. Estando logado como MASTER
+2. Acesse http://localhost:3000/admin
+3. No menu lateral, clique em **"Roles"** (ícone 🔐)
+4. OU acesse diretamente: http://localhost:3000/admin/roles
+
+**✅ Sucesso:**
+- Página carrega sem erros
+- Título "Gestão de Roles" aparece
+- Tabela com 5 roles é exibida:
+  - USER (nível 0)
+  - SUPPORT (nível 40)
+  - GERENTE (nível 60)
+  - ADMIN (nível 80)
+  - MASTER (nível 100)
+
+**📊 Tabela esperada:**
+```
+┌──────────┬─────────────────┬───────┬──────────────┬─────────┐
+│ Role     │ Nome            │ Nível │ Permissões   │ Ações   │
+├──────────┼─────────────────┼───────┼──────────────┼─────────┤
+│ USER     │ Usuário Padrão  │   0   │ 0 permissões │ 👁️ 📋  │
+│ SUPPORT  │ Suporte         │  40   │ 9 permissões │ 👁️ 📋  │
+│ GERENTE  │ Gerente         │  60   │ 19 permissões│ 👁️ 📋  │
+│ ADMIN    │ Administrador   │  80   │ 25 permissões│ 👁️ 📋  │
+│ MASTER   │ Master          │ 100   │ 30 permissões│ 👁️ 📋  │
+└──────────┴─────────────────┴───────┴──────────────┴─────────┘
+```
+
+---
+
+### Teste 3: Visualizar Permissões de um Role
+
+**Objetivo:** Ver detalhes das permissões associadas a cada role
+
+**Passos:**
+1. Na página de Roles (http://localhost:3000/admin/roles)
+2. Clique no ícone **👁️ (olho)** na linha do role **GERENTE**
+3. Modal "Permissões do Role: Gerente" abre
+
+**✅ Sucesso:**
+- Modal abre com lista de permissões
+- Permissões agrupadas por categoria:
+  - **📋 Gestão de Pedidos** (5 permissões)
+  - **⚖️ Disputas** (4 permissões)
+  - **❄️ Congelamento** (2 permissões)
+  - **👥 Usuários** (3 permissões)
+  - Etc.
+- Checkbox marcado = permissão concedida
+- Checkbox desmarcado = permissão negada
+
+**🔍 Exemplo de permissões GERENTE:**
+```
+✅ orders:view          - Ver todos os pedidos
+✅ orders:cancel        - Cancelar pedidos
+✅ orders:edit          - Editar pedidos
+✅ disputes:view        - Ver disputas
+✅ disputes:resolve     - Resolver disputas
+✅ users:freeze         - Congelar usuários
+❌ users:viewFinancial  - Ver dados financeiros (NÃO)
+❌ financial:withdraw   - Sacar fundos (NÃO)
+```
+
+---
+
+### Teste 4: Editar Permissões de um Role
+
+**Objetivo:** Modificar permissões de um role (apenas MASTER pode fazer)
+
+**Passos:**
+1. Na página de Roles, clique no ícone **📋 (editar)** do role **SUPPORT**
+2. Modal "Editar Permissões: Suporte" abre
+3. Marque uma nova permissão, ex: `orders:cancel`
+4. Clique em **"Salvar Alterações"**
+
+**✅ Sucesso:**
+- Modal fecha
+- Mensagem de sucesso aparece: "Permissões atualizadas com sucesso"
+- Contador de permissões do SUPPORT aumenta (ex: 9 → 10)
+- Recarregue a página (F5) e verifique que mudança persistiu
+
+**⚠️ Nota:** Esta ação registra um log de auditoria
+
+---
+
+### Teste 5: Tentar Criar Novo Role (Funcionalidade Limitada)
+
+**Objetivo:** Verificar que criação de roles está funcional
+
+**Passos:**
+1. Na página de Roles, clique em **"+ Criar Novo Role"**
+2. Preencha o formulário:
+   - **Nome:** Moderador
+   - **Slug:** moderator
+   - **Descrição:** Role para moderação de conteúdo
+   - **Nível:** 50
+   - **Permissões:** Marque `users:freeze` e `orders:view`
+3. Clique em **"Criar Role"**
+
+**✅ Sucesso:**
+- Modal fecha
+- Novo role aparece na tabela
+- Nível 50 posiciona entre SUPPORT (40) e GERENTE (60)
+
+**❌ Erro esperado (se tentar nível >= 100):**
+- "Apenas role MASTER pode ter nível 100+"
+
+---
+
+### Teste 6: Hierarquia de Acesso
+
+**Objetivo:** Verificar que usuários não-MASTER não conseguem acessar /admin/roles
+
+**Passos:**
+1. **Logout** da conta MASTER
+2. **Login** com conta ADMIN:
+   - Email: `admin@mktplace.com`
+   - Senha: `Admin@123`
+3. Tente acessar http://localhost:3000/admin/roles
+
+**✅ Sucesso:**
+- Página redireciona para `/admin` (dashboard)
+- OU mostra erro 403 "Acesso negado"
+- Menu lateral **NÃO** mostra opção "Roles"
+
+**Badge esperado:** AZUL com texto "ADMIN" (não roxo)
+
+---
+
+## 💰 Crypto Price Cards
+
+### Teste 7: Visualizar Crypto Cards no Header
+
+**Objetivo:** Verificar que cards de preços aparecem e atualizam
+
+**Passos:**
+1. Acesse http://localhost:3000 (página inicial)
+2. Observe o header central
+
+**✅ Sucesso (Desktop):**
+- 3 cards lado a lado aparecem:
+  - **BTC** (Bitcoin) - Preço em USD
+  - **SOL** (Solana) - Preço em USD
+  - **ETH** (Ethereum) - Preço em USD
+- Cada card mostra:
+  - Ícone da moeda (cor característica)
+  - Nome + símbolo
+  - Preço atual (ex: $42,350.00)
+  - Taxa de rede (ex: Alta: 15 sat/vB)
+  - Ícone de loading enquanto carrega
+
+**📸 Exemplo visual:**
+```
+┌─────────────────┬─────────────────┬─────────────────┐
+│ 🟠 BTC          │ 🟣 SOL          │ 🔵 ETH          │
+│ Bitcoin         │ Solana          │ Ethereum        │
+│ $42,350.00      │ $98.50          │ $2,250.00       │
+│ 🔴 Alta: 15     │ 🟢 Baixa: $0.01 │ 🟡 Média: 20    │
+└─────────────────┴─────────────────┴─────────────────┘
+```
+
+**✅ Sucesso (Mobile):**
+- Cards aparecem em dropdown "💰 Preços"
+- Clicar abre menu com os 3 cards empilhados
+
+---
+
+### Teste 8: Hover nos Crypto Cards
+
+**Objetivo:** Verificar tooltips com informações adicionais
+
+**Passos:**
+1. Passe o mouse sobre o card do **Bitcoin**
+2. Aguarde ~500ms
+
+**✅ Sucesso:**
+- Tooltip aparece com informações detalhadas:
+  ```
+  Bitcoin (BTC)
+  Preço: $42,350.00
+  Taxa de rede: Alta (15 sat/vB)
+  Última atualização: há 2 minutos
+  ```
+
+---
+
+### Teste 9: Atualização Automática de Preços
+
+**Objetivo:** Verificar que preços atualizam periodicamente
+
+**Passos:**
+1. Observe o preço do Bitcoin (anote o valor)
+2. Aguarde **30 minutos** (ou abra DevTools e force atualização)
+3. Observe se preço mudou
+
+**✅ Sucesso:**
+- Preço atualiza automaticamente
+- Loading indicator (🔄) aparece durante atualização
+- Sem necessidade de recarregar página
+
+**⚙️ Configuração (para devs):**
+- Intervalo de preços: 30 minutos
+- Intervalo de taxas: 15 minutos
+- Timeout de API: 5 segundos
+
+---
+
+### Teste 10: Tratamento de Erros de API
+
+**Objetivo:** Verificar comportamento quando APIs externas falham
+
+**Passos:**
+1. **Simular falha:** Desconecte internet ou bloqueie CoinGecko no firewall
+2. Recarregue a página
+3. Observe os cards
+
+**✅ Sucesso:**
+- Cards mostram:
+  - Preço: "Indisponível" ou último valor em cache
+  - Taxa: "Indisponível"
+  - Ícone de erro (⚠️) aparece
+- Console do navegador (F12) mostra erro:
+  ```
+  [CryptoPriceService] Failed to fetch BTC price: Network error
+  ```
+
+**🔄 Retry:**
+- Reconecte internet
+- Cards voltam a funcionar após próxima atualização (30 min)
+- OU force refresh da página
+
+---
+
+## 🎛️ Dashboard Admin
+
+### Teste 11: Acessar Dashboard Admin
+
+**Objetivo:** Verificar tela principal do painel administrativo
+
+**Passos:**
+1. Login como MASTER ou ADMIN
+2. Acesse http://localhost:3000/admin
+
+**✅ Sucesso:**
+- Página carrega com layout limpo
+- Header mostra:
+  - Logo "MktPlace P2P"
+  - Crypto Price Cards (centro)
+  - Badge de role + avatar (direita)
+- Menu lateral esquerdo:
+  - 📊 Dashboard
+  - 👥 Usuários
+  - 📦 Pedidos
+  - ⚖️ Disputas
+  - 🔐 Roles (apenas MASTER)
+  - 💰 Financeiro (apenas MASTER)
+- Área central com estatísticas (se houver dados)
+
+---
+
+### Teste 12: Navegação no Menu Lateral
+
+**Objetivo:** Verificar que todos os links funcionam
+
+**Passos:**
+1. No dashboard admin, clique em cada item do menu:
+   - Dashboard → `/admin`
+   - Usuários → `/admin/users`
+   - Pedidos → `/admin/orders`
+   - Disputas → `/admin/disputes`
+   - Roles → `/admin/roles` (apenas MASTER)
+
+**✅ Sucesso:**
+- Cada página carrega sem erros
+- Rota muda na URL
+- Conteúdo da página atualiza
+
+**❌ Se erro 404:**
+- Página pode não estar implementada ainda (normal em desenvolvimento)
+
+---
+
+### Teste 13: Responsividade do Dashboard
+
+**Objetivo:** Verificar layout em diferentes tamanhos de tela
+
+**Passos:**
+1. Abra DevTools (F12) → Toggle device toolbar (Ctrl+Shift+M)
+2. Teste em:
+   - Desktop (1920x1080)
+   - Tablet (768x1024)
+   - Mobile (375x667)
+
+**✅ Sucesso:**
+- **Desktop:** Menu lateral fixo, cards lado a lado
+- **Tablet:** Menu lateral colapsável, cards empilhados
+- **Mobile:** Menu hamburger (☰), dropdown de preços
+
+---
+
+## 🔓 Auto-Unfreeze
+
+### Teste 14: Sistema de Auto-Desbloqueio de Contas
+
+**Objetivo:** Verificar que contas congeladas temporariamente são desbloqueadas automaticamente
+
+**Setup:**
+1. Você precisa de uma conta congelada com `frozenUntil` definido
+
+**Criar conta congelada (via Prisma Studio):**
+```bash
+cd C:/Projects/MktPlace-P2P/apps/api
+npx prisma studio
+```
+
+2. Abra tabela `User`
+3. Edite um usuário teste:
+   - `accountFrozen`: true
+   - `frozenUntil`: Data/hora 2 minutos no futuro
+   - `frozenReason`: "Teste de auto-unfreeze"
+4. Salve
+
+**Passos:**
+1. Aguarde 5 minutos (job roda a cada 5 min)
+2. Verifique logs do backend (terminal onde rodou `npm run dev`)
+
+**✅ Sucesso:**
+- Log aparece no backend:
+  ```
+  [AutoUnfreeze Job] Verificando contas para auto-desbloqueio...
+  [AutoUnfreeze Job] Conta desbloqueada: user@example.com
+  [AutoUnfreeze Job] 1 conta(s) desbloqueada(s).
+  ```
+- No Prisma Studio, usuário agora tem:
+  - `accountFrozen`: false
+  - `frozenUntil`: null
+
+**⏰ Configuração:**
+- Job executa a cada **5 minutos**
+- Apenas desbloqueia se `frozenUntil < agora`
+
+---
+
+## 📊 Testes de API (Opcional - Para Devs)
+
+### Teste 15: Endpoint de Roles
+
+**Objetivo:** Testar endpoints REST do RBAC
+
+**Ferramentas:** Postman, cURL, ou Thunder Client (VS Code)
+
+**1. Listar todos os roles:**
+```bash
+curl http://localhost:3001/api/v1/roles \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+**Resposta esperada:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "...",
+      "slug": "master",
+      "name": "Master",
+      "level": 100,
+      "permissionCount": 30
+    },
+    // ... outros roles
+  ]
+}
+```
+
+**2. Ver permissões de um role:**
+```bash
+curl http://localhost:3001/api/v1/roles/master/permissions \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+**3. Verificar se usuário tem permissão:**
+```bash
+curl "http://localhost:3001/api/v1/roles/check-permission?permission=users:freeze" \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+**Resposta esperada (MASTER):**
+```json
+{
+  "success": true,
+  "data": {
+    "hasPermission": true,
+    "userId": "...",
+    "role": "master",
+    "permission": "users:freeze"
+  }
+}
+```
+
+---
+
+### Teste 16: Endpoint de Exchange Rate (Sistema de Cotação)
+
+**Objetivo:** Verificar sistema multi-fonte de cotação USD/BRL
+
+**1. Taxa atual:**
+```bash
+curl http://localhost:3001/api/v1/exchange-rate/current
+```
+
+**Resposta esperada:**
+```json
+{
+  "success": true,
+  "data": {
+    "rate": 5.52,
+    "source": "AWESOME_API",
+    "timestamp": "2026-01-05T20:30:00Z",
+    "responseTime": 145
+  }
+}
+```
+
+**2. Health das fontes:**
+```bash
+curl http://localhost:3001/api/v1/exchange-rate/health
+```
+
+**Resposta esperada:**
+```json
+{
+  "success": true,
+  "data": {
+    "sources": [
+      {
+        "name": "AWESOME_API",
+        "status": "healthy",
+        "successRate": 98.5,
+        "avgResponseTime": 120,
+        "lastCheck": "2026-01-05T20:29:00Z"
+      },
+      // ... outras fontes
+    ]
+  }
+}
+```
+
+---
+
+## ✅ Checklist Final
+
+### Preparação
+- [ ] Aplicação iniciada (backend + frontend)
+- [ ] Banco de dados com roles criados
+- [ ] Login com conta MASTER funcionando
+
+### Sistema RBAC
+- [ ] Badge de role aparece no header
+- [ ] Página /admin/roles acessível (MASTER)
+- [ ] Tabela com 5 roles é exibida
+- [ ] Modal de visualização de permissões abre
+- [ ] Edição de permissões funciona
+- [ ] Hierarquia de acesso respeitada (ADMIN não acessa /roles)
+
+### Crypto Price Cards
+- [ ] 3 cards aparecem no header (BTC, SOL, ETH)
+- [ ] Preços carregam corretamente
+- [ ] Tooltips funcionam no hover
+- [ ] Responsivo: Desktop (cards) e Mobile (dropdown)
+- [ ] Atualização automática funciona
+- [ ] Tratamento de erro quando API falha
+
+### Dashboard Admin
+- [ ] Dashboard principal carrega (/admin)
+- [ ] Menu lateral funciona
+- [ ] Navegação entre páginas funciona
+- [ ] Layout responsivo
+
+### Auto-Unfreeze
+- [ ] Job executa a cada 5 minutos
+- [ ] Contas com frozenUntil passado são desbloqueadas
+- [ ] Logs aparecem no backend
+
+### Funcionalidades Extras
+- [ ] Dark mode funciona
+- [ ] Notificações aparecem
+- [ ] Console sem erros críticos
+
+---
+
+## 🐛 Problemas Comuns e Soluções
+
+### "Não consigo acessar /admin/roles"
+**Causa:** Usuário não é MASTER
+**Solução:**
+```bash
+cd C:/Projects/MktPlace-P2P/apps/api
+node promote-to-master.js SEU_EMAIL
+```
+
+### "Crypto cards não carregam"
+**Causa:** APIs externas bloqueadas ou rate limit
+**Solução:**
+1. Verificar console do navegador (F12)
+2. Aguardar 1 minuto (rate limit)
+3. Verificar internet
+
+### "Badge de role não aparece"
+**Causa:** Token expirado ou roleId null no usuário
+**Solução:**
+1. Fazer logout e login novamente
+2. Verificar no Prisma Studio se `user.roleId` está preenchido
+3. Se null, executar seed de migração:
+   ```bash
+   cd apps/api
+   npx tsx prisma/seeds/migrate-users-to-rbac.ts
+   ```
+
+### "AutoUnfreeze não funciona"
+**Causa:** Job não está rodando
+**Solução:**
+1. Verificar logs do backend (terminal)
+2. Procurar por "[AutoUnfreeze Job] Iniciado"
+3. Se não aparecer, reiniciar backend
+
+---
+
+## 📸 Screenshots de Referência
+
+### 1. Login como MASTER
+```
+┌─────────────────────────────────────────┐
+│  MktPlace P2P                           │
+│                                         │
+│  ┌─────────────────────┐                │
+│  │ Email               │                │
+│  │ master@mktplace.com │                │
+│  ├─────────────────────┤                │
+│  │ Senha               │                │
+│  │ ••••••••••••        │                │
+│  └─────────────────────┘                │
+│                                         │
+│         [  Entrar  ]                    │
+└─────────────────────────────────────────┘
+```
+
+### 2. Header com Badge MASTER
+```
+┌────────────────────────────────────────────────────┐
+│ 🏠 MP  │  💰 BTC $42K  SOL $98  ETH $2.2K  │ [MASTER] 👤│
+└────────────────────────────────────────────────────┘
+```
+
+### 3. Tabela de Roles
+```
+╔═══════════════════════════════════════════════════╗
+║           Gestão de Roles                         ║
+╠═══════════════════════════════════════════════════╣
+║ Role     │ Nível │ Permissões │ Ações             ║
+║──────────┼───────┼────────────┼──────────────────║
+║ USER     │   0   │  0         │ 👁️ 📋            ║
+║ SUPPORT  │  40   │  9         │ 👁️ 📋            ║
+║ GERENTE  │  60   │ 19         │ 👁️ 📋            ║
+║ ADMIN    │  80   │ 25         │ 👁️ 📋            ║
+║ MASTER   │ 100   │ 30         │ 👁️ 📋            ║
+╚═══════════════════════════════════════════════════╝
+```
+
+---
+
+## 🎉 Conclusão
+
+Se você completou todos os testes acima, parabéns! O sistema RBAC e os Crypto Price Cards estão 100% funcionais.
+
+**Próximos passos:**
+1. Explorar endpoints de API com Postman
+2. Testar criação de novos roles customizados
+3. Configurar permissões granulares para equipe
+4. Monitorar logs de auditoria
+
+**Documentação adicional:**
+- `README-RBAC.md` - Overview do RBAC
+- `docs/RBAC-IMPLEMENTATION.md` - Detalhes técnicos
+- `docs/CRYPTO-PRICE-CARDS.md` - Documentação dos cards
+
+---
+
+**Última atualização:** 05/01/2026
+**Versão do guia:** 1.0
+**Status:** ✅ Completo e testado

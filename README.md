@@ -2,19 +2,108 @@
 
 > Marketplace P2P para pagamento de boletos e PIX com criptomoedas. Mais barato, mais livre.
 
-**Versão:** 3.0.9 | **Status:** ✅ Dark Mode Completo em KYC | **Data:** 29/10/2025
+**Versão:** 1.0.0+ (Unreleased) | **Status:** 🟢 Estável | **Data:** 19/12/2025
+
+## 🆕 Novidades Recentes
+
+### 🐛 Correção de Dupla Taxação no Backend (19/12/2025)
+Bug crítico resolvido que causava sobrecarga de 2.5% adicional:
+- **Problema**: Backend aplicava taxa de 2.5% **duas vezes** ao bloquear colateral
+- **Exemplo**: Pedido de 120 BRL → Frontend mostrava 22.23 USDC, backend bloqueava 22.78 USDC
+- **Solução**: Removida multiplicação por 1.025 em `calculateRequiredCollateral()`
+- **Impacto**: Economia de ~0.55 USDC por transação (~R$ 3.00)
+- **Status**: ✅ Resolvido - Frontend e backend agora alinhados
+- **Taxa efetiva**: 2.5% (correto, sem dupla taxação)
+
+### 🤖 Sistema de Controle de Workers (14/12/2025)
+Interface admin completa para controlar workers em runtime:
+- **Painel visual**: `/admin/workers` com botões ▶️ Start, ⏹️ Stop, 🔄 Toggle
+- **API REST**: 4 endpoints para controle do BalanceSyncWorker
+- **Auto-refresh**: Status atualizado a cada 5 segundos
+- **Casos de uso**: Parar worker durante testes para preservar saldos simulados
+- **Benefício**: Controle total sem reiniciar servidor
+
+### 🐛 Correções de Saldos (14/12/2025)
+Múltiplos bugs críticos corrigidos no sistema de saldos:
+- ✅ **Dashboard zero balance**: Corrigido field names e response structure
+- ✅ **Endpoint 404**: URL `/collateral-balance` corrigida
+- ✅ **Saldo sumindo**: BalanceSyncWorker agora controlável manualmente
+- ✅ **Logout audit log**: Registros de logout agora aparecem corretamente
+- ✅ **Copiar endereço**: UX melhorada (cópia instantânea sem confirmação)
+
+### 🏦 Carteiras da Plataforma Configuradas (23/11/2025)
+Sistema completo de carteiras multi-rede pronto para uso:
+- **11 carteiras configuradas**: BTC (1), USDC (5), USDT (5)
+- **Redes suportadas**: Bitcoin, Ethereum, TRC20, Base, Arbitrum, Solana
+- **Schema corrigido**: Permite reutilizar endereços EVM para múltiplas redes
+- **Seed atualizado**: Alinhado 100% com tipos suportados
+- Endereços de exemplo para desenvolvimento (⚠️ não usar em produção)
+
+### 📥 Sincronização com GitHub (23/11/2025)
+Repositório local atualizado com últimas correções:
+- ✅ **Bug crítico resolvido**: Colateral não era desbloqueado após cancelamento
+- ✅ **Home page melhorada**: Botões diferentes para usuários logados/deslogados
+- ✅ **100% sincronizado** com branch `feature/2fa-and-order-edit-complete`
+
+### 🗑️ Sistema de Limpeza do Banco (08/11/2025)
+Nova ferramenta completa para resetar banco de dados em ambiente de desenvolvimento:
+- **Scripts executáveis**: `LIMPAR-BANCO.bat` (Windows) e `limpar-banco.sh` (Linux/Mac)
+- **Backup automático** com timestamp antes de qualquer operação
+- **Preserva apenas** usuários MASTER e ADMIN
+- **Comando NPM**: `npm run db:clean`
+
+### 🐛 Correções Recentes
+- ✅ **19/12/2025**: Dupla taxação no backend - Backend bloqueava 2.5% a mais
+- ✅ **18/12/2025**: Dupla taxação no frontend - Modal mostrava valor incorreto
+- ✅ **18/12/2025**: Sistema de cotação multi-fonte implementado
+- ✅ **14/12/2025**: Dashboard zero balance + Sistema de controle de workers
+- ✅ **21/11/2025**: Colateral não era desbloqueado após cancelamento
+
+📋 **Ver detalhes**: [CHANGELOG.md](CHANGELOG.md) | **Status**: [STATUS.md](STATUS.md) | **Bugs**: [BUGS_CRITICOS.md](BUGS_CRITICOS.md)
 
 ## 🚀 Início Rápido
 
-### Windows (CMD/PowerShell)
+### Iniciar Servidor
+
+#### Windows (CMD/PowerShell)
 ```cmd
 INICIAR-SIMPLES.bat
 ```
 
-### Linux / Mac / Git Bash
+#### Linux / Mac / Git Bash
 ```bash
 bash start.sh
 ```
+
+### Parar Servidor
+
+#### Windows
+```cmd
+PARAR-SIMPLES.bat
+```
+
+#### Linux / Mac / Git Bash
+```bash
+bash stop.sh
+```
+
+### 🗑️ Limpar Banco de Dados
+
+**ATENÇÃO**: Deleta TODOS os dados preservando apenas MASTER e ADMIN!
+
+#### Windows
+```cmd
+LIMPAR-BANCO.bat
+```
+
+#### Linux / Mac / Git Bash
+```bash
+bash limpar-banco.sh
+```
+
+**Credenciais após limpeza:**
+- Master: `master@mktplace.com` / `Master@2025!`
+- Admin: `admin@mktplace.com` / `Admin@123`
 
 **📖 Documentação completa:** Veja [COMO_INICIAR.md](COMO_INICIAR.md)
 
@@ -33,7 +122,7 @@ O **Mktplace da Liberdade** é um marketplace descentralizado onde pessoas com c
 - ✅ **17% mais barato**: Fee total 2.5% vs ~3% dos concorrentes
 - ✅ **Cashback 1%**: Pagadores recebem recompensa em cripto
 - ✅ **P2P + Garantia**: Liquidez descentralizada com fallback centralizado
-- ✅ **Multi-chain**: 6 criptos × 10 networks (Solana, Polygon, BSC, TRC20, etc)
+- ✅ **Multi-chain**: BTC (Bitcoin), USDC/USDT (Base, Solana)
 - ✅ **Privacy coins**: Monero (XMR) e Zcash (ZEC) para máxima privacidade
 - ✅ **Crypto-only flow**: Plataforma nunca toca em BRL (otimização fiscal)
 

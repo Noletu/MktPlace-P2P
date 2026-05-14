@@ -14,9 +14,11 @@ export interface SendMessageInput {
   chatId: string;
   senderId: string;
   message?: string; // Optional para mensagens antigas/não criptografadas
-  encryptedContent?: string; // Para mensagens criptografadas
+  encryptedContent?: string; // Criptografado para o DESTINATÁRIO
+  encryptedForSender?: string; // Criptografado para o REMETENTE (E2E correto)
   isEncrypted?: boolean; // Flag de criptografia
-  iv?: string; // Initialization Vector para AES-GCM
+  iv?: string; // IV para encryptedContent (destinatário)
+  ivForSender?: string; // IV para encryptedForSender (remetente)
   attachments?: string[]; // Retrocompatibilidade
   attachmentUrl?: string; // URL do anexo (novo formato)
   attachmentType?: string; // Tipo MIME do anexo
@@ -52,17 +54,22 @@ export class ChatService {
     const isOrderOwner = order.userId === userId;
     const transaction = order.transactions[0];
     const isPayer = transaction?.payerId === userId;
-    const isMarketplaceOrder = ['PENDING', 'IN_NEGOTIATION'].includes(order.status);
 
-    // Permitir acesso se:
-    // 1. É owner/payer (sempre)
-    // 2. Pedido está no marketplace (PENDING/IN_NEGOTIATION) - comprador pode iniciar negociação
-    if (!isOrderOwner && !isPayer && !isMarketplaceOrder) {
-      throw new Error('Você não tem permissão para acessar este chat');
+    // Para BUY orders: provider é quem aceita (providerId)
+    const isBuyOrder = order.orderType === 'BUY';
+    const isProvider = isBuyOrder && order.providerId === userId;
+
+    // Permitir acesso se é owner, payer ou provider
+    // Chat só deve estar disponível APÓS aceitar o pedido
+    if (!isOrderOwner && !isPayer && !isProvider) {
+      throw new Error('Chat disponível apenas após aceitar o pedido');
     }
 
-    // Impedir owner de criar chat com ele mesmo (EXCETO se já há mensagens/negociação)
-    if (isOrderOwner && !isPayer && !transaction && order.status !== 'IN_NEGOTIATION') {
+    // Impedir owner de criar chat ANTES de alguém aceitar
+    // Para SELL: precisa ter transaction (alguém aceitou)
+    // Para BUY: precisa ter provider (alguém aceitou)
+    const orderWasAccepted = isBuyOrder ? !!order.providerId : !!transaction;
+    if (isOrderOwner && !orderWasAccepted) {
       throw new Error('Chat não disponível para seu próprio pedido');
     }
 
@@ -89,14 +96,8 @@ export class ChatService {
     });
 
     if (chat) {
-      // NOVO: Limpar mensagens antigas se pedido voltou para PENDING (negociação cancelada/expirada)
-      if (order.status === 'PENDING') {
-        const oldMessageCount = await prisma.chatMessage.count({ where: { chatId: chat.id } });
-        if (oldMessageCount > 0) {
-          await prisma.chatMessage.deleteMany({ where: { chatId: chat.id } });
-          console.log(`🗑️ Cleared ${oldMessageCount} old messages - order is PENDING again`);
-        }
-      }
+      // RASTREABILIDADE: Mensagens nunca são deletadas, apenas arquivadas
+      // Sistema de arquivamento com retenção de 1 ano implementado em ChatArchive
 
       // Adicionar contador de não lidas para o usuário
       const unreadCount = chat.participant1Id === userId ? chat.unreadCount1 : chat.unreadCount2;
@@ -106,15 +107,27 @@ export class ChatService {
         ...chat,
         unreadCount,
         otherParticipant,
-        messages: order.status === 'PENDING' ? [] : chat.messages, // Chat vazio se PENDING
+        messages: chat.messages, // Histórico sempre visível para rastreabilidade
       };
     }
 
     // Criar novo chat
-    // Para pedidos no marketplace (PENDING/IN_NEGOTIATION), criar chat entre owner e comprador interessado
-    // Para pedidos já aceitos (MATCHED+), usar transaction.payerId
-    const participant1Id = order.userId; // Owner
-    const participant2Id = transaction ? transaction.payerId : userId; // Payer (se existe) ou comprador interessado
+    // Chat só é criado após pedido ser aceito (MATCHED+)
+    // Para BUY orders: owner é comprador, provider é vendedor
+    // Para SELL orders: owner é vendedor, payer é comprador
+
+    let participant1Id: string;
+    let participant2Id: string;
+
+    if (isBuyOrder) {
+      // BUY: owner (comprador) + provider (vendedor/provedor de liquidez)
+      participant1Id = order.userId;
+      participant2Id = order.providerId!;
+    } else {
+      // SELL: owner (vendedor) + payer (comprador)
+      participant1Id = order.userId;
+      participant2Id = transaction ? transaction.payerId : userId;
+    }
 
     // Garantir que não está criando chat consigo mesmo
     if (participant1Id === participant2Id) {
@@ -134,9 +147,19 @@ export class ChatService {
         participant2: {
           select: { id: true, name: true, email: true, reputationScore: true },
         },
-        messages: true,
+        messages: {
+          include: {
+            sender: {
+              select: { id: true, name: true },
+            },
+          },
+        },
       },
     });
+
+    if (!chat) {
+      throw new Error('Falha ao criar chat');
+    }
 
     // Mensagem de sistema inicial
     await this.sendMessage({
@@ -180,6 +203,12 @@ export class ChatService {
       throw new Error('Chat não encontrado');
     }
 
+    // Bloquear envio se pedido está finalizado (exceto mensagens de sistema)
+    const finalStatuses = ['COMPLETED', 'CANCELLED', 'DISPUTED'];
+    if (chat.order && finalStatuses.includes(chat.order.status) && input.type !== 'SYSTEM') {
+      throw new Error('Não é possível enviar mensagens em pedidos finalizados');
+    }
+
     // Verificar se sender é participante
     if (
       chat.participant1Id !== input.senderId &&
@@ -189,30 +218,6 @@ export class ChatService {
       throw new Error('Você não tem permissão para enviar mensagens neste chat');
     }
 
-    // NOVO: Verificar se é a primeira mensagem e iniciar negociação
-    if (input.type !== 'SYSTEM') {
-      const messageCount = await prisma.chatMessage.count({
-        where: { chatId: input.chatId },
-      });
-
-      console.log(`📨 Message check - chatId: ${input.chatId}, messageCount: ${messageCount}, senderId: ${input.senderId}, orderId: ${chat.order.id}, orderOwnerId: ${chat.order.userId}`);
-
-      // Se for a primeira mensagem E o sender NÃO é o owner do pedido
-      if (messageCount === 0 && chat.order.userId !== input.senderId) {
-        console.log(`✅ First message conditions met - starting negotiation`);
-        const negotiationService = require('./negotiation.service').default;
-        try {
-          await negotiationService.startNegotiation(chat.order.id, input.senderId);
-          console.log(`💬 First message sent - negotiation started for order ${chat.order.id}`);
-        } catch (error) {
-          console.error('❌ Failed to start negotiation:', error);
-          // Continuar mesmo se falhar (não bloquear o envio da mensagem)
-        }
-      } else {
-        console.log(`⏭️ Not first message or sender is owner - skipping negotiation start`);
-      }
-    }
-
     // Criar mensagem (suporta formato híbrido)
     const message = await prisma.chatMessage.create({
       data: {
@@ -220,10 +225,12 @@ export class ChatService {
         senderId: input.senderId,
         // Mensagem não criptografada (retrocompatibilidade)
         message: input.message || null,
-        // Mensagem criptografada (E2E)
-        encryptedContent: input.encryptedContent || null,
+        // Mensagem criptografada (E2E) - duas versões para ambos participantes
+        encryptedContent: input.encryptedContent || null, // Para destinatário
+        encryptedForSender: input.encryptedForSender || null, // Para remetente
         isEncrypted: input.isEncrypted || false,
-        iv: input.iv || null,
+        iv: input.iv || null, // IV para destinatário
+        ivForSender: input.ivForSender || null, // IV para remetente
         // Anexos
         attachments: input.attachments ? JSON.stringify(input.attachments) : null,
         attachmentUrl: input.attachmentUrl || null,
@@ -276,7 +283,7 @@ export class ChatService {
             category: 'ORDER',
             title: '💬 Nova mensagem',
             message: notificationMessage,
-            actionUrl: `/orders/${chat.orderId}/chat`,
+            actionUrl: `/orders/${chat.orderId}?tab=chat`,
             actionLabel: 'Ver Chat',
             relatedId: chat.orderId,
             relatedType: 'ORDER',
@@ -513,6 +520,214 @@ export class ChatService {
     });
 
     return { success: true };
+  }
+
+  /**
+   * Arquivar mensagens do chat (retenção de 1 ano)
+   * Chamado automaticamente quando pedido é concluído ou cancelado
+   */
+  async archiveChat(chatId: string, reason: string, userId?: string) {
+    // Buscar chat com mensagens
+    const chat = await prisma.chat.findUnique({
+      where: { id: chatId },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            sender: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+        },
+        order: {
+          select: { id: true, status: true },
+        },
+      },
+    });
+
+    if (!chat) {
+      throw new Error('Chat não encontrado');
+    }
+
+    // Criar snapshot das mensagens (JSON)
+    const messagesSnapshot = JSON.stringify(chat.messages);
+
+    // Data de expiração: 1 ano a partir de agora
+    const expiresAt = new Date();
+    expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+    // Criar arquivo
+    const archive = await prisma.chatArchive.create({
+      data: {
+        originalChatId: chatId,
+        reason,
+        messagesSnapshot,
+        archivedBy: userId || null,
+        expiresAt,
+      },
+    });
+
+    logger.info('[CHAT ARCHIVE] Chat archived', {
+      chatId,
+      archiveId: archive.id,
+      reason,
+      messageCount: chat.messages.length,
+      expiresAt,
+    });
+
+    return archive;
+  }
+
+  /**
+   * Buscar mensagens arquivadas de um chat
+   */
+  async getArchivedMessages(chatId: string) {
+    const archives = await prisma.chatArchive.findMany({
+      where: {
+        originalChatId: chatId,
+        isDeleted: false,
+      },
+      orderBy: { archivedAt: 'desc' },
+    });
+
+    // Parsear mensagens do snapshot
+    const allArchivedMessages = archives.flatMap((archive) => {
+      try {
+        const messages = JSON.parse(archive.messagesSnapshot);
+        return messages.map((msg: any) => ({
+          ...msg,
+          isArchived: true,
+          archiveReason: archive.reason,
+          archivedAt: archive.archivedAt,
+          expiresAt: archive.expiresAt,
+        }));
+      } catch (error) {
+        logger.error('[CHAT ARCHIVE] Failed to parse snapshot', { archiveId: archive.id, error });
+        return [];
+      }
+    });
+
+    return allArchivedMessages;
+  }
+
+  /**
+   * Buscar histórico completo (mensagens ativas + arquivadas)
+   */
+  async getChatHistory(chatId: string, userId: string) {
+    // Verificar permissão
+    const chat = await prisma.chat.findUnique({
+      where: { id: chatId },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            sender: {
+              select: { id: true, name: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!chat) {
+      throw new Error('Chat não encontrado');
+    }
+
+    if (chat.participant1Id !== userId && chat.participant2Id !== userId) {
+      throw new Error('Você não tem permissão para acessar este chat');
+    }
+
+    // Buscar mensagens arquivadas
+    const archivedMessages = await this.getArchivedMessages(chatId);
+
+    // Combinar mensagens ativas + arquivadas
+    const allMessages = [
+      ...archivedMessages,
+      ...chat.messages.map((msg) => ({ ...msg, isArchived: false })),
+    ];
+
+    // Ordenar por data
+    allMessages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    return {
+      chat,
+      messages: allMessages,
+      hasArchived: archivedMessages.length > 0,
+    };
+  }
+
+  /**
+   * Limpar arquivos expirados (executado pelo worker)
+   * Remove arquivos com mais de 1 ano
+   */
+  async cleanupExpiredArchives() {
+    const now = new Date();
+
+    // Buscar arquivos expirados
+    const expiredArchives = await prisma.chatArchive.findMany({
+      where: {
+        expiresAt: { lte: now },
+        isDeleted: false,
+      },
+    });
+
+    if (expiredArchives.length === 0) {
+      logger.info('[CHAT ARCHIVE CLEANUP] No expired archives found');
+      return { deleted: 0 };
+    }
+
+    // Marcar como deletados (soft delete)
+    const result = await prisma.chatArchive.updateMany({
+      where: {
+        expiresAt: { lte: now },
+        isDeleted: false,
+      },
+      data: {
+        isDeleted: true,
+        deletedAt: now,
+      },
+    });
+
+    logger.info('[CHAT ARCHIVE CLEANUP] Expired archives deleted', {
+      count: result.count,
+      expiredArchives: expiredArchives.map((a) => ({
+        id: a.id,
+        chatId: a.originalChatId,
+        expiresAt: a.expiresAt,
+      })),
+    });
+
+    return { deleted: result.count };
+  }
+
+  /**
+   * Verificar status de arquivamento de um chat
+   */
+  async getArchiveStatus(chatId: string) {
+    const archives = await prisma.chatArchive.findMany({
+      where: {
+        originalChatId: chatId,
+        isDeleted: false,
+      },
+      orderBy: { archivedAt: 'desc' },
+    });
+
+    return {
+      isArchived: archives.length > 0,
+      archives: archives.map((archive) => ({
+        id: archive.id,
+        reason: archive.reason,
+        archivedAt: archive.archivedAt,
+        expiresAt: archive.expiresAt,
+        messageCount: (() => {
+          try {
+            return JSON.parse(archive.messagesSnapshot).length;
+          } catch {
+            return 0;
+          }
+        })(),
+      })),
+    };
   }
 }
 

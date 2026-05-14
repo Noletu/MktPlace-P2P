@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
+import { hashPassword, comparePassword } from '../utils/bcrypt';
 
 const prisma = new PrismaClient();
 
@@ -38,7 +39,7 @@ export class TwoFactorService {
   }
 
   // SECURITY: Habilitar 2FA após confirmar token
-  async enableTwoFactor(userId: string, token: string): Promise<boolean> {
+  async enableTwoFactor(userId: string, token: string): Promise<{ success: boolean; backupCodes: string[] }> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
     });
@@ -59,15 +60,27 @@ export class TwoFactorService {
       throw new Error('Token inválido');
     }
 
-    // Ativar 2FA
+    // Gerar backup codes
+    const backupCodes = this.generateBackupCodes(10);
+
+    // Hashear backup codes para armazenamento seguro
+    const hashedCodes = await Promise.all(
+      backupCodes.map((code) => hashPassword(code))
+    );
+
+    // Ativar 2FA e salvar backup codes
     await prisma.user.update({
       where: { id: userId },
       data: {
         twoFactorEnabled: true,
+        twoFactorBackupCodes: JSON.stringify(hashedCodes),
       },
     });
 
-    return true;
+    return {
+      success: true,
+      backupCodes, // Retornar códigos em plain text apenas UMA VEZ
+    };
   }
 
   // SECURITY: Desabilitar 2FA
@@ -92,19 +105,20 @@ export class TwoFactorService {
       throw new Error('Token inválido');
     }
 
-    // Desativar 2FA e remover secret
+    // Desativar 2FA e remover secret e backup codes
     await prisma.user.update({
       where: { id: userId },
       data: {
         twoFactorEnabled: false,
         twoFactorSecret: null,
+        twoFactorBackupCodes: null,
       },
     });
 
     return true;
   }
 
-  // SECURITY: Verificar token 2FA no login
+  // SECURITY: Verificar token 2FA no login (aceita TOTP ou backup code)
   async verifyToken(userId: string, token: string): Promise<boolean> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -114,14 +128,59 @@ export class TwoFactorService {
       return false;
     }
 
-    const isValid = speakeasy.totp.verify({
+    // Primeiro tentar como TOTP (código do app)
+    const isTOTPValid = speakeasy.totp.verify({
       secret: user.twoFactorSecret,
       encoding: 'base32',
       token,
       window: WINDOW,
     });
 
-    return isValid;
+    if (isTOTPValid) {
+      return true;
+    }
+
+    // Se TOTP falhou, tentar como backup code
+    return await this.useBackupCode(userId, token);
+  }
+
+  // SECURITY: Usar backup code (one-time use)
+  async useBackupCode(userId: string, code: string): Promise<boolean> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user || !user.twoFactorBackupCodes) {
+      return false;
+    }
+
+    try {
+      const backupCodes = JSON.parse(user.twoFactorBackupCodes) as string[];
+
+      // Verificar se algum código hashado corresponde
+      for (let i = 0; i < backupCodes.length; i++) {
+        const isMatch = await comparePassword(code.toUpperCase(), backupCodes[i]);
+
+        if (isMatch) {
+          // Remover o código usado (one-time use)
+          backupCodes.splice(i, 1);
+
+          await prisma.user.update({
+            where: { id: userId },
+            data: {
+              twoFactorBackupCodes: JSON.stringify(backupCodes),
+            },
+          });
+
+          return true;
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.error('[2FA] Error verifying backup code:', error);
+      return false;
+    }
   }
 
   // SECURITY: Verificar se usuário tem 2FA habilitado
@@ -146,6 +205,71 @@ export class TwoFactorService {
     }
 
     return codes;
+  }
+
+  // SECURITY: Regenerar backup codes (requer token 2FA)
+  async regenerateBackupCodes(userId: string, token: string): Promise<{ success: boolean; backupCodes: string[] }> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user || !user.twoFactorSecret || !user.twoFactorEnabled) {
+      throw new Error('2FA não está habilitado');
+    }
+
+    // Verificar token antes de regenerar
+    const isValid = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token,
+      window: WINDOW,
+    });
+
+    if (!isValid) {
+      throw new Error('Token inválido');
+    }
+
+    // Gerar novos backup codes
+    const backupCodes = this.generateBackupCodes(10);
+
+    // Hashear backup codes para armazenamento seguro
+    const hashedCodes = await Promise.all(
+      backupCodes.map((code) => hashPassword(code))
+    );
+
+    // Atualizar backup codes no banco
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        twoFactorBackupCodes: JSON.stringify(hashedCodes),
+      },
+    });
+
+    return {
+      success: true,
+      backupCodes, // Retornar códigos em plain text apenas UMA VEZ
+    };
+  }
+
+  // SECURITY: Contar quantos backup codes ainda estão disponíveis
+  async getBackupCodesCount(userId: string): Promise<number> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        twoFactorBackupCodes: true,
+      },
+    });
+
+    if (!user || !user.twoFactorBackupCodes) {
+      return 0;
+    }
+
+    try {
+      const backupCodes = JSON.parse(user.twoFactorBackupCodes) as string[];
+      return backupCodes.length;
+    } catch (error) {
+      return 0;
+    }
   }
 }
 

@@ -17,39 +17,76 @@ model User {
   email    String  @unique
   password String
   name     String?
-
-  // KYC - NONE, LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4
-  kycLevel String @default("NONE")
+  cpf      String? @unique
+  phone    String?
 
   // Reputation
   reputationScore        Int @default(0)
   totalTransactions      Int @default(0)
   successfulTransactions Int @default(0)
 
-  // Role - USER, ADMIN, SUPPORT
-  role String @default("USER")
+  // Custom daily limit (admin override)
+  customDailyLimit    Float?    // DEPRECATED: usar customDailyLimitStr (Float causa arredondamentos)
+  customDailyLimitStr String?   // MIGRATION (H-8): substitui customDailyLimit com precisão correta
+  customLimitSetBy    String?   // ID do admin que definiu
+  customLimitSetAt    DateTime? // Quando foi definido
+  customLimitNote     String?   // Nota do admin (motivo)
+
+  // Cancellation tracking
+  totalCancellations  Int       @default(0) // Total histórico de cancelamentos
+  recentCancellations Int       @default(0) // Cancelamentos nos últimos 30 dias
+  lastCancellationAt  DateTime? // Data do último cancelamento
+
+  // RBAC: Relacionamento com Role (migration: manter role string temporariamente)
+  roleId String? // Foreign key para Role
+  role   Role?   @relation(fields: [roleId], references: [id])
+
+  // DEPRECATED: Role string (será removido após migration)
+  // Mantido temporariamente para compatibilidade durante migração
+  legacyRole String @default("USER")
 
   // SECURITY: 2FA
-  twoFactorEnabled Boolean @default(false)
-  twoFactorSecret  String?
+  twoFactorEnabled     Boolean @default(false)
+  twoFactorSecret      String?
+  twoFactorTempSecret  String? // Secret temporário durante setup
+  twoFactorBackupCodes String? // JSON array de códigos hasheados
+
+  // PASSWORD RESET
+  passwordResetToken   String?
+  passwordResetExpires DateTime?
+
+  // ADMIN CONTROLS: Account Freeze (Congelamento de conta)
+  accountFrozen Boolean   @default(false) // Se conta está congelada
+  frozenReason  String? // Motivo do congelamento
+  frozenAt      DateTime? // Quando foi congelada
+  frozenBy      String? // ID do admin que congelou
+  frozenUntil   DateTime? // Data/hora para auto-desbloqueio (null = permanente)
+
+  // Notification Preferences (JSON: category → 'both'|'email'|'push'|'none')
+  notificationPreferences String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  wallets               Wallet[]
+  // Relações atualizadas para HD Wallet
+  userWallets           UserWallet[]
   orders                Order[]
   transactions          Transaction[]          @relation("payer")
   reviews               Review[]               @relation("reviewer")
   reviewsReceived       Review[]               @relation("reviewed")
   refreshTokens         RefreshToken[]
   adminActions          AdminAction[]
-  internalBalances      InternalBalance[]
-  collateralTransactions CollateralTransaction[]
+  walletTransactions    WalletTransaction[]
 
   // Disputas
   disputesCreated  Dispute[]        @relation("DisputeCreator")
   disputesResolved Dispute[]        @relation("DisputeResolver")
   disputeMessages  DisputeMessage[] @relation("DisputeMessageAuthor")
+
+  // Tickets de Suporte
+  ticketsCreated  SupportTicket[]  @relation("TicketCreator")
+  ticketsResolved SupportTicket[]  @relation("TicketResolver")
+  ticketMessages  TicketMessage[]  @relation("TicketMessageAuthor")
 
   // Notificações
   notifications Notification[] @relation("notifications")
@@ -59,77 +96,188 @@ model User {
   chatsAsParticipant2 Chat[]        @relation("ChatParticipant2")
   chatMessages        ChatMessage[] @relation("ChatMessageSender")
 
-  // KYC Verification (1:1 relationship)
-  kycVerification KYCVerification?
-
   // Encryption Keys (1:1 relationship)
   userKeys UserKeys?
+
+  // Cancellation history
+  cancellationHistory CancellationHistory[]
+
+  // Coupon system
+  userCoupons UserCoupon[]
+
+  // Dual-Approval system
+  pendingApprovalsInitiated PendingApproval[]  @relation("PendingApprovalInitiator")
+  pendingApprovalsApproved  PendingApproval[]  @relation("PendingApprovalApprover")
+  delegationsGranted        MasterDelegation[] @relation("DelegationGrantor")
+  delegationsReceived       MasterDelegation[] @relation("DelegationGrantee")
+  delegationsRevoked        MasterDelegation[] @relation("DelegationRevoker")
 }
 
-model Wallet {
+// ============================================
+// HD WALLET SYSTEM - Nova Implementação
+// ============================================
+
+// Carteiras HD gerenciadas pela plataforma (BIP32/BIP44)
+model UserWallet {
   id     String @id @default(cuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Crypto - BTC, ETH, XMR, ZEC, USDC, USDT
-  crypto  String
-  // Network - BITCOIN, ETHEREUM, POLYGON, BSC, SOLANA, TRC20, MONERO, ZCASH
-  network String
-  address String
-  balance String @default("0")
+  // Tipo de cripto e rede
+  cryptoType String // BTC, USDC, USDT
+  network    String // BITCOIN, BASE, SOLANA
 
+  // Endereço derivado (HD Wallet)
+  address        String // Endereço público derivado
+  derivationPath String // Ex: m/44'/60'/0'/0/0 (BIP44)
+
+  // SECURITY: Private key criptografada com AES-256-GCM
+  encryptedPrivateKey String // Private key criptografada (nunca em plain text!)
+
+  // Controle de saldo (consultado on-chain + bloqueios locais)
+  balance          String @default("0") // Saldo total on-chain
+  lockedBalance    String @default("0") // Bloqueado em pedidos ativos
+  availableBalance String @default("0") // Disponível = balance - locked
+
+  // Estatísticas
+  totalDeposited String @default("0") // Total depositado historicamente
+  totalWithdrawn String @default("0") // Total sacado
+  totalUsed      String @default("0") // Total usado como colateral
+
+  // Sincronização blockchain
+  lastSyncedAt    DateTime? // Última vez que saldo foi sincronizado
+  lastBlockHeight Int?      // Último bloco verificado
+
+  // Omnibus / Sweep (Hot Wallet Architecture)
+  onChainSnapshot    String    @default("0")    // Último saldo on-chain conhecido (separado do ledger)
+  lastSweptAt        DateTime?                   // Quando fundos foram varridos para hot wallet
+  sweepStatus        String    @default("NONE") // NONE | PENDING | GAS_FUNDING | SWEEPING | COMPLETED | FAILED
+  pendingSweepAmount String    @default("0")    // Valor aguardando sweep
+
+  // Estado
   isActive Boolean @default(true)
+
+  // Auditoria de criação — rastreia QUEM/O QUE criou esta wallet
+  creationSource  String? // MANUAL, DEPOSIT_WIZARD, ORDER_SELL, ORDER_BUY, COLLATERAL_GENERATE, INTERNAL_BALANCE, SYSTEM
+  creationDetails String? // JSON com contexto extra (endpoint, orderId, etc.)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  deposits    Deposit[]
-  withdrawals Withdrawal[]
+  // Relações
+  ordersAsCollateral Order[]             @relation("WalletCollateral")
+  transactions       WalletTransaction[]
+  withdrawals        Withdrawal[]
+  sweepTransactions  SweepTransaction[]
 
-  @@unique([userId, address])
+  @@unique([userId, cryptoType, network])
+  @@index([userId])
+  @@index([address])
+  @@index([cryptoType, network])
+  @@index([isActive])
 }
 
-model Deposit {
-  id       String @id @default(cuid())
+// Histórico completo de transações de carteira (auditoria)
+model WalletTransaction {
+  id String @id @default(cuid())
+
+  // Carteira e usuário
   walletId String
-  wallet   Wallet @relation(fields: [walletId], references: [id])
+  wallet   UserWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
-  txHash String @unique
-  amount String
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  confirmed     Boolean @default(false)
-  confirmations Int     @default(0)
+  // Pedido relacionado (opcional)
+  orderId String?
+  order   Order?  @relation("WalletTransactionOrder", fields: [orderId], references: [id])
 
-  createdAt   DateTime  @default(now())
-  confirmedAt DateTime?
+  // Tipo de transação
+  // DEPOSIT, LOCK, UNLOCK, DEDUCT, WITHDRAWAL, FEE, REFUND
+  // ADMIN_DEBIT, ADMIN_CREDIT, ADMIN_ADJUSTMENT, ADMIN_FREEZE, ADMIN_UNFREEZE
+  type String
 
-  // Relation for collateral
-  collateralOrders Order[]
+  // Valores
+  amount        String // Valor da transação
+  balanceBefore String // Saldo total antes
+  balanceAfter  String // Saldo total depois
+  lockedBefore  String? // Saldo bloqueado antes (para LOCK/UNLOCK)
+  lockedAfter   String? // Saldo bloqueado depois
+
+  // Blockchain (se aplicável)
+  txHash        String? // Hash da transação blockchain
+  blockHeight   Int? // Altura do bloco
+  confirmations Int? // Número de confirmações
+
+  // ADMIN CONTROLS: Operações administrativas
+  adminUserId  String? // ID do admin que executou (para operações admin)
+  adminReason  String? // Motivo da operação administrativa
+  relatedTxId  String? // Link para transação relacionada (debit/credit pair)
+
+  // Metadados
+  description String? // Descrição legível
+  metadata    String? // JSON com dados adicionais
+
+  createdAt DateTime @default(now())
+
+  @@unique([txHash]) // SECURITY: Prevenir replay attack — mesmo txHash não pode ser creditado duas vezes
+  @@index([walletId])
+  @@index([userId])
+  @@index([orderId])
+  @@index([type])
+  @@index([createdAt])
 }
 
+// Saques de carteira
 model Withdrawal {
   id       String @id @default(cuid())
   walletId String
-  wallet   Wallet @relation(fields: [walletId], references: [id])
+  wallet   UserWallet @relation(fields: [walletId], references: [id])
 
   toAddress String
   amount    String
 
+  // Blockchain
   txHash String? @unique
-  status String  @default("pending")
+  status String  @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED, REQUIRES_APPROVAL, APPROVED, REJECTED
+
+  // Taxas
+  networkFee  String? // Taxa de rede
+  platformFee String? // Taxa da plataforma
+
+  // Admin review (para saques que requerem aprovação)
+  reviewedBy String?   // ID do admin que revisou
+  reviewNote String?   // Nota do admin
+  reviewedAt DateTime? // Quando foi revisado
+
+  // Retry tracking
+  retryCount Int    @default(0) // Quantas vezes tentou processar
+  lastError  String? // Último erro de processamento
 
   createdAt   DateTime  @default(now())
   processedAt DateTime?
+  completedAt DateTime?
+
+  @@index([walletId])
+  @@index([status])
+  @@index([createdAt])
 }
+
+// ============================================
+// ORDERS - Atualizado para HD Wallet
+// ============================================
 
 model Order {
   id     String @id @default(cuid())
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
-  // Type - BOLETO, PIX
+  // Order Type - BUY (user wants to buy crypto) or SELL (user wants to sell crypto)
+  orderType String @default("SELL")
+
+  // Payment Method - BOLETO, PIX (for SELL orders, provider sets for BUY orders)
   type   String
-  // Status - PENDING, MATCHED, PAYMENT_SENT, VALIDATING, COMPLETED, DISPUTED, CANCELLED, TIMEOUT
+  // Status - PENDING, MATCHED, IN_NEGOTIATION, PAYMENT_SENT, VALIDATING, COMPLETED, DISPUTED, CANCELLED, TIMEOUT, EXPIRED
   status String @default("PENDING")
 
   // Crypto side
@@ -145,22 +293,29 @@ model Order {
   payerReward String
   totalFee    String
 
+  // Coupon discount tracking
+  appliedCouponId        String? // ID do cupom aplicado
+  appliedCouponCode      String? // Código do cupom (denormalizado para histórico)
+  appliedCouponDiscount  Int?    // Percentual aplicado (snapshot)
+  originalPlatformFee    String? // Taxa original antes do desconto
+  discountAmount         String? // Valor economizado
+
   // Order specific data (JSON string)
   orderData String
 
-  // Collateral system
-  collateralTxHash    String?
-  collateralConfirmed Boolean  @default(false)
-  collateralDepositId String?
-  collateralDeposit   Deposit? @relation(fields: [collateralDepositId], references: [id])
-
-  // NEW: Internal balance collateral system
-  collateralSource       String? // "EXTERNAL_DEPOSIT" ou "INTERNAL_BALANCE"
-  internalBalanceId      String? // ID do saldo interno usado
-  internalBalance        InternalBalance? @relation("OrderInternalBalance", fields: [internalBalanceId], references: [id])
+  // HD WALLET COLLATERAL SYSTEM (Novo)
+  walletId               String? // ID da carteira HD usada para colateral
+  wallet                 UserWallet? @relation("WalletCollateral", fields: [walletId], references: [id])
+  collateralSource       String? // Fonte do colateral: HD_WALLET, EXTERNAL_DEPOSIT (legacy)
+  collateralConfirmed    Boolean @default(false) // Se o colateral foi confirmado
   collateralLocked       Boolean @default(false) // Se o colateral está bloqueado
-  collateralLockedAmount String? // Valor bloqueado do saldo interno
+  collateralLockedAmount String? // Valor bloqueado
   collateralUnlockedAt   DateTime? // Quando foi desbloqueado
+
+  // Just-in-time deposit (híbrido)
+  awaitingDeposit       Boolean @default(false) // Se está aguardando depósito inicial
+  depositDeadline       DateTime? // Prazo para depositar
+  depositConfirmedAt    DateTime? // Quando depósito foi confirmado
 
   // Timeout handling
   timeoutAt      DateTime?
@@ -180,9 +335,23 @@ model Order {
   refundedAt          DateTime?
   cancelReason        String? // AUTO_EXPIRED_BOLETO, AUTO_EXPIRED_PIX, USER_CANCELLED
 
+  // Crypto Transfer Tracking (Internal Transfer)
+  cryptoTransferred   Boolean   @default(false) // Se a cripto foi transferida para o comprador
+  cryptoTransferredAt DateTime? // Quando foi transferida
+  cryptoTransferredTo String? // userId do comprador que recebeu a cripto
+
+  // Cancellation details
+  cancelledBy         String? // userId de quem cancelou
+  cancellationReason  String? // Motivo categorizado (USER_CHANGED_MIND, FOUND_BETTER_PRICE, etc)
+  cancellationNote    String? // Observação adicional do usuário
+
   // Negotiation system
   negotiatingUserId    String? // Quem está negociando agora (reserva por 10min)
   negotiationStartedAt DateTime? // Quando negociação iniciou
+
+  // BUY ORDER SYSTEM - Provider (liquidity provider) tracking
+  providerId       String? // userId do provedor que aceitou ordem BUY
+  providerWalletId String? // walletId do provedor (para colateral em ordens BUY)
 
   // Presence system (por pedido)
   ownerOnline         Boolean  @default(false) // Toggle manual do vendedor
@@ -192,19 +361,24 @@ model Order {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   completedAt DateTime?
+  cancelledAt DateTime?
 
   transactions           Transaction[]
   disputes               Dispute[]
   reviews                Review[]
   chat                   Chat?
-  collateralTransactions CollateralTransaction[] @relation("CollateralTransactionOrder")
+  walletTransactions     WalletTransaction[] @relation("WalletTransactionOrder")
+  cancellationHistory    CancellationHistory[]
 
+  @@index([userId])
+  @@index([status])
+  @@index([walletId])
   @@index([negotiatingUserId])
   @@index([negotiationStartedAt])
   @@index([ownerOnline])
   @@index([ownerLastSeenAt])
-  @@index([collateralSource])
-  @@index([internalBalanceId])
+  @@index([awaitingDeposit])
+  @@index([providerId])
 }
 
 model Transaction {
@@ -223,9 +397,10 @@ model Transaction {
   comprovanteData String?
 
   // Validation
-  validationScore Int?
-  validatedBy     String?
-  validatedAt     DateTime?
+  validationScore   Int?
+  validatedBy       String?
+  validatedAt       DateTime?
+  validationDeadline DateTime? // Auto-rejeita se admin não validar até esta data
 
   // Dispute
   disputeReason String?
@@ -251,6 +426,186 @@ model Fee {
 
   createdAt DateTime @default(now())
 }
+
+// ============================================
+// PLATFORM WALLETS - Carteiras dos Sócios (MASTER/ADMIN)
+// ============================================
+
+// Carteiras HD da plataforma derivadas da master seed (Account 0)
+// Usadas para: 1) Receber fees das transações, 2) Depósitos dos sócios (cold → hot)
+// Compartilhadas entre MASTER e ADMIN (ambos têm acesso)
+model PlatformWallet {
+  id String @id @default(cuid())
+
+  cryptoType String // BTC, USDT, USDC
+  network    String // BITCOIN, BASE, SOLANA
+
+  // Endereço derivado da master seed (Account 0 = Platform)
+  address        String // Endereço público derivado (mesmo endereço para USDT/USDC na mesma rede)
+  derivationPath String // Ex: m/84'/0'/0'/0/0 (Account 0 = Platform)
+  accountIndex   Int    @default(0) // Sempre 0 para platform wallets
+
+  // SECURITY: Private key criptografada com AES-256-GCM
+  encryptedPrivateKey String // Private key criptografada
+
+  // Saldo (atualizado via sync blockchain)
+  balance          String @default("0") // Saldo on-chain
+  availableBalance String @default("0") // Disponível (após reservas)
+
+  // Estatísticas (fees acumuladas)
+  totalFeesCollected String @default("0") // Total de fees recebidas
+  totalDeposited     String @default("0") // Total depositado pelos sócios
+  totalWithdrawn     String @default("0") // Total sacado pelos sócios
+  totalRefunded      String @default("0") // Total reembolsado (platform → user)
+  totalCollected     String @default("0") // Total cobrado de usuarios (user → platform)
+
+  // Sincronização blockchain
+  lastSyncedAt    DateTime? // Última sincronização
+  lastBlockHeight Int? // Último bloco verificado
+
+  // Estado
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transfers         PlatformTransfer[]
+  sweepTransactions SweepTransaction[]
+  movements         PlatformWalletMovement[]
+
+  @@unique([cryptoType, network])
+  @@index([cryptoType])
+  @@index([network])
+  @@index([address])
+  @@index([isActive])
+}
+
+// ============================================
+// TRANSFERÊNCIAS DA PLATAFORMA (Hot → Cold / Externo)
+// ============================================
+
+model PlatformTransfer {
+  id String @id @default(cuid())
+
+  platformWalletId String
+  platformWallet   PlatformWallet @relation(fields: [platformWalletId], references: [id])
+
+  toAddress   String   // Endereço destino (cold wallet, etc)
+  amount      String   // Valor enviado
+  networkFee  String?  // Fee de rede paga
+  txHash      String?  // Hash da transação on-chain
+  status      String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+
+  // Quem solicitou
+  requestedBy String   // Admin/Master userId
+  approvedBy  String?  // Outro admin que aprovou (se dual-approval)
+  note        String?  // Nota opcional
+
+  // Erro/retry
+  lastError   String?
+  retryCount  Int      @default(0)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  completedAt DateTime?
+
+  @@index([platformWalletId])
+  @@index([status])
+  @@index([requestedBy])
+}
+
+// ============================================
+// MOVIMENTAÇÕES DA PLATFORM WALLET (Ledger completo)
+// ============================================
+
+// Registra TODA movimentação de saldo na platform wallet (entradas, saídas, fees)
+model PlatformWalletMovement {
+  id String @id @default(cuid())
+
+  platformWalletId String
+  platformWallet   PlatformWallet @relation(fields: [platformWalletId], references: [id])
+
+  // Tipo de movimentação
+  type String // FEE_RECEIVED, SWEEP_IN, WITHDRAWAL_OUT, TRANSFER_OUT, DEPOSIT_IN, BALANCE_SYNC
+
+  // Direção e valor
+  direction String // IN, OUT
+  amount    String // Valor absoluto da movimentação
+
+  // Saldos antes/depois (para auditoria)
+  balanceBefore String
+  balanceAfter  String
+
+  // Referências opcionais (para rastreabilidade)
+  orderId    String? // ID do order (para fees)
+  txHash     String? // Hash on-chain (para sweeps, withdrawals, transfers)
+  toAddress  String? // Endereço destino (para saídas)
+  fromAddress String? // Endereço origem (para entradas)
+  userId     String? // Usuário relacionado (para sweeps, withdrawals)
+
+  // Descrição legível
+  description String
+
+  // Metadata adicional (JSON)
+  metadata String?
+
+  createdAt DateTime @default(now())
+
+  @@index([platformWalletId])
+  @@index([type])
+  @@index([direction])
+  @@index([createdAt])
+  @@index([orderId])
+}
+
+// ============================================
+// SWEEP TRANSACTIONS - Omnibus Hot Wallet
+// ============================================
+
+// Registra cada operação de sweep (user wallet → hot wallet)
+model SweepTransaction {
+  id                 String   @id @default(cuid())
+
+  // Carteira de origem (usuário)
+  userWalletId       String
+  userWallet         UserWallet @relation(fields: [userWalletId], references: [id])
+
+  // Carteira destino (hot wallet da plataforma)
+  platformWalletId   String
+  platformWallet     PlatformWallet @relation(fields: [platformWalletId], references: [id])
+
+  // Tipo de ativo
+  cryptoType         String   // BTC, USDT, USDC
+  network            String   // BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA
+
+  // Valor varrido
+  amount             String
+
+  // Gas funding (para tokens ERC-20/SPL que precisam de moeda nativa para gas)
+  gasFundingTxHash   String?
+  gasFundingAmount   String?
+  gasFundingStatus   String?  // PENDING | CONFIRMED | FAILED
+
+  // Transação de sweep principal
+  sweepTxHash        String?  @unique
+  status             String   @default("PENDING") // PENDING | GAS_FUNDING | GAS_CONFIRMED | SWEEPING | COMPLETED | FAILED
+
+  // Erro e retry
+  lastError          String?
+  retryCount         Int      @default(0)
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  completedAt        DateTime?
+
+  @@index([userWalletId])
+  @@index([platformWalletId])
+  @@index([status])
+}
+
+// ============================================
+// REVIEWS, DISPUTES, NOTIFICATIONS - Mantidos
+// ============================================
 
 // Sistema completo de Avaliações/Reviews
 model Review {
@@ -326,7 +681,18 @@ model RefreshToken {
   @@index([token])
 }
 
-// SECURITY: Audit log para operações críticas
+// SECURITY (H-2): Blacklist de access tokens revogados (logout invalida token imediatamente)
+// Limpar periodicamente tokens expirados para manter a tabela pequena
+model RevokedToken {
+  id        String   @id @default(cuid())
+  jti       String   @unique // JWT ID (claim 'jti') — identificador único do access token
+  expiresAt DateTime // Copiar expiresAt do JWT para cleanup automático
+  createdAt DateTime @default(now())
+
+  @@index([jti])
+  @@index([expiresAt])
+}
+
 // SECURITY: Audit Log completo para rastreabilidade de todas as ações críticas
 model AuditLog {
   id String @id @default(cuid())
@@ -335,6 +701,7 @@ model AuditLog {
   userId String? // Pode ser null para ações do sistema
   email  String? // Email do usuário (denormalizado para histórico)
   role   String? // Role do usuário no momento da ação
+  name   String? // Nome do usuário no momento da ação
 
   // Ação executada
   action     String // LOGIN, LOGOUT, LOGIN_FAILED, CREATE_ORDER, CANCEL_ORDER, etc
@@ -363,54 +730,6 @@ model AuditLog {
   @@index([ipAddress])
 }
 
-// Endereços de depósito temporários para colateral
-model CollateralAddress {
-  id String @id @default(cuid())
-
-  userId  String
-  orderId String? // Null até pedido ser criado
-
-  cryptoType    String
-  cryptoNetwork String
-  address       String // REMOVIDO @unique - mesmo endereço da plataforma pode ter múltiplos depósitos
-
-  expectedAmount String
-  status         String @default("AWAITING_PAYMENT") // AWAITING_PAYMENT, PAYMENT_RECEIVED, CONFIRMED, EXPIRED, USED
-
-  // Dados da transação blockchain
-  txHash       String? // Hash da transação que fez o pagamento
-  actualAmount String? // Valor real recebido
-  confirmedAt  DateTime? // Timestamp da confirmação na blockchain
-
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([address]) // Índice para buscar por endereço rapidamente
-  @@index([status])
-}
-
-// Carteiras da plataforma para receber colaterais
-model PlatformWallet {
-  id String @id @default(cuid())
-
-  cryptoType String // BTC, USDT, USDC, etc
-  network    String // ETHEREUM, BASE, ARBITRUM, TRC20, etc
-  address    String @unique
-
-  label    String? // Nome/descrição do endereço (ex: "Carteira Principal USDT Base")
-  isActive Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  createdBy String? // ID do admin que criou
-
-  @@index([cryptoType])
-  @@index([network])
-  @@index([isActive])
-}
-
 // Audit log de ações administrativas
 model AdminAction {
   id String @id @default(cuid())
@@ -429,77 +748,6 @@ model AdminAction {
 
   @@index([adminId])
   @@index([resource])
-  @@index([createdAt])
-}
-
-// Saldo interno de usuários (crédito de devoluções + colateral pré-depositado)
-model InternalBalance {
-  id String @id @default(cuid())
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  cryptoType String // BTC, USDT, USDC, etc
-  network    String // ETHEREUM, BASE, ARBITRUM, TRC20, BITCOIN, etc
-
-  // Controle de saldo
-  balance         String @default("0") // Saldo total (disponível + bloqueado)
-  lockedAmount    String @default("0") // Bloqueado em pedidos ativos
-  availableAmount String @default("0") // Disponível para usar (computed: balance - lockedAmount)
-
-  // Estatísticas
-  totalDeposited String @default("0") // Total depositado historicamente
-  totalUsed      String @default("0") // Total usado em pedidos
-  totalWithdrawn String @default("0") // Total sacado
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relações
-  orders                Order[]                 @relation("OrderInternalBalance")
-  collateralTransactions CollateralTransaction[] @relation("BalanceTransactions")
-
-  @@unique([userId, cryptoType, network])
-  @@index([userId])
-  @@index([cryptoType, network])
-}
-
-// Histórico de transações de colateral (auditoria completa)
-model CollateralTransaction {
-  id String @id @default(cuid())
-
-  // Usuário e saldo
-  userId    String
-  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  balanceId String
-  balance   InternalBalance @relation("BalanceTransactions", fields: [balanceId], references: [id], onDelete: Cascade)
-
-  // Pedido relacionado (opcional)
-  orderId String?
-  order   Order?  @relation("CollateralTransactionOrder", fields: [orderId], references: [id])
-
-  // Tipo de transação
-  type String // DEPOSIT, LOCK, UNLOCK, REFUND, WITHDRAWAL, TRANSFER
-
-  // Valores
-  amount        String // Valor da transação
-  balanceBefore String // Saldo antes da transação
-  balanceAfter  String // Saldo após a transação
-
-  // Blockchain (se aplicável)
-  txHash  String? // Hash da transação blockchain (para DEPOSIT/WITHDRAWAL)
-  network String? // Rede blockchain
-
-  // Metadados
-  description String? // Descrição legível
-  metadata    String? // JSON com dados adicionais
-
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-  @@index([balanceId])
-  @@index([orderId])
-  @@index([type])
   @@index([createdAt])
 }
 
@@ -569,9 +817,77 @@ model DisputeMessage {
   // Se é mensagem do sistema/admin
   isAdminMessage Boolean @default(false)
 
+  // Chat privado: userId destinatário (null = visível para todos)
+  visibleTo String?
+
   createdAt DateTime @default(now())
 
   @@index([disputeId])
+  @@index([authorId])
+  @@index([createdAt])
+  @@index([visibleTo])
+}
+
+// ============================================
+// SISTEMA DE TICKETS DE SUPORTE
+// ============================================
+
+// Ticket de suporte (usuário ↔ plataforma)
+model SupportTicket {
+  id String @id @default(cuid())
+
+  // Criador do ticket
+  createdBy String
+  creator   User   @relation("TicketCreator", fields: [createdBy], references: [id])
+
+  // Status do ticket
+  status String @default("OPEN") // OPEN, UNDER_REVIEW, RESOLVED, CLOSED
+
+  // Categoria e prioridade
+  category String // ACCOUNT_ISSUE, PAYMENT_ISSUE, TECHNICAL_ISSUE, KYC_ISSUE, WALLET_ISSUE, QUESTION, FEATURE_REQUEST, OTHER
+  priority String @default("MEDIUM") // URGENT, HIGH, MEDIUM, LOW
+
+  // Conteúdo
+  subject     String // Assunto (5-200 caracteres)
+  description String // Descrição inicial
+
+  // Resolução
+  resolvedBy String?
+  resolver   User?   @relation("TicketResolver", fields: [resolvedBy], references: [id])
+  resolution String?
+  resolvedAt DateTime?
+  closedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages TicketMessage[]
+
+  @@index([createdBy])
+  @@index([status])
+  @@index([category])
+  @@index([priority])
+  @@index([createdAt])
+}
+
+// Mensagens do ticket
+model TicketMessage {
+  id String @id @default(cuid())
+
+  ticketId String
+  ticket   SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation("TicketMessageAuthor", fields: [authorId], references: [id])
+
+  message     String
+  attachments String? // JSON array
+
+  isSupportMessage Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
   @@index([authorId])
   @@index([createdAt])
 }
@@ -620,6 +936,35 @@ model Notification {
   @@index([priority])
 }
 
+// Log de Broadcasts enviados pelo admin (auditoria)
+model BroadcastLog {
+  id String @id @default(cuid())
+
+  // Admin que enviou
+  adminId    String
+  adminEmail String
+
+  // Conteúdo
+  title   String
+  message String
+
+  // Configuração
+  priority        String @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  deliveryChannel String @default("NOTIFICATION") // NOTIFICATION, EMAIL, BOTH
+  targetMode      String @default("ALL") // ALL, SELECTED
+  actionUrl       String?
+  actionLabel     String?
+
+  // Resultado
+  recipientCount Int
+  recipientIds   String? // JSON array of user IDs (only for SELECTED mode)
+
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([createdAt])
+}
+
 // Sistema completo de Chat em Tempo Real
 model Chat {
   id String @id @default(cuid())
@@ -649,6 +994,7 @@ model Chat {
   updatedAt DateTime @updatedAt
 
   messages ChatMessage[]
+  archives ChatArchive[]
 
   @@index([orderId])
   @@index([participant1Id])
@@ -672,9 +1018,11 @@ model ChatMessage {
   message String? // Mensagens antigas (sem criptografia)
 
   // Criptografia end-to-end
-  encryptedContent String? // Mensagens novas (criptografadas)
-  isEncrypted      Boolean @default(false) // Flag de controle
-  iv               String? // Initialization Vector para AES-GCM
+  encryptedContent       String? // Criptografado para o DESTINATÁRIO (chave pública do recipient)
+  encryptedForSender     String? // Criptografado para o REMETENTE (chave pública do sender)
+  isEncrypted            Boolean @default(false) // Flag de controle
+  iv                     String? // IV para encryptedContent (destinatário)
+  ivForSender            String? // IV para encryptedForSender (remetente)
 
   // Anexos (URLs de imagens)
   attachments    String? // JSON array de URLs (retrocompatibilidade)
@@ -696,92 +1044,38 @@ model ChatMessage {
   @@index([isRead])
 }
 
-// Sistema completo de KYC Verification (Progressive Disclosure)
-model KYCVerification {
+// Sistema de Arquivamento de Chat (Retenção de 1 ano)
+model ChatArchive {
   id String @id @default(cuid())
 
-  // Relacionamento 1:1 com User
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Referência ao chat original
+  originalChatId String
+  originalChat   Chat   @relation(fields: [originalChatId], references: [id], onDelete: Cascade)
 
-  // Status da verificação: PENDING, APPROVED, REJECTED
-  status String @default("PENDING")
+  // Razão do arquivamento
+  reason String // ORDER_COMPLETED, ORDER_CANCELLED, ORDER_EXPIRED, MANUAL_ARCHIVE
 
-  // Nível atual de KYC submetido: LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_4
-  level String
+  // Snapshot das mensagens arquivadas (JSON)
+  messagesSnapshot String // JSON array de todas as mensagens no momento do arquivamento
 
-  // --- LEVEL 1: Dados básicos (CPF + Telefone + Nome completo) ---
-  fullName        String?
-  cpf             String?   @unique
-  phone           String?
-  phoneVerified   Boolean   @default(false)
-  phoneVerifiedAt DateTime?
+  // Metadados do arquivamento
+  archivedBy String? // userId do admin que arquivou (null se automático)
+  archivedAt DateTime @default(now())
 
-  // --- LEVEL 2: Endereço + Data de Nascimento ---
-  dateOfBirth DateTime?
+  // Política de retenção (1 ano)
+  expiresAt DateTime // archivedAt + 1 ano
 
-  addressStreet       String?
-  addressNumber       String?
-  addressComplement   String?
-  addressNeighborhood String?
-  addressCity         String?
-  addressState        String? // UF
-  addressZipCode      String?
-
-  // --- LEVEL 3: Documento + Selfie + Liveness ---
-  documentType     String? // RG, CNH
-  documentNumber   String?
-  documentFrontUrl String?
-  documentBackUrl  String?
-
-  selfieUrl        String?
-  livenessScore    Float?
-  livenessVerified Boolean @default(false)
-
-  // --- LEVEL 4: Comprovante de Residência ---
-  proofOfResidenceUrl  String?
-  proofOfResidenceType String? // CONTA_LUZ, CONTA_AGUA, CONTA_TELEFONE, EXTRATO_BANCARIO
-
-  // Metadados de revisão
-  reviewedBy      String? // ID do admin que aprovou/rejeitou
-  reviewedAt      DateTime?
-  rejectionReason String?
-
-  // Timestamps
-  submittedAt DateTime  @default(now())
-  approvedAt  DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([status])
-  @@index([level])
-  @@index([cpf])
-  @@index([submittedAt])
-}
-
-// Códigos de verificação de telefone
-model PhoneVerificationCode {
-  id String @id @default(cuid())
-
-  phone String
-  code  String // Código de 6 dígitos
-
-  // Status: PENDING, VERIFIED, EXPIRED, USED
-  status String @default("PENDING")
-
-  attempts Int @default(0) // Tentativas de verificação
-
-  expiresAt  DateTime
-  verifiedAt DateTime?
+  // Se já foi limpo
+  isDeleted Boolean @default(false)
+  deletedAt DateTime?
 
   createdAt DateTime @default(now())
 
-  @@index([phone])
-  @@index([code])
-  @@index([status])
+  @@index([originalChatId])
+  @@index([reason])
   @@index([expiresAt])
+  @@index([isDeleted])
+  @@index([archivedAt])
 }
 
 // Chaves de criptografia end-to-end para chat
@@ -802,4 +1096,349 @@ model UserKeys {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+}
+
+// Sistema de Histórico de Cancelamentos e Penalidades
+model CancellationHistory {
+  id String @id @default(cuid())
+
+  // Quem cancelou
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Pedido cancelado
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Papel do usuário no pedido
+  role String // SELLER (criador) ou BUYER (pagador)
+
+  // Motivo do cancelamento
+  reason String // USER_CHANGED_MIND, FOUND_BETTER_PRICE, PAYMENT_ISSUE, etc
+  note   String? // Observação adicional do usuário
+
+  // Penalidade aplicada
+  penaltyApplied   Boolean @default(false) // Se houve penalidade
+  penaltyPoints    Int     @default(0) // Pontos de penalidade aplicados
+  reputationBefore Int? // Reputação antes da penalidade
+  reputationAfter  Int? // Reputação após a penalidade
+
+  // Contexto do cancelamento
+  orderStatus String // Status do pedido no momento do cancelamento
+  orderValue  String // Valor do pedido (para análise)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([orderId])
+  @@index([role])
+  @@index([createdAt])
+  @@index([penaltyApplied])
+}
+
+// ============================================
+// RBAC SYSTEM - Dynamic Role-Based Access Control
+// ============================================
+
+// Roles dinâmicos - podem ser criados via UI por MASTER
+model Role {
+  id String @id @default(cuid())
+
+  // Identificação
+  name        String @unique // Ex: "Analista Financeiro", "Moderador"
+  slug        String @unique // Ex: "analista_financeiro", "moderador" (URL-friendly)
+  description String? // Descrição do que esse role faz
+
+  // UI
+  color String @default("#6B7280") // Cor em hex para exibição (badge)
+  icon  String @default("👤") // Emoji ou ícone para UI
+
+  // Sistema
+  isSystem Boolean @default(false) // Se é role de sistema (MASTER, USER) - não pode ser deletado
+  isActive Boolean @default(true) // Se está ativo (roles podem ser desativados sem deletar)
+
+  // Hierarquia (quanto maior, mais permissões)
+  level Int @default(0) // MASTER=100, ADMIN=80, GERENTE=60, SUPPORT=40, USER=0
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relações
+  users           User[]
+  rolePermissions RolePermission[]
+
+  @@index([slug])
+  @@index([isSystem])
+  @@index([isActive])
+  @@index([level])
+}
+
+// Permissões granulares - cada ação específica na plataforma
+model Permission {
+  id String @id @default(cuid())
+
+  // Identificação
+  name        String @unique // Ex: "users.view", "orders.edit", "finance.transfer"
+  displayName String // Nome legível: "Visualizar Usuários", "Editar Pedidos"
+
+  // Categoria para agrupar permissões na UI
+  category    String // users, orders, disputes, finance, kyc, reports, system
+
+  // Descrição detalhada do que a permissão permite
+  description String?
+
+  // Se é permissão crítica (requer 2FA ou atenção especial)
+  isCritical Boolean @default(false)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relações
+  rolePermissions RolePermission[]
+
+  @@index([name])
+  @@index([category])
+  @@index([isCritical])
+}
+
+// Tabela de junção Many-to-Many: Role <-> Permission
+model RolePermission {
+  id String @id @default(cuid())
+
+  // Foreign keys
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  // Metadados
+  grantedBy String? // ID do MASTER que concedeu essa permissão
+  grantedAt DateTime @default(now())
+
+  @@unique([roleId, permissionId]) // Um role não pode ter a mesma permissão duplicada
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+// ============================================
+// WORKER STATE PERSISTENCE - Tracks worker on/off state across restarts
+// ============================================
+
+// Worker State Persistence - Tracks worker on/off state across restarts
+model WorkerState {
+  id String @id @default(cuid())
+
+  // Unique identifier for the worker (e.g., "BalanceSyncWorker")
+  workerName String @unique
+
+  // State: is worker enabled?
+  isEnabled Boolean @default(false)
+
+  // Lifecycle timestamps
+  lastStartedAt  DateTime?
+  lastStoppedAt  DateTime?
+
+  // Standard timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Indexes for queries
+  @@index([isEnabled])
+  @@index([workerName])
+}
+
+// ============================================
+// EXCHANGE RATE - Tabela de taxas de câmbio para auditoria e cache
+// ============================================
+
+// Tabela de taxas de câmbio para auditoria e cache
+model ExchangeRate {
+  id String @id @default(cuid())
+
+  rate         String // Taxa USD/BRL
+  source       String // awesomeapi, banco_central, coingecko_brz, etc
+  responseTime Int // Tempo de resposta em ms
+  timestamp    DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  @@index([source])
+  @@index([timestamp])
+}
+
+// ============================================
+// COUPON DISCOUNT SYSTEM
+// ============================================
+
+// Cupons de desconto criados por ADMIN/MASTER
+model Coupon {
+  id String @id @default(cuid())
+
+  // Código único do cupom (ex: "WELCOME50", "PROMO2024")
+  code String @unique
+
+  // Desconto aplicado (1-100%)
+  discountPercentage Int // Percentual de desconto aplicado SOMENTE à platform fee
+
+  // Limites de uso
+  maxUsesPerUser Int      // Quantas vezes cada usuário pode usar
+  expiresAt      DateTime? // Data de expiração (null = sem expiração)
+
+  // Visibilidade
+  isPublic Boolean @default(false) // true = aparece na lista pública, false = só via código
+
+  // Estado
+  isActive Boolean @default(true) // Se o cupom está ativo
+
+  // Estatísticas
+  totalUses Int @default(0) // Total de vezes que foi usado
+
+  // Metadados
+  description String? // Descrição opcional do cupom
+  createdBy   String? // ID do admin que criou
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relações
+  userCoupons UserCoupon[]
+
+  @@index([code])
+  @@index([isActive])
+  @@index([isPublic])
+  @@index([expiresAt])
+  @@index([createdAt])
+}
+
+// Relacionamento Many-to-Many: User <-> Coupon (com tracking de uso)
+model UserCoupon {
+  id String @id @default(cuid())
+
+  // Relacionamentos
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  couponId String
+  coupon   Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  // Status
+  isActive  Boolean @default(false) // Se este cupom está ativo para o usuário
+  timesUsed Int     @default(0)     // Quantas vezes o usuário usou este cupom
+
+  // Timestamps
+  activatedAt   DateTime? // Quando foi ativado
+  deactivatedAt DateTime? // Quando foi desativado
+  firstUsedAt   DateTime? // Primeira vez que foi usado
+  lastUsedAt    DateTime? // Última vez que foi usado
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, couponId]) // Um usuário não pode ter o mesmo cupom duplicado
+  @@index([userId])
+  @@index([couponId])
+  @@index([isActive])
+  @@index([activatedAt])
+}
+
+// ============================================
+// DUAL-APPROVAL SYSTEM (Maker-Checker)
+// ============================================
+
+// Operações financeiras críticas aguardando aprovação do segundo MASTER
+model PendingApproval {
+  id String @id @default(cuid())
+
+  // Identidade da operação
+  // INTERNAL_TRANSFER | ADJUST_BALANCE | PLATFORM_REFUND | LOCK_BALANCE | UNLOCK_BALANCE
+  operationType    String
+  operationPayload String // JSON.stringify dos parâmetros completos
+
+  // Iniciador (Maker)
+  initiatorId   String
+  initiator     User    @relation("PendingApprovalInitiator", fields: [initiatorId], references: [id])
+  initiatorNote String?
+
+  // Aprovador (Checker)
+  approverId   String?
+  approver     User?   @relation("PendingApprovalApprover", fields: [approverId], references: [id])
+  approverNote String?
+
+  // Status lifecycle:
+  // PENDING_APPROVAL → APPROVED | REJECTED | EXPIRED | OVERRIDE_PENDING | OVERRIDE_EXECUTED | OVERRIDE_CANCELLED
+  status    String   @default("PENDING_APPROVAL")
+  expiresAt DateTime // createdAt + 48h
+
+  // Emergency Override (Cenário A)
+  overrideRequestedAt   DateTime?
+  overrideExecuteAfter  DateTime? // requestedAt + 30min
+  overrideJustification String?   // mínimo 50 chars
+  overrideCancelToken   String?   @unique // crypto.randomBytes(32).toString('hex')
+  overrideCancelledBy   String?   // userId ou "EMAIL_TOKEN"
+  overrideCancelledAt   DateTime?
+
+  // Delegação usada (se aprovado por delegado — Cenário B)
+  delegationId String?
+  delegation   MasterDelegation? @relation(fields: [delegationId], references: [id])
+
+  // Resultado da execução
+  executedAt     DateTime?
+  executionError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([initiatorId])
+  @@index([expiresAt])
+  @@index([overrideCancelToken])
+  @@index([createdAt])
+}
+
+// Delegação temporária de aprovação para ADMIN/GERENTE (Cenário B)
+model MasterDelegation {
+  id String @id @default(cuid())
+
+  // Quem concedeu (deve ser MASTER)
+  grantorId String
+  grantor   User   @relation("DelegationGrantor", fields: [grantorId], references: [id])
+
+  // Quem recebeu (deve ser GERENTE ou ADMIN — nível 60-80)
+  granteeId String
+  grantee   User   @relation("DelegationGrantee", fields: [granteeId], references: [id])
+
+  // Escopo: JSON array de operationTypes; "[]" significa todos os 5 tipos
+  operationScope String @default("[]")
+
+  // Motivo obrigatório
+  reason String
+
+  // Período de validade
+  startsAt  DateTime @default(now())
+  expiresAt DateTime // máximo startsAt + 30 dias
+
+  // Revogação
+  isRevoked   Boolean   @default(false)
+  revokedById String?
+  revokedBy   User?     @relation("DelegationRevoker", fields: [revokedById], references: [id])
+  revokedAt   DateTime?
+  revokeReason String?
+
+  // Estatísticas de uso
+  timesUsed  Int       @default(0)
+  lastUsedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Aprovações feitas usando esta delegação
+  approvals PendingApproval[]
+
+  @@index([granteeId])
+  @@index([grantorId])
+  @@index([isRevoked])
+  @@index([expiresAt])
+  @@index([createdAt])
 }

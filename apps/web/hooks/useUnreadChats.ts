@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 export function useUnreadChats() {
   const [unreadCount, setUnreadCount] = useState<number>(0);
@@ -7,18 +8,7 @@ export function useUnreadChats() {
   // Buscar contador de não lidas da API
   const fetchUnreadCount = useCallback(async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        setUnreadCount(0);
-        setLoading(false);
-        return;
-      }
-
-      const response = await fetch('http://localhost:3001/api/v1/chat/unread-count', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/chat/unread-count');
 
       if (response.ok) {
         const data = await response.json();

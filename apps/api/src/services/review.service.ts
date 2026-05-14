@@ -122,8 +122,9 @@ export class ReviewService {
 
     console.log(`✅ Review criada/atualizada: ${review.id} (idempotência)`);
 
-    // Atualizar reputação do usuário avaliado
-    await this.updateUserReputation(input.reviewedId);
+    // Recalcular reputacao composta do usuario avaliado
+    const { reputationService } = await import('./reputation.service');
+    await reputationService.recalculateAndSave(input.reviewedId);
 
     // Enviar notificação para o usuário avaliado (apenas se for nova, não atualização)
     setImmediate(async () => {
@@ -370,26 +371,6 @@ export class ReviewService {
   }
 
   /**
-   * Atualizar reputação do usuário baseada nas avaliações
-   */
-  private async updateUserReputation(userId: string) {
-    const stats = await this.getUserReviewStats(userId);
-
-    // Calcular reputação (0-100)
-    // Fórmula: (média de estrelas / 5) * 100
-    const reputationScore = Math.round((stats.averageRating / 5) * 100);
-
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        reputationScore,
-      },
-    });
-
-    return reputationScore;
-  }
-
-  /**
    * Marcar review como suspeita (admin)
    */
   async markAsSuspicious(reviewId: string) {
@@ -408,8 +389,9 @@ export class ReviewService {
       data: { isHidden: true },
     });
 
-    // Recalcular reputação do usuário
-    await this.updateUserReputation(review.reviewedId);
+    // Recalcular reputacao composta do usuario
+    const { reputationService } = await import('./reputation.service');
+    await reputationService.recalculateAndSave(review.reviewedId);
 
     return review;
   }

@@ -42,13 +42,22 @@ export interface CreateOrderInput {
   cryptoAmount: string;
   brlAmount: string;
   orderData: BoletoData | PixData;
+  customExpirationHours?: number; // Custom expiration time (1-720 hours)
+  manualCancelOnly?: boolean; // If true, expires after 6 months instead of custom/default
 }
 
 export interface FeeCalculation {
-  platformFee: string; // 1.5% em crypto
-  payerReward: string; // 1% em crypto
-  totalFee: string; // 2.5% em crypto
+  platformFee: string; // 1.5% em crypto (com desconto de cupom aplicado, se houver)
+  payerReward: string; // 1% em crypto (permanece inalterado)
+  totalFee: string; // 2.5% em crypto (ou menos com cupom)
   netCryptoAmount: string; // Valor que o criador recebe
+  appliedCoupon?: {
+    couponId: string;
+    code: string;
+    discountPercentage: number;
+    originalPlatformFee: string;
+    discountAmount: string;
+  } | null;
 }
 
 // Configurações de taxas
@@ -58,3 +67,30 @@ export const FEE_CONFIG = {
   TOTAL_FEE_PERCENTAGE: 0.025, // 2.5%
   TIMEOUT_HOURS: 24, // Horas para timeout
 };
+
+// Configurações específicas para ordens BUY
+// Em ordens BUY: comprador paga 2.5% de markup, provedor deposita crypto + 1.5% fee
+// Provedor recebe BRL com 2.5% extra, paga 1.5% fee em crypto = ~1% lucro líquido
+export const BUY_ORDER_CONFIG = {
+  BRL_MARKUP_PERCENTAGE: 0.025, // 2.5% markup no preço BRL
+  PROVIDER_COLLATERAL_FEE: 0.015, // 1.5% que provedor deposita extra (platform fee)
+};
+
+// Input para criação de ordem BUY (comprador não tem crypto)
+export interface CreateBuyOrderInput {
+  userId: string;
+  cryptoType: string;
+  cryptoNetwork: string;
+  cryptoAmount: string; // Quanto crypto quer comprar
+  customExpirationHours?: number;
+  manualCancelOnly?: boolean;
+}
+
+// Input para provedor aceitar ordem BUY
+export interface AcceptBuyOrderInput {
+  orderId: string;
+  providerId: string;
+  pixKey: string;
+  pixKeyType: 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM';
+  recipientName: string;
+}

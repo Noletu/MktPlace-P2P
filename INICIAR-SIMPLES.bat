@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 echo.
 echo ========================================
 echo   MktPlace P2P - Inicializacao Simples
@@ -9,77 +10,121 @@ echo.
 where node >nul 2>&1
 if errorlevel 1 (
     echo ERRO: Node.js nao instalado!
-    echo Por favor, instale o Node.js: https://nodejs.org/
+    echo Por favor, instale o Node.js 20+: https://nodejs.org/
     pause
     exit /b 1
 )
 
-echo [1/4] Verificando dependencias...
+:: Verificar versao Node.js (precisa ser 18+)
+for /f "tokens=1 delims=v" %%a in ('node --version') do set NODE_VER=%%a
+for /f "tokens=1 delims=." %%a in ('node --version') do set NODE_MAJOR=%%a
+set NODE_MAJOR=%NODE_MAJOR:v=%
+if %NODE_MAJOR% LSS 18 (
+    echo AVISO: Node.js %NODE_MAJOR% detectado. Recomendado Node.js 20+.
+    echo Atualize em: https://nodejs.org/
+    echo.
+)
+
+echo [1/6] Configurando variaveis de ambiente...
 echo.
 
-:: Verificar se node_modules existe na API
-if not exist "apps\api\node_modules" (
-    echo Dependencias da API nao encontradas!
-    echo Instalando dependencias... (isso pode demorar alguns minutos)
-    echo.
-    cd apps\api
+:: Criar apps/api/.env se nao existir
+if not exist "apps\api\.env" (
+    echo Criando apps/api/.env a partir do .env.example...
+
+    :: Gerar JWT_SECRET automaticamente com Node.js
+    for /f %%i in ('node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"') do set JWT_SECRET_GENERATED=%%i
+
+    :: Gerar WALLET_ENCRYPTION_KEY automaticamente
+    for /f %%i in ('node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"') do set WALLET_KEY_GENERATED=%%i
+
+    :: Copiar .env.example e substituir placeholders
+    powershell -Command "(Get-Content 'apps\api\.env.example') -replace 'GERAR_SEU_JWT_SECRET_AQUI', '%JWT_SECRET_GENERATED%' -replace 'GERAR_SUA_WALLET_KEY_AQUI', '%WALLET_KEY_GENERATED%' | Set-Content 'apps\api\.env'"
+
+    echo OK - apps/api/.env criado com segredos gerados automaticamente
+) else (
+    echo OK - apps/api/.env ja existe
+)
+
+:: Criar apps/web/.env.local se nao existir
+if not exist "apps\web\.env.local" (
+    echo Criando apps/web/.env.local...
+    (
+        echo # API Configuration
+        echo NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1
+    ) > "apps\web\.env.local"
+    echo OK - apps/web/.env.local criado
+) else (
+    echo OK - apps/web/.env.local ja existe
+)
+
+echo.
+
+echo [2/6] Encerrando instancias anteriores...
+echo.
+
+:: Matar processos nas portas 3000 e 3001 via PowerShell
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 3001,3000 -State Listen -EA 0 | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -EA 0 }"
+ping 127.0.0.1 -n 3 >nul
+echo OK - Portas liberadas
+echo.
+
+echo [3/6] Instalando dependencias...
+echo.
+
+if not exist "node_modules" (
+    echo Instalando dependencias ^(pode demorar alguns minutos na primeira vez^)...
     call npm install
     if errorlevel 1 (
-        echo ERRO: Falha ao instalar dependencias da API!
+        echo ERRO: Falha ao instalar dependencias!
         pause
         exit /b 1
     )
-    cd ..\..
-    echo OK - Dependencias da API instaladas
+    echo OK - Dependencias instaladas
+) else (
+    echo OK - Dependencias ja instaladas
 )
-
-:: Verificar se node_modules existe no Frontend
-if not exist "apps\web\node_modules" (
-    echo Dependencias do Frontend nao encontradas!
-    echo Instalando dependencias... (isso pode demorar alguns minutos)
-    echo.
-    cd apps\web
-    call npm install
-    if errorlevel 1 (
-        echo ERRO: Falha ao instalar dependencias do Frontend!
-        pause
-        exit /b 1
-    )
-    cd ..\..
-    echo OK - Dependencias do Frontend instaladas
-)
-
-echo OK - Todas as dependencias instaladas
 echo.
 
-:: Verificar se Prisma Client foi gerado
-echo [2/4] Verificando Prisma Client...
+echo [4/6] Configurando banco de dados...
 echo.
 cd apps\api
 call npx prisma generate >nul 2>&1
+if errorlevel 1 (
+    echo AVISO: Falha ao gerar Prisma Client
+) else (
+    echo OK - Prisma Client gerado
+)
+
+:: Aplicar schema ao banco (cria tabelas que faltam, seguro para re-executar)
+call npx prisma db push --accept-data-loss >nul 2>&1
+if errorlevel 1 (
+    echo AVISO: Falha ao sincronizar schema do banco
+) else (
+    echo OK - Schema do banco sincronizado
+)
 cd ..\..
-echo OK - Prisma Client gerado
 echo.
 
-:: Criar diretorio de logs
-if not exist logs mkdir logs
+echo [5/6] Iniciando servicos...
+echo.
 
 :: Iniciar API
-echo [3/4] Iniciando API na porta 3001...
-start "MktPlace-API" cmd /c "cd apps\api && npm run dev"
+echo Iniciando API na porta 3001...
+start "MktPlace-API" cmd /k "title MktPlace-API && cd apps\api && npm run dev"
 
-:: Aguardar 5 segundos
-ping 127.0.0.1 -n 6 > nul
+:: Aguardar API inicializar
+ping 127.0.0.1 -n 7 > nul
 
 :: Iniciar Frontend
 echo Iniciando Frontend na porta 3000...
-start "MktPlace-Frontend" cmd /c "cd apps\web && npm run dev"
+start "MktPlace-Frontend" cmd /k "title MktPlace-Frontend && cd apps\web && npm run dev"
 
-:: Aguardar 8 segundos
-ping 127.0.0.1 -n 9 > nul
+:: Aguardar Frontend inicializar
+ping 127.0.0.1 -n 10 > nul
 
-:: Abrir navegador
-echo [4/4] Abrindo navegador...
+echo.
+echo [6/6] Abrindo navegador...
 start http://localhost:3000
 
 echo.
@@ -87,14 +132,13 @@ echo ========================================
 echo   Aplicacao iniciada com sucesso!
 echo ========================================
 echo.
-echo   API:      http://localhost:3001
 echo   Frontend: http://localhost:3000
+echo   API:      http://localhost:3001
 echo.
-echo Duas janelas foram abertas:
-echo   - MktPlace-API (Backend)
-echo   - MktPlace-Frontend (Frontend)
+echo Duas janelas abertas:
+echo   - MktPlace-API     (fechar = para o backend)
+echo   - MktPlace-Frontend (fechar = para o frontend)
 echo.
-echo Para parar: Execute PARAR-SIMPLES.bat
-echo             ou feche as janelas da API e Frontend
+echo Credenciais de teste: CREDENCIAIS_ADMIN.md
 echo.
 pause

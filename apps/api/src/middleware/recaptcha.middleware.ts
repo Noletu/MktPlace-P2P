@@ -95,6 +95,23 @@ export const recaptchaMiddleware = async (
   }
 };
 
+// SECURITY: Middleware obrigatório em produção (bloqueia se reCAPTCHA falhar)
+// Em dev, pass-through a menos que RECAPTCHA_REQUIRED=true
+export const requiredRecaptchaMiddleware = async (
+  req: RecaptchaRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const isRequired = process.env.NODE_ENV === 'production' || process.env.RECAPTCHA_REQUIRED === 'true';
+  if (!isRequired) {
+    req.recaptchaVerified = false;
+    next();
+    return;
+  }
+  // Delegate to the blocking recaptchaMiddleware
+  return recaptchaMiddleware(req, res, next);
+};
+
 // SECURITY: Middleware opcional (não bloqueia se falhar)
 export const optionalRecaptchaMiddleware = async (
   req: RecaptchaRequest,

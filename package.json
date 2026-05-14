@@ -14,6 +14,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
   "devDependencies": {
+    "docx": "^9.6.1",
     "prettier": "^3.2.5",
     "turbo": "^2.3.3",
     "typescript": "^5.6.3"
@@ -21,6 +22,7 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "packageManager": "npm@11.6.1",
   "dependencies": {
     "@types/socket.io": "^3.0.2",
     "sharp": "^0.34.4",

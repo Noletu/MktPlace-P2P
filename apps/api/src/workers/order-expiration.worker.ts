@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import { notificationService } from '../services/notification.service';
+import { WalletService } from '../services/wallet.service';
 
 const prisma = new PrismaClient();
 
@@ -16,10 +18,14 @@ class OrderExpirationWorker {
     this.isRunning = true;
 
     // Verificar a cada 1 minuto (para timeout de 30min ser preciso)
-    this.interval = setInterval(() => this.checkExpiredOrders(), 60 * 1000);
+    this.interval = setInterval(async () => {
+      await this.checkExpiredOrders();
+      await this.checkExpiredValidations();
+    }, 60 * 1000);
 
     // Primeira execução imediata
     await this.checkExpiredOrders();
+    await this.checkExpiredValidations();
   }
 
   stop() {
@@ -77,17 +83,48 @@ class OrderExpirationWorker {
       if (order.status === 'MATCHED') {
         console.log(`⏰ MATCHED order expired: ${order.id} - Returning to marketplace`);
 
+        // Desbloquear colateral do provedor (para ordens BUY)
+        // Em ordens BUY, o provedor bloqueia colateral ao aceitar
+        if (order.orderType === 'BUY' && order.collateralLocked && order.collateralLockedAmount && order.providerWalletId) {
+          try {
+            await WalletService.unlockBalance(
+              order.providerWalletId,
+              order.collateralLockedAmount,
+              order.id,
+              `Colateral desbloqueado - ordem BUY expirou sem pagamento`
+            );
+            console.log(`🔓 [BUY ORDER] Colateral do provedor desbloqueado: ${order.collateralLockedAmount} ${order.cryptoType}`);
+          } catch (error: any) {
+            console.error(`❌ Erro ao desbloquear colateral do provedor:`, error);
+          }
+        }
+
         // Resetar timeout para 24 horas (disponível novamente no marketplace)
         const newTimeout = new Date();
         newTimeout.setHours(newTimeout.getHours() + 24);
 
-        // Retornar para PENDING
+        // Retornar para PENDING e limpar dados do provedor (para ordens BUY)
+        const updateData: any = {
+          status: 'PENDING',
+          timeoutAt: newTimeout,
+        };
+
+        // Se for ordem BUY, limpar dados do provedor
+        if (order.orderType === 'BUY') {
+          updateData.providerId = null;
+          updateData.providerWalletId = null;
+          updateData.walletId = null;
+          updateData.orderData = JSON.stringify({});
+          updateData.collateralSource = null;
+          updateData.collateralConfirmed = false;
+          updateData.collateralLocked = false;
+          updateData.collateralLockedAmount = null;
+          updateData.collateralUnlockedAt = new Date();
+        }
+
         await prisma.order.update({
           where: { id: order.id },
-          data: {
-            status: 'PENDING',
-            timeoutAt: newTimeout,
-          },
+          data: updateData,
         });
 
         // Deletar transações associadas
@@ -102,6 +139,38 @@ class OrderExpirationWorker {
         }
 
         console.log(`✅ Order ${order.id} returned to PENDING - Available in marketplace again`);
+
+        // Notificar VENDEDOR que o pedido expirou e voltou ao marketplace
+        setImmediate(async () => {
+          try {
+            await notificationService.notifyOrderExpired(
+              order.id,
+              order.userId,
+              'O pedido expirou após 30 minutos sem pagamento e retornou ao marketplace'
+            );
+            console.log(`📬 Notification sent to seller: ${order.userId}`);
+          } catch (error) {
+            console.error(`❌ Error sending notification to seller:`, error);
+          }
+        });
+
+        // Notificar COMPRADOR (payer) que não completou o pagamento a tempo
+        if (order.transactions && order.transactions.length > 0) {
+          const payerId = order.transactions[0].payerId;
+          setImmediate(async () => {
+            try {
+              await notificationService.notifyOrderExpired(
+                order.id,
+                payerId,
+                'Você não completou o pagamento a tempo e o pedido retornou ao marketplace'
+              );
+              console.log(`📬 Notification sent to payer: ${payerId}`);
+            } catch (error) {
+              console.error(`❌ Error sending notification to payer:`, error);
+            }
+          });
+        }
+
         return;
       }
 
@@ -129,8 +198,86 @@ class OrderExpirationWorker {
       });
 
       console.log(`✅ Order ${order.id} auto-cancelled and marked for refund`);
+
+      // Notificar VENDEDOR que o pedido PENDING expirou e foi cancelado
+      setImmediate(async () => {
+        try {
+          const message = order.type === 'BOLETO'
+            ? `Seu pedido expirou pois a data de vencimento do boleto passou. O colateral será devolvido.`
+            : `Seu pedido expirou após ${order.customExpirationHours || 24} horas sem match. O colateral será devolvido.`;
+
+          await notificationService.notifyOrderExpired(
+            order.id,
+            order.userId,
+            message
+          );
+          console.log(`📬 Notification sent to seller: ${order.userId}`);
+        } catch (error) {
+          console.error(`❌ Error sending notification to seller:`, error);
+        }
+      });
     } catch (error) {
       console.error(`❌ Error processing expired order ${order.id}:`, error);
+    }
+  }
+
+  /**
+   * Auto-rejeitar comprovantes em VALIDATING que passaram do prazo de 24h
+   * Devolve o pedido para PAYMENT_SENT → IN_NEGOTIATION para o comprador reenviar
+   */
+  private async checkExpiredValidations() {
+    try {
+      const now = new Date();
+
+      const expiredValidations = await prisma.transaction.findMany({
+        where: {
+          status: 'VALIDATING',
+          validationDeadline: { lt: now, not: null },
+        },
+        include: { order: true },
+      });
+
+      if (expiredValidations.length === 0) return;
+
+      console.log(`⏰ [VALIDATION TIMEOUT] Found ${expiredValidations.length} expired validations`);
+
+      for (const tx of expiredValidations) {
+        try {
+          await prisma.$transaction([
+            prisma.transaction.update({
+              where: { id: tx.id },
+              data: {
+                status: 'PENDING', // Volta para PENDING → comprador pode reenviar
+                validationDeadline: null,
+                comprovanteData: null,
+                comprovanteUrl: null,
+              },
+            }),
+            prisma.order.update({
+              where: { id: tx.orderId },
+              data: { status: 'IN_NEGOTIATION' }, // Volta para negociação
+            }),
+          ]);
+
+          console.log(`⏰ Transaction ${tx.id} auto-rejected: validation deadline expired`);
+
+          setImmediate(async () => {
+            try {
+              await notificationService.notifyOrderExpired(
+                tx.orderId,
+                tx.payerId,
+                'Seu comprovante não foi validado a tempo (24h). Por favor, envie novamente.'
+              );
+            } catch (error) {
+              console.error('Failed to notify expired validation:', error);
+            }
+          });
+        } catch (error) {
+          console.error(`❌ Error rejecting expired validation ${tx.id}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error checking expired validations:', error);
     }
   }
 
@@ -172,6 +319,20 @@ class OrderExpirationWorker {
 
             console.log(`📅 Boleto ${order.id} expired - Due: ${dueDate.toISOString()}`);
             expiredCount++;
+
+            // Notificar vendedor sobre expiração do boleto
+            setImmediate(async () => {
+              try {
+                await notificationService.notifyOrderExpired(
+                  order.id,
+                  order.userId,
+                  `Seu boleto expirou. Data de vencimento: ${dueDate.toLocaleDateString()}. O colateral será devolvido.`
+                );
+                console.log(`📬 Notification sent for boleto: ${order.id}`);
+              } catch (error) {
+                console.error(`❌ Error sending notification for boleto ${order.id}:`, error);
+              }
+            });
           }
         } catch (error) {
           console.error(`Error processing boleto ${order.id}:`, error);

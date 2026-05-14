@@ -49,7 +49,7 @@ export default function RegisterForm() {
 
       setEmailChecking(true);
       try {
-        const response = await fetch(`http://localhost:3001/api/v1/auth/check-email?email=${encodeURIComponent(formData.email)}`);
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1"}/auth/check-email?email=${encodeURIComponent(formData.email)}`);
         const data = await response.json();
         setEmailValid(data.available);
       } catch (err) {
@@ -74,7 +74,7 @@ export default function RegisterForm() {
     setLoading(true);
 
     try {
-      const response = await fetch('http://localhost:3001/api/v1/auth/register', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -122,7 +122,7 @@ export default function RegisterForm() {
       }, 1000);
     } catch (err: any) {
       if (err.message === 'Failed to fetch') {
-        setError('❌ Não foi possível conectar à API. Verifique se o servidor está rodando em http://localhost:3001');
+        setError('❌ Não foi possível conectar à API. Verifique se o servidor está rodando em http://localhost:3000');
       } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
         setError('❌ Erro de conexão. A API pode não estar rodando.');
       } else {
@@ -291,12 +291,12 @@ export default function RegisterForm() {
       </button>
 
       <div className="p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs text-gray-600 dark:text-gray-400">
-        <p className="mb-2"><strong>Após o cadastro:</strong></p>
+        <p className="mb-2"><strong>Apos o cadastro:</strong></p>
         <ul className="list-disc list-inside space-y-1">
           <li>✅ Use a plataforma imediatamente (limite: R$ 1.000/dia)</li>
-          <li>📈 Complete o KYC quando quiser para aumentar limites</li>
-          <li>🔒 KYC Level 1 (CPF + Telefone) → R$ 10.000/dia</li>
-          <li>🚀 Níveis superiores disponíveis para limites maiores</li>
+          <li>📈 Complete transações para aumentar sua reputação</li>
+          <li>⭐ Cada transação = +10 pontos de reputação</li>
+          <li>🚀 Reputação 100 = limite de R$ 11.000/dia</li>
         </ul>
       </div>
 

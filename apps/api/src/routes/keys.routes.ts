@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { keysController } from '../controllers/keys.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
+import { require2FAMiddleware } from '../middleware/require2FA.middleware';
 
 const router = Router();
 
@@ -41,13 +42,14 @@ router.get('/has-public-key', keysController.hasPublicKey.bind(keysController));
  * @desc    Armazenar backup da chave privada criptografada
  * @access  Private
  */
-router.post('/private-key-backup', keysController.storePrivateKeyBackup.bind(keysController));
+// SECURITY: Armazenar/recuperar backup de chave privada exige 2FA
+router.post('/private-key-backup', require2FAMiddleware, keysController.storePrivateKeyBackup.bind(keysController));
 
 /**
  * @route   GET /api/v1/keys/private-key-backup
  * @desc    Recuperar backup da chave privada criptografada
  * @access  Private
  */
-router.get('/private-key-backup', keysController.getPrivateKeyBackup.bind(keysController));
+router.get('/private-key-backup', require2FAMiddleware, keysController.getPrivateKeyBackup.bind(keysController));
 
 export default router;

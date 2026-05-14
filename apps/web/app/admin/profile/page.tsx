@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { fetchWithAuth } from '@/utils/api';
 
 interface AdminProfile {
   id: string;
@@ -20,12 +21,7 @@ export default function AdminProfilePage() {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        const res = await fetch('http://localhost:3001/api/v1/auth/me', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
+        const res = await fetchWithAuth('/auth/me');
 
         if (!res.ok) {
           throw new Error('Erro ao buscar perfil');
@@ -101,9 +97,16 @@ export default function AdminProfilePage() {
                 <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
                   profile?.role === 'MASTER'
                     ? 'bg-purple-600/20 border border-purple-500/50 text-purple-400'
-                    : 'bg-blue-600/20 border border-blue-500/50 text-blue-400'
+                    : profile?.role === 'ADMIN'
+                    ? 'bg-blue-600/20 border border-blue-500/50 text-blue-400'
+                    : profile?.role === 'GERENTE'
+                    ? 'bg-green-600/20 border border-green-500/50 text-green-400'
+                    : 'bg-orange-600/20 border border-orange-500/50 text-orange-400'
                 }`}>
-                  {profile?.role === 'MASTER' ? '👑 Master Admin' : '🛡️ Admin'}
+                  {profile?.role === 'MASTER' ? '👑 Master Admin'
+                   : profile?.role === 'ADMIN' ? '⚡ Admin'
+                   : profile?.role === 'GERENTE' ? '📊 Gerente'
+                   : '🎧 Suporte'}
                 </span>
               </div>
             </div>
@@ -141,7 +144,7 @@ export default function AdminProfilePage() {
             </div>
             <div className="flex items-center gap-3 p-4 bg-green-600/10 border border-green-600/30 rounded-lg">
               <span className="text-2xl text-green-400">✓</span>
-              <span className="text-gray-200">Gerenciar KYC</span>
+              <span className="text-gray-200">Gerenciar Disputas</span>
             </div>
             <div className="flex items-center gap-3 p-4 bg-green-600/10 border border-green-600/30 rounded-lg">
               <span className="text-2xl text-green-400">✓</span>

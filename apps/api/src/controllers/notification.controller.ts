@@ -1,6 +1,11 @@
 import { Request, Response } from 'express';
+import { PrismaClient } from '@prisma/client';
 import { notificationService } from '../services/notification.service';
+import { emailService } from '../services/email.service';
+import { logger } from '../utils/logger';
 import { z } from 'zod';
+
+const prisma = new PrismaClient();
 
 const BroadcastNotificationSchema = z.object({
   userIds: z.array(z.string()).min(1),
@@ -289,6 +294,194 @@ export class NotificationController {
       res.status(500).json({
         success: false,
         error: error.message || 'Erro ao enviar anúncio',
+      });
+    }
+  }
+  // ============================================
+  // ADMIN BROADCAST (UNIFIED)
+  // ============================================
+
+  /**
+   * Enviar comunicação admin unificada (notificação + email)
+   */
+  async sendAdminBroadcast(req: Request, res: Response) {
+    try {
+      const userRole = req.user?.role;
+      if (userRole !== 'ADMIN' && userRole !== 'MASTER') {
+        return res.status(403).json({
+          success: false,
+          error: 'Apenas administradores podem enviar comunicações',
+        });
+      }
+
+      const schema = z.object({
+        title: z.string().min(1).max(200),
+        message: z.string().min(1).max(2000),
+        priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'URGENT']).default('NORMAL'),
+        deliveryChannel: z.enum(['NOTIFICATION', 'EMAIL', 'BOTH']).default('NOTIFICATION'),
+        targetMode: z.enum(['ALL', 'SELECTED']).default('ALL'),
+        userIds: z.array(z.string()).optional(),
+        actionUrl: z.string().url().optional().or(z.literal('')),
+        actionLabel: z.string().max(50).optional(),
+      });
+
+      const data = schema.parse(req.body);
+
+      // Clean empty actionUrl
+      if (data.actionUrl === '') data.actionUrl = undefined;
+
+      // Resolve recipient IDs
+      let recipientIds: string[];
+      if (data.targetMode === 'SELECTED') {
+        if (!data.userIds || data.userIds.length === 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'Selecione pelo menos um destinatário',
+          });
+        }
+        recipientIds = data.userIds;
+      } else {
+        const users = await prisma.user.findMany({ select: { id: true } });
+        recipientIds = users.map(u => u.id);
+      }
+
+      if (recipientIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Nenhum destinatário encontrado',
+        });
+      }
+
+      // Send notifications (in-app)
+      if (data.deliveryChannel === 'NOTIFICATION' || data.deliveryChannel === 'BOTH') {
+        await notificationService.broadcastNotification(recipientIds, {
+          type: 'SYSTEM_ANNOUNCEMENT',
+          category: 'SYSTEM',
+          title: data.title,
+          message: data.message,
+          priority: data.priority,
+          actionUrl: data.actionUrl,
+          actionLabel: data.actionLabel,
+        });
+      }
+
+      // Send emails
+      if (data.deliveryChannel === 'EMAIL' || data.deliveryChannel === 'BOTH') {
+        const users = await prisma.user.findMany({
+          where: { id: { in: recipientIds } },
+          select: { email: true },
+        });
+
+        // Batch emails with 150ms delay to avoid SMTP throttle
+        for (const user of users) {
+          try {
+            await emailService.sendBroadcastEmail(user.email, {
+              title: data.title,
+              message: data.message,
+              priority: data.priority,
+              actionUrl: data.actionUrl,
+              actionLabel: data.actionLabel,
+            });
+            await new Promise(resolve => setTimeout(resolve, 150));
+          } catch (emailErr: any) {
+            logger.warn('[BROADCAST] Failed to send email', {
+              email: user.email,
+              error: emailErr.message,
+            });
+          }
+        }
+      }
+
+      // Create audit log
+      await prisma.broadcastLog.create({
+        data: {
+          adminId: req.user!.userId,
+          adminEmail: req.user!.email || 'unknown',
+          title: data.title,
+          message: data.message,
+          priority: data.priority,
+          deliveryChannel: data.deliveryChannel,
+          targetMode: data.targetMode,
+          actionUrl: data.actionUrl,
+          actionLabel: data.actionLabel,
+          recipientCount: recipientIds.length,
+          recipientIds: data.targetMode === 'SELECTED' ? JSON.stringify(recipientIds) : null,
+        },
+      });
+
+      logger.info('[BROADCAST] Admin broadcast sent', {
+        adminId: req.user!.userId,
+        channel: data.deliveryChannel,
+        targetMode: data.targetMode,
+        recipientCount: recipientIds.length,
+      });
+
+      res.json({
+        success: true,
+        message: `Comunicação enviada para ${recipientIds.length} destinatários`,
+        data: {
+          recipientCount: recipientIds.length,
+          channel: data.deliveryChannel,
+        },
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Dados inválidos',
+          details: error.errors,
+        });
+      }
+      logger.error('[BROADCAST] Error', { error: error.message });
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao enviar comunicação',
+      });
+    }
+  }
+
+  /**
+   * Histórico de broadcasts enviados
+   */
+  async getBroadcastHistory(req: Request, res: Response) {
+    try {
+      const userRole = req.user?.role;
+      if (userRole !== 'ADMIN' && userRole !== 'MASTER') {
+        return res.status(403).json({
+          success: false,
+          error: 'Apenas administradores podem ver o histórico',
+        });
+      }
+
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const offset = (page - 1) * limit;
+
+      const [logs, total] = await Promise.all([
+        prisma.broadcastLog.findMany({
+          orderBy: { createdAt: 'desc' },
+          skip: offset,
+          take: limit,
+        }),
+        prisma.broadcastLog.count(),
+      ]);
+
+      res.json({
+        success: true,
+        data: {
+          logs,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+          },
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar histórico',
       });
     }
   }
