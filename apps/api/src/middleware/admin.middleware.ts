@@ -24,7 +24,7 @@ export const adminMiddleware = async (req: Request, res: Response, next: NextFun
       select: { role: true },
     });
 
-    if (!user || (user.role !== 'ADMIN' && user.role !== 'SUPPORT')) {
+    if (!user || (user.role !== 'ADMIN' && user.role !== 'SUPPORT' && user.role !== 'MASTER')) {
       return res.status(403).json({
         success: false,
         error: 'Acesso negado. Apenas administradores podem acessar esta funcionalidade.',

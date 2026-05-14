@@ -7,10 +7,12 @@ import { CryptoType } from '@mktplace/shared';
 import { formatBRL } from '@/utils/formatters';
 import PresenceBadge from '@/components/PresenceBadge';
 import AppHeader from '@/components/AppHeader';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Order {
   id: string;
-  type: string;
+  orderType: string; // 'SELL' or 'BUY'
+  type: string; // Payment method: 'PIX' or 'BOLETO'
   status: string;
   cryptoType: string;
   cryptoNetwork: string;
@@ -38,26 +40,24 @@ export default function MarketplacePage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filter, setFilter] = useState<'ALL' | 'PIX' | 'BOLETO'>('ALL');
+  const [paymentFilter, setPaymentFilter] = useState<'ALL' | 'PIX' | 'BOLETO'>('ALL');
+  const [orderTypeFilter, setOrderTypeFilter] = useState<'ALL' | 'SELL' | 'BUY'>('ALL');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCurrentUser();
+  }, []);
+
+  // Buscar ordens quando o filtro de tipo mudar
+  useEffect(() => {
     fetchOrders();
     const interval = setInterval(fetchOrders, 10000); // Atualizar a cada 10s
     return () => clearInterval(interval);
-  }, []);
+  }, [orderTypeFilter]);
 
   const fetchCurrentUser = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
-      const response = await fetch('http://localhost:3001/api/v1/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/auth/me');
 
       if (response.ok) {
         const data = await response.json();
@@ -70,18 +70,9 @@ export default function MarketplacePage() {
 
   const fetchOrders = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        setError('Você precisa fazer login para ver o marketplace');
-        setLoading(false);
-        return;
-      }
-
-      const response = await fetch('http://localhost:3001/api/v1/orders/marketplace', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      // Passar filtro de tipo de ordem para a API
+      const typeParam = orderTypeFilter !== 'ALL' ? `?type=${orderTypeFilter}` : '';
+      const response = await fetchWithAuth(`/orders/marketplace${typeParam}`);
 
       if (!response.ok) {
         throw new Error('Erro ao buscar pedidos');
@@ -100,9 +91,15 @@ export default function MarketplacePage() {
     router.push(`/orders/${orderId}/preview`);
   };
 
+  // Filtrar por método de pagamento (PIX/BOLETO) - só se aplica a SELL orders
   const filteredOrders = orders.filter((order) => {
-    if (filter === 'ALL') return true;
-    return order.type === filter;
+    // BUY orders não tem método de pagamento definido até serem aceitas
+    if (order.orderType === 'BUY') {
+      return paymentFilter === 'ALL'; // BUY orders só aparecem no "Todos"
+    }
+    if (paymentFilter === 'ALL') return true;
+    // Para SELL orders, o type é PIX ou BOLETO
+    return order.type === paymentFilter;
   });
 
   const getTimeRemaining = (timeoutAt: string) => {
@@ -146,32 +143,69 @@ export default function MarketplacePage() {
 
         {/* Filtros */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6">
-          <div className="flex gap-4">
-            <button
-              onClick={() => setFilter('ALL')}
-              className={`px-4 py-2 rounded-lg font-semibold ${
-                filter === 'ALL' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-              }`}
-            >
-              Todos ({orders.length})
-            </button>
-            <button
-              onClick={() => setFilter('PIX')}
-              className={`px-4 py-2 rounded-lg font-semibold ${
-                filter === 'PIX' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-              }`}
-            >
-              PIX ({orders.filter((o) => o.type === 'PIX').length})
-            </button>
-            <button
-              onClick={() => setFilter('BOLETO')}
-              className={`px-4 py-2 rounded-lg font-semibold ${
-                filter === 'BOLETO' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-              }`}
-            >
-              Boleto ({orders.filter((o) => o.type === 'BOLETO').length})
-            </button>
+          {/* Filtro por Tipo de Ordem: SELL/BUY */}
+          <div className="mb-4">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tipo de Ordem:</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setOrderTypeFilter('ALL')}
+                className={`px-4 py-2 rounded-lg font-semibold ${
+                  orderTypeFilter === 'ALL' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                Todas
+              </button>
+              <button
+                onClick={() => setOrderTypeFilter('SELL')}
+                className={`px-4 py-2 rounded-lg font-semibold ${
+                  orderTypeFilter === 'SELL' ? 'bg-green-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                Vendendo Cripto
+              </button>
+              <button
+                onClick={() => setOrderTypeFilter('BUY')}
+                className={`px-4 py-2 rounded-lg font-semibold ${
+                  orderTypeFilter === 'BUY' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                Comprando Cripto
+              </button>
+            </div>
           </div>
+
+          {/* Filtro por Método de Pagamento (só para SELL orders) */}
+          {orderTypeFilter !== 'BUY' && (
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Método de Pagamento:</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPaymentFilter('ALL')}
+                  className={`px-4 py-2 rounded-lg font-semibold ${
+                    paymentFilter === 'ALL' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                  }`}
+                >
+                  Todos ({orders.length})
+                </button>
+                <button
+                  onClick={() => setPaymentFilter('PIX')}
+                  className={`px-4 py-2 rounded-lg font-semibold ${
+                    paymentFilter === 'PIX' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                  }`}
+                >
+                  PIX ({orders.filter((o) => o.type === 'PIX').length})
+                </button>
+                <button
+                  onClick={() => setPaymentFilter('BOLETO')}
+                  className={`px-4 py-2 rounded-lg font-semibold ${
+                    paymentFilter === 'BOLETO' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                  }`}
+                >
+                  Boleto ({orders.filter((o) => o.type === 'BOLETO').length})
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {error && (
@@ -196,20 +230,27 @@ export default function MarketplacePage() {
             {filteredOrders.map((order) => {
               const isOwnOrder = currentUserId && order.user.id === currentUserId;
               const isInNegotiationWithOther = order.status === 'IN_NEGOTIATION' && order.negotiatingUserId !== currentUserId;
+              const isBuyOrder = order.orderType === 'BUY';
 
               return (
-                <div key={order.id} className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow ${isOwnOrder ? 'border-2 border-red-200 dark:border-red-800' : ''}`}>
+                <div key={order.id} className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow ${isOwnOrder ? 'border-2 border-red-200 dark:border-red-800' : ''} ${isBuyOrder ? 'border-l-4 border-l-blue-500' : ''}`}>
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex flex-col gap-2">
-                      <span
-                        className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
-                          order.type === 'PIX'
-                            ? 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300'
-                            : 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300'
-                        }`}
-                      >
-                        {order.type}
-                      </span>
+                      {isBuyOrder ? (
+                        <span className="inline-block px-3 py-1 rounded-full text-sm font-semibold bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300">
+                          QUER COMPRAR
+                        </span>
+                      ) : (
+                        <span
+                          className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
+                            order.type === 'PIX'
+                              ? 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300'
+                              : 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300'
+                          }`}
+                        >
+                          {order.type}
+                        </span>
+                      )}
                       {isOwnOrder && (
                         <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300">
                           SEU PEDIDO
@@ -217,7 +258,7 @@ export default function MarketplacePage() {
                       )}
                       {isInNegotiationWithOther && (
                         <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300">
-                          🔒 EM NEGOCIAÇÃO
+                          EM NEGOCIAÇÃO
                         </span>
                       )}
                     </div>
@@ -236,41 +277,104 @@ export default function MarketplacePage() {
                     />
                   </div>
 
-                <div className="mb-4">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Valor do Pagamento</p>
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(order.brlAmount)}</p>
-                </div>
-
-                <div className="mb-4">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Você receberá</p>
-                  <div className="flex items-center gap-2">
-                    <CryptoIcon crypto={order.cryptoType as CryptoType} size={28} />
-                    <p className="text-xl font-bold text-green-600 dark:text-green-400">
-                      {(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward)).toFixed(8)} {order.cryptoType}
-                    </p>
-                  </div>
-                  <p className="text-xs text-green-700 dark:text-green-400 font-semibold">
-                    ✨ Inclui +{parseFloat(order.payerReward).toFixed(8)} de cashback (1%)
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Rede: {order.cryptoNetwork}
-                  </p>
-                </div>
-
-                <div className="mb-4 pb-4 border-b dark:border-gray-700">
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Vendedor</p>
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold dark:text-gray-200">{order.user.name || 'Anônimo'}</p>
-                    <div className="text-right">
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Score: {order.user.reputationScore}
-                      </p>
+                {/* Conteúdo diferente para BUY vs SELL orders */}
+                {isBuyOrder ? (
+                  <>
+                    {/* BUY ORDER: Usuário quer comprar cripto */}
+                    <div className="mb-4">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Quer comprar</p>
+                      <div className="flex items-center gap-2">
+                        <CryptoIcon crypto={order.cryptoType as CryptoType} size={28} />
+                        <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                          {parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}
+                        </p>
+                      </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {order.user.successfulTransactions}/{order.user.totalTransactions} sucesso
+                        Rede: {order.cryptoNetwork}
                       </p>
                     </div>
-                  </div>
-                </div>
+
+                    <div className="mb-4">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Você receberá</p>
+                      <p className="text-3xl font-bold text-green-600 dark:text-green-400">{formatBRL(order.brlAmount)}</p>
+                      <p className="text-xs text-green-700 dark:text-green-400 font-semibold">
+                        Via PIX (inclui ~1% lucro para você)
+                      </p>
+                    </div>
+
+                    <div className="mb-4 pb-4 border-b dark:border-gray-700">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Comprador</p>
+                      <div className="flex items-center justify-between">
+                        <p className="font-semibold dark:text-gray-200">{order.user.name || 'Anônimo'}</p>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/user/${order.user.id}`);
+                          }}
+                          className="text-right hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg p-2 -m-2 transition-colors group"
+                        >
+                          <p className="text-sm text-gray-600 dark:text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                            Score: {order.user.reputationScore}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                            {order.user.successfulTransactions}/{order.user.totalTransactions} sucesso
+                          </p>
+                          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                            Ver perfil
+                          </p>
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* SELL ORDER: Usuário vende cripto (fluxo original) */}
+                    <div className="mb-4">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Valor do Pagamento</p>
+                      <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(order.brlAmount)}</p>
+                    </div>
+
+                    <div className="mb-4">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Você receberá</p>
+                      <div className="flex items-center gap-2">
+                        <CryptoIcon crypto={order.cryptoType as CryptoType} size={28} />
+                        <p className="text-xl font-bold text-green-600 dark:text-green-400">
+                          {(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward || '0')).toFixed(8)} {order.cryptoType}
+                        </p>
+                      </div>
+                      <p className="text-xs text-green-700 dark:text-green-400 font-semibold">
+                        Inclui +{parseFloat(order.payerReward || '0').toFixed(8)} de cashback (1%)
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Rede: {order.cryptoNetwork}
+                      </p>
+                    </div>
+
+                    <div className="mb-4 pb-4 border-b dark:border-gray-700">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Vendedor</p>
+                      <div className="flex items-center justify-between">
+                        <p className="font-semibold dark:text-gray-200">{order.user.name || 'Anônimo'}</p>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/user/${order.user.id}`);
+                          }}
+                          className="text-right hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg p-2 -m-2 transition-colors group"
+                        >
+                          <p className="text-sm text-gray-600 dark:text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                            Score: {order.user.reputationScore}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                            {order.user.successfulTransactions}/{order.user.totalTransactions} sucesso
+                          </p>
+                          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                            Ver perfil
+                          </p>
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 {isOwnOrder ? (
                   <button
@@ -284,14 +388,18 @@ export default function MarketplacePage() {
                     disabled
                     className="w-full py-3 px-4 bg-gray-400 dark:bg-gray-600 text-white font-semibold rounded-lg cursor-not-allowed"
                   >
-                    🔒 Em Negociação
+                    Em Negociação
                   </button>
                 ) : (
                   <button
                     onClick={() => handleViewMore(order.id)}
-                    className="w-full py-3 px-4 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg transition-colors"
+                    className={`w-full py-3 px-4 font-semibold rounded-lg transition-colors ${
+                      isBuyOrder
+                        ? 'bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white'
+                        : 'bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white'
+                    }`}
                   >
-                    Ver Mais
+                    {isBuyOrder ? 'Fornecer Liquidez' : 'Ver Mais'}
                   </button>
                 )}
               </div>

@@ -4,10 +4,10 @@ import { Response } from 'express';
 const COOKIE_OPTIONS = {
   httpOnly: true, // Prevenir acesso via JavaScript (XSS protection)
   secure: process.env.NODE_ENV === 'production', // HTTPS only em produção
-  sameSite: process.env.NODE_ENV === 'production' ? 'strict' as const : 'none' as const, // CSRF protection - 'none' em dev para permitir cross-origin
+  sameSite: process.env.NODE_ENV === 'production' ? 'strict' as const : 'lax' as const, // CSRF protection - 'lax' em dev (funciona sem HTTPS)
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 dias em millisegundos
   path: '/',
-  domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost', // Domínio localhost em dev
+  domain: undefined, // Deixar undefined para funcionar cross-port em localhost
 };
 
 const REFRESH_COOKIE_OPTIONS = {
@@ -30,11 +30,28 @@ export const setRefreshTokenCookie = (res: Response, token: string): void => {
 };
 
 /**
+ * Cookie de role acessível pelo JS (não httpOnly) — usado pelo Next.js middleware
+ * para proteção server-side de rotas admin sem expor o token JWT
+ */
+const ROLE_COOKIE_OPTIONS = {
+  httpOnly: false, // Precisa ser lido pelo Next.js middleware via request.cookies
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'strict' as const : 'lax' as const,
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+  path: '/',
+};
+
+export const setUserRoleCookie = (res: Response, role: string): void => {
+  res.cookie('userRole', role, ROLE_COOKIE_OPTIONS);
+};
+
+/**
  * SECURITY: Limpar cookies de autenticação (logout)
  */
 export const clearAuthCookies = (res: Response): void => {
   res.clearCookie('accessToken', { path: '/' });
   res.clearCookie('refreshToken', { path: '/' });
+  res.clearCookie('userRole', { path: '/' });
 };
 
 /**

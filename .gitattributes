@@ -1,0 +1,4 @@
+# Tratar arquivos SQLite como binário — sem conversão CRLF no Windows
+*.db binary
+*.db-shm binary
+*.db-wal binary

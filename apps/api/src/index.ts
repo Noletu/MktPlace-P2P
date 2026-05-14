@@ -5,7 +5,6 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';
-import kycRoutes from './routes/kyc.routes';
 import priceRoutes from './routes/price.routes';
 import walletRoutes from './routes/wallet.routes';
 import orderRoutes from './routes/order.routes';
@@ -23,18 +22,68 @@ import notificationRoutes from './routes/notification.routes';
 import chatRoutes from './routes/chat.routes';
 import keysRoutes from './routes/keys.routes';
 import presenceRoutes from './routes/presence.routes';
-import negotiationRoutes from './routes/negotiation.routes';
+import workersRoutes from './routes/workers.routes';
+import masterSeedAdminRoutes from './routes/masterSeedAdmin.routes';
+import adminFundsRoutes from './routes/adminFunds.routes';
+import exchangeRateRoutes from './routes/exchange-rate.routes';
+import roleRoutes from './routes/role.routes';
+import supportRoutes from './routes/support.routes';
+import couponRoutes from './routes/coupon.routes';
+// import negotiationRoutes from './routes/negotiation.routes'; // DESABILITADO: Chat disponível apenas após aceitar pedido
 // import statsRoutes from './routes/stats.routes';
 import { apiLimiter } from './middleware/rateLimiter.middleware';
 import { logger } from './utils/logger';
-import { depositMonitorWorker } from './workers/deposit-monitor.worker';
+import { DepositMonitorWorker } from './workers/deposit-monitor.worker';
+import { BalanceSyncWorker } from './workers/balance-sync.worker';
+import { WorkerStateService } from './services/workerState.service';
 import { orderExpirationWorker } from './workers/order-expiration.worker';
-import { negotiationTimeoutWorker } from './workers/negotiation-timeout.worker';
+// import { negotiationTimeoutWorker } from './workers/negotiation-timeout.worker'; // DESABILITADO: Chat disponível apenas após aceitar pedido
 import { presenceMonitorWorker } from './workers/presence-monitor.worker';
 import { collateralReleaseWorker } from './workers/collateral-release.worker';
+import { chatArchiveWorker } from './workers/chat-archive.worker';
+import { withdrawalProcessorWorker } from './workers/withdrawal-processor.worker';
+import { SweepWorker } from './workers/sweep.worker';
+import { initializeSocketServer } from './socket/socket.server';
 import { initializeChatSocket } from './socket/chat.socket';
+import { initializeNotificationSocket } from './socket/notification.socket';
+import { MasterSeedService } from './services/hd-wallet/master-seed.service';
+import { KeyManagementService } from './services/hd-wallet/key-management.service';
+import { startAutoUnfreezeJob } from './jobs/autoUnfreeze.job';
+import { startDualApprovalJob } from './jobs/dualApproval.job';
+import { startSuccessionReminderJob } from './jobs/successionReminder.job';
+import adminDelegationRoutes from './routes/adminDelegation.routes';
+import pendingApprovalRoutes from './routes/pendingApproval.routes';
+import { PrismaClient as PrismaForCleanup } from '@prisma/client';
+
+// SECURITY (H-2): Limpeza diária de tokens revogados expirados
+async function cleanupExpiredRevokedTokens() {
+  const prismaCleanup = new PrismaForCleanup();
+  try {
+    const result = await prismaCleanup.revokedToken.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
+    });
+    if (result.count > 0) {
+      logger.info(`[SECURITY] Cleaned up ${result.count} expired revoked tokens`);
+    }
+  } catch (err) {
+    logger.error('[SECURITY] Failed to cleanup revoked tokens:', err);
+  } finally {
+    await prismaCleanup.$disconnect();
+  }
+}
 
 dotenv.config();
+
+// Inicializar serviços HD Wallet
+try {
+  MasterSeedService.initialize();
+  KeyManagementService.initialize();
+  logger.info('[HD WALLET] Services initialized successfully');
+} catch (error) {
+  logger.error('[HD WALLET] Failed to initialize services:', error);
+  logger.error('[HD WALLET] Ensure MASTER_SEED_ENCRYPTION_KEY and WALLET_ENCRYPTION_KEY are set in .env');
+  process.exit(1);
+}
 
 const app: Express = express();
 const port = process.env.PORT || 3001;
@@ -84,9 +133,9 @@ app.use(helmet({
 }));
 
 // SECURITY: CORS whitelist estrita
-const ALLOWED_ORIGINS = process.env.NODE_ENV === 'production'
-  ? (process.env.ALLOWED_ORIGINS?.split(',') || [])
-  : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000'];
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -118,8 +167,8 @@ app.use('/api/', apiLimiter);
 app.use(cookieParser(process.env.COOKIE_SECRET || process.env.JWT_SECRET));
 
 // SECURITY: Limitar tamanho de payload (prevenir DoS)
-app.use(express.json({ limit: '10mb' })); // Max 10MB para uploads de imagens
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '15mb' })); // Max 15MB para uploads de imagens (base64 tem ~33% overhead)
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
@@ -138,7 +187,6 @@ app.get('/api/v1', (req: Request, res: Response) => {
     endpoints: {
       auth: '/api/v1/auth',
       '2fa': '/api/v1/2fa',
-      kyc: '/api/v1/kyc',
       prices: '/api/v1/prices',
       wallets: '/api/v1/wallets',
       orders: '/api/v1/orders',
@@ -146,6 +194,7 @@ app.get('/api/v1', (req: Request, res: Response) => {
       notifications: '/api/v1/notifications',
       disputes: '/api/v1/disputes',
       reviews: '/api/v1/reviews',
+      support: '/api/v1/support',
       chat: '/api/v1/chat',
       keys: '/api/v1/keys'
     }
@@ -155,11 +204,11 @@ app.get('/api/v1', (req: Request, res: Response) => {
 // Auth routes
 app.use('/api/v1/auth', authRoutes);
 
+// SECURITY: Middleware de restrição para contas bloqueadas movido para auth.middleware.ts
+// A verificação agora é feita durante a autenticação (após req.user ser definido)
+
 // 2FA routes
 app.use('/api/v1/2fa', twoFactorRoutes);
-
-// KYC routes
-app.use('/api/v1/kyc', kycRoutes);
 
 // Price routes
 app.use('/api/v1/prices', priceRoutes);
@@ -188,6 +237,9 @@ app.use('/api/v1/admin', adminRoutes);
 // Admin Balance Audit routes (NEW: v3.0.7 - Balance validation and fixing)
 app.use('/api/v1/admin/balance', adminBalanceRoutes);
 
+// Admin Funds routes (Control TOTAL de fundos - freeze, transfers, adjustments)
+app.use('/api/v1/admin/funds', adminFundsRoutes);
+
 // Refund routes
 app.use('/api/v1/refund', refundRoutes);
 
@@ -196,6 +248,9 @@ app.use('/api/v1/disputes', disputeRoutes);
 
 // Review routes
 app.use('/api/v1/reviews', reviewRoutes);
+
+// Support routes (tickets de suporte para usuários)
+app.use('/api/v1/support', supportRoutes);
 
 // Notification routes
 app.use('/api/v1/notifications', notificationRoutes);
@@ -209,8 +264,29 @@ app.use('/api/v1/keys', keysRoutes);
 // Presence routes (online/offline status)
 app.use('/api/v1/presence', presenceRoutes);
 
-// Negotiation routes (pre-match negotiation)
-app.use('/api/v1/negotiation', negotiationRoutes);
+// Workers routes (monitoring and management)
+app.use('/api/v1/workers', workersRoutes);
+
+// Master Seed Admin routes (HD Wallet seed management)
+app.use('/api/v1/admin/master-seed', masterSeedAdminRoutes);
+
+// Exchange Rate routes (multi-source USD/BRL rate with fallback)
+app.use('/api/v1/exchange-rate', exchangeRateRoutes);
+
+// Role routes (RBAC - Role-Based Access Control) - MASTER only
+app.use('/api/v1/roles', roleRoutes);
+
+// Coupon routes (discount coupons system)
+app.use('/api/v1/coupons', couponRoutes);
+
+// Dual-Approval: Delegação de aprovação temporária (MASTER-only)
+app.use('/api/v1/admin/delegations', adminDelegationRoutes);
+
+// Dual-Approval: Fila de aprovações pendentes (DEMOTE_MASTER + operações financeiras críticas)
+app.use('/api/v1/admin/approvals', pendingApprovalRoutes);
+
+// Negotiation routes (pre-match negotiation) - DESABILITADO: Chat disponível apenas após aceitar pedido
+// app.use('/api/v1/negotiation', negotiationRoutes);
 
 // Stats routes (user activity statistics)
 // app.use('/api/v1/stats', statsRoutes);
@@ -255,23 +331,58 @@ app.use((err: Error, req: Request, res: Response, next: any) => {
 // Criar servidor HTTP (necessário para Socket.io)
 const httpServer = createServer(app);
 
-// Inicializar Socket.io para chat em tempo real
-const chatSocket = initializeChatSocket(httpServer);
+// Inicializar Socket.io centralizado (único servidor para todos os namespaces)
+const io = initializeSocketServer(httpServer);
 
-httpServer.listen(port, () => {
+// Inicializar namespaces de chat e notificações
+const chatSocket = initializeChatSocket(io);
+const notificationSocket = initializeNotificationSocket(io);
+
+httpServer.listen(port, async () => {
   logger.info(`Server started on port ${port}`);
   console.log(`⚡️ [server]: Server is running at http://localhost:${port}`);
   console.log(`🚀 [server]: Mktplace da Liberdade API v0.1.0`);
-  console.log(`💬 [socket]: Chat WebSocket enabled at ws://localhost:${port}`);
+  console.log(`💬 [socket]: Chat WebSocket enabled at ws://localhost:${port}/chat`);
+  console.log(`🔔 [socket]: Notification WebSocket enabled at ws://localhost:${port}/notifications`);
 
   // Iniciar workers
-  depositMonitorWorker.start();
+  DepositMonitorWorker.start(); // HD Wallet deposit monitor
   orderExpirationWorker.start();
-  negotiationTimeoutWorker.start();
+  // negotiationTimeoutWorker.start(); // DESABILITADO: Chat disponível apenas após aceitar pedido
   presenceMonitorWorker.start();
+  chatArchiveWorker.start();
   // collateralReleaseWorker.start(); // DESABILITADO: processamento agora é feito direto no transaction.service.ts
-  console.log('⚙️  [workers]: All background workers started (collateral release disabled)');
+  withdrawalProcessorWorker.start(); // Processamento automático de saques
+  SweepWorker.start(); // Consolidação de fundos → hot wallet (Omnibus)
+
+  // Restaurar estado do BalanceSyncWorker do banco de dados
+  try {
+    const isEnabled = await WorkerStateService.getState('BalanceSyncWorker');
+    if (isEnabled) {
+      await BalanceSyncWorker.start();
+      logger.info('✅ [workers]: BalanceSyncWorker restaurado (estava habilitado)');
+    } else {
+      logger.info('⏸️  [workers]: BalanceSyncWorker mantido parado (estava desabilitado)');
+    }
+  } catch (error) {
+    logger.error('❌ [workers]: Erro ao restaurar estado do BalanceSyncWorker:', error);
+  }
+
+  // Iniciar job de auto-desbloqueio de contas (freeze temporário)
+  startAutoUnfreezeJob();
+
+  // Iniciar job de Dual-Approval (expira aprovações, executa overrides maduros)
+  startDualApprovalJob();
+
+  // Iniciar job de lembrete trimestral do Kit de Sucessão (Cenário C — Plano de Contingência)
+  startSuccessionReminderJob();
+
+  // SECURITY (H-2): Limpeza diária de tokens revogados expirados
+  cleanupExpiredRevokedTokens(); // Rodar uma vez ao iniciar
+  setInterval(cleanupExpiredRevokedTokens, 24 * 60 * 60 * 1000); // Depois a cada 24h
+
+  console.log('⚙️  [workers]: Background workers started (HD wallet monitoring, order expiration, presence, chat archive, auto-unfreeze, withdrawal processor, sweep)');
 });
 
 // Exportar para uso em outros módulos
-export { chatSocket };
+export { chatSocket, notificationSocket };

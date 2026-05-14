@@ -138,6 +138,33 @@ Todas as ações administrativas são registradas:
 - IP do administrador
 - Timestamp completo
 
+### 10. Sistema de Cupons de Desconto (v4.0.0+)
+Acesso Admin: `/admin/coupons`
+Acesso Usuário: `/profile` (seção de cupons)
+
+**Funcionalidades:**
+- 🎟️ Criar cupons com desconto de 1-100% na taxa da plataforma
+- 🔒 Cupons públicos (visíveis na lista) ou secretos (apenas por código)
+- ⏰ Validade por data de expiração ou limite de usos por usuário
+- 📊 Estatísticas de uso e desconto total concedido
+- ✨ Aplicação automática ao criar pedido
+
+**Exemplo de desconto:**
+- Cupom MKTPLACE50 (50% de desconto): Taxa 1.5% → 0.75%
+- Cupom MKTPLACE100 (100% de desconto): Taxa 1.5% → 0%
+- O cashback (1%) permanece inalterado
+
+**Documentação completa:** Ver `SISTEMA_CUPONS.md`
+
+### 11. Segurança - Bloqueio de Contas (v4.1.2+)
+Usuários podem ser bloqueados (congelados) pelo admin:
+- 🚫 Usuários bloqueados não podem criar pedidos
+- 🚫 Usuários bloqueados não podem aceitar pedidos
+- ⏰ Bloqueio pode ser temporário (com data de expiração) ou permanente
+- 🔓 Desbloqueio automático quando a data de expiração passa
+
+**Documentação completa:** Ver `SECURITY_FEATURES.md`
+
 ---
 
 ## 📁 Estrutura do Projeto

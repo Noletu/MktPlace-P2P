@@ -3,10 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { DisputeCategory, CATEGORY_LABELS } from '@/types/dispute';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Order {
   id: string;
-  type: 'BUY' | 'SELL';
+  orderType: string; // 'SELL' or 'BUY'
+  type: string; // Payment method: 'PIX' or 'BOLETO'
   status: string;
   brlAmount: string;
   cryptoAmount: string;
@@ -27,7 +29,7 @@ interface Order {
 }
 
 export default function NewDisputePage() {
-  const params = useParams();
+  const params = useParams() ?? {};
   const router = useRouter();
   const orderId = params.orderId as string;
 
@@ -49,17 +51,7 @@ export default function NewDisputePage() {
 
   const fetchOrder = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const res = await fetch(`http://localhost:3001/api/v1/orders/${orderId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const res = await fetchWithAuth(`/orders/${orderId}`);
       const data = await res.json();
       if (data.success) {
         setOrder(data.data);
@@ -77,14 +69,7 @@ export default function NewDisputePage() {
 
   const fetchCurrentUser = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
-      const res = await fetch('http://localhost:3001/api/v1/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const res = await fetchWithAuth('/auth/me');
       const data = await res.json();
       if (data.success) {
         setCurrentUserId(data.data.id);
@@ -119,7 +104,7 @@ export default function NewDisputePage() {
     // If user is the order owner (buyer for BUY orders, seller for SELL orders)
     const isOrderOwner = order.userId === currentUserId;
 
-    if (order.type === 'BUY') {
+    if (order.orderType === 'BUY') {
       return isOrderOwner ? getBuyerCategories() : getSellerCategories();
     } else {
       return isOrderOwner ? getSellerCategories() : getBuyerCategories();
@@ -163,13 +148,6 @@ export default function NewDisputePage() {
     setSubmitting(true);
 
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        alert('Você precisa estar logado');
-        router.push('/login');
-        return;
-      }
-
       // Convert files to base64
       const attachmentPromises = attachments.map((file) => {
         return new Promise<string>((resolve, reject) => {
@@ -182,12 +160,8 @@ export default function NewDisputePage() {
 
       const attachmentData = await Promise.all(attachmentPromises);
 
-      const res = await fetch('http://localhost:3001/api/v1/disputes', {
+      const res = await fetchWithAuth('/disputes', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           orderId,
           category,
@@ -258,7 +232,7 @@ export default function NewDisputePage() {
           <div>
             <span className="text-blue-700 dark:text-blue-300">Tipo:</span>
             <span className="ml-2 font-semibold text-blue-900 dark:text-blue-100">
-              {order.type === 'BUY' ? 'Compra' : 'Venda'}
+              {order.orderType === 'BUY' ? 'Compra' : 'Venda'}
             </span>
           </div>
           <div>

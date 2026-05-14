@@ -1,264 +1,338 @@
-import { PrismaClient } from '@prisma/client';
-import axios from 'axios';
-import { CryptoType, NetworkType } from '@mktplace/shared';
-import { blockchainService } from '../services/blockchain.service';
+import {PrismaClient} from '@prisma/client';
+import BigNumber from 'bignumber.js';
+import {BlockchainService} from '../services/blockchain/blockchain.service';
+import {NotificationService} from '../services/notification.service';
+import {emailService} from '../services/email.service';
+
+/**
+ * SECURITY (H-9): Retry com exponential backoff para chamadas blockchain críticas
+ * Previne perda silenciosa de depósitos por falha temporária de RPC
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  label = 'operation'
+): Promise<T> {
+  let lastError: Error | undefined;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+      if (attempt < maxRetries) {
+        const delayMs = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+        console.warn(`   ⚠️  [Retry ${attempt}/${maxRetries}] ${label} failed: ${lastError.message}. Retrying in ${delayMs}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+  console.error(`   ❌ [Retry] ${label} failed after ${maxRetries} attempts: ${lastError?.message}`);
+  throw lastError;
+}
 
 const prisma = new PrismaClient();
 
-// Configuração de APIs blockchain
-const BLOCKCHAIN_APIS = {
-  BITCOIN: {
-    url: 'https://blockchain.info/rawtx/',
-    confirmationsRequired: 3,
-  },
-  ETHEREUM: {
-    url: 'https://api.etherscan.io/api',
-    apiKey: process.env.ETHERSCAN_API_KEY || '',
-    confirmationsRequired: 12,
-  },
-  TRC20: {
-    url: 'https://api.trongrid.io/v1/transactions/',
-    confirmationsRequired: 19,
-  },
-  BASE: {
-    url: 'https://api.basescan.org/api',
-    apiKey: process.env.BASESCAN_API_KEY || '',
-    confirmationsRequired: 12,
-  },
-  ARBITRUM: {
-    url: 'https://api.arbiscan.io/api',
-    apiKey: process.env.ARBISCAN_API_KEY || '',
-    confirmationsRequired: 12,
-  },
-};
+/**
+ * Deposit Monitor Worker (Omnibus Architecture)
+ *
+ * Monitora depósitos em todas as carteiras ativas dos usuários.
+ * Crédito ADITIVO — saldo interno nunca é sobrescrito pelo on-chain.
+ *
+ * Execução: A cada 30 segundos
+ *
+ * Fluxo:
+ * 1. Buscar todas UserWallets ativas
+ * 2. Para cada carteira:
+ *    - Consultar saldo on-chain
+ *    - Comparar com onChainSnapshot (último on-chain conhecido)
+ *    - Se on-chain > snapshot: depósito detectado!
+ *    - ADICIONAR a diferença ao saldo interno (não sobrescrever)
+ *    - Atualizar onChainSnapshot
+ *    - Marcar sweepStatus = PENDING para consolidação futura
+ */
 
-class DepositMonitorWorker {
-  private isRunning = false;
-  private interval: NodeJS.Timeout | null = null;
+export class DepositMonitorWorker {
+  private static isRunning = false;
+  private static intervalId: NodeJS.Timeout | null = null;
 
-  async start() {
-    if (this.isRunning) {
-      console.log('⚠️  Deposit monitor already running');
+  static start() {
+    if (this.intervalId) {
+      console.log('⚠️  Deposit Monitor já está rodando');
       return;
     }
 
-    console.log('🚀 Starting deposit monitor worker...');
+    console.log('🔍 Deposit Monitor Worker iniciado (a cada 30s) — modo Omnibus (crédito aditivo)');
+
+    // Executar imediatamente
+    this.run();
+
+    // Executar a cada 30 segundos
+    this.intervalId = setInterval(() => {
+      this.run();
+    }, 30000);
+  }
+
+  static stop() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+      console.log('🛑 Deposit Monitor Worker parado');
+    }
+  }
+
+  static async run() {
+    if (this.isRunning) {
+      console.log('⏭️  Deposit Monitor: já executando, pulando...');
+      return;
+    }
+
     this.isRunning = true;
 
-    // Verificar a cada 30 segundos
-    this.interval = setInterval(() => this.checkPendingDeposits(), 30000);
-
-    // Primeira execução imediata
-    await this.checkPendingDeposits();
-  }
-
-  stop() {
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-    }
-    this.isRunning = false;
-    console.log('🛑 Deposit monitor stopped');
-  }
-
-  private async checkPendingDeposits() {
     try {
-      // Buscar depósitos não confirmados
-      const pendingDeposits = await prisma.deposit.findMany({
-        where: {
-          confirmed: false,
-        },
-        include: {
-          wallet: true,
-        },
+      console.log('\n🔍 [Deposit Monitor] Verificando depósitos...');
+
+      const wallets = await prisma.userWallet.findMany({
+        where: {isActive: true},
+        include: {user: true},
       });
 
-      if (pendingDeposits.length === 0) {
-        return;
-      }
+      console.log(`   Monitorando ${wallets.length} carteiras`);
 
-      console.log(`🔍 Checking ${pendingDeposits.length} pending deposits...`);
+      let depositsDetected = 0;
 
-      for (const deposit of pendingDeposits) {
-        await this.verifyDeposit(deposit);
-      }
-    } catch (error) {
-      console.error('❌ Error checking deposits:', error);
-    }
-  }
-
-  private async verifyDeposit(deposit: any) {
-    try {
-      const network = deposit.wallet.network as NetworkType;
-      const config = BLOCKCHAIN_APIS[network];
-
-      if (!config) {
-        console.warn(`⚠️  No API config for network: ${network}`);
-        return;
-      }
-
-      let confirmations = 0;
-
-      // Verificar confirmações conforme a rede
-      switch (network) {
-        case NetworkType.BITCOIN:
-          confirmations = await this.checkBitcoinTx(deposit.txHash);
-          break;
-        case NetworkType.ETHEREUM:
-        case NetworkType.BASE:
-        case NetworkType.ARBITRUM:
-          confirmations = await this.checkEthereumLikeTx(deposit.txHash, network);
-          break;
-        case NetworkType.TRC20:
-          confirmations = await this.checkTronTx(deposit.txHash);
-          break;
-      }
-
-      // Atualizar confirmações
-      await prisma.deposit.update({
-        where: { id: deposit.id },
-        data: { confirmations },
-      });
-
-      // Se atingiu confirmações necessárias, marcar como confirmado
-      if (confirmations >= config.confirmationsRequired) {
-        await this.confirmDeposit(deposit);
-      }
-    } catch (error) {
-      console.error(`❌ Error verifying deposit ${deposit.id}:`, error);
-    }
-  }
-
-  private async checkBitcoinTx(txHash: string): Promise<number> {
-    try {
-      // Usar BlockCypher API que fornece confirmações
-      const response = await axios.get(`https://api.blockcypher.com/v1/btc/main/txs/${txHash}`);
-
-      const confirmations = response.data.confirmations || 0;
-      console.log(`🔗 Bitcoin tx ${txHash}: ${confirmations} confirmations`);
-
-      return confirmations;
-    } catch (error: any) {
-      console.error('Error checking Bitcoin tx:', error.message);
-      return 0;
-    }
-  }
-
-  private async checkEthereumLikeTx(txHash: string, network: NetworkType): Promise<number> {
-    try {
-      const config = BLOCKCHAIN_APIS[network];
-      const response = await axios.get(config.url, {
-        params: {
-          module: 'proxy',
-          action: 'eth_getTransactionReceipt',
-          txhash: txHash,
-          apikey: config.apiKey,
-        },
-      });
-
-      if (response.data.result && response.data.result.blockNumber) {
-        // Pegar block number atual
-        const currentBlockResponse = await axios.get(config.url, {
-          params: {
-            module: 'proxy',
-            action: 'eth_blockNumber',
-            apikey: config.apiKey,
-          },
-        });
-
-        const currentBlock = parseInt(currentBlockResponse.data.result, 16);
-        const txBlock = parseInt(response.data.result.blockNumber, 16);
-
-        return currentBlock - txBlock;
-      }
-
-      return 0;
-    } catch (error) {
-      console.error(`Error checking ${network} tx:`, error);
-      return 0;
-    }
-  }
-
-  private async checkTronTx(txHash: string): Promise<number> {
-    try {
-      const response = await axios.get(`https://api.trongrid.io/wallet/gettransactionbyid`, {
-        params: { value: txHash }
-      });
-
-      if (response.data && response.data.ret && response.data.ret.length > 0) {
-        // Transação encontrada - pegar info do bloco
-        const blockResponse = await axios.get(`https://api.trongrid.io/wallet/getnowblock`);
-        const currentBlockNumber = blockResponse.data.block_header.raw_data.number;
-
-        // Buscar info da transação no bloco
-        const txInfoResponse = await axios.get(`https://api.trongrid.io/wallet/gettransactioninfobyid`, {
-          params: { value: txHash }
-        });
-
-        if (txInfoResponse.data && txInfoResponse.data.blockNumber) {
-          const txBlockNumber = txInfoResponse.data.blockNumber;
-          const confirmations = currentBlockNumber - txBlockNumber;
-
-          console.log(`🔗 Tron tx ${txHash}: ${confirmations} confirmations`);
-          return confirmations;
+      for (const wallet of wallets) {
+        try {
+          const detected = await this.checkWalletDeposits(wallet);
+          if (detected) depositsDetected++;
+        } catch (error) {
+          console.error(
+            `   ❌ Erro ao verificar carteira ${wallet.id}:`,
+            (error as Error).message
+          );
         }
       }
 
-      return 0;
-    } catch (error: any) {
-      console.error('Error checking Tron tx:', error.message);
-      return 0;
+      if (depositsDetected > 0) {
+        console.log(`   ✅ ${depositsDetected} depósitos detectados`);
+      } else {
+        console.log(`   ℹ️  Nenhum depósito novo`);
+      }
+    } catch (error) {
+      console.error('❌ [Deposit Monitor] Erro:', (error as Error).message);
+    } finally {
+      this.isRunning = false;
     }
   }
 
-  private async confirmDeposit(deposit: any) {
-    console.log(`✅ Confirming deposit ${deposit.id} (${deposit.amount} ${deposit.wallet.crypto})`);
+  /**
+   * Verifica depósitos em uma carteira específica
+   * Usa crédito ADITIVO — compara on-chain atual vs onChainSnapshot
+   */
+  private static async checkWalletDeposits(wallet: any): Promise<boolean> {
+    // Consultar saldo on-chain (com retry para resiliência a falhas de RPC)
+    const onChainBalance = await retryWithBackoff(
+      () => BlockchainService.getBalance(wallet.address, wallet.network),
+      3,
+      `getBalance(${wallet.cryptoType}/${wallet.network})`
+    );
 
-    await prisma.$transaction(async (tx) => {
-      // Marcar depósito como confirmado
-      await tx.deposit.update({
-        where: { id: deposit.id },
+    // Comparar com onChainSnapshot (último saldo on-chain conhecido)
+    const savedOnChainBN = new BigNumber(wallet.onChainSnapshot || '0');
+    const currentBalanceBN = new BigNumber(onChainBalance);
+
+    // Tolerância para diferenças de arredondamento
+    const diffBN = currentBalanceBN.minus(savedOnChainBN);
+    if (diffBN.abs().lt('0.00000001') || diffBN.lte(0)) {
+      // Saldo igual ou diminuiu (sweep aconteceu) — nada a fazer
+      return false;
+    }
+
+    // Depósito detectado!
+    const depositAmountBN = diffBN;
+
+    console.log(
+      `   💰 Depósito detectado em ${wallet.cryptoType}/${wallet.network}:`,
+      `onChainSnapshot: ${savedOnChainBN.toFixed(8)} → on-chain: ${currentBalanceBN.toFixed(8)} (+${depositAmountBN.toFixed(8)})`
+    );
+
+    // Buscar transações desde último bloco verificado (com retry)
+    const transactions = await retryWithBackoff(
+      () => BlockchainService.getTransactions(wallet.address, wallet.network, wallet.lastBlockHeight || 0),
+      3,
+      `getTransactions(${wallet.cryptoType}/${wallet.network})`
+    );
+
+    // Filtrar apenas transações RECEBIDAS e confirmadas
+    const deposits = transactions.filter(
+      (tx) =>
+        tx.to.toLowerCase() === wallet.address.toLowerCase() &&
+        tx.confirmations >= this.getMinConfirmations(wallet.network)
+    );
+
+    if (deposits.length === 0) {
+      // Saldo mudou mas sem transações confirmadas — aguardar
+      console.log(
+        `   ⏳ Transações pendentes de confirmação para ${wallet.id}`
+      );
+      return false;
+    }
+
+    // SECURITY (H-6): Anti-replay — filtrar txHashes já processados
+    const candidateHashes = deposits.map((d) => d.hash).filter(Boolean);
+    const existingTxs = candidateHashes.length > 0
+      ? await prisma.walletTransaction.findMany({
+          where: { txHash: { in: candidateHashes } },
+          select: { txHash: true },
+        })
+      : [];
+    const processedHashes = new Set(existingTxs.map((wt) => wt.txHash));
+    const newDeposits = deposits.filter(
+      (d) => d.hash && !processedHashes.has(d.hash) && new BigNumber(d.value).gt(0)
+    );
+
+    if (newDeposits.length === 0) {
+      console.log(
+        `   ℹ️  Todos os depósitos já foram registrados para ${wallet.id} (anti-replay)`
+      );
+      return false;
+    }
+
+    // Crédito ADITIVO: adicionar depósito ao saldo interno (não sobrescrever)
+    const actualDepositBN = newDeposits.reduce(
+      (sum, d) => sum.plus(d.value),
+      new BigNumber(0)
+    );
+    const newBalance = new BigNumber(wallet.balance).plus(actualDepositBN).toFixed(8);
+    const newAvailable = new BigNumber(wallet.availableBalance).plus(actualDepositBN).toFixed(8);
+
+    // Coletar WalletTransaction creates para depósitos novos (não duplicados)
+    const walletTxCreates = newDeposits.map((deposit) =>
+      prisma.walletTransaction.create({
         data: {
-          confirmed: true,
-          confirmedAt: new Date(),
+          walletId: wallet.id,
+          userId: wallet.userId,
+          type: 'DEPOSIT',
+          amount: new BigNumber(deposit.value).toFixed(8),
+          balanceBefore: wallet.balance,
+          balanceAfter: new BigNumber(wallet.balance).plus(deposit.value).toFixed(8),
+          txHash: deposit.hash,
+          blockHeight: deposit.blockHeight,
+          confirmations: deposit.confirmations,
+          description: `Depósito recebido na rede ${wallet.network}`,
+          metadata: JSON.stringify({
+            from: deposit.from,
+            timestamp: deposit.timestamp,
+          }),
         },
-      });
+      })
+    );
 
-      // Atualizar saldo da carteira
-      const currentBalance = parseFloat(deposit.wallet.balance);
-      const depositAmount = parseFloat(deposit.amount);
-      const newBalance = (currentBalance + depositAmount).toString();
-
-      await tx.wallet.update({
-        where: { id: deposit.wallet.id },
-        data: { balance: newBalance },
-      });
-
-      // Verificar se há orders aguardando colateral
-      const pendingOrders = await tx.order.findMany({
-        where: {
-          userId: deposit.wallet.userId,
-          collateralTxHash: deposit.txHash,
-          collateralConfirmed: false,
+    // Balance update + WalletTransactions em uma única transaction atômica
+    await prisma.$transaction([
+      prisma.userWallet.update({
+        where: {id: wallet.id},
+        data: {
+          balance: newBalance,                    // ADITIVO (não sobrescreve)
+          availableBalance: newAvailable,         // ADITIVO
+          onChainSnapshot: onChainBalance,        // Rastreia on-chain separadamente
+          totalDeposited: new BigNumber(wallet.totalDeposited).plus(actualDepositBN).toFixed(8),
+          lastSyncedAt: new Date(),
+          lastBlockHeight: newDeposits[0]?.blockHeight || wallet.lastBlockHeight,
+          sweepStatus: 'PENDING',                 // Marcar para sweep
+          pendingSweepAmount: new BigNumber(wallet.pendingSweepAmount || '0').plus(actualDepositBN).toFixed(8),
         },
-      });
+      }),
+      ...walletTxCreates,
+    ]);
 
-      // Confirmar colateral das orders
-      for (const order of pendingOrders) {
-        await tx.order.update({
-          where: { id: order.id },
-          data: {
-            collateralConfirmed: true,
-            collateralDepositId: deposit.id,
-            status: 'PENDING', // Liberar para marketplace
+    // Notificações FORA da transaction (não-críticas, fire-and-forget)
+    for (const deposit of newDeposits) {
+      const amountBN = new BigNumber(deposit.value);
+      if (amountBN.lte(0)) continue;
+      const amount = amountBN.toFixed(8);
+
+      console.log(
+        `   ✅ Depósito registrado: ${amount} ${wallet.cryptoType} (tx: ${deposit.hash.slice(0, 10)}...)`
+      );
+
+      try {
+        const notificationService = new NotificationService();
+        await notificationService.createNotification({
+          userId: wallet.userId,
+          type: 'DEPOSIT_CONFIRMED',
+          category: 'WALLET',
+          prefCategory: 'DEPOSITS',
+          title: 'Depósito Confirmado',
+          message: `Você recebeu ${amount} ${wallet.cryptoType} na rede ${wallet.network}`,
+          actionUrl: `/wallets/${wallet.id}`,
+          actionLabel: 'Ver Carteira',
+          priority: 'HIGH',
+          metadata: {
+            walletId: wallet.id,
+            amount,
+            cryptoType: wallet.cryptoType,
+            network: wallet.network,
+            txHash: deposit.hash,
           },
         });
-
-        console.log(`✅ Order ${order.id} collateral confirmed, released to marketplace`);
+        console.log(`   🔔 Notificação enviada ao usuário ${wallet.userId}`);
+      } catch (error) {
+        console.error('   ⚠️  Erro ao enviar notificação:', (error as Error).message);
       }
-    });
+
+      // Email transacional (fire-and-forget)
+      try {
+        const userForEmail = await prisma.user.findUnique({
+          where: { id: wallet.userId },
+          select: { email: true, name: true },
+        });
+        if (userForEmail?.email) {
+          await emailService.sendIfAllowed(wallet.userId, 'DEPOSITS', () =>
+            emailService.sendDepositConfirmedEmail(userForEmail.email, {
+              name: userForEmail.name || 'Usuário',
+              amount,
+              crypto: wallet.cryptoType,
+              network: wallet.network,
+              txHash: deposit.hash,
+            })
+          );
+        }
+      } catch (emailError) {
+        console.warn('   ⚠️  Erro ao enviar email de depósito:', (emailError as Error).message);
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Retorna confirmações mínimas por rede
+   */
+  private static getMinConfirmations(network: string): number {
+    const minConf: Record<string, number> = {
+      BITCOIN: 3,
+      ETHEREUM: 12,
+      BASE: 10,
+      ARBITRUM: 10,
+      SOLANA: 15,
+    };
+
+    return minConf[network] || 10;
   }
 }
 
-// Singleton instance
-export const depositMonitorWorker = new DepositMonitorWorker();
+// Auto-start quando módulo é importado (se não estiver em teste)
+if (process.env.NODE_ENV !== 'test') {
+  DepositMonitorWorker.start();
+}
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+  DepositMonitorWorker.stop();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  DepositMonitorWorker.stop();
+  process.exit(0);
+});

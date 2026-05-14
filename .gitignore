@@ -25,6 +25,7 @@ yarn-error.log*
 .env*.local
 .env
 .env.production
+.env.keys
 
 # Vercel
 .vercel
@@ -41,8 +42,26 @@ yarn-error.log*
 # Database
 *.db
 *.sqlite
+*.db.backup*
+*.backup-*
+apps/api/prisma/*.backup*
+
+# Exceção: dev.db versionado para novos devs terem dados de teste
+!apps/api/prisma/dev.db
 
 # Prisma
 # prisma/migrations - MUST be versioned in Git
 logs/
 tsconfig.tsbuildinfo
+
+# Temporary scripts and files
+apps/api/delete-*.ts
+SESSION_SUMMARY_*.md
+
+# SQLite temporary files
+*.db-shm
+*.db-wal
+
+# SQLite temporary files
+*.db-shm
+*.db-wal

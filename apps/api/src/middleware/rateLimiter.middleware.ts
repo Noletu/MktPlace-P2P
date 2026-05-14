@@ -114,3 +114,35 @@ export const twoFactorLimiter = rateLimit({
   skipSuccessfulRequests: true, // Não contar tentativas bem-sucedidas
   handler: rateLimitHandler,
 });
+
+// SECURITY: Rate limiter para redefinição de senha (prevenir abuso)
+export const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 3, // 3 tentativas por 15 minutos
+  message: 'Muitas tentativas de redefinicao de senha. Tente novamente em 15 minutos.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: rateLimitHandler,
+});
+
+// SECURITY: Rate limiter para operações financeiras críticas (MASTER only)
+// Mais restritivo que adminActionLimiter devido à natureza crítica das operações
+export const financialOperationsLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: 5, // 5 operações financeiras por hora (produção)
+  skip: () => process.env.NODE_ENV !== 'production', // sem limite em dev
+  message: 'Muitas operações financeiras. Tente novamente em 1 hora.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: rateLimitHandler,
+});
+
+// SECURITY: Rate limiter para verificação de email (prevenir enumeração de usuários em massa)
+export const checkEmailLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutos
+  max: 20, // 20 verificações por 5 minutos por IP
+  message: 'Muitas verificações de email. Aguarde alguns minutos.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: rateLimitHandler,
+});

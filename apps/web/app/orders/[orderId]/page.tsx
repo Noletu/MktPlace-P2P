@@ -1,17 +1,25 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import ChatWindow from '@/components/chat/ChatWindow';
+import ChatHistoryViewer from '@/components/chat/ChatHistoryViewer';
+import Tabs, { Tab } from '@/components/Tabs';
 import CountdownTimer from '@/components/CountdownTimer';
-import { formatBRL } from '@/utils/formatters';
+import { formatBRL, formatCrypto } from '@/utils/formatters';
 import ThemeToggle from '@/components/ThemeToggle';
 import AppHeader from '@/components/AppHeader';
 import ReviewModal, { ReviewData } from '@/components/modals/ReviewModal';
+import CancellationModal from '@/components/CancellationModal';
+import EditOrderModal from '@/components/EditOrderModal';
+import { CancellationReason } from '@/types/cancellation';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Order {
   id: string;
-  type: string;
+  orderType: string; // 'SELL' or 'BUY'
+  type: string; // Payment method: 'PIX' or 'BOLETO'
   status: string;
   cryptoType: string;
   cryptoNetwork: string;
@@ -24,6 +32,14 @@ interface Order {
   createdAt: string;
   timeoutAt: string;
   user: {
+    id: string;
+    name: string;
+    email: string;
+    reputationScore: number;
+  };
+  // BUY order fields - provider is the liquidity provider who accepts
+  providerId?: string;
+  provider?: {
     id: string;
     name: string;
     email: string;
@@ -48,7 +64,8 @@ interface Transaction {
 
 export default function OrderDetailsPage() {
   const router = useRouter();
-  const params = useParams();
+  const params = useParams() ?? {};
+  const searchParams = useSearchParams() ?? new URLSearchParams();
   const orderId = params.orderId as string;
 
   const [order, setOrder] = useState<Order | null>(null);
@@ -57,16 +74,25 @@ export default function OrderDetailsPage() {
   const [uploadingProof, setUploadingProof] = useState(false);
   const [proofImage, setProofImage] = useState<string>('');
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelAsProvider, setCancelAsProvider] = useState(false); // Flag para cancelamento do provedor em BUY orders
   const [cancelling, setCancelling] = useState(false);
-  const [showChat, setShowChat] = useState(false);
   const [confirmingReceived, setConfirmingReceived] = useState(false);
   const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [modalProofImage, setModalProofImage] = useState<string>('');
-  const [isChatMinimized, setIsChatMinimized] = useState(false);
   const [chatUnreadCount, setChatUnreadCount] = useState<number>(0);
+  const [showPayerCancelModal, setShowPayerCancelModal] = useState(false);
+  const [cancellingAsPayer, setCancellingAsPayer] = useState(false);
   const [showDisputeModal, setShowDisputeModal] = useState(false);
   const [disputeId, setDisputeId] = useState<string | null>(null);
+
+  // Sistema de Abas - Detecta tab da URL
+  const initialTab = searchParams.get('tab') || 'details';
+  const validTabs = ['details', 'payment', 'timeline', 'chat', 'history'];
+  const [activeTab, setActiveTab] = useState<string>(
+    validTabs.includes(initialTab) ? initialTab : 'details'
+  );
+  const [chatId, setChatId] = useState<string | null>(null);
 
   // Review system states
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -74,6 +100,33 @@ export default function OrderDetailsPage() {
   const [reviewedUserId, setReviewedUserId] = useState<string | null>(null);
   const [reviewedUserName, setReviewedUserName] = useState<string>('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // Edit order state
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  // BUY order acceptance state (for providers)
+  const [showAcceptBuyModal, setShowAcceptBuyModal] = useState(false);
+  const [acceptingBuyOrder, setAcceptingBuyOrder] = useState(false);
+  const [providerPixKey, setProviderPixKey] = useState('');
+  const [providerPixKeyType, setProviderPixKeyType] = useState<'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM'>('CPF');
+  const [providerRecipientName, setProviderRecipientName] = useState('');
+
+  // Provider balance check states (for BUY order acceptance)
+  const [providerBalance, setProviderBalance] = useState<{
+    available: string;
+    locked: string;
+    total: string;
+    address?: string;
+  } | null>(null);
+  const [loadingProviderBalance, setLoadingProviderBalance] = useState(false);
+  const [requiredCollateral, setRequiredCollateral] = useState<string>('0');
+  const [showProviderDepositQR, setShowProviderDepositQR] = useState(false);
+
+  // Parse orderData - useMemo to recalculate when order changes
+  const orderData = useMemo(() => {
+    if (!order) return null;
+    return JSON.parse(order.orderData);
+  }, [order]);
 
   useEffect(() => {
     fetchOrder();
@@ -98,19 +151,30 @@ export default function OrderDetailsPage() {
     }
   }, []);
 
+  // Detectar mudanças no parâmetro 'tab' da URL
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && validTabs.includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  // Garantir que activeTab sempre corresponde a uma aba existente (fallback defensivo)
+  useEffect(() => {
+    if (!order) return;
+
+    const tabs = buildTabs();
+    const tabExists = tabs.some(t => t.id === activeTab);
+
+    if (!tabExists && activeTab !== 'details') {
+      console.warn(`Tab '${activeTab}' não existe, voltando para 'details'`);
+      setActiveTab('details');
+    }
+  }, [order, chatId, activeTab]);
+
   const fetchOrder = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth(`/orders/${orderId}`);
 
       if (!response.ok) {
         throw new Error('Erro ao buscar pedido');
@@ -132,18 +196,17 @@ export default function OrderDetailsPage() {
 
   const fetchChatUnreadCount = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
+      // Chat só disponível após MATCHED - não fazer polling para PENDING ou se order não existe
+      if (!order || order.status === 'PENDING') {
+        return;
+      }
 
-      const response = await fetch(`http://localhost:3001/api/v1/chat/order/${orderId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth(`/chat/order/${orderId}`);
 
       if (response.ok) {
         const data = await response.json();
         setChatUnreadCount(data.data.unreadCount || 0);
+        setChatId(data.data.id || null); // Armazena chatId para histórico
       }
     } catch (err: any) {
       // Silently fail - chat might not exist yet
@@ -153,14 +216,7 @@ export default function OrderDetailsPage() {
 
   const fetchDisputeId = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
-      const response = await fetch('http://localhost:3001/api/v1/disputes/my-disputes', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/disputes/my-disputes');
 
       if (!response.ok) return;
 
@@ -184,17 +240,11 @@ export default function OrderDetailsPage() {
 
       // Check localStorage to avoid showing modal repeatedly (SPECIFIC PER USER)
       const hasReviewed = localStorage.getItem(`order-${orderId}-reviewed-${currentUserId}`);
-      if (hasReviewed === 'true') return;
+      const hasDeclined = localStorage.getItem(`order-${orderId}-declined-review-${currentUserId}`);
+      if (hasReviewed === 'true' || hasDeclined === 'true') return;
 
       try {
-        const token = localStorage.getItem('accessToken');
-        if (!token) return;
-
-        const response = await fetch(`http://localhost:3001/api/v1/reviews/can-review/${orderId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
+        const response = await fetchWithAuth(`/reviews/can-review/${orderId}`);
 
         if (!response.ok) return;
 
@@ -260,17 +310,8 @@ export default function OrderDetailsPage() {
         throw new Error('Transação não encontrada');
       }
 
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('Você precisa estar logado');
-      }
-
-      const response = await fetch('http://localhost:3001/api/v1/transactions/submit-proof', {
+      const response = await fetchWithAuth('/transactions/submit-proof', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           transactionId: transaction.id,
           comprovanteData: proofImage,
@@ -304,8 +345,13 @@ export default function OrderDetailsPage() {
       return true; // Removida restrição de 24h para facilitar testes
     }
 
-    // Vendedor/Criador pode abrir após receber comprovante (PAYMENT_SENT ou VALIDATING)
+    // Vendedor/Criador pode abrir após receber comprovante (PAYMENT_SENT ou VALIDATING) - SELL orders
     if (isCreator && (order?.status === 'PAYMENT_SENT' || order?.status === 'VALIDATING')) {
+      return true;
+    }
+
+    // Provedor pode abrir após receber comprovante (PAYMENT_SENT ou VALIDATING) - BUY orders
+    if (isProvider && (order?.status === 'PAYMENT_SENT' || order?.status === 'VALIDATING')) {
       return true;
     }
 
@@ -330,21 +376,13 @@ export default function OrderDetailsPage() {
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('Você precisa estar logado');
-      }
-
       const transaction = order?.transactions[0];
       if (!transaction) {
         throw new Error('Transação não encontrada');
       }
 
-      const response = await fetch(`http://localhost:3001/api/v1/transactions/${transaction.id}/confirm-received`, {
+      const response = await fetchWithAuth(`/transactions/${transaction.id}/confirm-received`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
       });
 
       const data = await response.json();
@@ -375,22 +413,14 @@ export default function OrderDetailsPage() {
     setShowPaymentConfirmModal(false);
 
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('Você precisa estar logado');
-      }
-
       const transaction = order?.transactions[0];
       if (!transaction) {
         throw new Error('Transação não encontrada');
       }
 
       // 1. Confirmar que o pagamento foi feito
-      const confirmResponse = await fetch(`http://localhost:3001/api/v1/transactions/${transaction.id}/confirm-payment-made`, {
+      const confirmResponse = await fetchWithAuth(`/transactions/${transaction.id}/confirm-payment-made`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
       });
 
       const confirmData = await confirmResponse.json();
@@ -400,12 +430,8 @@ export default function OrderDetailsPage() {
       }
 
       // 2. Enviar o comprovante
-      const proofResponse = await fetch('http://localhost:3001/api/v1/transactions/submit-proof', {
+      const proofResponse = await fetchWithAuth('/transactions/submit-proof', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           transactionId: transaction.id,
           comprovanteData: modalProofImage,
@@ -429,22 +455,41 @@ export default function OrderDetailsPage() {
     }
   };
 
-  const handleCancelOrder = async () => {
+  const handleEditOrder = async (updates: {
+    customExpirationHours?: number;
+    orderData?: any;
+  }) => {
+    setError('');
+
+    try {
+      const response = await fetchWithAuth(`/orders/${orderId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao atualizar pedido');
+      }
+
+      alert('✅ Pedido atualizado com sucesso!');
+      setShowEditModal(false);
+      await fetchOrder(); // Recarregar dados
+    } catch (err: any) {
+      setError(err.message);
+      throw err; // Re-throw para o modal tratar
+    }
+  };
+
+  const handleCancelOrder = async (reason: CancellationReason, note: string) => {
     setCancelling(true);
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('Você precisa estar logado');
-      }
-
-      const response = await fetch(`http://localhost:3001/api/v1/orders/${orderId}/cancel`, {
+      const response = await fetchWithAuth(`/orders/${orderId}/cancel`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        body: JSON.stringify({ reason, note }),
       });
 
       const data = await response.json();
@@ -453,40 +498,226 @@ export default function OrderDetailsPage() {
         throw new Error(data.error || 'Erro ao cancelar pedido');
       }
 
-      alert('Pedido cancelado com sucesso!');
+      // Mostrar mensagem com informação de penalidade
+      const message = data.penaltyApplied
+        ? `Pedido cancelado! Penalidade: -${data.penaltyPoints} pontos de reputação.`
+        : 'Pedido cancelado com sucesso!';
+
+      alert(message);
       setShowCancelModal(false);
       await fetchOrder();
       router.push('/orders/my-orders');
     } catch (err: any) {
       setError(err.message);
       alert(err.message);
+      throw err; // Re-throw para o modal saber que houve erro
     } finally {
       setCancelling(false);
     }
   };
 
+  const handlePayerCancelOrder = async (reason: CancellationReason, note: string) => {
+    setCancellingAsPayer(true);
+    setError('');
+
+    try {
+      const response = await fetchWithAuth(`/orders/${orderId}/cancel-by-payer`, {
+        method: 'POST',
+        body: JSON.stringify({ reason, note }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao cancelar pedido');
+      }
+
+      // Mostrar mensagem com informação de penalidade
+      const message = data.penaltyApplied
+        ? `✅ Cancelamento confirmado! O pedido voltou ao marketplace.\n⚠️ Penalidade: -${data.penaltyPoints} pontos de reputação.`
+        : '✅ Cancelamento confirmado! O pedido voltou ao marketplace.';
+
+      alert(message);
+      setShowPayerCancelModal(false);
+      await fetchOrder();
+      router.push('/marketplace');
+    } catch (err: any) {
+      setError(err.message);
+      alert(err.message);
+      throw err; // Re-throw para o modal saber que houve erro
+    } finally {
+      setCancellingAsPayer(false);
+    }
+  };
+
+  // Handler para aceitar ordem BUY (provider fornece liquidez)
+  const handleAcceptBuyOrder = async () => {
+    if (!providerPixKey || !providerRecipientName) {
+      alert('Por favor, preencha todos os campos');
+      return;
+    }
+
+    setAcceptingBuyOrder(true);
+    setError('');
+
+    try {
+      const response = await fetchWithAuth(`/orders/${orderId}/accept-buy`, {
+        method: 'POST',
+        body: JSON.stringify({
+          pixKey: providerPixKey,
+          pixKeyType: providerPixKeyType,
+          recipientName: providerRecipientName,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Erro ao aceitar ordem');
+      }
+
+      alert('Ordem aceita com sucesso! Seu colateral foi bloqueado. Aguarde o comprador efetuar o pagamento.');
+      setShowAcceptBuyModal(false);
+      await fetchOrder();
+    } catch (err: any) {
+      setError(err.message);
+      alert(err.message);
+    } finally {
+      setAcceptingBuyOrder(false);
+    }
+  };
+
+  // Handler para provider cancelar ordem BUY
+  const handleProviderCancelOrder = async (reason: CancellationReason, note: string) => {
+    setCancelling(true);
+    setError('');
+
+    try {
+      const response = await fetchWithAuth(`/orders/${orderId}/cancel-by-provider`, {
+        method: 'POST',
+        body: JSON.stringify({ reason, note }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao cancelar ordem');
+      }
+
+      const message = data.penaltyApplied
+        ? `Ordem cancelada! Penalidade: -${data.penaltyPoints} pontos de reputação.`
+        : 'Ordem cancelada com sucesso!';
+
+      alert(message);
+      setShowCancelModal(false);
+      setCancelAsProvider(false);
+      await fetchOrder();
+      router.push('/orders/my-orders');
+    } catch (err: any) {
+      setError(err.message);
+      alert(err.message);
+      throw err;
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  // Buscar saldo do provedor para ordem BUY
+  const fetchProviderBalance = useCallback(async () => {
+    if (!order) return;
+
+    setLoadingProviderBalance(true);
+    try {
+      // Calcular colateral: cryptoAmount + 1.5% fee
+      const cryptoAmt = parseFloat(order.cryptoAmount);
+      const required = formatCrypto(cryptoAmt * 1.015, order.cryptoType);
+      setRequiredCollateral(required);
+
+      // Buscar saldo na rede da ordem
+      const response = await fetchWithAuth(`/collateral-balance/${order.cryptoType}/${order.cryptoNetwork}`);
+
+      const data = await response.json();
+      if (data.success && data.data.balance) {
+        setProviderBalance({
+          available: data.data.balance.availableBalance || '0',
+          locked: data.data.balance.lockedBalance || '0',
+          total: data.data.balance.balance || '0',
+          address: data.data.balance.address,
+        });
+      } else {
+        // Não tem carteira ainda
+        setProviderBalance({ available: '0', locked: '0', total: '0' });
+      }
+    } catch (error) {
+      console.error('Erro ao buscar saldo:', error);
+      setProviderBalance({ available: '0', locked: '0', total: '0' });
+    } finally {
+      setLoadingProviderBalance(false);
+    }
+  }, [order]);
+
+  // Inicializar carteira do provedor (se não existir)
+  const initializeProviderWallet = async () => {
+    if (!order) return;
+
+    try {
+      const response = await fetchWithAuth('/collateral-balance/deposit', {
+        method: 'POST',
+        body: JSON.stringify({
+          cryptoType: order.cryptoType,
+          network: order.cryptoNetwork,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setProviderBalance(prev => ({
+          ...prev!,
+          address: data.data.depositAddress.address,
+        }));
+      }
+    } catch (error) {
+      console.error('Erro ao criar carteira:', error);
+    }
+  };
+
+  // Handler para abrir modal de aceitar ordem BUY
+  const handleOpenAcceptBuyModal = () => {
+    setShowAcceptBuyModal(true);
+    setShowProviderDepositQR(false);
+    fetchProviderBalance();
+  };
+
+  // Polling do saldo do provedor quando QR Code está visível
+  useEffect(() => {
+    if (!showProviderDepositQR || !providerBalance?.address) return;
+
+    const interval = setInterval(fetchProviderBalance, 15000);
+    return () => clearInterval(interval);
+  }, [showProviderDepositQR, providerBalance?.address, fetchProviderBalance]);
+
   const handleSubmitReview = async (reviewData: ReviewData) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) throw new Error('Não autorizado');
-
       // Calculate overall rating as average of 3 categories
-      const rating = Math.round(
-        (reviewData.reliabilityRating + reviewData.communicationRating + reviewData.speedRating) / 3
-      );
+      const reliabilityRating = reviewData.reliabilityRating ?? 0;
+      const communicationRating = reviewData.communicationRating ?? 0;
+      const speedRating = reviewData.speedRating ?? 0;
+      const rating = Math.round((reliabilityRating + communicationRating + speedRating) / 3);
 
-      const response = await fetch('http://localhost:3001/api/v1/reviews', {
+      // Ensure all ratings are integers (Zod validation requires .int())
+      const payload = {
+        reviewedId: reviewedUserId,
+        orderId: orderId,
+        rating: Math.round(rating),
+        reliabilityRating: Math.round(reliabilityRating),
+        communicationRating: Math.round(communicationRating),
+        speedRating: Math.round(speedRating),
+        comment: reviewData.comment,
+      };
+
+      const response = await fetchWithAuth('/reviews', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          reviewedId: reviewedUserId,
-          orderId: orderId,
-          rating,
-          ...reviewData,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -525,35 +756,65 @@ export default function OrderDetailsPage() {
     );
   }
 
-  const orderData = JSON.parse(order.orderData);
   const transaction = order.transactions[0];
 
-  // Detectar método de pagamento a partir do orderData
-  const paymentMethod = orderData.pixKey ? 'PIX' : 'BOLETO';
+  // Detectar tipo de ordem: BUY ou SELL (usando campo orderType)
+  const isBuyOrder = order.orderType === 'BUY';
+
+  // Detectar método de pagamento a partir do orderData (pode ser null para BUY orders PENDING)
+  const paymentMethod = orderData?.pixKey ? 'PIX' : (orderData?.barcode ? 'BOLETO' : 'PIX');
 
   // currentUserId now comes from useState (loaded in useEffect)
   const isCreator = order.user.id === currentUserId;
   const isPayer = transaction?.payer?.id === currentUserId;
+  // Para BUY orders: provider é quem aceita a ordem e fornece liquidez
+  const isProvider = isBuyOrder && order.providerId === currentUserId;
 
   // Debug: mostrar informações detalhadas no console
-  console.log('🔍 Debug Order Details:', {
+  console.log('Debug Order Details:', {
     orderId: order.id,
+    orderType: order.orderType,
+    paymentMethod: order.type,
     orderStatus: order.status,
     orderUserId: order.user.id,
-    orderUserIdType: typeof order.user.id,
+    providerId: order.providerId,
     currentUserId,
-    currentUserIdType: typeof currentUserId,
     isCreator,
     isPayer,
+    isProvider,
+    isBuyOrder,
     transaction: transaction ? {
       id: transaction.id,
       status: transaction.status,
       payerId: transaction.payer?.id,
       hasComprovante: !!transaction.comprovanteData,
     } : null,
-    canCancel: isCreator && (order.status === 'PENDING' || order.status === 'MATCHED'),
-    shouldShowConfirmButton: isCreator && (order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING'),
   });
+
+  // Funções auxiliares para o sistema de abas
+  const shouldShowChat = () => {
+    if (!order) return false;
+
+    // Se chat existe, SEMPRE mostrar (prioridade máxima)
+    if (chatId !== null) return true;
+
+    // Chat só disponível após MATCHED (após aceitar o pedido)
+    return (
+      order.status === 'MATCHED' ||
+      order.status === 'PAYMENT_SENT' ||
+      order.status === 'VALIDATING' ||
+      order.status === 'COMPLETED'
+    );
+  };
+
+  const shouldShowHistory = () => {
+    if (!order) return false;
+    return (
+      order.status === 'COMPLETED' ||
+      order.status === 'CANCELLED' ||
+      order.status === 'EXPIRED'
+    );
+  };
 
   const translateStatus = (status: string): string => {
     const translations: Record<string, string> = {
@@ -581,89 +842,628 @@ export default function OrderDetailsPage() {
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
+  const buildTabs = (): Tab[] => {
+    const tabs: Tab[] = [
+      {
+        id: 'details',
+        label: 'Detalhes do Pedido',
+        content: (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Informações do Pedido */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                <div className="flex justify-between items-start mb-6">
+                  <div>
+                    <h2 className="text-2xl font-bold mb-1 text-gray-900 dark:text-white">
+                      {isBuyOrder
+                        ? 'Ordem de Compra'
+                        : (paymentMethod === 'PIX' ? 'Pagamento PIX' : 'Pagamento de Boleto')}
+                    </h2>
+                    <div className="flex items-center gap-2 mb-3">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 font-mono">
+                        Pedido #{order.id.substring(0, 8).toUpperCase()}
+                      </p>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(order.id);
+                          alert('ID completo copiado para área de transferência!');
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 hover:underline"
+                        title="Copiar ID completo"
+                      >
+                        📋 Copiar
+                      </button>
+                    </div>
+                    <div className="flex flex-col gap-3">
+                      <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(order.status)}`}>
+                        {translateStatus(order.status)}
+                      </span>
+                      {/* Countdown Timer - Mostrar para PENDING e MATCHED */}
+                      {(order.status === 'PENDING' || order.status === 'MATCHED') && order.timeoutAt && (
+                        <CountdownTimer
+                          timeoutAt={order.timeoutAt}
+                          onExpire={() => {
+                            console.log('Timer expirado, recarregando página...');
+                            fetchOrder();
+                          }}
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(order.brlAmount)}</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      {formatCrypto(order.cryptoAmount, order.cryptoType)} {order.cryptoType}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Dados do Pagamento - Condicional para BUY orders */}
+                  {isBuyOrder && order.status === 'PENDING' ? (
+                    <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4">
+                      <h3 className="font-bold mb-2 text-yellow-800 dark:text-yellow-200">Aguardando Provedor</h3>
+                      <p className="text-yellow-700 dark:text-yellow-300 text-sm">
+                        Esta ordem aguarda um provedor de liquidez que irá fornecer os dados de pagamento PIX.
+                      </p>
+                    </div>
+                  ) : orderData ? (
+                    <div>
+                      <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Dados do Pagamento (de {isBuyOrder ? (order.provider?.name || 'Provedor') : order.user.name})</h3>
+                      {orderData.pixKey ? (
+                        <>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Tipo de Chave:</strong> {orderData.pixKeyType}</p>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Chave PIX:</strong> {orderData.pixKey}</p>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiário:</strong> {orderData.recipientName}</p>
+                        </>
+                      ) : orderData.barcode ? (
+                        <>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Código de Barras:</strong></p>
+                          <p className="font-mono text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white p-2 rounded break-all">
+                            {orderData.barcode}
+                          </p>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Vencimento:</strong> {new Date(orderData.dueDate).toLocaleDateString()}</p>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiário:</strong> {orderData.recipientName}</p>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {/* Participantes da Transação */}
+                  {isBuyOrder ? (
+                    <>
+                      <div>
+                        <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Comprador (Criador)</h3>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {order.user.name}</p>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Reputação:</strong> {order.user.reputationScore}/100</p>
+                      </div>
+                      {order.provider && (
+                        <div>
+                          <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Provedor (Vendedor)</h3>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {order.provider.name}</p>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Reputação:</strong> {order.provider.reputationScore}/100</p>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Vendedor</h3>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {order.user.name}</p>
+                        <p className="text-gray-800 dark:text-gray-300"><strong>Reputação:</strong> {order.user.reputationScore}/100</p>
+                      </div>
+                      {transaction && (
+                        <div>
+                          <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Pagador</h3>
+                          <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {transaction.payer.name}</p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Mensagem de Aguardando Confirmação */}
+              {(order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
+                <div className={`border-2 rounded-lg shadow-md p-6 ${
+                  isPayer
+                    ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'
+                    : 'bg-orange-50 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700'
+                }`}>
+                  <div className="flex items-center gap-4">
+                    <div className="text-5xl animate-pulse">{isPayer ? '⏳' : '👀'}</div>
+                    <div>
+                      <h3 className={`text-2xl font-bold mb-2 ${
+                        isPayer
+                          ? 'text-blue-800 dark:text-blue-200'
+                          : 'text-orange-800 dark:text-orange-200'
+                      }`}>
+                        {isPayer
+                          ? 'Aguardando confirmação do vendedor'
+                          : '⚠️ Aguardando SUA confirmação de recebimento'}
+                      </h3>
+                      <p className={isPayer
+                          ? 'text-blue-700 dark:text-blue-300'
+                          : 'text-orange-700 dark:text-orange-300'
+                      }>
+                        {isPayer
+                          ? 'O vendedor está verificando seu comprovante de pagamento. Você será notificado quando ele confirmar.'
+                          : 'O comprador enviou o comprovante de pagamento. Verifique se recebeu o valor e confirme abaixo para liberar a criptomoeda.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Upload de Comprovante */}
+              {isPayer && order.status === 'MATCHED' && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                  <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Enviar Comprovante</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Foto do Comprovante
+                      </label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                    </div>
+
+                    {proofImage && (
+                      <div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Preview:</p>
+                        <img src={proofImage} alt="Preview" className="max-w-full h-auto rounded-lg" />
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleSubmitProof}
+                      disabled={uploadingProof || !proofImage}
+                      className="w-full py-3 px-4 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg disabled:opacity-50"
+                    >
+                      {uploadingProof ? 'Enviando...' : 'Enviar Comprovante'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Comprovante Enviado */}
+              {transaction?.comprovanteData && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                  <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Comprovante</h3>
+                  <img
+                    src={transaction.comprovanteData}
+                    alt="Comprovante"
+                    className="max-w-full h-auto rounded-lg"
+                  />
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+                    Status: <strong>{translateStatus(transaction.status)}</strong>
+                  </p>
+                  {transaction.validatedAt && (
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Validado em: {new Date(transaction.validatedAt).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Resumo e Ações */}
+            <div className="space-y-6">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Resumo Financeiro</h3>
+                <div className="space-y-3">
+                  {/* === RESUMO PARA BUY ORDERS === */}
+                  {isBuyOrder ? (
+                    <>
+                      {isCreator ? (
+                        <>
+                          {/* COMPRADOR (criador da ordem BUY): Paga BRL, recebe cripto */}
+                          <div className="bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg p-3">
+                            <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">VOCÊ PAGARÁ EM BRL:</p>
+                            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                              {formatBRL(order.brlAmount)}
+                            </p>
+                            <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                              Via PIX para o provedor
+                            </p>
+                          </div>
+
+                          <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
+                            <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">VOCÊ RECEBERÁ EM CRIPTO:</p>
+                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                              {formatCrypto(order.cryptoAmount, order.cryptoType)} {order.cryptoType}
+                            </p>
+                            <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                              Direto na sua carteira da plataforma
+                            </p>
+                          </div>
+
+                          <div className="text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 p-2 rounded mt-2">
+                            <p>Taxa de 2.5% já inclusa no valor em BRL</p>
+                          </div>
+                        </>
+                      ) : isProvider ? (
+                        <>
+                          {/* PROVEDOR (quem aceita ordem BUY): Deposita cripto, recebe BRL */}
+                          <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
+                            <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">VOCÊ RECEBERÁ EM BRL:</p>
+                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                              {formatBRL(order.brlAmount)}
+                            </p>
+                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                              Quando o comprador efetuar o pagamento
+                            </p>
+                          </div>
+
+                          <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-3 mt-3">
+                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase mb-2">Seu Colateral:</p>
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <p className="text-sm text-gray-600 dark:text-gray-400">Cripto para comprador</p>
+                                <p className="font-semibold text-gray-900 dark:text-white">{formatCrypto(order.cryptoAmount, order.cryptoType)} {order.cryptoType}</p>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <p className="text-sm text-gray-600 dark:text-gray-400">Taxa plataforma (1.5%)</p>
+                                <p className="text-red-600 dark:text-red-400 text-sm">-{formatCrypto(order.platformFee, order.cryptoType)} {order.cryptoType}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-green-50 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded p-2 mt-3">
+                            <p className="text-xs text-green-900 dark:text-green-200 font-semibold">
+                              Seu lucro: ~1% sobre o valor em BRL
+                            </p>
+                            <p className="text-xs text-green-800 dark:text-green-300 mt-1">
+                              O markup de 2.5% no BRL cobre a taxa + seu lucro
+                            </p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {/* Visitante vendo ordem BUY */}
+                          <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
+                            <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">ORDEM DE COMPRA:</p>
+                            <p className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                              {formatCrypto(order.cryptoAmount, order.cryptoType)} {order.cryptoType}
+                            </p>
+                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                              por {formatBRL(order.brlAmount)}
+                            </p>
+                          </div>
+
+                          {order.status === 'PENDING' && (
+                            <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
+                              <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">PROVEDOR GANHA:</p>
+                              <p className="text-sm text-green-800 dark:text-green-200">
+                                ~1% de lucro ao fornecer liquidez
+                              </p>
+                              <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                                Deposite {formatCrypto(parseFloat(order.cryptoAmount) * 1.015, order.cryptoType)} {order.cryptoType} e receba {formatBRL(order.brlAmount)}
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {/* === RESUMO PARA SELL ORDERS (existente) === */}
+                      {isCreator ? (
+                        <>
+                          {/* CRIADOR: Pediu BRL, depositou cripto como colateral */}
+                          <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
+                            <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">VOCÊ RECEBERÁ EM BRL:</p>
+                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                              {formatBRL(order.brlAmount)}
+                            </p>
+                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                              Quando alguém pagar seu {paymentMethod}
+                            </p>
+                          </div>
+
+                          <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-3 mt-3">
+                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase mb-2">Sobre o Colateral:</p>
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <p className="text-sm text-gray-600 dark:text-gray-400">Valor depositado</p>
+                                <p className="font-semibold text-gray-900 dark:text-white">{formatCrypto(order.cryptoAmount, order.cryptoType)} {order.cryptoType}</p>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <p className="text-sm text-gray-600 dark:text-gray-400">Taxa total (2.5%)</p>
+                                <p className="text-red-600 dark:text-red-400 text-sm">-{formatCrypto(order.totalFee, order.cryptoType)} {order.cryptoType}</p>
+                              </div>
+                              <div className="text-xs text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 p-2 rounded mt-2 space-y-1">
+                                <p>1.5% vai para a plataforma</p>
+                                <p>1% vai como cashback para quem pagar</p>
+                              </div>
+                            </div>
+
+                            <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded p-2 mt-3">
+                              <p className="text-xs text-yellow-900 dark:text-yellow-200 font-semibold">
+                                O colateral NÃO será devolvido
+                              </p>
+                              <p className="text-xs text-yellow-800 dark:text-yellow-300 mt-1">
+                                Ele será transferido para quem pagar seu {paymentMethod}. Você receberá os {formatBRL(order.brlAmount)} em BRL.
+                              </p>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {/* PAGADOR: Pagará BRL, receberá cripto */}
+                          <div className="bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg p-3">
+                            <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">VOCÊ PAGARÁ EM BRL:</p>
+                            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                              {formatBRL(order.brlAmount)}
+                            </p>
+                            <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                              Via {paymentMethod}
+                            </p>
+                          </div>
+
+                          <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
+                            <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">VOCÊ RECEBERÁ EM CRIPTO:</p>
+                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                              {formatCrypto(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward || '0'), order.cryptoType)} {order.cryptoType}
+                            </p>
+                            <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                              Inclui +{formatCrypto(order.payerReward || '0', order.cryptoType)} de cashback (1%)
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Ações */}
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Ações</h3>
+                <div className="space-y-2">
+                  {/* === AÇÕES PARA BUY ORDERS === */}
+                  {isBuyOrder && (
+                    <>
+                      {/* Aceitar Ordem BUY - Para provedores em ordem PENDING */}
+                      {order.status === 'PENDING' && !isCreator && currentUserId && (
+                        <button
+                          onClick={handleOpenAcceptBuyModal}
+                          className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg"
+                        >
+                          Fornecer Liquidez
+                        </button>
+                      )}
+
+                      {/* Confirmar Pagamento Feito - Comprador (criador) no status MATCHED */}
+                      {isCreator && order.status === 'MATCHED' && (
+                        <button
+                          onClick={() => setShowPaymentConfirmModal(true)}
+                          disabled={confirmingPayment}
+                          className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
+                        >
+                          {confirmingPayment ? 'Confirmando...' : 'Confirmo Pagamento Feito'}
+                        </button>
+                      )}
+
+                      {/* Confirmar Pagamento Recebido - Provedor após comprovante enviado */}
+                      {isProvider && (order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
+                        <button
+                          onClick={handleConfirmPaymentReceived}
+                          disabled={confirmingReceived}
+                          className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
+                        >
+                          {confirmingReceived ? 'Confirmando...' : 'Confirmar Pagamento Recebido'}
+                        </button>
+                      )}
+
+                      {/* Cancelar Ordem BUY - Criador (comprador) em PENDING */}
+                      {isCreator && order.status === 'PENDING' && (
+                        <div>
+                          <button
+                            onClick={() => setShowCancelModal(true)}
+                            className="w-full px-4 py-2 bg-orange-600 dark:bg-orange-700 hover:bg-orange-700 dark:hover:bg-orange-800 text-white font-semibold rounded-lg"
+                          >
+                            Cancelar Ordem
+                          </button>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                            Cancelar antes de um provedor aceitar
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Cancelar como Provedor - Provedor em MATCHED */}
+                      {isProvider && order.status === 'MATCHED' && (
+                        <div>
+                          <button
+                            onClick={() => {
+                              setCancelAsProvider(true);
+                              setShowCancelModal(true);
+                            }}
+                            className="w-full px-4 py-2 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg"
+                          >
+                            Cancelar Aceite
+                          </button>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                            Desistir de fornecer liquidez
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* === AÇÕES PARA SELL ORDERS (existente) === */}
+                  {!isBuyOrder && (
+                    <>
+                      {/* Confirmar Pagamento Feito - Pagador no status MATCHED */}
+                      {!isCreator && order.status === 'MATCHED' && (
+                        <button
+                          onClick={() => setShowPaymentConfirmModal(true)}
+                          disabled={confirmingPayment}
+                          className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
+                        >
+                          {confirmingPayment ? 'Confirmando...' : 'Confirmo Pagamento Feito'}
+                        </button>
+                      )}
+
+                      {/* Cancelar Aceite - Pagador no status MATCHED (antes do pagamento) */}
+                      {isPayer && order.status === 'MATCHED' && (
+                        <div>
+                          <button
+                            onClick={() => setShowPayerCancelModal(true)}
+                            className="w-full px-4 py-2 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg"
+                          >
+                            Cancelar Aceite
+                          </button>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                            Desistir deste pedido (sem penalidade)
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Confirmar Pagamento Recebido - Vendedor após comprovante enviado */}
+                      {isCreator && (order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
+                        <button
+                          onClick={handleConfirmPaymentReceived}
+                          disabled={confirmingReceived}
+                          className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
+                        >
+                          {confirmingReceived ? 'Confirmando...' : 'Confirmar Pagamento Recebido'}
+                        </button>
+                      )}
+
+                      {/* Editar Pedido - Disponível para criador em status PENDING */}
+                      {isCreator && order.status === 'PENDING' && (
+                        <button
+                          onClick={() => setShowEditModal(true)}
+                          className="w-full px-4 py-2 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg"
+                        >
+                          Editar Pedido
+                        </button>
+                      )}
+
+                      {/* Cancelar Pedido - Disponível para criador em status PENDING, IN_NEGOTIATION ou MATCHED (antes do pagamento) */}
+                      {isCreator && (order.status === 'PENDING' || order.status === 'IN_NEGOTIATION' || order.status === 'MATCHED') && (
+                        <div>
+                          <button
+                            onClick={() => setShowCancelModal(true)}
+                            className="w-full px-4 py-2 bg-orange-600 dark:bg-orange-700 hover:bg-orange-700 dark:hover:bg-orange-800 text-white font-semibold rounded-lg"
+                          >
+                            Cancelar Pedido
+                          </button>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                            Taxa de rede será cobrada para devolver colateral
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Abrir Disputa */}
+                  {canOpenDispute() && (
+                    <div>
+                      <button
+                        onClick={handleOpenDispute}
+                        className="w-full px-4 py-2 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg"
+                      >
+                        ⚠️ Abrir Disputa
+                      </button>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                        {isPayer
+                          ? 'Se o vendedor não confirmar o recebimento'
+                          : 'Se houver problemas com o pagamento'}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Ver Disputa - Quando pedido está em disputa */}
+                  {order.status === 'DISPUTED' && disputeId && (
+                    <button
+                      onClick={() => router.push(`/disputes/${disputeId}`)}
+                      className="w-full px-4 py-2 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg"
+                    >
+                      🔍 Ver Disputa
+                    </button>
+                  )}
+
+                  {/* Avaliar Transação - Disponível para pedidos concluídos */}
+                  {order.status === 'COMPLETED' && canReviewOrder && currentUserId && !localStorage.getItem(`order-${orderId}-reviewed-${currentUserId}`) && (
+                    <button
+                      onClick={() => setShowReviewModal(true)}
+                      className="w-full px-4 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all"
+                    >
+                      ⭐ Avaliar Transação
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ),
+      },
+    ];
+
+    // Aba Chat (condicional)
+    if (shouldShowChat()) {
+      // Chat em modo somente leitura para pedidos finalizados
+      const isChatReadOnly = order?.status === 'COMPLETED' ||
+                             order?.status === 'CANCELLED' ||
+                             order?.status === 'DISPUTED';
+
+      tabs.push({
+        id: 'chat',
+        label: 'Chat',
+        content: (
+          <div className="h-[600px]">
+            <ChatWindow
+              orderId={orderId}
+              readOnly={isChatReadOnly}
+              onNewMessage={(isMine) => {
+                // Apenas incrementar contador se NAO for minha mensagem e chat NAO estiver ativo
+                if (!isMine && activeTab !== 'chat') {
+                  setChatUnreadCount((prev) => prev + 1);
+                }
+              }}
+            />
+          </div>
+        ),
+        badge: chatUnreadCount,
+      });
+    }
+
+    // Aba Histórico (condicional)
+    if (shouldShowHistory()) {
+      tabs.push({
+        id: 'history',
+        label: 'Histórico Arquivado',
+        content: chatId ? <ChatHistoryViewer chatId={chatId} /> : (
+          <div className="text-center py-8 text-gray-500">
+            Nenhum histórico disponível
+          </div>
+        ),
+      });
+    }
+
+    return tabs;
+  };
+
   return (
     <>
       <AppHeader />
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
-        {/* Modal de Cancelamento */}
-        {showCancelModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full p-6">
-            <h3 className="text-xl font-bold mb-4 text-red-600 dark:text-red-400">⚠️ Cancelar Pedido</h3>
-
-            <div className="space-y-4 mb-6">
-              <p className="text-gray-700 dark:text-gray-300 font-semibold">
-                Você tem certeza que deseja cancelar este pedido?
-              </p>
-
-              <div className="bg-red-50 dark:bg-red-900/30 border-2 border-red-300 dark:border-red-700 rounded-lg p-4">
-                <h4 className="font-bold text-red-800 dark:text-red-200 mb-3 flex items-center gap-2">
-                  <span className="text-2xl">💰</span>
-                  IMPORTANTE - Devolução do Colateral
-                </h4>
-                <ul className="text-sm text-red-900 dark:text-red-300 space-y-3">
-                  <li className="flex gap-2">
-                    <span className="font-bold">•</span>
-                    <span>
-                      <strong>O colateral JÁ FOI DEPOSITADO</strong> na blockchain para garantir este pedido.
-                    </span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold">•</span>
-                    <span>
-                      Para receber o colateral de volta, você <strong>DEVERÁ PAGAR as taxas de rede (gas fees)</strong> da blockchain.
-                    </span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold">•</span>
-                    <span>
-                      A devolução será enviada para o endereço cadastrado em <strong>"Meus Endereços"</strong> (carteiras).
-                    </span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold">•</span>
-                    <span>
-                      O valor do colateral MENOS as taxas de rede chegará em alguns minutos, dependendo da confirmação da blockchain.
-                    </span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded-lg p-3">
-                <p className="text-sm text-yellow-900 dark:text-yellow-200">
-                  <strong>⚠️ Atenção:</strong> As taxas de rede podem variar de acordo com a blockchain escolhida.
-                  Redes como Base e Arbitrum têm taxas menores (~$0.01-0.10). Bitcoin e Ethereum podem ter taxas maiores ($2-50).
-                </p>
-              </div>
-
-              <p className="text-sm text-gray-600 dark:text-gray-400 font-semibold">
-                ❌ Esta ação não pode ser desfeita.
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowCancelModal(false)}
-                disabled={cancelling}
-                className="flex-1 px-4 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg disabled:opacity-50"
-              >
-                ← Voltar
-              </button>
-              <button
-                onClick={handleCancelOrder}
-                disabled={cancelling}
-                className="flex-1 px-4 py-3 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg disabled:opacity-50"
-              >
-                {cancelling ? 'Cancelando...' : 'Confirmar e Pagar Taxas'}
-              </button>
-            </div>
+      <div className="max-w-5xl mx-auto">
+        {/* Header da Página */}
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+              Pedido #{orderId.substring(0, 8)}
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">
+              Status: {order && translateStatus(order.status)}
+            </p>
           </div>
-        </div>
-      )}
-
-      <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Detalhes do Pedido</h1>
           <div className="flex gap-4">
             <ThemeToggle />
             <button
@@ -681,352 +1481,121 @@ export default function OrderDetailsPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Informações do Pedido */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-              <div className="flex justify-between items-start mb-6">
-                <div>
-                  <h2 className="text-2xl font-bold mb-1 text-gray-900 dark:text-white">
-                    {paymentMethod === 'PIX' ? 'Pagamento PIX' : 'Pagamento de Boleto'}
-                  </h2>
-                  <div className="flex items-center gap-2 mb-3">
-                    <p className="text-sm text-gray-600 dark:text-gray-400 font-mono">
-                      Pedido #{order.id.substring(0, 8).toUpperCase()}
-                    </p>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(order.id);
-                        alert('ID completo copiado para área de transferência!');
-                      }}
-                      className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 hover:underline"
-                      title="Copiar ID completo"
-                    >
-                      📋 Copiar
-                    </button>
-                  </div>
-                  <div className="flex flex-col gap-3">
-                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(order.status)}`}>
-                      {translateStatus(order.status)}
-                    </span>
-                    {/* Countdown Timer - Mostrar apenas para status MATCHED */}
-                    {order.status === 'MATCHED' && order.timeoutAt && (
-                      <CountdownTimer
-                        timeoutAt={order.timeoutAt}
-                        onExpire={() => {
-                          console.log('Timer expirado, recarregando página...');
-                          fetchOrder();
-                        }}
-                      />
-                    )}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(order.brlAmount)}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Dados do Pagamento</h3>
-                  {paymentMethod === 'PIX' ? (
-                    <>
-                      <p className="text-gray-800 dark:text-gray-300"><strong>Tipo de Chave:</strong> {orderData.pixKeyType}</p>
-                      <p className="text-gray-800 dark:text-gray-300"><strong>Chave PIX:</strong> {orderData.pixKey}</p>
-                      <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiário:</strong> {orderData.recipientName}</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-gray-800 dark:text-gray-300"><strong>Código de Barras:</strong></p>
-                      <p className="font-mono text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white p-2 rounded break-all">
-                        {orderData.barcode}
-                      </p>
-                      <p className="text-gray-800 dark:text-gray-300"><strong>Vencimento:</strong> {new Date(orderData.dueDate).toLocaleDateString()}</p>
-                      <p className="text-gray-800 dark:text-gray-300"><strong>Beneficiário:</strong> {orderData.recipientName}</p>
-                    </>
-                  )}
-                </div>
-
-                <div>
-                  <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Vendedor</h3>
-                  <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {order.user.name}</p>
-                  <p className="text-gray-800 dark:text-gray-300"><strong>Reputação:</strong> {order.user.reputationScore}/100</p>
-                </div>
-
-                {transaction && (
-                  <div>
-                    <h3 className="font-bold mb-2 text-gray-900 dark:text-white">Pagador</h3>
-                    <p className="text-gray-800 dark:text-gray-300"><strong>Nome:</strong> {transaction.payer.name}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Mensagem de Aguardando Confirmação */}
-            {(order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
-              <div className={`border-2 rounded-lg shadow-md p-6 ${
-                isPayer
-                  ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'
-                  : 'bg-orange-50 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700'
-              }`}>
-                <div className="flex items-center gap-4">
-                  <div className="text-5xl animate-pulse">{isPayer ? '⏳' : '👀'}</div>
-                  <div>
-                    <h3 className={`text-2xl font-bold mb-2 ${
-                      isPayer
+        {/* Banner de Identificação de Papel */}
+        {order && currentUserId && (isCreator || isPayer || isProvider) && (
+          <div className={`mb-6 p-4 rounded-lg border-2 ${
+            isBuyOrder
+              ? (isCreator
+                  ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700'
+                  : 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700')
+              : (isPayer
+                  ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700'
+                  : 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700')
+          }`}>
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">
+                {isBuyOrder
+                  ? (isCreator ? '🛒' : '💰')
+                  : (isPayer ? '🛒' : '💰')}
+              </span>
+              <div>
+                <h2 className={`text-xl font-bold ${
+                  isBuyOrder
+                    ? (isCreator
                         ? 'text-blue-800 dark:text-blue-200'
-                        : 'text-orange-800 dark:text-orange-200'
-                    }`}>
-                      {isPayer
-                        ? 'Aguardando confirmação do vendedor'
-                        : '⚠️ Aguardando SUA confirmação de recebimento'}
-                    </h3>
-                    <p className={isPayer
+                        : 'text-green-800 dark:text-green-200')
+                    : (isPayer
+                        ? 'text-blue-800 dark:text-blue-200'
+                        : 'text-green-800 dark:text-green-200')
+                }`}>
+                  {isBuyOrder
+                    ? (isCreator ? 'VOCÊ É O COMPRADOR' : 'VOCÊ É O PROVEDOR (VENDEDOR)')
+                    : (isPayer ? 'VOCÊ É O COMPRADOR' : 'VOCÊ É O VENDEDOR')}
+                </h2>
+                <p className={`text-sm ${
+                  isBuyOrder
+                    ? (isCreator
                         ? 'text-blue-700 dark:text-blue-300'
-                        : 'text-orange-700 dark:text-orange-300'
-                    }>
-                      {isPayer
-                        ? 'O vendedor está verificando seu comprovante de pagamento. Você será notificado quando ele confirmar.'
-                        : 'O comprador enviou o comprovante de pagamento. Verifique se recebeu o valor e confirme abaixo para liberar a criptomoeda.'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Upload de Comprovante */}
-            {isPayer && order.status === 'MATCHED' && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Enviar Comprovante</h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Foto do Comprovante
-                    </label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    />
-                  </div>
-
-                  {proofImage && (
-                    <div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Preview:</p>
-                      <img src={proofImage} alt="Preview" className="max-w-full h-auto rounded-lg" />
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleSubmitProof}
-                    disabled={uploadingProof || !proofImage}
-                    className="w-full py-3 px-4 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg disabled:opacity-50"
-                  >
-                    {uploadingProof ? 'Enviando...' : 'Enviar Comprovante'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Comprovante Enviado */}
-            {transaction?.comprovanteData && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Comprovante</h3>
-                <img
-                  src={transaction.comprovanteData}
-                  alt="Comprovante"
-                  className="max-w-full h-auto rounded-lg"
-                />
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                  Status: <strong>{translateStatus(transaction.status)}</strong>
+                        : 'text-green-700 dark:text-green-300')
+                    : (isPayer
+                        ? 'text-blue-700 dark:text-blue-300'
+                        : 'text-green-700 dark:text-green-300')
+                }`}>
+                  {isBuyOrder
+                    ? (isCreator
+                        ? `Você paga ${formatBRL(order.brlAmount)} via PIX e recebe ${formatCrypto(order.cryptoAmount, order.cryptoType)} ${order.cryptoType}`
+                        : `Você fornece liquidez e recebe ${formatBRL(order.brlAmount)} após o comprador pagar`)
+                    : (isPayer
+                        ? `Você paga ${formatBRL(order.brlAmount)} no ${paymentMethod} e recebe ${formatCrypto(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward || '0'), order.cryptoType)} ${order.cryptoType} (inclui 1% cashback)`
+                        : `Você receberá ${formatBRL(order.brlAmount)} via ${paymentMethod}. Seu colateral de ${formatCrypto(parseFloat(order.cryptoAmount) + parseFloat(order.totalFee), order.cryptoType)} ${order.cryptoType} será liberado`)
+                    }
                 </p>
-                {transaction.validatedAt && (
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Validado em: {new Date(transaction.validatedAt).toLocaleString()}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Resumo e Ações */}
-          <div className="space-y-6">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-              <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Resumo Financeiro</h3>
-              <div className="space-y-3">
-                {isCreator ? (
-                  <>
-                    {/* CRIADOR: Pediu BRL, depositou cripto como colateral */}
-                    <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
-                      <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold mb-1">💰 VOCÊ RECEBERÁ EM BRL:</p>
-                      <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                        {formatBRL(order.brlAmount)}
-                      </p>
-                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                        Quando alguém pagar seu {paymentMethod}
-                      </p>
-                    </div>
-
-                    <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-3 mt-3">
-                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase mb-2">Sobre o Colateral:</p>
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <p className="text-sm text-gray-600 dark:text-gray-400">Valor depositado</p>
-                          <p className="font-semibold text-gray-900 dark:text-white">{parseFloat(order.cryptoAmount).toFixed(8)} {order.cryptoType}</p>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <p className="text-sm text-gray-600 dark:text-gray-400">Taxa total (2.5%)</p>
-                          <p className="text-red-600 dark:text-red-400 text-sm">-{parseFloat(order.totalFee).toFixed(8)} {order.cryptoType}</p>
-                        </div>
-                        <div className="text-xs text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 p-2 rounded mt-2 space-y-1">
-                          <p>• 1.5% vai para a plataforma</p>
-                          <p>• 1% vai como cashback para quem pagar</p>
-                        </div>
-                      </div>
-
-                      <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded p-2 mt-3">
-                        <p className="text-xs text-yellow-900 dark:text-yellow-200 font-semibold">
-                          ⚠️ O colateral NÃO será devolvido
-                        </p>
-                        <p className="text-xs text-yellow-800 dark:text-yellow-300 mt-1">
-                          Ele será transferido para quem pagar seu {paymentMethod}. Você receberá os {formatBRL(order.brlAmount)} em BRL.
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {/* PAGADOR: Pagará BRL, receberá cripto */}
-                    <div className="bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 rounded-lg p-3">
-                      <p className="text-xs text-orange-700 dark:text-orange-300 font-semibold mb-1">💸 VOCÊ PAGARÁ EM BRL:</p>
-                      <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                        {formatBRL(order.brlAmount)}
-                      </p>
-                      <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
-                        Via {paymentMethod}
-                      </p>
-                    </div>
-
-                    <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
-                      <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">💰 VOCÊ RECEBERÁ EM CRIPTO:</p>
-                      <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                        {(parseFloat(order.cryptoAmount) + parseFloat(order.payerReward)).toFixed(8)} {order.cryptoType}
-                      </p>
-                      <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                        ✨ Inclui +{parseFloat(order.payerReward).toFixed(8)} de cashback (1%)
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Ações */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-              <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Ações</h3>
-              <div className="space-y-2">
-                {/* Chat - Disponível após IN_NEGOTIATION */}
-                {(order.status === 'IN_NEGOTIATION' || order.status === 'MATCHED' || order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
-                  <button
-                    onClick={() => {
-                      setShowChat(true);
-                      setChatUnreadCount(0); // Reset ao abrir
-                    }}
-                    className="w-full px-4 py-2 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg relative"
-                  >
-                    💬 Abrir Chat
-                    {chatUnreadCount > 0 && (
-                      <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
-                        {chatUnreadCount}
-                      </span>
-                    )}
-                  </button>
-                )}
-
-                {/* Confirmar Pagamento Feito - Pagador no status MATCHED */}
-                {!isCreator && order.status === 'MATCHED' && (
-                  <button
-                    onClick={() => setShowPaymentConfirmModal(true)}
-                    disabled={confirmingPayment}
-                    className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
-                  >
-                    {confirmingPayment ? 'Confirmando...' : '✅ Confirmo Pagamento Feito'}
-                  </button>
-                )}
-
-                {/* Confirmar Pagamento Recebido - Vendedor após comprovante enviado */}
-                {isCreator && (order.status === 'PAYMENT_SENT' || order.status === 'VALIDATING') && (
-                  <button
-                    onClick={handleConfirmPaymentReceived}
-                    disabled={confirmingReceived}
-                    className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
-                  >
-                    {confirmingReceived ? 'Confirmando...' : '✅ Confirmar Pagamento Recebido'}
-                  </button>
-                )}
-
-                {/* Cancelar Pedido - Disponível para criador em status PENDING ou MATCHED (antes do pagamento) */}
-                {isCreator && (order.status === 'PENDING' || order.status === 'MATCHED') && (
-                  <div>
-                    <button
-                      onClick={() => setShowCancelModal(true)}
-                      className="w-full px-4 py-2 bg-orange-600 dark:bg-orange-700 hover:bg-orange-700 dark:hover:bg-orange-800 text-white font-semibold rounded-lg"
-                    >
-                      ⚠️ Cancelar Pedido
-                    </button>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-                      Taxa de rede será cobrada para devolver colateral
-                    </p>
-                  </div>
-                )}
-
-                {/* Abrir Disputa */}
-                {canOpenDispute() && (
-                  <div>
-                    <button
-                      onClick={handleOpenDispute}
-                      className="w-full px-4 py-2 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg"
-                    >
-                      ⚠️ Abrir Disputa
-                    </button>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-                      {isPayer
-                        ? 'Se o vendedor não confirmar o recebimento'
-                        : 'Se houver problemas com o pagamento'}
-                    </p>
-                  </div>
-                )}
-
-                {/* Ver Disputa - Quando pedido está em disputa */}
-                {order.status === 'DISPUTED' && disputeId && (
-                  <button
-                    onClick={() => router.push(`/disputes/${disputeId}`)}
-                    className="w-full px-4 py-2 bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 text-white font-semibold rounded-lg"
-                  >
-                    🔍 Ver Disputa
-                  </button>
-                )}
-
-                {/* Avaliar Transação - Disponível para pedidos concluídos */}
-                {order.status === 'COMPLETED' && canReviewOrder && currentUserId && !localStorage.getItem(`order-${orderId}-reviewed-${currentUserId}`) && (
-                  <button
-                    onClick={() => setShowReviewModal(true)}
-                    className="w-full px-4 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all"
-                  >
-                    ⭐ Avaliar Transação
-                  </button>
-                )}
               </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Modal de Confirmação de Pagamento */}
-        {showPaymentConfirmModal && (
+        {/* Sistema de Abas */}
+        <Tabs
+          tabs={buildTabs()}
+          activeTab={activeTab}
+          onTabChange={(tabId) => {
+            setActiveTab(tabId);
+            // Se abriu aba chat, resetar contador
+            if (tabId === 'chat') {
+              setChatUnreadCount(0);
+            }
+          }}
+        />
+      </div>
+
+      {/* Botão Flutuante de Chat */}
+      {shouldShowChat() && activeTab !== 'chat' && (
+        <button
+          onClick={() => {
+            setActiveTab('chat');
+            setChatUnreadCount(0); // Resetar contador ao abrir chat
+          }}
+          className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg z-50 flex items-center gap-2 transition-all hover:scale-105"
+          title="Abrir Chat"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+          <span className="font-semibold">Chat</span>
+          {chatUnreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold animate-pulse">
+              {chatUnreadCount > 9 ? '9+' : chatUnreadCount}
+            </span>
+          )}
+        </button>
+      )}
+
+      {/* Todos os modais ficam aqui (fora das abas) */}
+
+      {/* Modal de Cancelamento Unificado */}
+      <CancellationModal
+        isOpen={showCancelModal}
+        onClose={() => {
+          setShowCancelModal(false);
+          setCancelAsProvider(false);
+        }}
+        onConfirm={cancelAsProvider ? handleProviderCancelOrder : handleCancelOrder}
+        isSeller={!cancelAsProvider}
+        orderId={orderId as string}
+      />
+
+      {/* Modal de Cancelamento do Pagador */}
+      <CancellationModal
+        isOpen={showPayerCancelModal}
+        onClose={() => setShowPayerCancelModal(false)}
+        onConfirm={handlePayerCancelOrder}
+        isSeller={false}
+        orderId={orderId as string}
+      />
+
+      {/* Modal de Confirmação de Pagamento */}
+      {showPaymentConfirmModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
               <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">⚠️ Confirmar Pagamento</h3>
@@ -1076,43 +1645,6 @@ export default function OrderDetailsPage() {
                 </button>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Modal de Chat - Expandido */}
-        {showChat && !isChatMinimized && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="w-full max-w-2xl h-[600px]">
-              <ChatWindow
-                orderId={orderId}
-                onClose={() => {
-                  setShowChat(false);
-                  setIsChatMinimized(false);
-                }}
-                onMinimize={() => setIsChatMinimized(true)}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Chat Minimizado - Botão Flutuante */}
-        {showChat && isChatMinimized && (
-          <div className="fixed bottom-4 right-4 z-50">
-            <button
-              onClick={() => setIsChatMinimized(false)}
-              className="bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3 transition-all hover:scale-105 relative"
-            >
-              <span className="text-2xl">💬</span>
-              <div className="text-left">
-                <p className="font-bold text-sm">Chat</p>
-                <p className="text-xs">Clique para expandir</p>
-              </div>
-              {chatUnreadCount > 0 && (
-                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
-                  {chatUnreadCount}
-                </span>
-              )}
-            </button>
           </div>
         )}
 
@@ -1169,13 +1701,280 @@ export default function OrderDetailsPage() {
       {/* Review Modal */}
       <ReviewModal
         isOpen={showReviewModal}
-        onClose={() => setShowReviewModal(false)}
+        onClose={() => {
+          // Salvar que o usuário recusou avaliar (não mostrar novamente)
+          if (currentUserId) {
+            localStorage.setItem(`order-${orderId}-declined-review-${currentUserId}`, 'true');
+          }
+          setShowReviewModal(false);
+        }}
         onSubmit={handleSubmitReview}
-        reviewedUserName={reviewedUserName}
+        reviewedId={reviewedUserId || ''}
+        reviewedName={reviewedUserName}
         orderId={orderId}
       />
-      </div>
-    </div>
+
+      {/* Edit Order Modal */}
+      <EditOrderModal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        onConfirm={handleEditOrder}
+        orderType={paymentMethod as 'PIX' | 'BOLETO'}
+        currentData={{
+          customExpirationHours: (order as any).customExpirationHours,
+          ...(paymentMethod === 'PIX' ? {
+            pixKey: orderData?.pixKey,
+            pixKeyType: orderData?.pixKeyType,
+            recipientName: orderData?.recipientName,
+          } : {
+            barcode: orderData?.barcode,
+            dueDate: orderData?.dueDate,
+            recipientName: orderData?.recipientName,
+            recipientDocument: orderData?.recipientDocument,
+          }),
+        }}
+      />
+
+      {/* Modal para Aceitar Ordem BUY (Provedor) - Com verificação de saldo */}
+      {showAcceptBuyModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Fornecer Liquidez</h3>
+
+            {/* Info da Ordem */}
+            <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-4">
+              <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
+                <strong>Você está aceitando fornecer:</strong>
+              </p>
+              <p className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                {formatCrypto(order.cryptoAmount, order.cryptoType)} {order.cryptoType}
+              </p>
+              <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                + {formatCrypto(parseFloat(order.cryptoAmount) * 0.015, order.cryptoType)} {order.cryptoType} de taxa (1.5%)
+              </p>
+              <p className="text-sm text-blue-800 dark:text-blue-200 mt-3">
+                <strong>Colateral necessário:</strong> {requiredCollateral} {order.cryptoType}
+              </p>
+              <p className="text-sm text-blue-800 dark:text-blue-200 mt-1">
+                <strong>Você receberá:</strong> {formatBRL(order.brlAmount)}
+              </p>
+            </div>
+
+            {/* Loading */}
+            {loadingProviderBalance ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-4"></div>
+                <p className="text-gray-600 dark:text-gray-400">Verificando seu saldo...</p>
+              </div>
+            ) : providerBalance ? (
+              <>
+                {/* Card de Saldo */}
+                {parseFloat(providerBalance.available) >= parseFloat(requiredCollateral) ? (
+                  /* Saldo Suficiente */
+                  <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-4 mb-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-2xl">✅</span>
+                      <h4 className="font-bold text-green-800 dark:text-green-200">Saldo Disponível</h4>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-sm">
+                      <div>
+                        <p className="text-green-700 dark:text-green-300 text-xs">Total</p>
+                        <p className="font-mono font-bold text-green-900 dark:text-green-100">
+                          {formatCrypto(providerBalance.total, order.cryptoType)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-green-700 dark:text-green-300 text-xs">Disponível</p>
+                        <p className="font-mono font-bold text-green-900 dark:text-green-100">
+                          {formatCrypto(providerBalance.available, order.cryptoType)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-green-700 dark:text-green-300 text-xs">Bloqueado</p>
+                        <p className="font-mono font-bold text-yellow-700 dark:text-yellow-400">
+                          {formatCrypto(providerBalance.locked, order.cryptoType)}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-2">
+                      Rede: {order.cryptoNetwork}
+                    </p>
+                  </div>
+                ) : (
+                  /* Saldo Insuficiente */
+                  <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg p-4 mb-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-2xl">⚠️</span>
+                      <h4 className="font-bold text-red-800 dark:text-red-200">Saldo Insuficiente</h4>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-sm mb-3">
+                      <div>
+                        <p className="text-red-700 dark:text-red-300 text-xs">Total</p>
+                        <p className="font-mono font-bold text-red-900 dark:text-red-100">
+                          {formatCrypto(providerBalance.total, order.cryptoType)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-red-700 dark:text-red-300 text-xs">Disponível</p>
+                        <p className="font-mono font-bold text-red-900 dark:text-red-100">
+                          {formatCrypto(providerBalance.available, order.cryptoType)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-red-700 dark:text-red-300 text-xs">Necessário</p>
+                        <p className="font-mono font-bold text-red-900 dark:text-red-100">
+                          {requiredCollateral}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-sm text-red-700 dark:text-red-300">
+                      Faltam: <strong>{formatCrypto(parseFloat(requiredCollateral) - parseFloat(providerBalance.available), order.cryptoType)} {order.cryptoType}</strong>
+                    </p>
+
+                    {!showProviderDepositQR ? (
+                      <button
+                        onClick={async () => {
+                          if (!providerBalance.address) {
+                            await initializeProviderWallet();
+                          }
+                          setShowProviderDepositQR(true);
+                        }}
+                        className="w-full mt-3 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg"
+                      >
+                        Depositar {order.cryptoType}
+                      </button>
+                    ) : (
+                      /* QR Code para Depósito */
+                      <div className="mt-4 bg-white dark:bg-gray-700 rounded-lg p-4">
+                        <p className="text-sm text-center text-gray-700 dark:text-gray-300 mb-3">
+                          Deposite {order.cryptoType} no endereço abaixo ({order.cryptoNetwork})
+                        </p>
+                        {providerBalance.address ? (
+                          <>
+                            <div className="flex justify-center mb-3">
+                              <div className="bg-white p-3 rounded-lg">
+                                <QRCodeSVG value={providerBalance.address} size={180} />
+                              </div>
+                            </div>
+                            <div className="bg-gray-100 dark:bg-gray-600 rounded p-2">
+                              <p className="font-mono text-xs break-all text-center text-gray-800 dark:text-gray-200">
+                                {providerBalance.address}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(providerBalance.address!);
+                                alert('Endereço copiado!');
+                              }}
+                              className="w-full mt-2 px-3 py-1 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 text-sm rounded"
+                            >
+                              Copiar Endereço
+                            </button>
+                            <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-3">
+                              Atualizando saldo automaticamente a cada 15s...
+                            </p>
+                            <button
+                              onClick={fetchProviderBalance}
+                              className="w-full mt-2 px-3 py-1 bg-blue-100 dark:bg-blue-900 hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-300 text-sm rounded"
+                            >
+                              Atualizar Agora
+                            </button>
+                          </>
+                        ) : (
+                          <div className="text-center py-4">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto mb-2"></div>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Gerando endereço...</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Formulário PIX - Só mostra se tiver saldo suficiente */}
+                {parseFloat(providerBalance.available) >= parseFloat(requiredCollateral) && (
+                  <>
+                    <div className="space-y-4 mb-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Tipo de Chave PIX
+                        </label>
+                        <select
+                          value={providerPixKeyType}
+                          onChange={(e) => setProviderPixKeyType(e.target.value as any)}
+                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        >
+                          <option value="CPF">CPF</option>
+                          <option value="CNPJ">CNPJ</option>
+                          <option value="EMAIL">Email</option>
+                          <option value="PHONE">Telefone</option>
+                          <option value="RANDOM">Chave Aleatória</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Chave PIX (para receber o pagamento)
+                        </label>
+                        <input
+                          type="text"
+                          value={providerPixKey}
+                          onChange={(e) => setProviderPixKey(e.target.value)}
+                          placeholder="Digite sua chave PIX"
+                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Nome do Beneficiário
+                        </label>
+                        <input
+                          type="text"
+                          value={providerRecipientName}
+                          onChange={(e) => setProviderRecipientName(e.target.value)}
+                          placeholder="Seu nome completo"
+                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3 mb-4">
+                      <p className="text-xs text-yellow-800 dark:text-yellow-200">
+                        <strong>Atenção:</strong> Ao confirmar, seu colateral de {requiredCollateral} {order.cryptoType} será bloqueado até o comprador efetuar o pagamento.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : null}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowAcceptBuyModal(false);
+                  setShowProviderDepositQR(false);
+                  setProviderPixKey('');
+                  setProviderRecipientName('');
+                  setProviderBalance(null);
+                }}
+                className="flex-1 px-4 py-2 bg-gray-300 dark:bg-gray-700 hover:bg-gray-400 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg"
+              >
+                Cancelar
+              </button>
+              {providerBalance && parseFloat(providerBalance.available) >= parseFloat(requiredCollateral) && (
+                <button
+                  onClick={handleAcceptBuyOrder}
+                  disabled={acceptingBuyOrder || !providerPixKey || !providerRecipientName}
+                  className="flex-1 px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg disabled:opacity-50"
+                >
+                  {acceptingBuyOrder ? 'Processando...' : 'Confirmar e Bloquear Colateral'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { KYCLevel, CryptoType, NetworkType, OrderType } from './types';
+import { CryptoType, NetworkType, OrderType } from './types';
 
 // SECURITY: Validação completa de CPF com dígitos verificadores
 const validateCPF = (cpf: string): boolean => {
@@ -40,7 +40,7 @@ export const cpfSchema = z
   .refine(validateCPF, 'CPF inválido (dígitos verificadores incorretos)');
 
 // SECURITY: Política de senha forte
-const strongPasswordSchema = z
+export const strongPasswordSchema = z
   .string()
   .min(8, 'Senha deve ter no mínimo 8 caracteres')
   .regex(/[A-Z]/, 'Senha deve conter pelo menos uma letra maiúscula')
@@ -52,12 +52,25 @@ const strongPasswordSchema = z
 export const loginSchema = z.object({
   email: z.string().email('Email inválido'),
   password: z.string().min(8, 'Senha deve ter no mínimo 8 caracteres'),
+  twoFactorToken: z.string().optional(), // SECURITY: Token 2FA opcional (quando habilitado)
 });
 
 export const registerSchema = z.object({
   email: z.string().email('Email inválido'),
   password: strongPasswordSchema, // SECURITY: Usar política de senha forte
   name: z.string().optional(),
+});
+
+// Password reset schemas
+export const forgotPasswordSchema = z.object({
+  email: z.string().email('Email invalido'),
+});
+
+export const resetPasswordSchema = z.object({
+  email: z.string().email('Email invalido'),
+  token: z.string().min(1, 'Token e obrigatorio'),
+  newPassword: strongPasswordSchema,
+  twoFactorToken: z.string().optional(),
 });
 
 // Order schemas
@@ -90,41 +103,12 @@ export const submitComprovanteSchema = z.object({
   comprovanteFile: z.any(), // File object (frontend) or buffer (backend)
 });
 
-// KYC schemas
-// Level 1: Nome completo + CPF + Telefone
-export const kycLevel1Schema = z.object({
-  fullName: z.string().min(3, 'Nome completo deve ter no mínimo 3 caracteres'),
-  cpf: cpfSchema,
-  phone: z.string().regex(/^\d{10,11}$/, 'Telefone deve ter 10 ou 11 dígitos (DDD + número)'),
-});
-
-export const kycLevel2Schema = kycLevel1Schema.extend({
-  selfieUrl: z.string().url(),
-  documentUrl: z.string().url(),
-  address: z.object({
-    cep: z.string().regex(/^\d{8}$/, 'CEP inválido'),
-    street: z.string(),
-    number: z.string(),
-    complement: z.string().optional(),
-    city: z.string(),
-    state: z.string().length(2),
-  }),
-});
-
 // Constants
 export const FEE_RATES = {
   PLATFORM: 0.015, // 1.5%
   PAYER_REWARD: 0.01, // 1%
   TOTAL: 0.025, // 2.5%
   PLATFORM_TIMEOUT: 0.02, // 2% when platform pays
-} as const;
-
-export const DAILY_LIMITS = {
-  [KYCLevel.NONE]: 1000, // R$ 1k/dia - Email verificado apenas
-  [KYCLevel.LEVEL_1]: 10000, // R$ 10k/dia - CPF + Telefone
-  [KYCLevel.LEVEL_2]: 50000, // R$ 50k/dia - Selfie + Documento + Endereço
-  [KYCLevel.LEVEL_3]: 100000, // R$ 100k/dia - Comprovante renda + Dados bancários
-  [KYCLevel.LEVEL_4]: 999999999, // Ilimitado - Enhanced Due Diligence (empresa)
 } as const;
 
 // Utility functions

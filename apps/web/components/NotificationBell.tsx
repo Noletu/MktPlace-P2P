@@ -1,20 +1,68 @@
 'use client';
 
-import { useState } from 'react';
-import { useNotifications } from '../hooks/useNotifications';
+import { useState, useEffect } from 'react';
+import { useNotificationContext } from '@/providers/NotificationProvider';
 import { useRouter } from 'next/navigation';
+import { normalizeNotificationUrl } from '@/utils/notificationUtils';
+import { fetchWithAuth } from '@/utils/api';
 
 export function NotificationBell() {
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+  const { notifications, unreadCount, setNotifications, setUnreadCount, markAllAsRead } = useNotificationContext();
   const [isOpen, setIsOpen] = useState(false);
   const router = useRouter();
 
+  // Carregar notificações iniciais (apenas uma vez)
+  useEffect(() => {
+    const fetchInitialNotifications = async () => {
+      try {
+        // FIX: Guard de browser API para evitar erro SSR
+        if (typeof window === 'undefined') return;
+
+        const response = await fetchWithAuth('/notifications?limit=10');
+
+        if (response.ok) {
+          const data = await response.json();
+          setNotifications(data.data.notifications || []);
+          setUnreadCount(data.data.unreadCount || 0);
+        }
+      } catch (error) {
+        console.error('Failed to fetch initial notifications:', error);
+      }
+    };
+
+    fetchInitialNotifications();
+  }, [setNotifications, setUnreadCount]);
+
   const handleNotificationClick = async (notification: any) => {
-    await markAsRead(notification.id);
+    // Marcar como lida via API (vai emitir WebSocket event que atualiza o context)
+    if (!notification.isRead) {
+      try {
+        await fetchWithAuth(`/notifications/${notification.id}/read`, {
+          method: 'POST',
+        });
+      } catch (error) {
+        console.error('Failed to mark notification as read:', error);
+      }
+    }
+
     setIsOpen(false);
 
     if (notification.actionUrl) {
-      router.push(notification.actionUrl);
+      const normalizedUrl = normalizeNotificationUrl(notification.actionUrl);
+      router.push(normalizedUrl);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      const response = await fetchWithAuth('/notifications/mark-all-read', {
+        method: 'POST',
+      });
+      if (response.ok) {
+        markAllAsRead();
+      }
+    } catch (error) {
+      console.error('Failed to mark all as read:', error);
     }
   };
 
@@ -48,7 +96,7 @@ export function NotificationBell() {
             <h3 className="font-semibold text-gray-900">Notificações</h3>
             {unreadCount > 0 && (
               <button
-                onClick={() => markAllAsRead()}
+                onClick={handleMarkAllAsRead}
                 className="text-sm text-blue-600 hover:text-blue-800"
               >
                 Marcar todas como lidas
@@ -79,7 +127,10 @@ export function NotificationBell() {
                         {notif.message}
                       </p>
                       {notif.actionLabel && (
-                        <button className="text-blue-600 text-sm mt-2 hover:text-blue-800">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleNotificationClick(notif); }}
+                          className="text-blue-600 text-sm mt-2 hover:text-blue-800"
+                        >
                           {notif.actionLabel} →
                         </button>
                       )}

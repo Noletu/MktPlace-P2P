@@ -5,6 +5,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import ChartCard from '../shared/ChartCard';
+import { fetchWithAuth } from '@/utils/api';
 
 export default function VolumeChart() {
   const [data, setData] = useState<{ date: string; volume: number }[]>([]);
@@ -16,10 +17,7 @@ export default function VolumeChart() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3001/api/v1/admin/orders/stats', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await fetchWithAuth('/admin/orders/stats');
       const result = await res.json();
       if (result.success) {
         setData(result.data.volumeByDay || []);
@@ -47,23 +45,23 @@ export default function VolumeChart() {
                 <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--grid-stroke)" />
             <XAxis
               dataKey="date"
-              stroke="#9ca3af"
+              stroke="var(--axis-stroke)"
               style={{ fontSize: '12px' }}
             />
             <YAxis
-              stroke="#9ca3af"
+              stroke="var(--axis-stroke)"
               style={{ fontSize: '12px' }}
-              tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
+              tickFormatter={(value: number) => `R$ ${(value / 1000).toFixed(0)}k`}
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: '#1f2937',
-                border: '1px solid #374151',
+                backgroundColor: 'var(--tooltip-bg)',
+                border: '1px solid var(--tooltip-border)',
                 borderRadius: '8px',
-                color: '#fff',
+                color: 'var(--tooltip-text)',
               }}
               formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'Volume']}
             />
@@ -77,7 +75,7 @@ export default function VolumeChart() {
           </AreaChart>
         </ResponsiveContainer>
       ) : (
-        <div className="h-[300px] flex items-center justify-center text-gray-400">
+        <div className="h-[300px] flex items-center justify-center text-gray-600 dark:text-gray-400">
           Nenhum dado disponível
         </div>
       )}

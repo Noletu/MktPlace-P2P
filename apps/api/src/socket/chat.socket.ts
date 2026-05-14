@@ -1,5 +1,4 @@
-import { Server as SocketIOServer, Socket } from 'socket.io';
-import { Server as HTTPServer } from 'http';
+import { Server as SocketIOServer, Socket, Namespace } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { chatService } from '../services/chat.service';
 import { logger } from '../utils/logger';
@@ -16,9 +15,11 @@ interface JoinChatPayload {
 interface SendMessagePayload {
   chatId: string;
   message?: string; // Para mensagens não criptografadas
-  encryptedContent?: string; // Para mensagens criptografadas
+  encryptedContent?: string; // Criptografado para o DESTINATÁRIO
+  encryptedForSender?: string; // Criptografado para o REMETENTE (E2E correto)
   isEncrypted?: boolean; // Flag de criptografia
-  iv?: string; // Initialization Vector para AES-GCM
+  iv?: string; // IV para encryptedContent (destinatário)
+  ivForSender?: string; // IV para encryptedForSender (remetente)
   attachments?: string[]; // Retrocompatibilidade
   attachmentUrl?: string; // URL do anexo (novo formato)
   attachmentType?: string; // Tipo MIME do anexo
@@ -30,34 +31,33 @@ interface TypingPayload {
 }
 
 export class ChatSocketServer {
-  private io: SocketIOServer;
+  private namespace: Namespace;
   private connectedUsers: Map<string, string> = new Map(); // userId -> socketId
 
-  constructor(httpServer: HTTPServer) {
-    this.io = new SocketIOServer(httpServer, {
-      cors: {
-        origin:
-          process.env.NODE_ENV === 'production'
-            ? process.env.ALLOWED_ORIGINS?.split(',')
-            : ['http://localhost:3000', 'http://127.0.0.1:3000'],
-        credentials: true,
-      },
-      path: '/socket.io/',
-    });
+  constructor(io: SocketIOServer) {
+    // Usar namespace /chat para separar do namespace de notificações
+    this.namespace = io.of('/chat');
 
     this.setupMiddleware();
     this.setupConnectionHandler();
 
-    logger.info('[SOCKET] Chat socket server initialized');
+    logger.info('[SOCKET] Chat namespace initialized on /chat');
   }
 
   /**
    * Middleware de autenticação
    */
   private setupMiddleware() {
-    this.io.use(async (socket: AuthenticatedSocket, next) => {
+    this.namespace.use(async (socket: AuthenticatedSocket, next) => {
       try {
-        const token = socket.handshake.auth.token;
+        // Support both auth.token (legacy) and HttpOnly cookie
+        let token = socket.handshake.auth.token;
+
+        if (!token) {
+          const cookieHeader = socket.handshake.headers.cookie || '';
+          const match = cookieHeader.match(/(?:^|;\s*)accessToken=([^;]+)/);
+          token = match ? decodeURIComponent(match[1]) : null;
+        }
 
         if (!token) {
           throw new Error('Authentication token required');
@@ -89,7 +89,7 @@ export class ChatSocketServer {
    * Handler de conexão
    */
   private setupConnectionHandler() {
-    this.io.on('connection', (socket: AuthenticatedSocket) => {
+    this.namespace.on('connection', (socket: AuthenticatedSocket) => {
       logger.info('[SOCKET] Client connected', {
         userId: socket.userId,
         socketId: socket.id,
@@ -139,23 +139,25 @@ export class ChatSocketServer {
       // Enviar mensagem
       socket.on('message:send', async (payload: SendMessagePayload) => {
         try {
-          const { chatId, message, encryptedContent, isEncrypted, iv, attachments, attachmentUrl, attachmentType } = payload;
+          const { chatId, message, encryptedContent, encryptedForSender, isEncrypted, iv, ivForSender, attachments, attachmentUrl, attachmentType } = payload;
 
-          // Enviar mensagem via serviço (suporta formato híbrido)
+          // Enviar mensagem via serviço (suporta formato híbrido com E2E para ambos)
           const newMessage = await chatService.sendMessage({
             chatId,
             senderId: socket.userId!,
             message,
             encryptedContent,
+            encryptedForSender,
             isEncrypted,
             iv,
+            ivForSender,
             attachments,
             attachmentUrl,
             attachmentType,
           });
 
           // Emitir para todos na sala (incluindo sender)
-          this.io.to(`chat:${chatId}`).emit('message:new', newMessage);
+          this.namespace.to(`chat:${chatId}`).emit('message:new', newMessage);
 
           logger.info('[SOCKET] Message sent', {
             messageId: newMessage.id,
@@ -246,7 +248,7 @@ export class ChatSocketServer {
   public sendToUser(userId: string, event: string, data: any) {
     const socketId = this.connectedUsers.get(userId);
     if (socketId) {
-      this.io.to(socketId).emit(event, data);
+      this.namespace.to(socketId).emit(event, data);
       logger.info('[SOCKET] Sent event to user', { userId, event });
     }
   }
@@ -255,7 +257,7 @@ export class ChatSocketServer {
    * Enviar mensagem para sala de chat (usado por serviços)
    */
   public sendToChat(chatId: string, event: string, data: any) {
-    this.io.to(`chat:${chatId}`).emit(event, data);
+    this.namespace.to(`chat:${chatId}`).emit(event, data);
     logger.info('[SOCKET] Sent event to chat', { chatId, event });
   }
 
@@ -274,19 +276,19 @@ export class ChatSocketServer {
   }
 
   /**
-   * Obter instância do Socket.IO (para uso externo se necessário)
+   * Obter instância do namespace (para uso externo se necessário)
    */
-  public getIO(): SocketIOServer {
-    return this.io;
+  public getNamespace(): Namespace {
+    return this.namespace;
   }
 }
 
 // Singleton
 let chatSocketServer: ChatSocketServer | null = null;
 
-export function initializeChatSocket(httpServer: HTTPServer): ChatSocketServer {
+export function initializeChatSocket(io: SocketIOServer): ChatSocketServer {
   if (!chatSocketServer) {
-    chatSocketServer = new ChatSocketServer(httpServer);
+    chatSocketServer = new ChatSocketServer(io);
   }
   return chatSocketServer;
 }

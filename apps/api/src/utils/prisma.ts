@@ -40,13 +40,13 @@ if (process.env.NODE_ENV !== 'production') {
 async function configureSQLite() {
   try {
     // Aumentar timeout para 30 segundos
-    await prisma.$executeRaw`PRAGMA busy_timeout = 30000`;
+    await prisma.$queryRaw`PRAGMA busy_timeout = 30000`;
 
     // Habilitar Write-Ahead Logging (permite leituras durante writes)
-    await prisma.$executeRaw`PRAGMA journal_mode = WAL`;
+    await prisma.$queryRaw`PRAGMA journal_mode = WAL`;
 
     // Configurar sincronização normal (mais rápido que FULL, seguro o suficiente)
-    await prisma.$executeRaw`PRAGMA synchronous = NORMAL`;
+    await prisma.$queryRaw`PRAGMA synchronous = NORMAL`;
 
     console.log('✅ SQLite configured for better concurrency');
   } catch (error) {

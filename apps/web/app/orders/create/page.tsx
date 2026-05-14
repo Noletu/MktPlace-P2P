@@ -8,18 +8,37 @@ import { CryptoType } from '@mktplace/shared';
 import { formatBRL } from '@/utils/formatters';
 import ThemeToggle from '@/components/ThemeToggle';
 import AppHeader from '@/components/AppHeader';
+import { fetchWithAuth } from '@/utils/api';
+import { FrozenAccountBanner } from '@/components/FrozenAccountBanner';
 
 export default function CreateOrderPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [prices, setPrices] = useState<any>({});
+  const [currentRate, setCurrentRate] = useState<string>('');
+  const [rateSource, setRateSource] = useState<string>('');
+
+  // Order mode: SELL (default - user has crypto) or BUY (user wants crypto)
+  const [orderMode, setOrderMode] = useState<'SELL' | 'BUY'>('SELL');
 
   // Form state
   const [orderType, setOrderType] = useState<'PIX' | 'BOLETO'>('PIX');
   const [brlAmount, setBrlAmount] = useState('');
   const [crypto, setCrypto] = useState('BTC');
   const [network, setNetwork] = useState('BITCOIN');
+  const [expirationTime, setExpirationTime] = useState<number | 'indefinite'>(24); // Padrão: 24 horas
+
+  // BUY order specific - user inputs crypto amount directly
+  const [buyCryptoAmount, setBuyCryptoAmount] = useState('');
+
+  // SELL order - swap input currency (BRL or CRYPTO)
+  const [inputCurrency, setInputCurrency] = useState<'BRL' | 'CRYPTO'>('BRL');
+  const [sellCryptoInput, setSellCryptoInput] = useState('');
+
+  // BUY order - swap input currency (CRYPTO default, or BRL)
+  const [buyInputCurrency, setBuyInputCurrency] = useState<'BRL' | 'CRYPTO'>('CRYPTO');
+  const [buyBrlInput, setBuyBrlInput] = useState('');
 
   // PIX fields
   const [pixKey, setPixKey] = useState('');
@@ -49,10 +68,21 @@ export default function CreateOrderPage() {
   const [showBalanceDecisionModal, setShowBalanceDecisionModal] = useState(false);
   const [balanceDecisionData, setBalanceDecisionData] = useState<any>(null);
 
+  // Coupon state
+  const [activeCoupon, setActiveCoupon] = useState<any>(null);
+
+  // Account status state (for frozen accounts)
+  const [accountStatus, setAccountStatus] = useState<{
+    frozen: boolean;
+    reason?: string;
+    until?: string;
+  } | null>(null);
+  const [loadingAccountStatus, setLoadingAccountStatus] = useState(true);
+
   const NETWORK_OPTIONS: Record<string, string[]> = {
     BTC: ['BITCOIN'],
-    USDC: ['ETHEREUM', 'TRC20', 'BASE', 'ARBITRUM', 'SOLANA'],
-    USDT: ['ETHEREUM', 'TRC20', 'BASE', 'ARBITRUM', 'SOLANA'],
+    USDC: ['BASE', 'SOLANA'],
+    USDT: ['BASE', 'SOLANA'],
   };
 
   useEffect(() => {
@@ -61,6 +91,56 @@ export default function CreateOrderPage() {
 
   useEffect(() => {
     fetchPrices();
+  }, []);
+
+  // Buscar cupom ativo do usuário
+  useEffect(() => {
+    const fetchActiveCoupon = async () => {
+      try {
+        const response = await fetchWithAuth('/coupons/active');
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data) {
+            setActiveCoupon(data.data);
+            console.log('🎟️ Cupom ativo encontrado:', data.data.coupon.code);
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao buscar cupom ativo:', err);
+      }
+    };
+
+    fetchActiveCoupon();
+  }, []);
+
+  // Buscar status da conta do usuário (verificar se está bloqueada)
+  useEffect(() => {
+    const fetchAccountStatus = async () => {
+      try {
+        const response = await fetchWithAuth('/auth/me');
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data) {
+            setAccountStatus({
+              frozen: data.data.accountFrozen || false,
+              reason: data.data.frozenReason,
+              until: data.data.frozenUntil,
+            });
+            if (data.data.accountFrozen) {
+              console.log('🚫 Conta bloqueada detectada');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao verificar status da conta:', err);
+      } finally {
+        setLoadingAccountStatus(false);
+      }
+    };
+
+    fetchAccountStatus();
   }, []);
 
   // Carregar saldo interno quando mudar cripto ou rede
@@ -83,19 +163,8 @@ export default function CreateOrderPage() {
       setBarcodeValid(null);
 
       try {
-        const token = localStorage.getItem('accessToken');
-        if (!token) {
-          console.error('❌ Token not found');
-          setBarcodeValid(false);
-          return;
-        }
-
-        const response = await fetch('http://localhost:3001/api/v1/boleto/validate', {
+        const response = await fetchWithAuth('/boleto/validate', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
           body: JSON.stringify({ codigo: cleanBarcode }),
         });
 
@@ -155,20 +224,11 @@ export default function CreateOrderPage() {
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        setError('Você precisa fazer login para fazer upload');
-        return;
-      }
-
       const formData = new FormData();
       formData.append('image', file);
 
-      const response = await fetch('http://localhost:3001/api/v1/boleto/extract', {
+      const response = await fetchWithAuth('/boleto/extract', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
         body: formData,
       });
 
@@ -215,7 +275,7 @@ export default function CreateOrderPage() {
 
   const fetchPrices = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/v1/prices');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/prices`);
       const data = await response.json();
       console.log('📊 Prices API response:', data);
       if (data.success) {
@@ -225,6 +285,13 @@ export default function CreateOrderPage() {
         });
         console.log('💰 Price map:', priceMap);
         setPrices(priceMap);
+
+        // Mostrar cotação USD/BRL e fonte para stablecoins
+        const usdcData = data.data.find((p: any) => p.crypto === 'USDC');
+        if (usdcData) {
+          setCurrentRate(parseFloat(usdcData.brlPrice).toFixed(2));
+          setRateSource(usdcData.source); // awesomeapi, banco_central, etc
+        }
       }
     } catch (err) {
       console.error('Erro ao buscar preços:', err);
@@ -236,21 +303,7 @@ export default function CreateOrderPage() {
 
     setLoadingBalance(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        console.log('⚠️ Token não encontrado - usuário não autenticado');
-        setInternalBalance(null);
-        return;
-      }
-
-      const response = await fetch(
-        `http://localhost:3001/api/v1/collateral-balance/${crypto}/${network}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      );
+      const response = await fetchWithAuth(`/collateral-balance/${crypto}/${network}`);
 
       const data = await response.json();
       if (data.success) {
@@ -265,8 +318,38 @@ export default function CreateOrderPage() {
     }
   };
 
-  // Calcular valor em crypto (reativo com useMemo)
+  // BUY: calcular crypto quando input é BRL
+  const buyCalculatedCrypto = useMemo(() => {
+    if (buyInputCurrency !== 'BRL' || !buyBrlInput || !prices[crypto]) return '0';
+    const brl = parseFloat(buyBrlInput);
+    const price = parseFloat(prices[crypto]);
+    if (isNaN(brl) || isNaN(price) || price === 0 || brl <= 0) return '0';
+    const decimals = (crypto === 'USDC' || crypto === 'USDT') ? 2 : 8;
+    // BRL inclui markup de 2.5%, então crypto = brl / price / 1.025
+    return (brl / price / 1.025).toFixed(decimals);
+  }, [buyBrlInput, crypto, prices, buyInputCurrency]);
+
+  // BUY: valor efetivo de crypto para submit e resumo
+  const effectiveBuyCryptoAmount = useMemo(() => {
+    if (buyInputCurrency === 'BRL') return buyCalculatedCrypto;
+    return buyCryptoAmount;
+  }, [buyInputCurrency, buyCalculatedCrypto, buyCryptoAmount]);
+
+  // Calcular valor em crypto (reativo com useMemo) - para ordens SELL
   const cryptoAmount = useMemo(() => {
+    if (orderMode === 'BUY') {
+      return effectiveBuyCryptoAmount || '0';
+    }
+    const decimals = (crypto === 'USDC' || crypto === 'USDT') ? 2 : 8;
+    // Modo CRYPTO: user digitou o valor em crypto diretamente
+    if (inputCurrency === 'CRYPTO') {
+      if (!sellCryptoInput || parseFloat(sellCryptoInput) <= 0) return '0';
+      // O valor bruto que o backend espera (inclui taxa de 2.5%)
+      // User digita quanto quer vender, sistema adiciona a taxa
+      const cryptoVal = parseFloat(sellCryptoInput);
+      return (cryptoVal / 0.975).toFixed(decimals);
+    }
+    // Modo BRL (padrão)
     if (!brlAmount || !prices[crypto]) {
       console.log(`⚠️ Cannot calculate: brlAmount=${brlAmount}, crypto=${crypto}, price=${prices[crypto]}`);
       return '0';
@@ -276,34 +359,174 @@ export default function CreateOrderPage() {
     if (isNaN(brl) || isNaN(price) || price === 0) {
       return '0';
     }
-    // USDC e USDT: 2 casas decimais, BTC: 8 casas decimais
-    const decimals = (crypto === 'USDC' || crypto === 'USDT') ? 2 : 8;
     // Incluir 2.5% de taxa: divide por 0.975 para que o valor líquido seja o desejado
     const result = (brl / price / 0.975).toFixed(decimals);
     console.log(`💱 Converting R$${brl} with ${crypto} @ ${price}: ${result} ${crypto}`);
     return result;
-  }, [brlAmount, crypto, prices]);
+  }, [brlAmount, crypto, prices, orderMode, effectiveBuyCryptoAmount, inputCurrency, sellCryptoInput]);
+
+  // Calcular valor em BRL para ordens BUY (com markup de 2.5%)
+  const buyBrlAmount = useMemo(() => {
+    if (orderMode !== 'BUY' || !effectiveBuyCryptoAmount || effectiveBuyCryptoAmount === '0' || !prices[crypto]) {
+      return '0';
+    }
+    // Se input é BRL, usar o valor digitado diretamente
+    if (buyInputCurrency === 'BRL') {
+      return buyBrlInput || '0';
+    }
+    const cryptoAmt = parseFloat(effectiveBuyCryptoAmount);
+    const price = parseFloat(prices[crypto]);
+    if (isNaN(cryptoAmt) || isNaN(price) || price === 0 || cryptoAmt <= 0) {
+      return '0';
+    }
+    // Valor base + 2.5% markup
+    const brlBase = cryptoAmt * price;
+    const brlWithMarkup = brlBase * 1.025;
+    return brlWithMarkup.toFixed(2);
+  }, [effectiveBuyCryptoAmount, crypto, prices, orderMode, buyInputCurrency, buyBrlInput]);
+
+  // Calcular BRL quando input é em crypto (SELL mode)
+  const calculatedBrl = useMemo(() => {
+    if (inputCurrency !== 'CRYPTO' || !sellCryptoInput || !prices[crypto]) return '0';
+    const cryptoVal = parseFloat(sellCryptoInput);
+    const price = parseFloat(prices[crypto]);
+    if (isNaN(cryptoVal) || isNaN(price) || price === 0 || cryptoVal <= 0) return '0';
+    // Valor líquido em BRL que o vendedor vai receber (crypto * price)
+    // sellCryptoInput é o valor líquido de crypto, o BRL correspondente é direto
+    return (cryptoVal * price).toFixed(2);
+  }, [sellCryptoInput, crypto, prices, inputCurrency]);
+
+  // brlAmount efetivo para SELL orders (usado no submit e resumo)
+  const effectiveBrlAmount = useMemo(() => {
+    if (orderMode !== 'SELL') return brlAmount;
+    if (inputCurrency === 'CRYPTO') return calculatedBrl;
+    return brlAmount;
+  }, [orderMode, inputCurrency, calculatedBrl, brlAmount]);
 
   // Calcular taxas (reativo com useMemo)
   const fees = useMemo(() => {
     const amount = parseFloat(cryptoAmount);
     const decimals = (crypto === 'USDC' || crypto === 'USDT') ? 2 : 8;
+
+    // Taxa padrão: 1.5%
+    let platformFeePercentage = 0.015;
+    const originalPlatformFee = amount * 0.015;
+    let discountAmount = 0;
+
+    // Aplicar desconto se houver cupom ativo
+    if (activeCoupon) {
+      const discount = activeCoupon.coupon.discountPercentage / 100;
+      platformFeePercentage = platformFeePercentage * (1 - discount);
+      discountAmount = originalPlatformFee - (amount * platformFeePercentage);
+    }
+
+    const platformFee = amount * platformFeePercentage;
+    const payerReward = amount * 0.01; // 1% inalterado
+
     return {
-      platformFee: (amount * 0.015).toFixed(decimals),
-      payerReward: (amount * 0.01).toFixed(decimals),
-      totalFee: (amount * 0.025).toFixed(decimals),
-      netAmount: (amount * 0.975).toFixed(decimals),
+      platformFee: platformFee.toFixed(decimals),
+      payerReward: payerReward.toFixed(decimals),
+      totalFee: (platformFee + payerReward).toFixed(decimals),
+      netAmount: (amount - platformFee - payerReward).toFixed(decimals),
+      // Novos campos para exibição do cupom
+      originalPlatformFee: originalPlatformFee.toFixed(decimals),
+      discountAmount: discountAmount.toFixed(decimals),
+      hasDiscount: activeCoupon !== null,
     };
-  }, [cryptoAmount, crypto]);
+  }, [cryptoAmount, crypto, activeCoupon]);
+
+  const checkDuplicateOrders = async (): Promise<boolean> => {
+    try {
+      const response = await fetchWithAuth('/orders/my-orders');
+      const result = await response.json();
+      if (!result.success || !Array.isArray(result.data)) return true;
+
+      const duplicates = result.data.filter(
+        (o: any) =>
+          o.status === 'PENDING' &&
+          o.orderType === orderMode &&
+          o.cryptoType === crypto &&
+          o.cryptoNetwork === network
+      );
+
+      if (duplicates.length > 0) {
+        return window.confirm(
+          `⚠️ Você já possui ${duplicates.length} pedido(s) similar(es) em aberto (${orderMode} ${crypto}/${network}).\n\nDeseja criar outro mesmo assim?`
+        );
+      }
+      return true;
+    } catch {
+      return true;
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
+    let navigating = false;
+
     try {
+      const shouldProceed = await checkDuplicateOrders();
+      if (!shouldProceed) { setLoading(false); return; }
+
+      // ============ BUY ORDER FLOW ============
+      if (orderMode === 'BUY') {
+        // Validações para ordem BUY
+        if (!effectiveBuyCryptoAmount || parseFloat(effectiveBuyCryptoAmount) <= 0) {
+          throw new Error('Quantidade de cripto deve ser maior que zero');
+        }
+
+        if (!prices[crypto]) {
+          throw new Error('Aguarde o carregamento das cotações');
+        }
+
+        console.log('✅ Criando ordem BUY:', {
+          cryptoAmount: effectiveBuyCryptoAmount,
+          brlAmount: buyBrlAmount,
+          crypto,
+          network,
+        });
+
+        // Converter expirationTime para os campos da API
+        const expirationFields = expirationTime === 'indefinite'
+          ? { manualCancelOnly: true }
+          : { customExpirationHours: expirationTime };
+
+        const response = await fetchWithAuth('/orders', {
+          method: 'POST',
+          body: JSON.stringify({
+            type: 'BUY',
+            cryptoType: crypto,
+            cryptoNetwork: network,
+            cryptoAmount: effectiveBuyCryptoAmount,
+            ...expirationFields,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          if (data.details && data.details.length > 0) {
+            const errorDetails = data.details
+              .map((d: any) => `• ${d.field}: ${d.message}`)
+              .join('\n');
+            throw new Error(`${data.message}\n\nDetalhes:\n${errorDetails}`);
+          }
+          throw new Error(data.message || data.error || 'Erro ao criar ordem de compra');
+        }
+
+        alert('✅ Ordem de compra criada com sucesso!\n\nSua ordem está no marketplace aguardando um provedor de liquidez.');
+        navigating = true;
+        router.push(`/orders/${data.data.id}`);
+        return;
+      }
+
+      // ============ SELL ORDER FLOW (existing logic) ============
       // Validações básicas antes de enviar
-      if (!brlAmount || parseFloat(brlAmount) <= 0) {
+      const submitBrlAmount = effectiveBrlAmount;
+      if (!submitBrlAmount || parseFloat(submitBrlAmount) <= 0) {
         throw new Error('Valor em BRL deve ser maior que zero');
       }
 
@@ -316,7 +539,7 @@ export default function CreateOrderPage() {
       }
 
       console.log('✅ Validações básicas passaram:', {
-        brlAmount,
+        brlAmount: submitBrlAmount,
         cryptoAmount,
         crypto,
         network,
@@ -325,27 +548,14 @@ export default function CreateOrderPage() {
         pixKey: pixKey ? 'Presente' : 'Ausente',
       });
 
-      // Verificar se está autenticado primeiro
-      const token = localStorage.getItem('accessToken');
-      console.log('🔐 Token de autenticação:', token ? 'Presente' : 'Ausente');
-
-      if (!token) {
-        throw new Error('Você precisa fazer login para criar um pedido');
-      }
-
       // NOVO: Primeiro verificar se tem saldo interno suficiente
       console.log('💰 Verificando saldo interno...');
 
-      // Calcular colateral necessário (cryptoAmount + 2.5% de taxa)
-      const requiredCollateral = (parseFloat(cryptoAmount) * 1.025).toFixed(8);
+      // Calcular colateral necessário (valor bruto já inclui taxa embutida)
+      const requiredCollateral = parseFloat(cryptoAmount).toFixed(8);
 
-      const checkBalanceResponse = await fetch(
-        `http://localhost:3001/api/v1/collateral-balance/check-sufficient/${crypto}/${network}/${requiredCollateral}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
+      const checkBalanceResponse = await fetchWithAuth(
+        `/collateral-balance/check-sufficient/${crypto}/${network}/${requiredCollateral}`
       );
 
       const balanceData = await checkBalanceResponse.json();
@@ -387,12 +597,8 @@ export default function CreateOrderPage() {
         expectedAmount: cryptoAmount,
       });
 
-      const response = await fetch('http://localhost:3001/api/v1/collateral/generate', {
+      const response = await fetchWithAuth('/collateral/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           cryptoType: crypto,
           cryptoNetwork: network,
@@ -409,13 +615,18 @@ export default function CreateOrderPage() {
       }
 
       // Salvar dados do pedido para usar após confirmação do depósito
+      // Converter expirationTime para os campos da API
+      const expirationFields = expirationTime === 'indefinite'
+        ? { manualCancelOnly: true }
+        : { customExpirationHours: expirationTime };
+
       sessionStorage.setItem('pendingOrder', JSON.stringify({
         type: 'SELL',
         paymentMethod: orderType,
         cryptoType: crypto,
         cryptoNetwork: network,
         cryptoAmount,
-        brlAmount,
+        brlAmount: submitBrlAmount,
         orderData: orderType === 'PIX' ? {
           pixKey,
           pixKeyType,
@@ -426,6 +637,7 @@ export default function CreateOrderPage() {
           recipientName: boletoRecipientName,
           recipientDocument: boletoRecipientDocument,
         },
+        ...expirationFields,
         collateralAddressId: data.data.id,
       }));
 
@@ -435,7 +647,7 @@ export default function CreateOrderPage() {
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (!navigating) setLoading(false);
     }
   };
 
@@ -462,15 +674,7 @@ export default function CreateOrderPage() {
 
     const checkPayment = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        const response = await fetch(
-          `http://localhost:3001/api/v1/collateral/${collateralAddress.id}/status`,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          }
-        );
+        const response = await fetchWithAuth(`/collateral/${collateralAddress.id}/status`);
 
         const data = await response.json();
 
@@ -498,13 +702,8 @@ export default function CreateOrderPage() {
 
       const pendingOrder = JSON.parse(pendingOrderData);
 
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:3001/api/v1/orders', {
+      const response = await fetchWithAuth('/orders', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           ...pendingOrder,
           collateralAddressId: collateralAddress.id,
@@ -528,16 +727,12 @@ export default function CreateOrderPage() {
   const handleSimulatePayment = async () => {
     setCheckingPayment(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(
-        `http://localhost:3001/api/v1/collateral/${collateralAddress.id}/simulate-payment`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      );
+      const response = await fetchWithAuth(`/collateral/${collateralAddress.id}/simulate-payment`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: collateralAddress.expectedAmount,
+        }),
+      });
 
       const data = await response.json();
 
@@ -560,25 +755,25 @@ export default function CreateOrderPage() {
 
   // Handler: Usar saldo interno para criar pedido
   const handleUseInternalBalance = async () => {
+    let navigating = false;
     try {
       setLoading(true);
       setShowBalanceDecisionModal(false);
 
-      const token = localStorage.getItem('accessToken');
+      // Converter expirationTime para os campos da API
+      const expirationFields = expirationTime === 'indefinite'
+        ? { manualCancelOnly: true }
+        : { customExpirationHours: expirationTime };
 
-      const createOrderResponse = await fetch('http://localhost:3001/api/v1/orders', {
+      const createOrderResponse = await fetchWithAuth('/orders', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           type: 'SELL',
           paymentMethod: orderType,
           cryptoType: crypto,
           cryptoNetwork: network,
           cryptoAmount,
-          brlAmount,
+          brlAmount: effectiveBrlAmount,
           orderData: orderType === 'PIX' ? {
             pixKey,
             pixKeyType,
@@ -589,6 +784,7 @@ export default function CreateOrderPage() {
             recipientName: boletoRecipientName,
             recipientDocument: boletoRecipientDocument,
           },
+          ...expirationFields,
           useInternalBalance: true,
         }),
       });
@@ -597,6 +793,7 @@ export default function CreateOrderPage() {
 
       if (createData.success && createData.data) {
         alert('✅ Pedido criado com sucesso usando seu saldo interno!\n\nSeu pedido já está no marketplace!');
+        navigating = true;
         router.push(`/orders/${createData.data.id}`);
       } else {
         if (createData.details && createData.details.length > 0) {
@@ -610,7 +807,7 @@ export default function CreateOrderPage() {
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (!navigating) setLoading(false);
     }
   };
 
@@ -620,15 +817,9 @@ export default function CreateOrderPage() {
       setShowBalanceDecisionModal(false);
       setLoading(true);
 
-      const token = localStorage.getItem('accessToken');
-
       // Gerar endereço de depósito para colateral
-      const response = await fetch('http://localhost:3001/api/v1/collateral/generate', {
+      const response = await fetchWithAuth('/collateral/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           cryptoType: crypto,
           cryptoNetwork: network,
@@ -643,13 +834,18 @@ export default function CreateOrderPage() {
       }
 
       // Salvar dados do pedido
+      // Converter expirationTime para os campos da API
+      const expirationFields = expirationTime === 'indefinite'
+        ? { manualCancelOnly: true }
+        : { customExpirationHours: expirationTime };
+
       sessionStorage.setItem('pendingOrder', JSON.stringify({
         type: 'SELL',
         paymentMethod: orderType,
         cryptoType: crypto,
         cryptoNetwork: network,
         cryptoAmount,
-        brlAmount,
+        brlAmount: effectiveBrlAmount,
         orderData: orderType === 'PIX' ? {
           pixKey,
           pixKeyType,
@@ -660,6 +856,7 @@ export default function CreateOrderPage() {
           recipientName: boletoRecipientName,
           recipientDocument: boletoRecipientDocument,
         },
+        ...expirationFields,
         collateralAddressId: data.data.id,
       }));
 
@@ -895,10 +1092,257 @@ export default function CreateOrderPage() {
           </div>
         )}
 
+        {loadingAccountStatus ? (
+          <div className="flex justify-center items-center py-16">
+            <div className="text-gray-500 dark:text-gray-400">Carregando...</div>
+          </div>
+        ) : accountStatus?.frozen ? (
+          <div className="max-w-3xl mx-auto">
+            <FrozenAccountBanner
+              frozenReason={accountStatus.reason || 'Não especificado'}
+              frozenAt={''}
+              frozenUntil={accountStatus.until}
+            />
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="text-blue-600 hover:underline"
+              >
+                ← Voltar ao Dashboard
+              </button>
+            </div>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Formulário */}
           <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Modo da Ordem: SELL ou BUY */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  O que você quer fazer?
+                </label>
+                <div className="flex gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setOrderMode('SELL')}
+                    className={`flex-1 py-4 px-4 rounded-lg font-semibold border-2 transition-all ${
+                      orderMode === 'SELL'
+                        ? 'bg-green-600 dark:bg-green-700 text-white border-green-600 dark:border-green-700'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-green-400'
+                    }`}
+                  >
+                    <div className="text-2xl mb-1">💰</div>
+                    <div className="text-sm">Vender Cripto</div>
+                    <div className="text-xs opacity-75 mt-1">Tenho cripto, quero BRL</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderMode('BUY')}
+                    className={`flex-1 py-4 px-4 rounded-lg font-semibold border-2 transition-all ${
+                      orderMode === 'BUY'
+                        ? 'bg-blue-600 dark:bg-blue-700 text-white border-blue-600 dark:border-blue-700'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
+                    }`}
+                  >
+                    <div className="text-2xl mb-1">🛒</div>
+                    <div className="text-sm">Comprar Cripto</div>
+                    <div className="text-xs opacity-75 mt-1">Tenho BRL, quero cripto</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* === FORMULARIO BUY ORDER === */}
+              {orderMode === 'BUY' && (
+                <>
+                  {/* Informativo BUY */}
+                  <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
+                    <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">Como funciona a compra:</h3>
+                    <ol className="text-sm text-blue-800 dark:text-blue-300 space-y-1 list-decimal list-inside">
+                      <li>Você informa quanto cripto quer comprar</li>
+                      <li>Sua ordem aparece no marketplace</li>
+                      <li>Um provedor aceita e deposita o cripto como garantia</li>
+                      <li>Você paga via PIX e envia o comprovante</li>
+                      <li>Provedor confirma e o cripto é liberado para você!</li>
+                    </ol>
+                  </div>
+
+                  {/* Criptomoeda */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Qual cripto você quer comprar?
+                    </label>
+                    <div className="space-y-2">
+                      {['BTC', 'USDC', 'USDT'].map((c) => (
+                        <div
+                          key={c}
+                          onClick={() => setCrypto(c)}
+                          className={`flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition ${
+                            crypto === c
+                              ? 'border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/30'
+                              : 'border-gray-300 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-500'
+                          }`}
+                        >
+                          <CryptoIcon crypto={c as CryptoType} size={24} />
+                          <span className="font-medium text-gray-900 dark:text-white">
+                            {c === 'BTC' && 'Bitcoin (BTC)'}
+                            {c === 'USDC' && 'USD Coin (USDC)'}
+                            {c === 'USDT' && 'Tether (USDT)'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Rede */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Rede</label>
+                    <select
+                      value={network}
+                      onChange={(e) => setNetwork(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    >
+                      {NETWORK_OPTIONS[crypto].map((net) => (
+                        <option key={net} value={net}>
+                          {net}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Quantidade - com swap BRL/CRYPTO */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      {buyInputCurrency === 'CRYPTO'
+                        ? `Quantidade de ${crypto} que você quer comprar`
+                        : 'Valor em BRL que você quer gastar'}
+                    </label>
+
+                    {buyInputCurrency === 'CRYPTO' ? (
+                      <input
+                        type="number"
+                        value={buyCryptoAmount}
+                        onChange={(e) => setBuyCryptoAmount(e.target.value)}
+                        placeholder={crypto === 'BTC' ? '0.001' : '100'}
+                        step={crypto === 'BTC' ? '0.00000001' : '0.01'}
+                        min="0"
+                        required
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        value={buyBrlInput}
+                        onChange={(e) => setBuyBrlInput(e.target.value)}
+                        placeholder="0.00"
+                        step="0.01"
+                        min="0"
+                        required
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                    )}
+
+                    {/* Botao swap BRL <-> CRYPTO */}
+                    <div className="flex justify-center my-2">
+                      <button
+                        type="button"
+                        onClick={() => setBuyInputCurrency(prev => prev === 'CRYPTO' ? 'BRL' : 'CRYPTO')}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full transition-all text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >
+                        <span>{buyInputCurrency === 'CRYPTO' ? crypto : 'BRL'}</span>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                        <span>{buyInputCurrency === 'CRYPTO' ? 'BRL' : crypto}</span>
+                      </button>
+                    </div>
+
+                    {/* Valor calculado */}
+                    {buyInputCurrency === 'CRYPTO' ? (
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        = {formatBRL(buyBrlAmount)}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        = {buyCalculatedCrypto} {crypto}
+                      </p>
+                    )}
+
+                    {prices[crypto] && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Cotação atual: 1 {crypto} = {formatBRL(prices[crypto].toString())}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Valor detalhado */}
+                  {buyBrlAmount !== '0' && (
+                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 border-2 border-blue-300 dark:border-blue-700 rounded-lg p-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm text-blue-800 dark:text-blue-200">Valor que você vai pagar:</span>
+                        <span className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                          {formatBRL(buyBrlAmount)}
+                        </span>
+                      </div>
+                      <div className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                        <div className="flex justify-between">
+                          <span>Valor base ({effectiveBuyCryptoAmount} {crypto}):</span>
+                          <span>{formatBRL((parseFloat(buyBrlAmount) / 1.025).toFixed(2))}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Taxa (2.5%):</span>
+                          <span>{formatBRL((parseFloat(buyBrlAmount) - parseFloat(buyBrlAmount) / 1.025).toFixed(2))}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tempo de Expiração */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Tempo de Expiração da Oferta
+                    </label>
+                    <select
+                      value={expirationTime}
+                      onChange={(e) => setExpirationTime(e.target.value === 'indefinite' ? 'indefinite' : parseInt(e.target.value))}
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    >
+                      <option value={6}>6 horas</option>
+                      <option value={12}>12 horas</option>
+                      <option value={24}>24 horas (padrão)</option>
+                      <option value={48}>48 horas (2 dias)</option>
+                      <option value={72}>72 horas (3 dias)</option>
+                      <option value={168}>7 dias</option>
+                      <option value="indefinite">Indefinido (até 6 meses)</option>
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {expirationTime === 'indefinite'
+                        ? 'Sua oferta ficará ativa por até 6 meses ou até você cancelar manualmente'
+                        : `Sua oferta ficará disponível por ${expirationTime} horas`}
+                    </p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading || loadingAccountStatus || accountStatus?.frozen || !effectiveBuyCryptoAmount || parseFloat(effectiveBuyCryptoAmount) <= 0}
+                    className={`w-full py-3 px-4 font-semibold rounded-lg disabled:opacity-50 ${
+                      accountStatus?.frozen
+                        ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed text-gray-200'
+                        : 'bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white'
+                    }`}
+                  >
+                    {accountStatus?.frozen
+                      ? 'Conta Suspensa'
+                      : loading
+                        ? 'Criando ordem...'
+                        : `Criar Ordem de Compra de ${effectiveBuyCryptoAmount || '0'} ${crypto}`}
+                  </button>
+                </>
+              )}
+
+              {/* === FORMULARIO SELL ORDER (existente) === */}
+              {orderMode === 'SELL' && (
+              <>
               {/* Tipo de Pagamento */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -992,25 +1436,131 @@ export default function CreateOrderPage() {
                 </div>
               )}
 
-              {/* Valor em BRL */}
+              {/* Valor - com swap BRL/CRYPTO */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Valor em BRL
-                  {orderType === 'BOLETO' && barcodeValid && <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">(preenchido automaticamente)</span>}
+                  {inputCurrency === 'BRL' ? 'Valor em BRL' : `Valor em ${crypto}`}
+                  {orderType === 'BOLETO' && barcodeValid && inputCurrency === 'BRL' && <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">(preenchido automaticamente)</span>}
                 </label>
-                <input
-                  type="number"
-                  value={brlAmount}
-                  onChange={(e) => setBrlAmount(e.target.value)}
-                  placeholder="0.00"
-                  step="0.01"
-                  min="10"
-                  required
-                  readOnly={orderType === 'BOLETO' && barcodeValid === true}
-                  className={`w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white ${
-                    orderType === 'BOLETO' && barcodeValid === true ? 'bg-gray-100 dark:bg-gray-700' : 'bg-white dark:bg-gray-700'
-                  }`}
-                />
+
+                {inputCurrency === 'BRL' ? (
+                  <input
+                    type="number"
+                    value={brlAmount}
+                    onChange={(e) => setBrlAmount(e.target.value)}
+                    placeholder="0.00"
+                    step="0.01"
+                    min="10"
+                    required
+                    readOnly={orderType === 'BOLETO' && barcodeValid === true}
+                    className={`w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white ${
+                      orderType === 'BOLETO' && barcodeValid === true ? 'bg-gray-100 dark:bg-gray-700' : 'bg-white dark:bg-gray-700'
+                    }`}
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    value={sellCryptoInput}
+                    onChange={(e) => setSellCryptoInput(e.target.value)}
+                    placeholder={crypto === 'BTC' ? '0.00000000' : '0.00'}
+                    step={crypto === 'BTC' ? '0.00000001' : '0.01'}
+                    min="0"
+                    required
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white bg-white dark:bg-gray-700"
+                  />
+                )}
+
+                {/* Botão swap BRL ↔ CRYPTO */}
+                <div className="flex justify-center my-2">
+                  <button
+                    type="button"
+                    onClick={() => setInputCurrency(prev => prev === 'BRL' ? 'CRYPTO' : 'BRL')}
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full transition-all text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    <span>{inputCurrency === 'BRL' ? 'BRL' : crypto}</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                    </svg>
+                    <span>{inputCurrency === 'BRL' ? crypto : 'BRL'}</span>
+                  </button>
+                </div>
+
+                {/* Valor calculado */}
+                {inputCurrency === 'BRL' ? (
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    = {cryptoAmount} {crypto}
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    = {formatBRL(calculatedBrl)}
+                  </p>
+                )}
+
+                {/* Fee breakdown SELL */}
+                {cryptoAmount !== '0' && prices[crypto] && (
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 border-2 border-blue-300 dark:border-blue-700 rounded-lg p-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm text-blue-800 dark:text-blue-200">Você vai receber:</span>
+                      <span className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                        {formatBRL((parseFloat(fees.netAmount) * parseFloat(prices[crypto])).toFixed(2))}
+                      </span>
+                    </div>
+                    <div className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                      <div className="flex justify-between">
+                        <span>Valor bruto ({cryptoAmount} {crypto}):</span>
+                        <span>{formatBRL((parseFloat(cryptoAmount) * parseFloat(prices[crypto])).toFixed(2))}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Taxa (2.5%):</span>
+                        <span>-{formatBRL((parseFloat(fees.totalFee) * parseFloat(prices[crypto])).toFixed(2))}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Cotação USD/BRL */}
+                {(crypto === 'USDC' || crypto === 'USDT') && currentRate && (
+                  <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600 dark:text-gray-400">
+                        Cotação atual (1 USD):
+                      </span>
+                      <span className="font-semibold text-blue-600 dark:text-blue-400">
+                        R$ {currentRate}
+                      </span>
+                    </div>
+                    {rateSource && (
+                      <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                        Fonte: {rateSource === 'awesomeapi' ? 'AwesomeAPI' : rateSource === 'banco_central' ? 'Banco Central' : rateSource === 'coingecko_brz' ? 'CoinGecko BRZ' : rateSource}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Tempo de Expiração */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Tempo de Expiração da Oferta
+                </label>
+                <select
+                  value={expirationTime}
+                  onChange={(e) => setExpirationTime(e.target.value === 'indefinite' ? 'indefinite' : parseInt(e.target.value))}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value={6}>6 horas</option>
+                  <option value={12}>12 horas</option>
+                  <option value={24}>24 horas (padrão)</option>
+                  <option value={48}>48 horas (2 dias)</option>
+                  <option value={72}>72 horas (3 dias)</option>
+                  <option value={168}>7 dias</option>
+                  <option value="indefinite">Indefinido (até 6 meses)</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {expirationTime === 'indefinite'
+                    ? '⏰ Sua oferta ficará ativa por até 6 meses ou até você cancelar manualmente'
+                    : `⏰ Sua oferta ficará disponível por ${expirationTime} horas`}
+                </p>
               </div>
 
               {/* Criptomoeda e Rede */}
@@ -1154,11 +1704,21 @@ export default function CreateOrderPage() {
 
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full py-3 px-4 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg disabled:opacity-50"
+                disabled={loading || loadingAccountStatus || accountStatus?.frozen}
+                className={`w-full py-3 px-4 font-semibold rounded-lg disabled:opacity-50 ${
+                  accountStatus?.frozen
+                    ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed text-gray-200'
+                    : 'bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white'
+                }`}
               >
-                {loading ? 'Gerando endereço...' : '🔒 Depositar Colateral em Cripto'}
+                {accountStatus?.frozen
+                  ? 'Conta Suspensa'
+                  : loading
+                    ? 'Gerando endereço...'
+                    : 'Depositar Colateral em Cripto'}
               </button>
+              </>
+              )}
             </form>
           </div>
 
@@ -1166,6 +1726,51 @@ export default function CreateOrderPage() {
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 h-fit">
             <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Resumo</h2>
             <div className="space-y-3">
+              {/* === RESUMO BUY ORDER === */}
+              {orderMode === 'BUY' && (
+                <>
+                  <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 mb-2">
+                    <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">Ordem de Compra:</p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                      Você quer comprar cripto. Um provedor de liquidez vai aceitar sua ordem,
+                      depositar o cripto como garantia, e você paga via PIX.
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Você quer comprar</p>
+                    <p className="text-xl font-bold text-gray-900 dark:text-white">
+                      {effectiveBuyCryptoAmount || '0'} {crypto}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Você vai pagar</p>
+                    <p className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                      {formatBRL(buyBrlAmount)}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      (inclui 2.5% de taxa)
+                    </p>
+                  </div>
+
+                  <hr className="border-gray-200 dark:border-gray-700" />
+
+                  <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3">
+                    <p className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">Você recebe:</p>
+                    <p className="text-lg font-bold text-green-700 dark:text-green-300">
+                      {effectiveBuyCryptoAmount || '0'} {crypto}
+                    </p>
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                      Direto na sua carteira da plataforma!
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {/* === RESUMO SELL ORDER (existente) === */}
+              {orderMode === 'SELL' && (
+              <>
               {/* Saldo Disponível */}
               {internalBalance && parseFloat(internalBalance.availableBalance) > 0 && (
                 <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/30 dark:to-emerald-900/30 border-2 border-green-300 dark:border-green-700 rounded-lg p-4 mb-3">
@@ -1199,7 +1804,7 @@ export default function CreateOrderPage() {
                   </div>
                   <div className="mt-3 pt-3 border-t border-green-300 dark:border-green-700">
                     <p className="text-xs text-green-700 dark:text-green-300">
-                      ✨ Use seu saldo interno e economize até 99% em taxas de rede!
+                      Use seu saldo interno e economize até 99% em taxas de rede!
                     </p>
                   </div>
                 </div>
@@ -1215,7 +1820,7 @@ export default function CreateOrderPage() {
 
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Valor do {orderType === 'PIX' ? 'PIX' : 'boleto'}</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(brlAmount || '0')}</p>
+                <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(effectiveBrlAmount || '0')}</p>
               </div>
 
               <div>
@@ -1225,13 +1830,68 @@ export default function CreateOrderPage() {
                 </p>
               </div>
 
+              {/* Cupom Ativo Banner */}
+              {activeCoupon && (
+                <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/30 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🎟️</span>
+                      <div>
+                        <p className="text-sm font-bold text-green-600 dark:text-green-400">
+                          Cupom {activeCoupon.coupon.code}
+                        </p>
+                        <p className="text-xs text-green-600/80 dark:text-green-400/80">
+                          {activeCoupon.coupon.discountPercentage}% de desconto na taxa
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                      -{activeCoupon.coupon.discountPercentage}%
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <hr className="border-gray-200 dark:border-gray-700" />
 
+              {/* Taxa da Plataforma - Com ou sem desconto */}
               <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Taxa da plataforma (1.5%)</p>
-                <p className="text-sm text-gray-900 dark:text-white">
-                  {fees.platformFee} {crypto}
-                </p>
+                {activeCoupon ? (
+                  <>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-xs text-gray-500 dark:text-gray-500 line-through">
+                          Taxa original (1.5%)
+                        </p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Taxa com desconto ({(1.5 * (1 - activeCoupon.coupon.discountPercentage / 100)).toFixed(2)}%)
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500 dark:text-gray-500 line-through">
+                          {fees.originalPlatformFee} {crypto}
+                        </p>
+                        <p className="text-sm font-semibold text-green-600 dark:text-green-400">
+                          {fees.platformFee} {crypto}
+                        </p>
+                      </div>
+                    </div>
+                    {/* Economia */}
+                    <div className="mt-2 flex justify-between items-center bg-green-50 dark:bg-green-900/20 rounded px-2 py-1">
+                      <span className="text-xs text-green-700 dark:text-green-300">💰 Você economiza:</span>
+                      <span className="text-xs font-bold text-green-700 dark:text-green-300">
+                        {fees.discountAmount} {crypto}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Taxa da plataforma (1.5%)</p>
+                    <p className="text-sm text-gray-900 dark:text-white">
+                      {fees.platformFee} {crypto}
+                    </p>
+                  </>
+                )}
               </div>
 
               <div>
@@ -1242,7 +1902,9 @@ export default function CreateOrderPage() {
               </div>
 
               <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Taxa total (2.5%)</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Taxa total ({activeCoupon ? (1.5 * (1 - activeCoupon.coupon.discountPercentage / 100) + 1).toFixed(2) : '2.5'}%)
+                </p>
                 <p className="text-sm font-semibold text-red-600 dark:text-red-400">
                   {fees.totalFee} {crypto}
                 </p>
@@ -1251,14 +1913,17 @@ export default function CreateOrderPage() {
               <hr className="border-gray-200 dark:border-gray-700" />
 
               <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3 mt-3">
-                <p className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✅ Você recebe:</p>
+                <p className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">Você recebe:</p>
                 <p className="text-xs text-green-700 dark:text-green-300">
-                  Seu {orderType === 'PIX' ? 'PIX' : 'boleto'} de {formatBRL(brlAmount || '0')} pago!
+                  Seu {orderType === 'PIX' ? 'PIX' : 'boleto'} de {formatBRL(effectiveBrlAmount || '0')} pago!
                 </p>
               </div>
+              </>
+              )}
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
     </>

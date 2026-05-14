@@ -16,6 +16,7 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { adminMiddleware } from '../middleware/admin.middleware';
+import { require2FAMiddleware } from '../middleware/require2FA.middleware';
 import {
   auditUserBalance,
   fixUserBalance,
@@ -31,8 +32,8 @@ router.use(adminMiddleware);
 // GET /api/v1/admin/balance/audit/:userId - Auditar saldo de usuário
 router.get('/audit/:userId', auditUserBalance);
 
-// POST /api/v1/admin/balance/fix/:userId - Forçar correção de saldo
-router.post('/fix/:userId', fixUserBalance);
+// SECURITY: Correção forçada de saldo exige 2FA (altera dados financeiros diretamente)
+router.post('/fix/:userId', require2FAMiddleware, fixUserBalance);
 
 // GET /api/v1/admin/balance/validate-all - Validar todos os saldos
 router.get('/validate-all', validateAllBalances);

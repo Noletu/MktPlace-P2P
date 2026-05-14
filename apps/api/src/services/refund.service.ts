@@ -1,6 +1,5 @@
 import { PrismaClient } from '@prisma/client';
 import { internalBalanceService } from './internal-balance.service';
-import { blockchainService } from './blockchain.service';
 
 const prisma = new PrismaClient();
 
@@ -11,9 +10,9 @@ export const REFUND_CONFIG = {
 
   // Estimativas de taxa de rede (em USDT equivalente)
   NETWORK_FEES: {
-    TRC20: '1.5', // USDT TRC20
     BASE: '0.50', // BASE L2
     ARBITRUM: '0.30', // Arbitrum L2
+    SOLANA: '0.01', // Solana (muito barata)
     ETHEREUM: '10.00', // Ethereum mainnet (mais cara)
     BITCOIN: '5.00', // Bitcoin
   },
@@ -67,86 +66,18 @@ export class RefundService {
 
   /**
    * Processar devolução via blockchain
+   *
+   * Omnibus: Redireciona para crédito interno.
+   * Na arquitetura Omnibus, refunds on-chain exigiriam envio do hot wallet,
+   * mas crédito interno é mais rápido, sem custo de rede, e o usuário pode
+   * sacar depois via withdrawal normal se desejar.
    */
   async refundToBlockchain(orderId: string, userId: string) {
-    console.log(`🔄 Iniciando devolução via blockchain para order: ${orderId}`);
+    console.log(`🔄 Refund blockchain solicitado para order: ${orderId} — redirecionando para crédito interno (Omnibus)`);
 
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-    });
-
-    if (!order) {
-      throw new Error('Pedido não encontrado');
-    }
-
-    if (order.userId !== userId) {
-      throw new Error('Pedido não pertence ao usuário');
-    }
-
-    if (order.refundStatus !== 'NOT_REQUIRED' && order.refundStatus !== 'PENDING_USER_CHOICE') {
-      throw new Error(`Devolução já processada ou em processamento: ${order.refundStatus}`);
-    }
-
-    // Calcular valores
-    const estimate = await this.estimateRefund(orderId);
-    const refundAmount = parseFloat(estimate.blockchainRefundAmount);
-
-    // Verificar se atinge mínimo
-    if (refundAmount < parseFloat(REFUND_CONFIG.MIN_BLOCKCHAIN_REFUND)) {
-      throw new Error(
-        `Valor de devolução (${refundAmount} ${order.cryptoType}) é menor que o mínimo ` +
-        `(${REFUND_CONFIG.MIN_BLOCKCHAIN_REFUND}). Use crédito interno em vez disso.`
-      );
-    }
-
-    // Marcar como processando
-    await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        refundStatus: 'PROCESSING',
-        refundMethod: 'BLOCKCHAIN',
-      },
-    });
-
-    try {
-      // TODO: Implementar envio real de transação blockchain
-      // Por ora, simular com txHash mock
-      const mockTxHash = `0x${Math.random().toString(16).substring(2)}${Date.now()}`;
-
-      console.log(`⚠️ [DEV] Simulando envio blockchain - TxHash: ${mockTxHash}`);
-
-      // Atualizar ordem com resultado
-      await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          refundStatus: 'COMPLETED',
-          refundTxHash: mockTxHash,
-          refundAmount: estimate.blockchainRefundAmount,
-          refundNetworkFee: estimate.networkFeeEstimate,
-          refundProcessingFee: estimate.processingFee,
-          refundedAt: new Date(),
-        },
-      });
-
-      console.log(`✅ Devolução via blockchain completada: ${orderId}`);
-
-      return {
-        success: true,
-        txHash: mockTxHash,
-        refundAmount: estimate.blockchainRefundAmount,
-        cryptoType: order.cryptoType,
-      };
-    } catch (error: any) {
-      // Marcar como falha
-      await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          refundStatus: 'FAILED',
-        },
-      });
-
-      throw error;
-    }
+    // Na arquitetura Omnibus, refunds são sempre via crédito interno
+    // O usuário pode sacar via withdrawal normal se quiser enviar para blockchain
+    return this.refundToInternalCredit(orderId, userId);
   }
 
   /**

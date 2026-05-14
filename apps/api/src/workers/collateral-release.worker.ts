@@ -15,12 +15,14 @@ const prisma = new PrismaClient();
 class CollateralReleaseWorker {
   private intervalId: NodeJS.Timeout | null = null;
   private readonly CHECK_INTERVAL = 60 * 1000; // Verificar a cada 1 minuto
+  private executionCount = 0;
+  private lastExecution: Date | null = null;
 
   /**
    * Iniciar worker
    */
   start() {
-    logger.info('🔓 Collateral Release Worker starting...');
+    logger.info('🔓 [COLLATERAL WORKER] Starting...');
 
     // Executar imediatamente
     this.processLockedCollateral();
@@ -30,7 +32,7 @@ class CollateralReleaseWorker {
       this.processLockedCollateral();
     }, this.CHECK_INTERVAL);
 
-    logger.info(`🔓 Collateral Release Worker started (checking every ${this.CHECK_INTERVAL / 1000}s)`);
+    logger.info(`🔓 [COLLATERAL WORKER] Started successfully (interval: ${this.CHECK_INTERVAL / 1000}s)`);
   }
 
   /**
@@ -48,11 +50,17 @@ class CollateralReleaseWorker {
    * Processar pedidos com colateral bloqueado que já terminaram
    */
   async processLockedCollateral() {
+    this.executionCount++;
+    this.lastExecution = new Date();
+
     try {
-      // Buscar pedidos com colateral interno bloqueado que já terminaram
+      logger.info(`🔓 [COLLATERAL WORKER] Execution #${this.executionCount} at ${this.lastExecution.toISOString()}`);
+
+      // Buscar pedidos com colateral bloqueado que já terminaram
+      // Inclui HD_WALLET (sistema atual) e INTERNAL_BALANCE (ordens legadas)
       const finishedOrders = await prisma.order.findMany({
         where: {
-          collateralSource: 'INTERNAL_BALANCE',
+          collateralSource: { in: ['HD_WALLET', 'INTERNAL_BALANCE'] },
           collateralLocked: true,
           status: {
             in: ['COMPLETED', 'CANCELLED', 'TIMEOUT', 'EXPIRED'],
@@ -60,30 +68,35 @@ class CollateralReleaseWorker {
           collateralUnlockedAt: null, // Ainda não foi desbloqueado
         },
         include: {
-          internalBalance: true,
+          user: true,
         },
       });
 
       if (finishedOrders.length === 0) {
-        logger.debug('🔓 Nenhum colateral para liberar');
+        logger.info('🔓 [COLLATERAL WORKER] No collateral to release (all clean)');
         return;
       }
 
-      logger.info(`🔓 Encontrados ${finishedOrders.length} pedidos com colateral a ser liberado`);
+      logger.info(`🔓 [COLLATERAL WORKER] Found ${finishedOrders.length} orders with collateral to release`);
 
       // Processar cada pedido
+      let successCount = 0;
+      let errorCount = 0;
+
       for (const order of finishedOrders) {
         try {
           await this.releaseCollateral(order);
+          successCount++;
         } catch (error: any) {
-          logger.error(`❌ Erro ao liberar colateral do pedido ${order.id}:`, error);
+          errorCount++;
+          logger.error(`❌ [COLLATERAL WORKER] Error releasing collateral for order ${order.id}:`, error);
           // Continuar processando outros pedidos mesmo se houver erro
         }
       }
 
-      logger.info(`✅ Processamento de liberação de colateral concluído`);
+      logger.info(`✅ [COLLATERAL WORKER] Processing completed: ${successCount} released, ${errorCount} errors`);
     } catch (error: any) {
-      logger.error('❌ Erro no worker de liberação de colateral:', error);
+      logger.error('❌ [COLLATERAL WORKER] Critical error in worker:', error);
     }
   }
 
@@ -91,14 +104,15 @@ class CollateralReleaseWorker {
    * Liberar colateral de um pedido específico
    */
   private async releaseCollateral(order: any) {
-    if (!order.internalBalanceId || !order.collateralLockedAmount) {
-      logger.warn(`⚠️ Pedido ${order.id} não tem internalBalanceId ou collateralLockedAmount`);
+    // Validar que há colateral para liberar
+    if (!order.collateralLockedAmount) {
+      logger.warn(`⚠️ Pedido ${order.id} não tem collateralLockedAmount`);
       return;
     }
 
-    const balance = order.internalBalance;
-    if (!balance) {
-      logger.warn(`⚠️ InternalBalance não encontrado para pedido ${order.id}`);
+    // Validar que temos os dados necessários para desbloquear
+    if (!order.userId || !order.cryptoType || !order.cryptoNetwork) {
+      logger.warn(`⚠️ Pedido ${order.id} está faltando dados necessários (userId, cryptoType ou cryptoNetwork)`);
       return;
     }
 
@@ -106,7 +120,8 @@ class CollateralReleaseWorker {
     logger.info(`   Status: ${order.status}`);
     logger.info(`   Valor bloqueado: ${order.collateralLockedAmount} ${order.cryptoType}`);
 
-    // Desbloquear saldo
+    // Desbloquear saldo usando o adapter service
+    // O internalBalanceService é um adapter que internamente usa WalletService
     await internalBalanceService.unlockBalance(
       order.userId,
       order.cryptoType,
@@ -148,35 +163,38 @@ class CollateralReleaseWorker {
   }
 
   /**
-   * Verificar pedidos órfãos (com colateral bloqueado há mais de 48h)
+   * Verificar pedidos órfãos (com colateral bloqueado há mais de 24h)
    * Função de segurança para detectar casos anormais
    */
   async checkOrphanedCollateral() {
     try {
-      const twoDaysAgo = new Date();
-      twoDaysAgo.setHours(twoDaysAgo.getHours() - 48);
+      logger.info('🔍 [COLLATERAL WORKER] Checking for orphaned collateral (>24h)...');
+
+      const oneDayAgo = new Date();
+      oneDayAgo.setHours(oneDayAgo.getHours() - 24);
 
       const orphanedOrders = await prisma.order.findMany({
         where: {
-          collateralSource: 'INTERNAL_BALANCE',
+          collateralSource: { in: ['HD_WALLET', 'INTERNAL_BALANCE'] },
           collateralLocked: true,
           createdAt: {
-            lt: twoDaysAgo,
+            lt: oneDayAgo,
           },
           status: {
-            in: ['PENDING', 'IN_NEGOTIATION', 'MATCHED'], // Status que não deveriam durar 48h
+            in: ['PENDING', 'IN_NEGOTIATION', 'MATCHED'], // Status que não deveriam durar 24h
           },
         },
         include: {
-          internalBalance: true,
+          user: true,
         },
       });
 
       if (orphanedOrders.length > 0) {
-        logger.warn(`⚠️ ALERTA: ${orphanedOrders.length} pedidos com colateral bloqueado há mais de 48h!`);
+        logger.warn(`⚠️ [COLLATERAL WORKER] ALERT: ${orphanedOrders.length} orders with collateral locked for >24h!`);
 
         for (const order of orphanedOrders) {
-          logger.warn(`   Pedido: ${order.id} | Status: ${order.status} | Valor: ${order.collateralLockedAmount} ${order.cryptoType}`);
+          const hoursLocked = Math.floor((Date.now() - order.createdAt.getTime()) / (1000 * 60 * 60));
+          logger.warn(`   Order: ${order.id} | Status: ${order.status} | Amount: ${order.collateralLockedAmount} ${order.cryptoType} | Locked for: ${hoursLocked}h`);
 
           // Registrar alerta no audit log
           await prisma.auditLog.create({
@@ -185,11 +203,12 @@ class CollateralReleaseWorker {
               action: 'ORPHANED_COLLATERAL_DETECTED',
               resource: 'ORDER',
               resourceId: order.id,
-              description: `Pedido com colateral bloqueado há mais de 48h`,
+              description: `Pedido com colateral bloqueado há mais de 24h (${hoursLocked}h)`,
               metadata: JSON.stringify({
                 orderId: order.id,
                 orderStatus: order.status,
                 createdAt: order.createdAt,
+                hoursLocked,
                 amount: order.collateralLockedAmount,
                 cryptoType: order.cryptoType,
               }),
@@ -198,10 +217,24 @@ class CollateralReleaseWorker {
             },
           });
         }
+      } else {
+        logger.info('✅ [COLLATERAL WORKER] No orphaned collateral detected');
       }
     } catch (error: any) {
-      logger.error('❌ Erro ao verificar colaterais órfãos:', error);
+      logger.error('❌ [COLLATERAL WORKER] Error checking orphaned collateral:', error);
     }
+  }
+
+  /**
+   * Obter status do worker
+   */
+  getStatus() {
+    return {
+      isRunning: this.intervalId !== null,
+      executionCount: this.executionCount,
+      lastExecution: this.lastExecution,
+      checkInterval: this.CHECK_INTERVAL,
+    };
   }
 }
 

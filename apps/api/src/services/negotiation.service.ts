@@ -96,26 +96,27 @@ export class NegotiationService {
       throw new Error('Você não tem permissão para cancelar esta negociação');
     }
 
-    // Limpar mensagens do chat para recomeçar conversa zerada
+    // Limpar mensagens do chat + voltar para PENDING atomicamente
     const chat = await prisma.chat.findUnique({
       where: { orderId },
     });
 
-    if (chat) {
-      await prisma.chatMessage.deleteMany({
-        where: { chatId: chat.id },
-      });
-      console.log(`🗑️ Chat messages cleared for order ${orderId} (negotiation cancelled)`);
-    }
+    const updatedOrder = await prisma.$transaction(async (tx: any) => {
+      if (chat) {
+        await tx.chatMessage.deleteMany({
+          where: { chatId: chat.id },
+        });
+        console.log(`🗑️ Chat messages cleared for order ${orderId} (negotiation cancelled)`);
+      }
 
-    // Voltar para PENDING
-    const updatedOrder = await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: OrderStatus.PENDING,
-        negotiatingUserId: null,
-        negotiationStartedAt: null,
-      },
+      return tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: OrderStatus.PENDING,
+          negotiatingUserId: null,
+          negotiationStartedAt: null,
+        },
+      });
     });
 
     const reasonText = reason === 'timeout' ? 'por timeout (10min)' : 'pelo usuário';

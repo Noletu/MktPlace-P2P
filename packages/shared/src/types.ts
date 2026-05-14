@@ -1,13 +1,5 @@
 // Shared types entre frontend e backend
 
-export enum KYCLevel {
-  NONE = 'NONE',
-  LEVEL_1 = 'LEVEL_1', // CPF + Email (R$ 10k/dia)
-  LEVEL_2 = 'LEVEL_2', // + Selfie + Prova endereço (R$ 50k/dia)
-  LEVEL_3 = 'LEVEL_3', // + Renda + Banco (R$ 100k/dia)
-  LEVEL_4 = 'LEVEL_4', // Enhanced Due Diligence (sem limite)
-}
-
 export enum UserRole {
   USER = 'USER',
   ADMIN = 'ADMIN',
@@ -24,7 +16,6 @@ export enum CryptoType {
 export enum NetworkType {
   BITCOIN = 'BITCOIN',
   ETHEREUM = 'ETHEREUM',   // ERC20
-  TRC20 = 'TRC20',         // Tron
   BASE = 'BASE',           // Base (L2 Ethereum)
   ARBITRUM = 'ARBITRUM',   // Arbitrum (L2 Ethereum)
   SOLANA = 'SOLANA',       // Solana (SPL)
@@ -68,7 +59,6 @@ export interface User {
   email: string;
   cpf: string;
   name?: string;
-  kycLevel: KYCLevel;
   reputationScore: number;
   role: UserRole;
   createdAt: string;
@@ -150,8 +140,8 @@ export interface NetworkInfo {
 // Mapeamento de quais redes cada cripto suporta
 export const CRYPTO_SUPPORTED_NETWORKS: Record<CryptoType, NetworkType[]> = {
   [CryptoType.BTC]: [NetworkType.BITCOIN],
-  [CryptoType.USDC]: [NetworkType.ETHEREUM, NetworkType.TRC20, NetworkType.BASE, NetworkType.ARBITRUM, NetworkType.SOLANA],
-  [CryptoType.USDT]: [NetworkType.ETHEREUM, NetworkType.TRC20, NetworkType.BASE, NetworkType.ARBITRUM, NetworkType.SOLANA],
+  [CryptoType.USDC]: [NetworkType.BASE, NetworkType.SOLANA],
+  [CryptoType.USDT]: [NetworkType.BASE, NetworkType.SOLANA],
 };
 
 export const NETWORK_INFO: Record<NetworkType, NetworkInfo> = {
@@ -168,13 +158,6 @@ export const NETWORK_INFO: Record<NetworkType, NetworkInfo> = {
     averageFee: '$5-50',
     confirmationTime: '1-3min',
     priority: 3,
-  },
-  [NetworkType.TRC20]: {
-    type: NetworkType.TRC20,
-    name: 'Tron (TRC20)',
-    averageFee: '$1',
-    confirmationTime: '3-5min',
-    priority: 4,
   },
   [NetworkType.BASE]: {
     type: NetworkType.BASE,

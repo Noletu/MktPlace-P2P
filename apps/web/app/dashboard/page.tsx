@@ -3,21 +3,27 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/AppHeader';
-import CollateralWidget from '@/components/dashboard/CollateralWidget';
+import CollateralSummaryWidget from '@/components/dashboard/CollateralSummaryWidget';
 import ActiveOrdersCard from '@/components/dashboard/ActiveOrdersCard';
-import RecentActivityCard from '@/components/dashboard/RecentActivityCard';
+import StatisticsCard from '@/components/dashboard/StatisticsCard';
 import SecurityBanner from '@/components/dashboard/SecurityBanner';
 import FloatingActionButton from '@/components/dashboard/FloatingActionButton';
+import { FrozenAccountBanner } from '@/components/FrozenAccountBanner';
 import { useChats } from '@/hooks/useChats';
+import { fetchWithAuth } from '@/utils/api';
 
 interface User {
   id: string;
   email: string;
   name?: string;
   cpf: string;
-  kycLevel: string;
   reputationScore: number;
   role: string;
+  // ADMIN CONTROLS: Bloqueio
+  accountFrozen?: boolean;
+  frozenReason?: string | null;
+  frozenAt?: string | null;
+  frozenUntil?: string | null;
 }
 
 export default function DashboardPage() {
@@ -32,23 +38,16 @@ export default function DashboardPage() {
 
   const fetchUser = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('Token não encontrado');
-      }
-
-      const response = await fetch('http://localhost:3001/api/v1/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/auth/me');
 
       if (!response.ok) {
         throw new Error('Não autorizado');
       }
 
       const data = await response.json();
-      setUser(data.data);
+      const userData = data.data;
+
+      setUser(userData);
     } catch (error) {
       console.error('Error fetching user:', error);
       localStorage.removeItem('accessToken');
@@ -60,26 +59,19 @@ export default function DashboardPage() {
     }
   };
 
-  const getKYCDisplay = (level: string) => {
-    const labels: Record<string, string> = {
-      'NONE': 'Nível 0 - Email Verificado',
-      'LEVEL_1': 'Nível 1 - CPF Verificado',
-      'LEVEL_2': 'Nível 2 - Identidade Verificada',
-      'LEVEL_3': 'Nível 3 - Verificação Avançada',
-      'LEVEL_4': 'Nível 4 - Conta Empresarial',
-    };
-    return labels[level] || labels['NONE'];
+  // Calcula limite diário baseado em reputação
+  // Fórmula: 1000 + (reputationScore * 100) BRL
+  const getDailyLimit = (reputationScore: number) => {
+    const limit = 1000 + (reputationScore * 100);
+    return `R$ ${limit.toLocaleString('pt-BR')}/dia`;
   };
 
-  const getKYCLimit = (level: string) => {
-    const limits: Record<string, string> = {
-      'NONE': 'R$ 1.000/dia',
-      'LEVEL_1': 'R$ 10.000/dia',
-      'LEVEL_2': 'R$ 50.000/dia',
-      'LEVEL_3': 'R$ 100.000/dia',
-      'LEVEL_4': 'Ilimitado',
-    };
-    return limits[level] || limits['NONE'];
+  const getReputationDisplay = (score: number) => {
+    if (score === 0) return 'Novo Usuário';
+    if (score < 30) return 'Iniciante';
+    if (score < 60) return 'Regular';
+    if (score < 90) return 'Experiente';
+    return 'Veterano';
   };
 
   if (loading) {
@@ -100,6 +92,16 @@ export default function DashboardPage() {
   return (
     <>
       <AppHeader />
+
+      {/* BANNER: Aviso de conta bloqueada */}
+      {user.accountFrozen && (
+        <FrozenAccountBanner
+          frozenReason={user.frozenReason || 'Não especificado'}
+          frozenAt={user.frozenAt || ''}
+          frozenUntil={user.frozenUntil}
+        />
+      )}
+
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -116,29 +118,29 @@ export default function DashboardPage() {
             </div>
             <div className="bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 px-4 py-3 rounded-lg border border-blue-200 dark:border-blue-800">
               <p className="text-sm text-blue-800 dark:text-blue-200 font-semibold">
-                🎖️ {getKYCDisplay(user.kycLevel)}
+                ⭐ Reputação: {user.reputationScore}/100 - {getReputationDisplay(user.reputationScore)}
               </p>
               <p className="text-xs text-blue-600 dark:text-blue-300">
-                Limite: {getKYCLimit(user.kycLevel)}
+                Limite: {getDailyLimit(user.reputationScore)}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Collateral Widget (destaque principal) */}
+        {/* Security Banner */}
         <div className="mb-8">
-          <CollateralWidget />
+          <SecurityBanner />
+        </div>
+
+        {/* Collateral Summary Widget (destaque principal) */}
+        <div className="mb-8">
+          <CollateralSummaryWidget />
         </div>
 
         {/* Grid 2 Colunas - Métricas */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <ActiveOrdersCard />
-          <RecentActivityCard />
-        </div>
-
-        {/* Security Banner */}
-        <div className="mb-8">
-          <SecurityBanner kycLevel={user.kycLevel} reputationScore={user.reputationScore} />
+          <StatisticsCard />
         </div>
 
         {/* Quick Links (opcional, para mobile) */}
@@ -180,7 +182,7 @@ export default function DashboardPage() {
       </main>
 
         {/* Floating Action Button */}
-        <FloatingActionButton />
+        <FloatingActionButton accountFrozen={user?.accountFrozen} />
       </div>
     </>
   );

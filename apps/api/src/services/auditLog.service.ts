@@ -7,6 +7,7 @@ export interface AuditLogInput {
   userId?: string;
   email?: string;
   role?: string;
+  name?: string;
   action: string;
   resource: string;
   resourceId?: string;
@@ -27,6 +28,7 @@ export class AuditLogService {
           userId: input.userId,
           email: input.email,
           role: input.role,
+          name: input.name,
           action: input.action,
           resource: input.resource,
           resourceId: input.resourceId,
@@ -55,11 +57,17 @@ export class AuditLogService {
     errorMessage?: string
   ): void {
     const userId = (req as any).user?.userId;
+    const email = (req as any).user?.email;
+    const role = (req as any).user?.role;
+    const name = (req as any).user?.name;
     const ipAddress = req.ip || req.socket.remoteAddress;
     const userAgent = req.get('user-agent');
 
     this.log({
       userId,
+      email,
+      role,
+      name,
       action,
       resource,
       resourceId,
@@ -156,6 +164,16 @@ export class AuditLogService {
     return { logs, total };
   }
 
+  // Buscar ações distintas para popular filtro dinâmico
+  async getDistinctActions(): Promise<string[]> {
+    const result = await prisma.auditLog.findMany({
+      select: { action: true },
+      distinct: ['action'],
+      orderBy: { action: 'asc' },
+    });
+    return result.map(r => r.action);
+  }
+
   // SECURITY: Obter estatísticas de auditoria
   async getStats(filters?: {
     startDate?: Date;
@@ -209,12 +227,12 @@ export const AUDIT_ACTIONS = {
   LOGOUT: 'LOGOUT',
   REGISTER: 'REGISTER',
   REFRESH_TOKEN: 'REFRESH_TOKEN',
-  
+
   // KYC
   KYC_SUBMIT: 'KYC_SUBMIT',
   KYC_APPROVE: 'KYC_APPROVE',
   KYC_REJECT: 'KYC_REJECT',
-  
+
   // Orders
   ORDER_CREATE: 'ORDER_CREATE',
   ORDER_MATCH: 'ORDER_MATCH',
@@ -232,14 +250,36 @@ export const AUDIT_ACTIONS = {
   TRANSACTION_SUBMIT_PROOF: 'TRANSACTION_SUBMIT_PROOF',
   TRANSACTION_VALIDATE: 'TRANSACTION_VALIDATE',
   TRANSACTION_DISPUTE: 'TRANSACTION_DISPUTE',
-  
+  ORDER_COMPLETED: 'ORDER_COMPLETED',
+  CRYPTO_TRANSFER: 'CRYPTO_TRANSFER',
+
   // Wallets
   WALLET_CREATE: 'WALLET_CREATE',
   WALLET_DEPOSIT: 'WALLET_DEPOSIT',
   WALLET_WITHDRAWAL: 'WALLET_WITHDRAWAL',
-  
+
+  // CRUD Generic
+  UPDATE: 'UPDATE',
+
   // Admin
   ADMIN_ACTION: 'ADMIN_ACTION',
+
+  // User Management
+  USER_ROLE_CHANGE: 'USER_ROLE_CHANGE',
+
+  // Role Management
+  ROLE_CREATE: 'ROLE_CREATE',
+  ROLE_UPDATE: 'ROLE_UPDATE',
+  ROLE_DELETE: 'ROLE_DELETE',
+  ROLE_PERMISSION_ASSIGN: 'ROLE_PERMISSION_ASSIGN',
+  ROLE_PERMISSION_REMOVE: 'ROLE_PERMISSION_REMOVE',
+  ROLE_PERMISSION_UPDATE: 'ROLE_PERMISSION_UPDATE',
+
+  // Support Tickets
+  SUPPORT_TICKET_CREATE: 'SUPPORT_TICKET_CREATE',
+  SUPPORT_TICKET_REPLY: 'SUPPORT_TICKET_REPLY',
+  SUPPORT_TICKET_RESOLVE: 'SUPPORT_TICKET_RESOLVE',
+  SUPPORT_TICKET_CLOSE: 'SUPPORT_TICKET_CLOSE',
 } as const;
 
 export const AUDIT_RESOURCES = {
@@ -248,4 +288,7 @@ export const AUDIT_RESOURCES = {
   TRANSACTION: 'TRANSACTION',
   WALLET: 'WALLET',
   KYC: 'KYC',
+  ROLE: 'ROLE',
+  PERMISSION: 'PERMISSION',
+  SUPPORT_TICKET: 'SUPPORT_TICKET',
 } as const;

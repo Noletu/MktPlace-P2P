@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/utils/formatters';
 import { useChats } from '@/hooks/useChats';
 import AppHeader from '@/components/AppHeader';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Order {
   id: string;
@@ -47,15 +48,11 @@ export default function MyOrdersPage() {
     if (onlineOrders.length === 0) return;
 
     const interval = setInterval(async () => {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-
       // Enviar heartbeat para cada pedido online
       for (const order of onlineOrders) {
         try {
-          await fetch(`http://localhost:3001/api/v1/presence/orders/${order.id}/heartbeat`, {
+          await fetchWithAuth(`/presence/orders/${order.id}/heartbeat`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
           });
         } catch (err) {
           console.error('Heartbeat failed for order:', order.id);
@@ -68,17 +65,7 @@ export default function MyOrdersPage() {
 
   const fetchOrders = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      const response = await fetch('http://localhost:3001/api/v1/orders/my-orders', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth('/orders/my-orders');
 
       if (!response.ok) {
         throw new Error('Erro ao buscar pedidos');
@@ -95,18 +82,8 @@ export default function MyOrdersPage() {
 
   const handleTogglePresence = async (orderId: string, currentStatus: boolean) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        alert('Você precisa estar logado');
-        return;
-      }
-
-      const response = await fetch(`http://localhost:3001/api/v1/presence/orders/${orderId}/toggle`, {
+      const response = await fetchWithAuth(`/presence/orders/${orderId}/toggle`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({ online: !currentStatus }),
       });
 
@@ -132,6 +109,22 @@ export default function MyOrdersPage() {
     if (hours < 24) return `${hours}h`;
     const days = Math.floor(hours / 24);
     return `${days}d`;
+  };
+
+  const getTimeRemaining = (timeoutAt: string) => {
+    const now = new Date().getTime();
+    const timeout = new Date(timeoutAt).getTime();
+    const diff = timeout - now;
+
+    if (diff <= 0) return 'Expirado';
+
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) return `${days}d ${hours % 24}h`;
+    if (hours > 0) return `${hours}h ${minutes % 60}min`;
+    return `${minutes}min`;
   };
 
   const filteredOrders = orders.filter((order) => {
@@ -305,7 +298,7 @@ export default function MyOrdersPage() {
                         )}
                       </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
                       <div>
                         <p className="text-sm text-gray-600 dark:text-gray-400">Valor em BRL</p>
                         <p className="text-lg font-bold dark:text-gray-200">{formatBRL(order.brlAmount)}</p>
@@ -330,6 +323,16 @@ export default function MyOrdersPage() {
                           {new Date(order.createdAt).toLocaleTimeString()}
                         </p>
                       </div>
+
+                      {/* Mostrar tempo de expiração para pedidos ativos */}
+                      {['PENDING', 'MATCHED'].includes(order.status) && order.timeoutAt && (
+                        <div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">Expira em</p>
+                          <p className="text-sm font-semibold text-orange-600 dark:text-orange-400">
+                            ⏱️ {getTimeRemaining(order.timeoutAt)}
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     {/* Toggle de Presença - Apenas para pedidos PENDING ou IN_NEGOTIATION */}

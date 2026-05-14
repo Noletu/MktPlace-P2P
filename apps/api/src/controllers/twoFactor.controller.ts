@@ -56,7 +56,7 @@ export class TwoFactorController {
         return;
       }
 
-      await twoFactorService.enableTwoFactor(userId, token);
+      const result = await twoFactorService.enableTwoFactor(userId, token);
 
       // SECURITY: Audit log - 2FA habilitado
       auditLogService.logFromRequest(
@@ -70,6 +70,9 @@ export class TwoFactorController {
       res.status(200).json({
         success: true,
         message: '2FA habilitado com sucesso',
+        data: {
+          backupCodes: result.backupCodes, // IMPORTANTE: Mostrar apenas UMA VEZ
+        },
       });
     } catch (error: any) {
       console.error('[2FA] Enable error:', error);
@@ -142,11 +145,13 @@ export class TwoFactorController {
       }
 
       const isEnabled = await twoFactorService.isTwoFactorEnabled(userId);
+      const backupCodesCount = await twoFactorService.getBackupCodesCount(userId);
 
       res.status(200).json({
         success: true,
         data: {
           enabled: isEnabled,
+          backupCodesCount,
         },
       });
     } catch (error: any) {
@@ -155,6 +160,56 @@ export class TwoFactorController {
       res.status(500).json({
         success: false,
         error: 'Erro ao verificar status',
+      });
+    }
+  }
+
+  // SECURITY: Regenerar backup codes
+  async regenerateBackupCodes(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.userId;
+      const { token } = req.body;
+
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          error: 'Não autorizado',
+        });
+        return;
+      }
+
+      if (!token) {
+        res.status(400).json({
+          success: false,
+          error: 'Token não fornecido',
+        });
+        return;
+      }
+
+      const result = await twoFactorService.regenerateBackupCodes(userId, token);
+
+      // SECURITY: Audit log - backup codes regenerados
+      auditLogService.logFromRequest(
+        req,
+        '2FA_BACKUP_CODES_REGENERATED',
+        'AUTH',
+        userId,
+        { email: req.user?.email }
+      );
+
+      res.status(200).json({
+        success: true,
+        message: 'Backup codes regenerados com sucesso',
+        data: {
+          backupCodes: result.backupCodes, // IMPORTANTE: Mostrar apenas UMA VEZ
+        },
+      });
+    } catch (error: any) {
+      console.error('[2FA] Regenerate backup codes error:', error);
+
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao regenerar backup codes',
       });
     }
   }

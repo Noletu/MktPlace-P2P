@@ -21,13 +21,16 @@ export enum DisputeCategory {
   OTHER = 'OTHER', // Outro motivo
 }
 
+/**
+ * Tipos de resolucao de disputa
+ * Alinhado com frontend e logica de negocio
+ */
 export enum ResolutionType {
-  REFUND_BUYER_FULL = 'REFUND_BUYER_FULL', // Reembolso total ao comprador
-  REFUND_BUYER_PARTIAL = 'REFUND_BUYER_PARTIAL', // Reembolso parcial ao comprador
-  RELEASE_SELLER = 'RELEASE_SELLER', // Liberar crypto para vendedor
-  CANCEL_NO_PENALTY = 'CANCEL_NO_PENALTY', // Cancelar sem penalidade
-  PENALTY_BUYER = 'PENALTY_BUYER', // Penalizar comprador (fraude)
-  PENALTY_SELLER = 'PENALTY_SELLER', // Penalizar vendedor (má-fé)
+  RELEASE_TO_BUYER = 'RELEASE_TO_BUYER',   // Liberar cripto para o pagador do PIX (comprovante valido)
+  RETURN_TO_SELLER = 'RETURN_TO_SELLER',   // Devolver cripto ao vendedor (comprovante invalido)
+  CANCEL_NO_PENALTY = 'CANCEL_NO_PENALTY', // Cancelar negociacao sem penalidade
+  PENALTY_BUYER = 'PENALTY_BUYER',         // Penalizar pagador do PIX (fraude)
+  PENALTY_SELLER = 'PENALTY_SELLER',       // Penalizar vendedor (ma-fe)
 }
 
 export interface CreateDisputeInput {
@@ -97,7 +100,7 @@ export interface AddDisputeMessageInput {
 
 // Deadline configs
 export const DISPUTE_DEADLINES = {
-  RESPONSE_TIME: 24 * 60 * 60 * 1000, // 24h para responder
+  RESPONSE_TIME: 48 * 60 * 60 * 1000, // 48h para responder
   RESOLUTION_TIME: 48 * 60 * 60 * 1000, // 48h para resolver
   OPEN_AFTER_PAYMENT_SENT: 24 * 60 * 60 * 1000, // Pode abrir após 24h em PAYMENT_SENT
 };

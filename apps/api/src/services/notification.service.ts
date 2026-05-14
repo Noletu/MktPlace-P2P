@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger';
+import { getNotificationSocket } from '../socket/notification.socket';
+import { notifPrefsService } from './notificationPreferences.service';
 
 const prisma = new PrismaClient();
 
@@ -15,6 +17,7 @@ export interface CreateNotificationInput {
   relatedType?: string;
   priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
   metadata?: Record<string, any>;
+  prefCategory?: string; // Categoria de preferência granular (WITHDRAWALS, DEPOSITS, etc.)
 }
 
 export interface GetNotificationsFilters {
@@ -31,6 +34,19 @@ export class NotificationService {
    */
   async createNotification(input: CreateNotificationInput) {
     try {
+      // Checar preferência de notificação in-app do usuário
+      const prefCat = input.prefCategory || input.category;
+      const user = await prisma.user.findUnique({
+        where: { id: input.userId },
+        select: { notificationPreferences: true },
+      });
+      if (!notifPrefsService.shouldPush(user?.notificationPreferences ?? null, prefCat)) {
+        logger.info('[NOTIFICATION] Skipped (user preference)', {
+          userId: input.userId, type: input.type, prefCategory: prefCat,
+        });
+        return null;
+      }
+
       const notification = await prisma.notification.create({
         data: {
           userId: input.userId,
@@ -53,6 +69,32 @@ export class NotificationService {
         type: input.type,
         category: input.category,
       });
+
+      // Emitir evento WebSocket para usuário conectado
+      try {
+        const notificationSocket = getNotificationSocket();
+        notificationSocket.sendNotificationToUser(input.userId, {
+          id: notification.id,
+          title: notification.title,
+          message: notification.message,
+          category: notification.category,
+          priority: notification.priority,
+          actionUrl: notification.actionUrl || undefined,
+          isRead: notification.isRead,
+          createdAt: notification.createdAt.toISOString(),
+        });
+
+        // Atualizar contagem não lidas
+        const unreadCount = await this.getUnreadCount(input.userId);
+        const total = await prisma.notification.count({ where: { userId: input.userId } });
+        notificationSocket.updateUnreadCount(input.userId, { unreadCount, total });
+      } catch (socketError: any) {
+        // Socket não inicializado ainda ou usuário offline - não é erro crítico
+        logger.warn('[NOTIFICATION] WebSocket emission failed', {
+          error: socketError.message,
+          notificationId: notification.id,
+        });
+      }
 
       return notification;
     } catch (error: any) {
@@ -77,10 +119,7 @@ export class NotificationService {
     const [notifications, total, unreadCount] = await Promise.all([
       prisma.notification.findMany({
         where,
-        orderBy: [
-          { priority: 'desc' },
-          { createdAt: 'desc' },
-        ],
+        orderBy: { createdAt: 'desc' }, // Ordem cronológica (mais recente primeiro)
         take: filters?.limit || 50,
         skip: filters?.offset || 0,
       }),
@@ -111,13 +150,30 @@ export class NotificationService {
       return notification; // Já está lida
     }
 
-    return await prisma.notification.update({
+    const updated = await prisma.notification.update({
       where: { id: notificationId },
       data: {
         isRead: true,
         readAt: new Date(),
       },
     });
+
+    // Emitir evento WebSocket
+    try {
+      const notificationSocket = getNotificationSocket();
+      notificationSocket.notifyNotificationRead(userId, notificationId);
+
+      // Atualizar contagem não lidas
+      const unreadCount = await this.getUnreadCount(userId);
+      const total = await prisma.notification.count({ where: { userId } });
+      notificationSocket.updateUnreadCount(userId, { unreadCount, total });
+    } catch (socketError: any) {
+      logger.warn('[NOTIFICATION] WebSocket emission failed (markAsRead)', {
+        error: socketError.message,
+      });
+    }
+
+    return updated;
   }
 
   /**
@@ -131,6 +187,20 @@ export class NotificationService {
         readAt: new Date(),
       },
     });
+
+    // Emitir evento WebSocket
+    try {
+      const notificationSocket = getNotificationSocket();
+      notificationSocket.notifyAllRead(userId);
+
+      // Atualizar contagem (deve ser 0 agora)
+      const total = await prisma.notification.count({ where: { userId } });
+      notificationSocket.updateUnreadCount(userId, { unreadCount: 0, total });
+    } catch (socketError: any) {
+      logger.warn('[NOTIFICATION] WebSocket emission failed (markAllAsRead)', {
+        error: socketError.message,
+      });
+    }
 
     return { success: true };
   }
@@ -151,9 +221,28 @@ export class NotificationService {
       throw new Error('Você não tem permissão para deletar esta notificação');
     }
 
+    const wasUnread = !notification.isRead;
+
     await prisma.notification.delete({
       where: { id: notificationId },
     });
+
+    // Emitir evento WebSocket
+    try {
+      const notificationSocket = getNotificationSocket();
+      notificationSocket.notifyNotificationDeleted(userId, notificationId);
+
+      // Atualizar contagem se era não lida
+      if (wasUnread) {
+        const unreadCount = await this.getUnreadCount(userId);
+        const total = await prisma.notification.count({ where: { userId } });
+        notificationSocket.updateUnreadCount(userId, { unreadCount, total });
+      }
+    } catch (socketError: any) {
+      logger.warn('[NOTIFICATION] WebSocket emission failed (deleteNotification)', {
+        error: socketError.message,
+      });
+    }
 
     return { success: true };
   }
@@ -165,6 +254,18 @@ export class NotificationService {
     await prisma.notification.deleteMany({
       where: { userId, isRead: true },
     });
+
+    // Emitir evento WebSocket para atualizar contagem total
+    try {
+      const notificationSocket = getNotificationSocket();
+      const unreadCount = await this.getUnreadCount(userId);
+      const total = await prisma.notification.count({ where: { userId } });
+      notificationSocket.updateUnreadCount(userId, { unreadCount, total });
+    } catch (socketError: any) {
+      logger.warn('[NOTIFICATION] WebSocket emission failed (deleteAllRead)', {
+        error: socketError.message,
+      });
+    }
 
     return { success: true };
   }
@@ -193,6 +294,7 @@ export class NotificationService {
         userId: sellerId,
         type: 'ORDER_MATCHED',
         category: 'ORDER',
+        prefCategory: 'ORDER_MATCH',
         title: '🎯 Pedido Pareado!',
         message: `Seu pedido de venda foi pareado! Um comprador está aguardando o pagamento.`,
         actionUrl: `/orders/${orderId}`,
@@ -206,6 +308,7 @@ export class NotificationService {
         userId: buyerId,
         type: 'ORDER_MATCHED',
         category: 'ORDER',
+        prefCategory: 'ORDER_MATCH',
         title: '🎯 Pedido Pareado!',
         message: `Seu pedido foi pareado! Realize o pagamento para continuar.`,
         actionUrl: `/orders/${orderId}`,
@@ -226,6 +329,7 @@ export class NotificationService {
       userId: sellerId,
       type: 'PAYMENT_SENT',
       category: 'ORDER',
+      prefCategory: 'PAYMENTS',
       title: '💰 Pagamento Enviado',
       message: `O comprador enviou o comprovante de pagamento. Verifique e valide.`,
       actionUrl: `/orders/${orderId}`,
@@ -244,6 +348,7 @@ export class NotificationService {
       userId: buyerId,
       type: 'PAYMENT_VALIDATED',
       category: 'ORDER',
+      prefCategory: 'PAYMENTS',
       title: '✅ Pagamento Aprovado!',
       message: `Seu pagamento foi aprovado! Você receberá ${cryptoAmount} ${cryptoType} em breve.`,
       actionUrl: `/orders/${orderId}`,
@@ -262,6 +367,7 @@ export class NotificationService {
       userId,
       type: 'ORDER_COMPLETED',
       category: 'ORDER',
+      prefCategory: 'P2P_COMPLETED',
       title: wasSuccessful ? '🎉 Pedido Concluído!' : '⚠️ Pedido Finalizado',
       message: wasSuccessful
         ? 'Sua transação foi concluída com sucesso! Não se esqueça de avaliar a outra parte.'
@@ -300,6 +406,7 @@ export class NotificationService {
       userId,
       type: 'ORDER_CANCELLED',
       category: 'ORDER',
+      prefCategory: 'CANCELLATIONS',
       title: '🚫 Pedido Cancelado',
       message: reason ? `Pedido cancelado: ${reason}` : 'Seu pedido foi cancelado.',
       actionUrl: `/orders/${orderId}`,
@@ -322,6 +429,7 @@ export class NotificationService {
       userId: counterpartyId,
       type: 'DISPUTE_CREATED',
       category: 'DISPUTE',
+      prefCategory: 'DISPUTES',
       title: '⚠️ Nova Disputa',
       message: `${creatorName} abriu uma disputa sobre seu pedido. Responda para resolver a situação.`,
       actionUrl: `/disputes/${disputeId}`,
@@ -340,6 +448,7 @@ export class NotificationService {
       userId: recipientId,
       type: 'DISPUTE_MESSAGE',
       category: 'DISPUTE',
+      prefCategory: 'DISPUTES',
       title: isAdmin ? '🛡️ Mensagem do Suporte' : '💬 Nova Mensagem na Disputa',
       message: isAdmin
         ? 'O suporte enviou uma mensagem na sua disputa.'
@@ -360,6 +469,7 @@ export class NotificationService {
       userId,
       type: 'DISPUTE_RESOLVED',
       category: 'DISPUTE',
+      prefCategory: 'DISPUTES',
       title: '✅ Disputa Resolvida',
       message: `Sua disputa foi resolvida: ${resolution}`,
       actionUrl: `/disputes/${disputeId}`,
@@ -424,9 +534,10 @@ export class NotificationService {
       userId,
       type: 'DEPOSIT_CONFIRMED',
       category: 'WALLET',
+      prefCategory: 'DEPOSITS',
       title: '💎 Depósito Confirmado',
       message: `Seu depósito de ${amount} ${cryptoType} foi confirmado!`,
-      actionUrl: `/wallet`,
+      actionUrl: `/wallets`,
       actionLabel: 'Ver Carteira',
       relatedId: txHash,
       relatedType: 'DEPOSIT',
@@ -443,9 +554,10 @@ export class NotificationService {
       userId,
       type: 'WITHDRAWAL_PROCESSED',
       category: 'WALLET',
+      prefCategory: 'WITHDRAWALS',
       title: '💸 Saque Processado',
       message: `Seu saque de ${amount} ${cryptoType} foi processado!`,
-      actionUrl: `/wallet`,
+      actionUrl: `/wallets`,
       actionLabel: 'Ver Transação',
       relatedId: txHash,
       relatedType: 'WITHDRAWAL',
@@ -468,7 +580,7 @@ export class NotificationService {
       category: 'KYC',
       title: '✅ KYC Aprovado!',
       message: `Seu KYC nível ${level} foi aprovado! Você agora tem acesso a novos recursos.`,
-      actionUrl: `/profile/kyc`,
+      actionUrl: `/kyc/info`,
       actionLabel: 'Ver Perfil',
       relatedId: userId,
       relatedType: 'KYC',
@@ -488,7 +600,7 @@ export class NotificationService {
       message: reason
         ? `Seu KYC nível ${level} foi rejeitado: ${reason}`
         : `Seu KYC nível ${level} foi rejeitado. Tente novamente.`,
-      actionUrl: `/profile/kyc`,
+      actionUrl: `/kyc/info`,
       actionLabel: 'Tentar Novamente',
       relatedId: userId,
       relatedType: 'KYC',
@@ -515,35 +627,32 @@ export class NotificationService {
   }
 
   /**
-   * Broadcast - enviar notificação para múltiplos usuários
+   * Broadcast - enviar notificação para múltiplos usuários (com WebSocket)
+   * Processa em batches de 50 para não sobrecarregar SQLite
    */
   async broadcastNotification(userIds: string[], notification: Omit<CreateNotificationInput, 'userId'>) {
-    const notifications = userIds.map(userId =>
-      prisma.notification.create({
-        data: {
-          userId,
-          type: notification.type,
-          category: notification.category,
-          title: notification.title,
-          message: notification.message,
-          actionUrl: notification.actionUrl,
-          actionLabel: notification.actionLabel,
-          relatedId: notification.relatedId,
-          relatedType: notification.relatedType,
-          priority: notification.priority || 'NORMAL',
-          metadata: notification.metadata ? JSON.stringify(notification.metadata) : null,
-        },
-      })
-    );
+    const BATCH_SIZE = 50;
+    let processed = 0;
 
-    await Promise.all(notifications);
+    for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
+      const batch = userIds.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(userId =>
+          this.createNotification({
+            ...notification,
+            userId,
+          })
+        )
+      );
+      processed += batch.length;
+    }
 
     logger.info('[NOTIFICATION] Broadcast sent', {
-      recipientCount: userIds.length,
+      recipientCount: processed,
       type: notification.type,
     });
 
-    return { success: true, count: userIds.length };
+    return { success: true, count: processed };
   }
 }
 

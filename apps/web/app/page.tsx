@@ -2,6 +2,7 @@
 
 import AppHeader from '@/components/AppHeader';
 import { useEffect, useState } from 'react';
+import { fetchWithAuth } from '@/utils/api';
 
 interface Stats {
   totalUsers: number;
@@ -17,6 +18,31 @@ export default function HomePage() {
     avgMatchTime: 15,
     successRate: 98.5,
   });
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [userLevel, setUserLevel] = useState<number>(0);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetchWithAuth('/auth/me');
+
+        if (response.ok) {
+          const data = await response.json();
+          setUserRole(data.data.role);
+          setUserLevel(data.data.level || 0);
+          setIsLoggedIn(true);
+        }
+      } catch (error) {
+        console.error('Error fetching user:', error);
+      }
+    };
+
+    checkAuth();
+  }, []);
+
+  // Detectar se é admin (level >= 40: SUPPORT, GERENTE, ADMIN, MASTER)
+  const isAdmin = userLevel >= 40;
 
   return (
     <>
@@ -37,18 +63,57 @@ export default function HomePage() {
           </p>
 
           <div className="mt-10 flex gap-4 justify-center">
-            <a
-              href="/register"
-              className="px-8 py-4 bg-blue-600 dark:bg-blue-700 text-white text-lg font-semibold rounded-lg hover:bg-blue-700 dark:hover:bg-blue-800 transition shadow-lg"
-            >
-              Começar Agora
-            </a>
-            <a
-              href="/login"
-              className="px-8 py-4 bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 text-lg font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition shadow-lg border-2 border-blue-600 dark:border-blue-500"
-            >
-              Entrar
-            </a>
+            {isLoggedIn ? (
+              isAdmin ? (
+                // Botões para ADMINS
+                <>
+                  <a
+                    href="/admin"
+                    className="px-8 py-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-lg font-semibold rounded-lg transition shadow-lg"
+                  >
+                    ⚙️ Painel Admin
+                  </a>
+                  <a
+                    href="/admin/marketplace"
+                    className="px-8 py-4 bg-white dark:bg-gray-700 border-2 border-purple-600 dark:border-purple-500 text-purple-600 dark:text-purple-400 text-lg font-semibold rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 transition shadow-lg"
+                  >
+                    🛒 Ver Marketplace
+                  </a>
+                </>
+              ) : (
+                // Botões para USUÁRIOS NORMAIS
+                <>
+                  <a
+                    href="/dashboard"
+                    className="px-8 py-4 bg-blue-600 dark:bg-blue-700 text-white text-lg font-semibold rounded-lg hover:bg-blue-700 dark:hover:bg-blue-800 transition shadow-lg"
+                  >
+                    Ir para Dashboard
+                  </a>
+                  <a
+                    href="/marketplace"
+                    className="px-8 py-4 bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 text-lg font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition shadow-lg border-2 border-blue-600 dark:border-blue-500"
+                  >
+                    Ver Marketplace
+                  </a>
+                </>
+              )
+            ) : (
+              // Botões para NÃO-LOGADOS
+              <>
+                <a
+                  href="/register"
+                  className="px-8 py-4 bg-blue-600 dark:bg-blue-700 text-white text-lg font-semibold rounded-lg hover:bg-blue-700 dark:hover:bg-blue-800 transition shadow-lg"
+                >
+                  Começar Agora
+                </a>
+                <a
+                  href="/login"
+                  className="px-8 py-4 bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 text-lg font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition shadow-lg border-2 border-blue-600 dark:border-blue-500"
+                >
+                  Entrar
+                </a>
+              </>
+            )}
           </div>
         </div>
 
@@ -193,7 +258,7 @@ export default function HomePage() {
               </div>
               <p className="font-bold text-xl text-center mb-2 dark:text-white">USD Coin</p>
               <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-3">USDC</p>
-              <p className="text-xs text-gray-600 dark:text-gray-400 text-center">Redes: Ethereum, TRC20, Base, Arbitrum</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400 text-center">Redes: Ethereum, Base, Arbitrum, Solana</p>
             </div>
             <div className="p-6 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl shadow-md">
               <div className="flex justify-center mb-4">
@@ -204,23 +269,27 @@ export default function HomePage() {
               </div>
               <p className="font-bold text-xl text-center mb-2 dark:text-white">Tether</p>
               <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-3">USDT</p>
-              <p className="text-xs text-gray-600 dark:text-gray-400 text-center">Redes: Ethereum, TRC20, Base, Arbitrum</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400 text-center">Redes: Ethereum, Base, Arbitrum, Solana</p>
             </div>
           </div>
           <p className="text-center text-gray-600 dark:text-gray-300 mt-8 text-sm">
-            💡 <strong>Dica:</strong> Use TRC20 ou Layer 2 (Base/Arbitrum) para taxas mais baixas!
+            💡 <strong>Dica:</strong> Use Layer 2 (Base/Arbitrum) ou Solana para taxas mais baixas!
           </p>
         </div>
 
         {/* CTA Final */}
         <div className="text-center bg-blue-600 dark:bg-blue-700 text-white rounded-xl shadow-lg p-12">
-          <h2 className="text-4xl font-bold mb-4">Pronto para começar?</h2>
-          <p className="text-xl mb-8">Junte-se ao futuro dos pagamentos descentralizados</p>
+          <h2 className="text-4xl font-bold mb-4">
+            {isLoggedIn ? 'Continue negociando!' : 'Pronto para começar?'}
+          </h2>
+          <p className="text-xl mb-8">
+            {isLoggedIn ? 'Acesse o marketplace e encontre as melhores ofertas' : 'Junte-se ao futuro dos pagamentos descentralizados'}
+          </p>
           <a
-            href="/register"
+            href={isLoggedIn ? (isAdmin ? '/admin/marketplace' : '/marketplace') : '/register'}
             className="inline-block px-10 py-4 bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 text-lg font-bold rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition shadow-lg"
           >
-            Criar Conta Grátis
+            {isLoggedIn ? 'Ver Marketplace' : 'Criar Conta Grátis'}
           </a>
         </div>
 

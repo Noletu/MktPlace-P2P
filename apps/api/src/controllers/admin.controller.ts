@@ -1,10 +1,11 @@
 import { Request, Response } from 'express';
 import { adminService } from '../services/admin.service';
 import { auditLogService } from '../services/auditLog.service';
-import { kycService } from '../services/kyc.service';
-import { KYCLevel } from '../types/kyc.types';
+import { reputationService } from '../services/reputation.service';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+import { platformWalletService } from '../services/platformWallet.service';
+import { platformTransferService } from '../services/platform-transfer.service';
 
 const prisma = new PrismaClient();
 
@@ -21,8 +22,8 @@ const UpdatePlatformWalletSchema = z.object({
 });
 
 const UpdateUserSchema = z.object({
-  kycLevel: z.string().optional(),
-  role: z.enum(['USER', 'ADMIN', 'SUPPORT']).optional(),
+  role:   z.enum(['USER', 'GERENTE', 'SUPPORT', 'ADMIN', 'MASTER']).optional(),
+  reason: z.string().optional(),
 });
 
 export class AdminController {
@@ -197,6 +198,50 @@ export class AdminController {
     }
   }
 
+  async createAllPlatformWallets(req: Request, res: Response) {
+    try {
+      console.log('🏦 [ADMIN] Criando todas as carteiras da plataforma...');
+
+      // Chamar service para criar carteiras
+      // O service valida internamente se master seed existe via MasterSeedService.getMasterSeed()
+      await platformWalletService.createPlatformWallets();
+
+      // Buscar carteiras criadas
+      const wallets = await platformWalletService.getAllPlatformWallets();
+
+      // Log de auditoria
+      await auditLogService.logFromRequest(
+        req,
+        'PLATFORM_WALLETS_CREATED',
+        'PLATFORM_WALLET',
+        'all',
+        { count: wallets.length }
+      );
+
+      console.log(`✅ [ADMIN] ${wallets.length} carteiras da plataforma criadas com sucesso`);
+
+      return res.json({
+        success: true,
+        message: `${wallets.length} carteiras da plataforma criadas com sucesso`,
+        data: wallets.map(w => ({
+          id: w.id,
+          cryptoType: w.cryptoType,
+          network: w.network,
+          address: w.address,
+          derivationPath: w.derivationPath,
+          balance: w.balance,
+          isActive: w.isActive,
+        })),
+      });
+    } catch (error: any) {
+      console.error('❌ [ADMIN] Erro ao criar carteiras da plataforma:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao criar carteiras da plataforma',
+      });
+    }
+  }
+
   /**
    * ============================================
    * GESTÃO DE USUÁRIOS
@@ -205,10 +250,9 @@ export class AdminController {
 
   async getUsers(req: Request, res: Response) {
     try {
-      const { kycLevel, role, search } = req.query;
+      const { role, search } = req.query;
 
       const users = await adminService.getUsers({
-        kycLevel: kycLevel as string,
         role: role as string,
         search: search as string,
       });
@@ -226,6 +270,30 @@ export class AdminController {
     }
   }
 
+  /**
+   * GET /api/v1/admin/users/:id/details
+   * Buscar detalhes completos de um usuário (GOD MODE)
+   * Inclui: info geral, saldos por crypto, transações, audit log
+   */
+  async getUserDetails(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+
+      const details = await adminService.getUserDetails(id);
+
+      res.json({
+        success: true,
+        data: details,
+      });
+    } catch (error: any) {
+      console.error('Erro ao buscar detalhes do usuário:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar detalhes do usuário',
+      });
+    }
+  }
+
   async updateUser(req: Request, res: Response) {
     try {
       const adminId = req.user?.userId;
@@ -239,11 +307,21 @@ export class AdminController {
       const { id } = req.params;
       const validatedData = UpdateUserSchema.parse(req.body);
 
-      const user = await adminService.updateUser(id, validatedData, adminId);
+      const result = await adminService.updateUser(id, validatedData, adminId);
+
+      // Demoção de MASTER: operação enfileirada para aprovação dupla (Maker-Checker)
+      if ((result as any)?._pending) {
+        return res.status(202).json({
+          success: true,
+          pending: true,
+          data: (result as any).approval,
+          message: 'Solicitação de rebaixamento enfileirada. Aguardando aprovação de outro MASTER.',
+        });
+      }
 
       res.json({
         success: true,
-        data: user,
+        data: result,
         message: 'Usuário atualizado com sucesso',
       });
     } catch (error: any) {
@@ -264,6 +342,40 @@ export class AdminController {
   }
 
   /**
+   * FASE 2: Gerar relatório para autoridades
+   */
+  async generateAuthorityReport(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { startDate, endDate } = req.query;
+
+      const filters: any = {};
+
+      if (startDate) {
+        filters.startDate = new Date(startDate as string);
+      }
+
+      if (endDate) {
+        filters.endDate = new Date(endDate as string);
+      }
+
+      const report = await adminService.generateAuthorityReport(id, filters);
+
+      res.json({
+        success: true,
+        data: report,
+        message: 'Relatório gerado com sucesso',
+      });
+    } catch (error: any) {
+      console.error('Erro ao gerar relatório:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao gerar relatório',
+      });
+    }
+  }
+
+  /**
    * ============================================
    * GESTÃO DE PEDIDOS
    * ============================================
@@ -271,23 +383,62 @@ export class AdminController {
 
   async getOrders(req: Request, res: Response) {
     try {
-      const { status, type, userId } = req.query;
+      const { status, type, userId, page, limit } = req.query;
 
-      const orders = await adminService.getAllOrders({
+      const result = await adminService.getAllOrders({
         status: status as string,
         type: type as string,
         userId: userId as string,
+        page: page ? parseInt(page as string, 10) : undefined,
+        limit: limit ? parseInt(limit as string, 10) : undefined,
       });
 
       res.json({
         success: true,
-        data: orders,
+        data: result.orders,
+        pagination: { page: result.page, limit: result.limit, total: result.total, pages: result.pages },
       });
     } catch (error: any) {
       console.error('Erro ao buscar pedidos:', error);
       res.status(500).json({
         success: false,
         error: error.message || 'Erro ao buscar pedidos',
+      });
+    }
+  }
+
+  async getOrdersStats(req: Request, res: Response) {
+    try {
+      // Buscar estatísticas de pedidos
+      const totalOrders = await prisma.order.count();
+      const pendingOrders = await prisma.order.count({ where: { status: 'PENDING' } });
+      const matchedOrders = await prisma.order.count({ where: { status: 'MATCHED' } });
+      const completedOrders = await prisma.order.count({ where: { status: 'COMPLETED' } });
+      const cancelledOrders = await prisma.order.count({ where: { status: 'CANCELLED' } });
+
+      // Calcular volume total em BRL
+      const orders = await prisma.order.findMany({
+        where: { status: 'COMPLETED' },
+        select: { brlAmount: true },
+      });
+      const totalVolume = orders.reduce((sum, order) => sum + parseFloat(order.brlAmount || '0'), 0);
+
+      res.json({
+        success: true,
+        data: {
+          total: totalOrders,
+          pending: pendingOrders,
+          matched: matchedOrders,
+          completed: completedOrders,
+          cancelled: cancelledOrders,
+          volume: totalVolume.toFixed(2),
+        },
+      });
+    } catch (error: any) {
+      console.error('Erro ao buscar estatísticas de pedidos:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar estatísticas de pedidos',
       });
     }
   }
@@ -324,6 +475,49 @@ export class AdminController {
       res.status(400).json({
         success: false,
         error: error.message || 'Erro ao cancelar pedido',
+      });
+    }
+  }
+
+  async editOrder(req: Request, res: Response) {
+    try {
+      const adminId = req.user?.userId;
+      if (!adminId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Não autorizado',
+        });
+      }
+
+      const { id } = req.params;
+      const { brlAmount, cryptoAmount, status, notes } = req.body;
+
+      // Validar que pelo menos um campo foi fornecido
+      if (!brlAmount && !cryptoAmount && !status && !notes) {
+        return res.status(400).json({
+          success: false,
+          error: 'Pelo menos um campo deve ser fornecido para edição',
+        });
+      }
+
+      const updates: any = {};
+      if (brlAmount) updates.brlAmount = brlAmount;
+      if (cryptoAmount) updates.cryptoAmount = cryptoAmount;
+      if (status) updates.status = status;
+      if (notes) updates.notes = notes;
+
+      const order = await adminService.editOrder(id, adminId, updates);
+
+      res.json({
+        success: true,
+        data: order,
+        message: 'Pedido editado com sucesso',
+      });
+    } catch (error: any) {
+      console.error('Erro ao editar pedido:', error);
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao editar pedido',
       });
     }
   }
@@ -432,6 +626,16 @@ export class AdminController {
     }
   }
 
+  // Buscar ações distintas do audit log para filtro dinâmico
+  async getAuditActions(req: Request, res: Response) {
+    try {
+      const actions = await auditLogService.getDistinctActions();
+      res.json({ success: true, data: actions });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
   // SECURITY: Exportar logs de auditoria em formato CSV
   async exportAuditLogs(req: Request, res: Response) {
     try {
@@ -457,7 +661,7 @@ export class AdminController {
       // Converter para CSV
       const csv = this.logsToCSV(result.logs);
 
-      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="audit-logs-${new Date().toISOString()}.csv"`);
       res.send(csv);
     } catch (error: any) {
@@ -469,16 +673,370 @@ export class AdminController {
     }
   }
 
+  /**
+   * ============================================
+   * LIMITE PERSONALIZADO + REPUTAÇÃO
+   * ============================================
+   */
+
+  /**
+   * POST /admin/users/:id/custom-limit
+   * Define limite diario personalizado para usuario
+   */
+  async setCustomLimit(req: Request, res: Response) {
+    try {
+      const adminId = req.user?.userId;
+      if (!adminId) {
+        return res.status(401).json({ success: false, error: 'Não autorizado' });
+      }
+
+      const { id } = req.params;
+
+      const schema = z.object({
+        customDailyLimit: z.number().min(0).nullable(),
+        note: z.string().min(10, 'Nota deve ter no mínimo 10 caracteres'),
+      });
+
+      const validated = schema.parse(req.body);
+
+      const user = await adminService.setCustomDailyLimit(id, {
+        customDailyLimit: validated.customDailyLimit,
+        note: validated.note,
+        adminId,
+      });
+
+      // Audit log via request
+      await auditLogService.logFromRequest(
+        req,
+        'SET_CUSTOM_LIMIT',
+        'USER',
+        id,
+        {
+          customDailyLimit: validated.customDailyLimit,
+          note: validated.note,
+        }
+      );
+
+      res.json({
+        success: true,
+        data: user,
+        message: validated.customDailyLimit !== null
+          ? `Limite personalizado de R$ ${validated.customDailyLimit.toLocaleString('pt-BR')} definido`
+          : 'Limite resetado para fórmula automática',
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Dados inválidos',
+          details: error.errors,
+        });
+      }
+      console.error('Erro ao definir limite personalizado:', error);
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao definir limite personalizado',
+      });
+    }
+  }
+
+  /**
+   * POST /admin/users/:id/recalculate-reputation
+   * Força recálculo da reputação composta
+   */
+  async recalculateReputation(req: Request, res: Response) {
+    try {
+      const adminId = req.user?.userId;
+      if (!adminId) {
+        return res.status(401).json({ success: false, error: 'Não autorizado' });
+      }
+
+      const { id } = req.params;
+
+      const newScore = await reputationService.recalculateAndSave(id);
+
+      // Audit log
+      await auditLogService.logFromRequest(
+        req,
+        'RECALCULATE_REPUTATION',
+        'USER',
+        id,
+        { newScore }
+      );
+
+      res.json({
+        success: true,
+        data: { reputationScore: newScore },
+        message: `Reputação recalculada: ${newScore}/100`,
+      });
+    } catch (error: any) {
+      console.error('Erro ao recalcular reputação:', error);
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao recalcular reputação',
+      });
+    }
+  }
+
+  /**
+   * GET /admin/users/:id/reputation-breakdown
+   * Retorna breakdown detalhado da reputação composta
+   */
+  async getReputationBreakdown(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+
+      const breakdown = await reputationService.calculateCompositeScore(id);
+
+      res.json({
+        success: true,
+        data: breakdown,
+      });
+    } catch (error: any) {
+      console.error('Erro ao buscar breakdown de reputação:', error);
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao buscar breakdown de reputação',
+      });
+    }
+  }
+
+  /**
+   * ============================================
+   * TRANSFERÊNCIAS DE PLATFORM WALLETS
+   * ============================================
+   */
+
+  /**
+   * GET /admin/platform-wallets/:id/transfers
+   * Histórico de transferências de uma platform wallet
+   */
+  async getPlatformWalletTransfers(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+
+      const transfers = await platformTransferService.getTransfers(id);
+
+      res.json({
+        success: true,
+        data: transfers,
+      });
+    } catch (error: any) {
+      console.error('Erro ao buscar transferências:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar transferências',
+      });
+    }
+  }
+
+  /**
+   * GET /admin/platform-wallets/:id/movements
+   * Histórico completo de movimentações de uma platform wallet
+   */
+  async getPlatformWalletMovements(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const limit = parseInt(req.query.limit as string) || 100;
+
+      const movements = await platformWalletService.getMovements(id, limit);
+
+      res.json({
+        success: true,
+        data: movements,
+      });
+    } catch (error: any) {
+      console.error('Erro ao buscar movimentações:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Erro ao buscar movimentações',
+      });
+    }
+  }
+
+  /**
+   * GET /admin/platform-wallets/:id/transfer-estimate?amount=X&toAddress=Y
+   * Estimativa de fee para transferência
+   */
+  async getPlatformWalletTransferEstimate(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { amount, toAddress } = req.query;
+
+      if (!amount || !toAddress) {
+        return res.status(400).json({
+          success: false,
+          error: 'Parâmetros "amount" e "toAddress" são obrigatórios',
+        });
+      }
+
+      const estimate = await platformTransferService.getTransferEstimate(
+        id,
+        amount as string,
+        toAddress as string
+      );
+
+      res.json({
+        success: true,
+        data: estimate,
+      });
+    } catch (error: any) {
+      console.error('Erro ao estimar transferência:', error);
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao estimar transferência',
+      });
+    }
+  }
+
+  /**
+   * POST /admin/platform-wallets/:id/transfer
+   * Solicitar transferência (requer 2FA)
+   */
+  async requestPlatformWalletTransfer(req: Request, res: Response) {
+    try {
+      const adminId = req.user?.userId;
+      if (!adminId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Não autorizado',
+        });
+      }
+
+      const { id } = req.params;
+      const { toAddress, amount, twoFactorCode, note } = req.body;
+
+      if (!toAddress || !amount || !twoFactorCode) {
+        return res.status(400).json({
+          success: false,
+          error: 'Campos obrigatórios: toAddress, amount, twoFactorCode',
+        });
+      }
+
+      const transfer = await platformTransferService.requestTransfer({
+        platformWalletId: id,
+        toAddress,
+        amount,
+        adminId,
+        twoFactorCode,
+        note,
+      });
+
+      // Audit log via request (inclui IP e user-agent)
+      auditLogService.logFromRequest(
+        req,
+        'PLATFORM_TRANSFER_REQUESTED',
+        'PLATFORM_TRANSFER',
+        transfer.id,
+        {
+          walletId: id,
+          amount,
+          toAddress,
+          status: transfer.status,
+          txHash: transfer.txHash,
+        }
+      );
+
+      res.json({
+        success: true,
+        data: transfer,
+        message: transfer.status === 'COMPLETED'
+          ? 'Transferência realizada com sucesso'
+          : 'Transferência criada',
+      });
+    } catch (error: any) {
+      console.error('Erro ao solicitar transferência:', error);
+
+      // Audit log de falha
+      const adminId = req.user?.userId;
+      if (adminId) {
+        auditLogService.logFromRequest(
+          req,
+          'PLATFORM_TRANSFER_REQUESTED',
+          'PLATFORM_TRANSFER',
+          undefined,
+          {
+            walletId: req.params.id,
+            amount: req.body?.amount,
+            toAddress: req.body?.toAddress,
+            error: error.message,
+          },
+          false,
+          error.message
+        );
+      }
+
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao solicitar transferência',
+      });
+    }
+  }
+
+  /**
+   * ============================================
+   * ADMIN: RESETAR SENHA DE USUARIO
+   * ============================================
+   */
+
+  /**
+   * POST /admin/users/:id/reset-password
+   * Admin reseta a senha de um usuario (gera link de reset + envia email)
+   */
+  async adminResetUserPassword(req: Request, res: Response) {
+    try {
+      const adminId = req.user?.userId;
+      if (!adminId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Nao autorizado',
+        });
+      }
+
+      const { id } = req.params;
+      const { disable2FA } = req.body;
+
+      const result = await adminService.adminResetUserPassword(adminId, id, {
+        disable2FA: disable2FA === true,
+      });
+
+      // Audit log via request (inclui IP e user-agent)
+      await auditLogService.logFromRequest(
+        req,
+        'ADMIN_RESET_PASSWORD',
+        'USER',
+        id,
+        { disable2FA: disable2FA === true }
+      );
+
+      res.json({
+        success: true,
+        data: {
+          resetLink: result.resetLink,
+          emailSent: true,
+        },
+        message: 'Link de reset enviado por email ao usuario',
+      });
+    } catch (error: any) {
+      console.error('Erro ao resetar senha do usuario:', error);
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Erro ao resetar senha do usuario',
+      });
+    }
+  }
+
   // Helper para converter logs em CSV
   private logsToCSV(logs: any[]): string {
     if (logs.length === 0) return 'No data';
 
-    const headers = ['ID', 'Data/Hora', 'Usuário', 'Email', 'Role', 'Ação', 'Recurso', 'Recurso ID', 'IP', 'Sucesso', 'Erro'];
+    const headers = ['ID', 'Data/Hora', 'Usuário', 'Email', 'Nome', 'Role', 'Ação', 'Recurso', 'Recurso ID', 'IP', 'Sucesso', 'Erro'];
     const rows = logs.map(log => [
       log.id,
       new Date(log.createdAt).toISOString(),
       log.userId || '',
       log.email || '',
+      log.name || '',
       log.role || '',
       log.action,
       log.resource,
@@ -490,216 +1048,12 @@ export class AdminController {
 
     const csvContent = [
       headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(',')),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
     ].join('\n');
 
-    return csvContent;
+    return '\uFEFF' + csvContent; // BOM para Excel reconhecer UTF-8
   }
 
-  /**
-   * ============================================
-   * GESTÃO DE KYC
-   * ============================================
-   */
-
-  async listPendingKYC(req: Request, res: Response) {
-    try {
-      const { level, status } = req.query;
-
-      const filters: any = {};
-      if (level) filters.level = level as string;
-      if (status) filters.status = status as string;
-      else filters.status = 'PENDING'; // Default: apenas pendentes
-
-      const verifications = await prisma.kYCVerification.findMany({
-        where: filters,
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              name: true,
-              createdAt: true,
-            },
-          },
-        },
-        orderBy: {
-          submittedAt: 'desc',
-        },
-      });
-
-      res.json({
-        success: true,
-        data: verifications,
-        count: verifications.length,
-      });
-    } catch (error: any) {
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Erro ao listar verificações KYC',
-      });
-    }
-  }
-
-  async getKYCVerification(req: Request, res: Response) {
-    try {
-      const { userId } = req.params;
-
-      const verification = await prisma.kYCVerification.findUnique({
-        where: { userId },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              name: true,
-              kycLevel: true,
-              createdAt: true,
-              reputationScore: true,
-              totalTransactions: true,
-            },
-          },
-        },
-      });
-
-      if (!verification) {
-        return res.status(404).json({
-          success: false,
-          error: 'Verificação KYC não encontrada',
-        });
-      }
-
-      res.json({
-        success: true,
-        data: verification,
-      });
-    } catch (error: any) {
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Erro ao buscar verificação KYC',
-      });
-    }
-  }
-
-  async approveKYC(req: Request, res: Response) {
-    try {
-      const adminId = req.user?.userId;
-      if (!adminId) {
-        return res.status(401).json({
-          success: false,
-          error: 'Não autorizado',
-        });
-      }
-
-      const { userId } = req.params;
-      const { level } = req.body;
-
-      if (!level || !Object.values(KYCLevel).includes(level)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Nível de KYC inválido',
-        });
-      }
-
-      await kycService.approveKYC(userId, level as KYCLevel, adminId);
-
-      // Registrar ação no audit log
-      await prisma.adminAction.create({
-        data: {
-          adminId,
-          action: 'APPROVE',
-          resource: 'KYC',
-          resourceId: userId,
-          metadata: JSON.stringify({ level }),
-        },
-      });
-
-      res.json({
-        success: true,
-        message: `KYC ${level} aprovado com sucesso`,
-      });
-    } catch (error: any) {
-      res.status(400).json({
-        success: false,
-        error: error.message || 'Erro ao aprovar KYC',
-      });
-    }
-  }
-
-  async rejectKYC(req: Request, res: Response) {
-    try {
-      const adminId = req.user?.userId;
-      if (!adminId) {
-        return res.status(401).json({
-          success: false,
-          error: 'Não autorizado',
-        });
-      }
-
-      const { userId } = req.params;
-      const { reason } = req.body;
-
-      if (!reason || reason.trim().length < 10) {
-        return res.status(400).json({
-          success: false,
-          error: 'Motivo da rejeição deve ter no mínimo 10 caracteres',
-        });
-      }
-
-      await kycService.rejectKYC(userId, reason, adminId);
-
-      // Registrar ação no audit log
-      await prisma.adminAction.create({
-        data: {
-          adminId,
-          action: 'REJECT',
-          resource: 'KYC',
-          resourceId: userId,
-          metadata: JSON.stringify({ reason }),
-        },
-      });
-
-      res.json({
-        success: true,
-        message: 'KYC rejeitado com sucesso',
-      });
-    } catch (error: any) {
-      res.status(400).json({
-        success: false,
-        error: error.message || 'Erro ao rejeitar KYC',
-      });
-    }
-  }
-
-  async getKYCStats(req: Request, res: Response) {
-    try {
-      const [pending, approved, rejected, byLevel] = await Promise.all([
-        prisma.kYCVerification.count({ where: { status: 'PENDING' } }),
-        prisma.kYCVerification.count({ where: { status: 'APPROVED' } }),
-        prisma.kYCVerification.count({ where: { status: 'REJECTED' } }),
-        prisma.kYCVerification.groupBy({
-          by: ['level', 'status'],
-          _count: true,
-        }),
-      ]);
-
-      res.json({
-        success: true,
-        data: {
-          total: pending + approved + rejected,
-          pending,
-          approved,
-          rejected,
-          byLevel,
-        },
-      });
-    } catch (error: any) {
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Erro ao buscar estatísticas',
-      });
-    }
-  }
 }
 
 export const adminController = new AdminController();

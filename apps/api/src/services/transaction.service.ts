@@ -1,9 +1,14 @@
 import { Transaction } from '@prisma/client';
 import { TransactionStatus, SubmitProofInput, ValidateProofInput, DisputeInput } from '../types/transaction.types';
-import { OrderStatus } from '../types/order.types';
+import { OrderStatus, OrderType } from '../types/order.types';
 import { notificationService } from './notification.service';
 import { prisma } from '../utils/prisma';
-import { CollateralTransactionType } from './collateral-transaction.service';
+import { DerivationService } from './hd-wallet/derivation.service';
+import { KeyManagementService } from './hd-wallet/key-management.service';
+import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from './auditLog.service';
+import BigNumber from 'bignumber.js';
+import { PlatformWalletService } from './platformWallet.service';
+import { emailService } from './email.service';
 
 export class TransactionService {
   /**
@@ -27,23 +32,28 @@ export class TransactionService {
       throw new Error('Esta transação não está aguardando comprovante');
     }
 
-    // Atualizar transação com comprovante
-    const updatedTransaction = await prisma.transaction.update({
-      where: { id: input.transactionId },
-      data: {
-        comprovanteData: input.comprovanteData,
-        comprovanteUrl: input.comprovanteUrl,
-        status: TransactionStatus.VALIDATING,
-      },
-    });
+    // Prazo de 24h para admin validar o comprovante
+    const validationDeadline = new Date();
+    validationDeadline.setHours(validationDeadline.getHours() + 24);
 
-    // Atualizar status do pedido
-    await prisma.order.update({
-      where: { id: transaction.orderId },
-      data: { status: OrderStatus.PAYMENT_SENT },
-    });
+    // Atualizar transação + pedido atomicamente
+    const [updatedTransaction] = await prisma.$transaction([
+      prisma.transaction.update({
+        where: { id: input.transactionId },
+        data: {
+          comprovanteData: input.comprovanteData,
+          comprovanteUrl: input.comprovanteUrl,
+          status: TransactionStatus.VALIDATING,
+          validationDeadline,
+        },
+      }),
+      prisma.order.update({
+        where: { id: transaction.orderId },
+        data: { status: OrderStatus.PAYMENT_SENT },
+      }),
+    ]);
 
-    // Enviar notificação para o vendedor
+    // Enviar notificação + email para o vendedor
     setImmediate(async () => {
       try {
         await notificationService.notifyPaymentSent(
@@ -51,6 +61,23 @@ export class TransactionService {
           transaction.order.userId, // seller
           transaction.payerId // buyer
         );
+
+        // Email para o vendedor
+        const [sellerUser, buyerUser] = await Promise.all([
+          prisma.user.findUnique({ where: { id: transaction.order.userId }, select: { email: true, name: true } }),
+          prisma.user.findUnique({ where: { id: transaction.payerId }, select: { email: true, name: true } }),
+        ]);
+        if (sellerUser?.email) {
+          emailService.sendIfAllowed(transaction.order.userId, 'PAYMENTS', () =>
+            emailService.sendPaymentSentEmail(sellerUser.email, {
+              name: sellerUser.name || 'Usuário',
+              crypto: transaction.order.cryptoType,
+              cryptoAmount: transaction.order.cryptoAmount,
+              brlAmount: transaction.order.brlAmount,
+              buyerName: buyerUser?.name || 'Comprador',
+            })
+          ).catch(() => {});
+        }
       } catch (error) {
         console.error('Failed to send payment sent notification:', error);
       }
@@ -78,23 +105,12 @@ export class TransactionService {
     }
 
     if (input.approved) {
-      // IDEMPOTÊNCIA: Verificar se já foi processado
-      const orderCheck = await prisma.order.findUnique({
-        where: { id: transaction.orderId },
-        select: { status: true, collateralLocked: true },
-      });
-
-      if (orderCheck?.status === OrderStatus.COMPLETED && !orderCheck.collateralLocked) {
-        console.log(`⚠️ Pedido ${transaction.orderId} já foi completado anteriormente (idempotência)`);
-        // Retornar transação existente sem reprocessar
-        return transaction;
-      }
-
       // TRANSAÇÃO ATÔMICA: Incluir TODAS as operações críticas
       const updatedTransaction = await prisma.$transaction(async (tx) => {
-        // 1. Aprovar transação
-        const approved = await tx.transaction.update({
-          where: { id: input.transactionId },
+        // SECURITY (H-7): Idempotência atômica — usar UPDATE WHERE status='VALIDATING'
+        // Garante que apenas UM validador pode processar, mesmo com requests simultâneos
+        const claimResult = await tx.transaction.updateMany({
+          where: { id: input.transactionId, status: TransactionStatus.VALIDATING },
           data: {
             status: TransactionStatus.APPROVED,
             validationScore: input.validationScore || 100,
@@ -103,87 +119,359 @@ export class TransactionService {
           },
         });
 
-        // 2. Atualizar status do pedido para COMPLETED
-        await tx.order.update({
+        if (claimResult.count === 0) {
+          // Já foi processado por outro validador simultâneo — retornar sem reprocessar
+          const existing = await tx.transaction.findUnique({ where: { id: input.transactionId } });
+          console.log(`⚠️ Transação ${input.transactionId} já foi processada (idempotência atômica)`);
+          return existing!;
+        }
+
+        // Buscar transação atualizada para usar nas etapas seguintes
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        const approved = (await tx.transaction.findUnique({
+          where: { id: input.transactionId },
+        }))!;
+
+        // 2. Atualizar status do pedido e transferir cripto
+        // NOTA: Para BUY orders, o buyer e order.userId (nao transaction.payerId)
+        const isBuyOrderForUpdate = transaction.order.orderType === OrderType.BUY;
+        const cryptoRecipient = isBuyOrderForUpdate
+          ? transaction.order.userId // BUY: criador da ordem recebe crypto
+          : transaction.payerId; // SELL: pagador recebe crypto
+
+        const completedOrder = await tx.order.update({
           where: { id: transaction.orderId },
           data: {
             status: OrderStatus.COMPLETED,
             completedAt: new Date(),
             collateralLocked: false,
             collateralUnlockedAt: new Date(),
+            // Marcar transferência de cripto
+            cryptoTransferred: true,
+            cryptoTransferredAt: new Date(),
+            cryptoTransferredTo: cryptoRecipient, // quem recebeu a crypto
           },
         });
 
         console.log(`✅ Transação aprovada e pedido completado: ${transaction.orderId}`);
 
-        // 3. Processar saldo interno DENTRO da mesma transação atômica
-        if (transaction.order.collateralSource === 'INTERNAL_BALANCE' &&
-            transaction.order.collateralLockedAmount) {
+        // 3. TRANSFERIR CRIPTO do vendedor para o comprador
+        // NOTA: Para BUY orders, o fluxo é diferente:
+        // - SELL: seller=order.userId, buyer=transaction.payerId
+        // - BUY: seller=order.providerId, buyer=order.userId
 
-          const userId = transaction.order.userId;
-          const cryptoType = transaction.order.cryptoType;
-          const network = transaction.order.cryptoNetwork;
-          const amountStr = transaction.order.collateralLockedAmount;
-          const amountNum = parseFloat(amountStr);
+        // 3.1 Validação: verificar se ordem ainda não foi transferida (idempotência)
+        if (transaction.order.cryptoTransferred) {
+          console.log(`⚠️ Cripto já foi transferida para pedido ${transaction.orderId} - pulando transferência`);
+          return approved;
+        }
 
-          // Buscar saldo interno
-          const balance = await tx.internalBalance.findUnique({
-            where: {
-              userId_cryptoType_network: {
-                userId,
-                cryptoType,
-                network,
-              },
+        // 3.2 Identificar vendedor (quem tem crypto) e comprador (quem recebe crypto)
+        const isBuyOrder = completedOrder.orderType === OrderType.BUY;
+        const sellerId = isBuyOrder ? completedOrder.providerId : completedOrder.userId;
+        const buyerId = isBuyOrder ? completedOrder.userId : transaction.payerId;
+        const sellerWalletId = isBuyOrder ? completedOrder.providerWalletId : completedOrder.walletId;
+
+        console.log(`📊 Order type: ${completedOrder.type}`);
+        console.log(`   Seller (crypto source): ${sellerId}`);
+        console.log(`   Buyer (crypto recipient): ${buyerId}`);
+
+        // 3.3 Buscar carteira do VENDEDOR (onde colateral está bloqueado)
+        if (!sellerWalletId) {
+          throw new Error('Order has no wallet (collateral source)');
+        }
+
+        const sellerWallet = await tx.userWallet.findUnique({
+          where: { id: sellerWalletId },
+        });
+
+        if (!sellerWallet) {
+          throw new Error('Seller wallet not found');
+        }
+
+        // 3.4 Buscar/criar carteira do COMPRADOR (mesma crypto/network)
+        let buyerWallet = await tx.userWallet.findUnique({
+          where: {
+            userId_cryptoType_network: {
+              userId: buyerId,
+              cryptoType: completedOrder.cryptoType,
+              network: completedOrder.cryptoNetwork,
+            },
+          },
+        });
+
+        // 3.5 Se comprador não tem carteira, CRIAR agora (dentro da transação)
+        if (!buyerWallet) {
+          console.log(`📝 Criando carteira para comprador ${buyerId}...`);
+
+          // Derivar nova carteira para o comprador
+          const { address, privateKey, derivationPath } = DerivationService.deriveUserWallet(
+            buyerId,
+            completedOrder.cryptoType,
+            completedOrder.cryptoNetwork
+          );
+
+          const encryptedPrivateKey = KeyManagementService.encryptPrivateKey(
+            privateKey,
+            buyerId
+          );
+
+          buyerWallet = await tx.userWallet.create({
+            data: {
+              userId: buyerId,
+              cryptoType: completedOrder.cryptoType,
+              network: completedOrder.cryptoNetwork,
+              address,
+              derivationPath,
+              encryptedPrivateKey,
+              balance: '0',
+              availableBalance: '0',
+              lockedBalance: '0',
+              totalDeposited: '0',
+              isActive: true,
+              lastSyncedAt: new Date(),
             },
           });
 
-          if (!balance) {
-            throw new Error(`Saldo interno não encontrado para ${cryptoType} na rede ${network}`);
+          console.log(`✅ Carteira criada: ${buyerWallet.address}`);
+        }
+
+        // 3.6 Calcular valor total a transferir
+        // SELL: crypto + payerReward (1% cashback para comprador)
+        // BUY: apenas crypto (sem cashback - provedor já recebe 2.5% no BRL)
+        const cryptoAmountBN = new BigNumber(completedOrder.cryptoAmount);
+        const payerRewardBN = isBuyOrder
+          ? new BigNumber('0') // BUY orders: sem cashback
+          : new BigNumber(completedOrder.payerReward || '0'); // SELL orders: 1% cashback
+        const totalToTransferBN = cryptoAmountBN.plus(payerRewardBN);
+
+        // 3.6 Validacao: verificar se vendedor tem saldo bloqueado suficiente
+        const sellerLockedBalanceBN = new BigNumber(sellerWallet.lockedBalance);
+        if (sellerLockedBalanceBN.lt(totalToTransferBN)) {
+          throw new Error(
+            `Insufficient locked balance. Seller has ${sellerLockedBalanceBN.toFixed(8)} locked, needs ${totalToTransferBN.toFixed(8)}`
+          );
+        }
+
+        // 3.7 DEDUZIR do vendedor (do saldo LOCKED)
+        const sellerNewLockedBN = sellerLockedBalanceBN.minus(totalToTransferBN);
+        const sellerNewBalanceBN = new BigNumber(sellerWallet.balance).minus(totalToTransferBN);
+
+        await tx.userWallet.update({
+          where: { id: sellerWallet.id },
+          data: {
+            balance: sellerNewBalanceBN.toFixed(8),
+            lockedBalance: sellerNewLockedBN.toFixed(8),
+            totalUsed: new BigNumber(sellerWallet.totalUsed).plus(totalToTransferBN).toFixed(8),
+          },
+        });
+
+        // 3.8 CREDITAR no comprador (no saldo AVAILABLE)
+        const buyerNewBalanceBN = new BigNumber(buyerWallet.balance).plus(totalToTransferBN);
+        const buyerNewAvailableBN = new BigNumber(buyerWallet.availableBalance).plus(totalToTransferBN);
+
+        await tx.userWallet.update({
+          where: { id: buyerWallet.id },
+          data: {
+            balance: buyerNewBalanceBN.toFixed(8),
+            availableBalance: buyerNewAvailableBN.toFixed(8),
+            totalDeposited: new BigNumber(buyerWallet.totalDeposited).plus(totalToTransferBN).toFixed(8),
+          },
+        });
+
+        // 3.10 Registrar transacao de DEDUCT (vendedor)
+        await tx.walletTransaction.create({
+          data: {
+            walletId: sellerWallet.id,
+            userId: sellerWallet.userId,
+            orderId: completedOrder.id,
+            type: 'DEDUCT',
+            amount: totalToTransferBN.toFixed(8),
+            balanceBefore: sellerWallet.balance,
+            balanceAfter: sellerNewBalanceBN.toFixed(8),
+            lockedBefore: sellerWallet.lockedBalance,
+            lockedAfter: sellerNewLockedBN.toFixed(8),
+            description: `Crypto transferred to buyer (Order ${completedOrder.id})`,
+            metadata: JSON.stringify({
+              orderId: completedOrder.id,
+              orderType: completedOrder.type,
+              buyerUserId: buyerId,
+              buyerWalletId: buyerWallet.id,
+              cryptoAmount: completedOrder.cryptoAmount,
+              payerReward: payerRewardBN.toFixed(8),
+              totalTransferred: totalToTransferBN.toFixed(8),
+              timestamp: new Date().toISOString(),
+            }),
+          },
+        });
+
+        // 3.11 Registrar transacao de CREDIT (comprador)
+        await tx.walletTransaction.create({
+          data: {
+            walletId: buyerWallet.id,
+            userId: buyerWallet.userId,
+            orderId: completedOrder.id,
+            type: 'CREDIT',
+            amount: totalToTransferBN.toFixed(8),
+            balanceBefore: buyerWallet.balance,
+            balanceAfter: buyerNewBalanceBN.toFixed(8),
+            description: `Crypto received from seller (Order ${completedOrder.id})`,
+            metadata: JSON.stringify({
+              orderId: completedOrder.id,
+              orderType: completedOrder.type,
+              sellerUserId: sellerId,
+              sellerWalletId: sellerWallet.id,
+              cryptoAmount: completedOrder.cryptoAmount,
+              payerReward: payerRewardBN.toFixed(8),
+              totalReceived: totalToTransferBN.toFixed(8),
+              timestamp: new Date().toISOString(),
+            }),
+          },
+        });
+
+        console.log(`💸 Crypto transferida: ${totalToTransferBN.toFixed(8)} ${completedOrder.cryptoType}`);
+        console.log(`   Vendedor: ${sellerId} → Comprador: ${buyerId}`);
+
+        // 3.12 TRANSFERIR PLATFORM FEE para carteira da plataforma
+        const platformFeeBN = new BigNumber(completedOrder.platformFee || '0');
+
+        if (platformFeeBN.gt(0)) {
+          // Buscar/criar carteira da plataforma
+          let platformWallet = await tx.platformWallet.findFirst({
+            where: {
+              cryptoType: completedOrder.cryptoType,
+              network: completedOrder.cryptoNetwork,
+            },
+          });
+
+          if (!platformWallet) {
+            console.log(`⚠️ Platform wallet not found for ${completedOrder.cryptoType}/${completedOrder.cryptoNetwork} - creating...`);
+            // Derivar endereco da plataforma
+            const { address, privateKey, derivationPath } = DerivationService.derivePlatformWallet(
+              completedOrder.cryptoType,
+              completedOrder.cryptoNetwork
+            );
+
+            // Verificar se ja existe uma wallet com esse endereco (pode ter sido criada para outra crypto/rede)
+            const existingByAddress = await tx.platformWallet.findFirst({
+              where: { address },
+            });
+
+            if (existingByAddress) {
+              // Usar a wallet existente
+              console.log(`✅ Found existing platform wallet by address: ${address}`);
+              platformWallet = existingByAddress;
+            } else {
+              // Criar nova wallet
+              const encryptedPrivateKey = KeyManagementService.encryptPrivateKey(privateKey, 'PLATFORM');
+              platformWallet = await tx.platformWallet.create({
+                data: {
+                  cryptoType: completedOrder.cryptoType,
+                  network: completedOrder.cryptoNetwork,
+                  address,
+                  derivationPath,
+                  encryptedPrivateKey,
+                  balance: '0',
+                  isActive: true,
+                },
+              });
+              console.log(`✅ Created new platform wallet: ${address}`);
+            }
           }
 
-          // Calcular novos valores
-          const total = parseFloat(balance.balance);
-          const locked = parseFloat(balance.lockedAmount);
-          const totalUsed = parseFloat(balance.totalUsed);
+          // Deduzir platform fee do vendedor
+          // SELL: fee vem do available (NÃO faz parte do colateral locked)
+          // BUY: fee vem do locked (JÁ estava incluída no colateral do provedor)
+          const sellerCurrentWallet = await tx.userWallet.findUnique({ where: { id: sellerWallet.id } });
+          const sellerCurrentBalance = new BigNumber(sellerCurrentWallet?.balance || '0');
+          const sellerAfterFeeBN = sellerCurrentBalance.minus(platformFeeBN);
 
-          const newTotal = total - amountNum;
-          const newLocked = Math.max(0, locked - amountNum);
-          const newAvailable = newTotal - newLocked;
-          const newTotalUsed = totalUsed + amountNum;
+          const sellerCurrentLocked = new BigNumber(sellerCurrentWallet?.lockedBalance || '0');
+          const sellerCurrentAvailable = new BigNumber(sellerCurrentWallet?.availableBalance || '0');
 
-          // 4. Atualizar InternalBalance (deduct + unlock)
-          await tx.internalBalance.update({
-            where: { id: balance.id },
+          if (isBuyOrder) {
+            // BUY: deduzir fee do locked (faz parte do colateral do provedor)
+            const sellerLockedAfterFeeBN = sellerCurrentLocked.minus(platformFeeBN);
+            await tx.userWallet.update({
+              where: { id: sellerWallet.id },
+              data: {
+                balance: sellerAfterFeeBN.toFixed(8),
+                lockedBalance: sellerLockedAfterFeeBN.toFixed(8),
+              },
+            });
+          } else {
+            // SELL: deduzir fee do available (NÃO do locked)
+            const sellerAvailableAfterFeeBN = sellerCurrentAvailable.minus(platformFeeBN);
+            await tx.userWallet.update({
+              where: { id: sellerWallet.id },
+              data: {
+                balance: sellerAfterFeeBN.toFixed(8),
+                availableBalance: sellerAvailableAfterFeeBN.toFixed(8),
+                // lockedBalance: NÃO TOCAR — fee não fazia parte do colateral
+              },
+            });
+          }
+
+          // Creditar na carteira da plataforma
+          const platformNewBalanceBN = new BigNumber(platformWallet.balance).plus(platformFeeBN);
+          const currentTotalFees = new BigNumber(platformWallet.totalFeesCollected || '0');
+          const newTotalFees = currentTotalFees.plus(platformFeeBN);
+
+          await tx.platformWallet.update({
+            where: { id: platformWallet.id },
             data: {
-              balance: newTotal.toFixed(8),
-              lockedAmount: newLocked.toFixed(8),
-              availableAmount: newAvailable.toFixed(8),
-              totalUsed: newTotalUsed.toFixed(8),
+              balance: platformNewBalanceBN.toFixed(8),
+              totalFeesCollected: newTotalFees.toFixed(8),
             },
           });
 
-          console.log(`💸 Colateral deduzido atomicamente: ${amountStr} ${cryptoType}`);
-          console.log(`   Saldo total: ${newTotal.toFixed(8)} ${cryptoType}`);
-          console.log(`   Disponível: ${newAvailable.toFixed(8)} ${cryptoType}`);
-          console.log(`   Bloqueado: ${newLocked.toFixed(8)} ${cryptoType}`);
-          console.log(`   Total usado: ${newTotalUsed.toFixed(8)} ${cryptoType}`);
-
-          // 5. Criar registro de auditoria (CollateralTransaction)
-          await tx.collateralTransaction.create({
+          // Registrar transação de platform fee
+          const feeLockedAfter = isBuyOrder
+            ? sellerCurrentLocked.minus(platformFeeBN).toFixed(8)
+            : sellerCurrentLocked.toFixed(8); // SELL: locked não mudou
+          await tx.walletTransaction.create({
             data: {
-              userId,
-              balanceId: balance.id,
-              type: CollateralTransactionType.DEDUCT,
-              amount: amountStr,
-              balanceBefore: balance.balance,
-              balanceAfter: newTotal.toFixed(8),
-              orderId: transaction.orderId,
-              network,
-              description: `Colateral deduzido após conclusão do pedido ${transaction.orderId}`,
+              walletId: sellerWallet.id,
+              userId: sellerWallet.userId,
+              orderId: completedOrder.id,
+              type: 'PLATFORM_FEE',
+              amount: platformFeeBN.toFixed(8),
+              balanceBefore: sellerCurrentBalance.toFixed(8),
+              balanceAfter: sellerAfterFeeBN.toFixed(8),
+              lockedBefore: sellerCurrentLocked.toFixed(8),
+              lockedAfter: feeLockedAfter,
+              description: `Platform fee transferred (Order ${completedOrder.id})`,
+              metadata: JSON.stringify({
+                orderId: completedOrder.id,
+                platformWalletId: platformWallet.id,
+                platformFee: platformFeeBN.toFixed(8),
+                feeSource: isBuyOrder ? 'locked' : 'available',
+                timestamp: new Date().toISOString(),
+              }),
             },
           });
 
-          console.log(`📝 Transação de colateral registrada para auditoria`);
+          // Registrar movimentação no ledger da platform wallet
+          await PlatformWalletService.recordMovement(tx, {
+            platformWalletId: platformWallet.id,
+            type: 'FEE_RECEIVED',
+            direction: 'IN',
+            amount: platformFeeBN.toFixed(8),
+            balanceBefore: platformWallet.balance,
+            balanceAfter: platformNewBalanceBN.toFixed(8),
+            description: `Fee recebida da order ${completedOrder.id} (${completedOrder.cryptoType})`,
+            orderId: completedOrder.id,
+            userId: sellerWallet.userId,
+            metadata: {
+              orderType: isBuyOrder ? 'BUY' : 'SELL',
+              cryptoType: completedOrder.cryptoType,
+              network: completedOrder.network,
+              feeSource: isBuyOrder ? 'locked' : 'available',
+            },
+          });
+
+          console.log(`💰 Platform fee transferida: ${platformFeeBN.toFixed(8)} ${completedOrder.cryptoType}`);
+          console.log(`   Platform wallet balance: ${platformNewBalanceBN.toFixed(8)}`);
         }
 
         return approved;
@@ -194,37 +482,226 @@ export class TransactionService {
 
       console.log(`✅ TRANSAÇÃO ATÔMICA COMPLETA com sucesso!`);
 
-      // Atualizar reputação dos usuários (fora da transação crítica)
+      // Registrar audit logs (fora da transação crítica)
       setImmediate(async () => {
         try {
-          await this.updateUserReputation(transaction.payerId, true);
-          await this.updateUserReputation(transaction.order.userId, true);
+          // Buscar dados atualizados da order para os logs
+          const completedOrder = await prisma.order.findUnique({
+            where: { id: transaction.orderId },
+            select: {
+              id: true,
+              type: true,
+              userId: true,
+              providerId: true,
+              cryptoType: true,
+              cryptoNetwork: true,
+              cryptoAmount: true,
+              payerReward: true,
+              user: { select: { email: true, legacyRole: true, name: true } },
+            },
+          });
+
+          if (completedOrder) {
+            // Identificar buyer e seller baseado no tipo de ordem
+            const isBuyOrderLog = completedOrder.orderType === OrderType.BUY;
+            const logBuyerId = isBuyOrderLog ? completedOrder.userId : transaction.payerId;
+            const logSellerId = isBuyOrderLog ? completedOrder.providerId : completedOrder.userId;
+
+            // Buscar email/role/name do segundo participante (provider para BUY, payer para SELL)
+            const secondUserId = isBuyOrderLog ? completedOrder.providerId : transaction.payerId;
+            const secondUser = secondUserId
+              ? await prisma.user.findUnique({ where: { id: secondUserId }, select: { email: true, legacyRole: true, name: true } })
+              : null;
+
+            // Para BUY: buyer=user(creator), seller=provider; Para SELL: buyer=payer, seller=user(creator)
+            const buyerEmail = isBuyOrderLog ? (completedOrder.user?.email ?? '') : (secondUser?.email ?? '');
+            const buyerRole = isBuyOrderLog ? (completedOrder.user?.legacyRole ?? '') : (secondUser?.legacyRole ?? '');
+            const buyerName = isBuyOrderLog ? (completedOrder.user?.name ?? '') : (secondUser?.name ?? '');
+            const sellerEmail = isBuyOrderLog ? (secondUser?.email ?? '') : (completedOrder.user?.email ?? '');
+            const sellerRole = isBuyOrderLog ? (secondUser?.legacyRole ?? '') : (completedOrder.user?.legacyRole ?? '');
+            const sellerName = isBuyOrderLog ? (secondUser?.name ?? '') : (completedOrder.user?.name ?? '');
+
+            const cryptoAmountLog = new BigNumber(completedOrder.cryptoAmount);
+            const payerRewardLog = isBuyOrderLog
+              ? new BigNumber('0')
+              : new BigNumber(completedOrder.payerReward || '0');
+            const totalTransferred = cryptoAmountLog.plus(payerRewardLog);
+
+            // 1. ORDER_COMPLETED - Comprador
+            await auditLogService.log({
+              userId: logBuyerId,
+              email: buyerEmail,
+              role: buyerRole,
+              name: buyerName,
+              action: AUDIT_ACTIONS.ORDER_COMPLETED,
+              resource: AUDIT_RESOURCES.TRANSACTION,
+              resourceId: completedOrder.id,
+              description: `Order completed - Payment validated and approved`,
+              metadata: {
+                orderId: completedOrder.id,
+                orderType: completedOrder.type,
+                sellerId: logSellerId,
+                buyerId: logBuyerId,
+                role: 'buyer',
+              },
+              success: true,
+            });
+
+            // 2. ORDER_COMPLETED - Vendedor
+            if (logSellerId) {
+              await auditLogService.log({
+                userId: logSellerId,
+                email: sellerEmail,
+                role: sellerRole,
+                name: sellerName,
+                action: AUDIT_ACTIONS.ORDER_COMPLETED,
+                resource: AUDIT_RESOURCES.TRANSACTION,
+                resourceId: completedOrder.id,
+                description: `Order completed - Payment received and confirmed`,
+                metadata: {
+                  orderId: completedOrder.id,
+                  orderType: completedOrder.type,
+                  sellerId: logSellerId,
+                  buyerId: logBuyerId,
+                  role: 'seller',
+                },
+                success: true,
+              });
+            }
+
+            // 3. CRYPTO_TRANSFER - Comprador (visibilidade)
+            await auditLogService.log({
+              userId: logBuyerId,
+              email: buyerEmail,
+              role: buyerRole,
+              name: buyerName,
+              action: AUDIT_ACTIONS.CRYPTO_TRANSFER,
+              resource: AUDIT_RESOURCES.TRANSACTION,
+              resourceId: completedOrder.id,
+              description: `Crypto transferred: ${totalTransferred.toFixed(8)} ${completedOrder.cryptoType} from seller to buyer`,
+              metadata: {
+                orderId: completedOrder.id,
+                orderType: completedOrder.type,
+                fromUserId: logSellerId,
+                toUserId: logBuyerId,
+                cryptoType: completedOrder.cryptoType,
+                network: completedOrder.cryptoNetwork,
+                amount: totalTransferred.toFixed(8),
+                direction: 'SELLER_TO_BUYER',
+              },
+              success: true,
+            });
+
+            // 4. CRYPTO_TRANSFER - Vendedor (visibilidade)
+            if (logSellerId) {
+              await auditLogService.log({
+                userId: logSellerId,
+                email: sellerEmail,
+                role: sellerRole,
+                name: sellerName,
+                action: AUDIT_ACTIONS.CRYPTO_TRANSFER,
+                resource: AUDIT_RESOURCES.TRANSACTION,
+                resourceId: completedOrder.id,
+                description: `Crypto transferred: ${totalTransferred.toFixed(8)} ${completedOrder.cryptoType} from seller to buyer`,
+                metadata: {
+                  orderId: completedOrder.id,
+                  orderType: completedOrder.type,
+                  fromUserId: logSellerId,
+                  toUserId: logBuyerId,
+                  cryptoType: completedOrder.cryptoType,
+                  network: completedOrder.cryptoNetwork,
+                  amount: totalTransferred.toFixed(8),
+                  direction: 'SELLER_TO_BUYER',
+                },
+                success: true,
+              });
+            }
+
+            console.log(`📝 Audit logs: ORDER_COMPLETED (x2) + CRYPTO_TRANSFER (x2)`);
+          }
+        } catch (error) {
+          console.error('Failed to log audit entries:', error);
+        }
+      });
+
+      // Atualizar reputacao dos usuarios (fora da transacao critica)
+      setImmediate(async () => {
+        try {
+          // Para BUY orders: buyer=order.userId, seller=order.providerId
+          // Para SELL orders: buyer=transaction.payerId, seller=order.userId
+          const isBuyOrderRep = transaction.order.orderType === OrderType.BUY;
+          const repBuyerId = isBuyOrderRep ? transaction.order.userId : transaction.payerId;
+          const repSellerId = isBuyOrderRep ? transaction.order.providerId : transaction.order.userId;
+
+          await this.updateUserReputation(repBuyerId, true);
+          if (repSellerId) {
+            await this.updateUserReputation(repSellerId, true);
+          }
         } catch (error) {
           console.error('Failed to update user reputation:', error);
         }
       });
 
-      // Enviar notificações de pagamento validado (fora da transação crítica)
+      // Enviar notificacoes de pagamento validado (fora da transacao critica)
       setImmediate(async () => {
         try {
+          // Para BUY orders: buyer=order.userId, seller=order.providerId
+          // Para SELL orders: buyer=transaction.payerId, seller=order.userId
+          const isBuyOrderNotif = transaction.order.orderType === OrderType.BUY;
+          const notifBuyerId = isBuyOrderNotif ? transaction.order.userId : transaction.payerId;
+          const notifSellerId = isBuyOrderNotif ? transaction.order.providerId : transaction.order.userId;
+
+          // Notificar comprador que recebeu crypto
           await notificationService.notifyPaymentValidated(
             transaction.orderId,
-            transaction.payerId,
+            notifBuyerId,
             transaction.order.cryptoAmount,
             transaction.order.cryptoType
           );
 
+          // Notificar vendedor (ou provedor)
+          if (notifSellerId) {
+            await notificationService.notifyOrderCompleted(
+              transaction.orderId,
+              notifSellerId,
+              true
+            );
+          }
+
+          // Notificar comprador
           await notificationService.notifyOrderCompleted(
             transaction.orderId,
-            transaction.order.userId,
+            notifBuyerId,
             true
           );
 
-          await notificationService.notifyOrderCompleted(
-            transaction.orderId,
-            transaction.payerId,
-            true
-          );
+          // Emails transacionais para ambas as partes
+          const [emailBuyer, emailSeller] = await Promise.all([
+            prisma.user.findUnique({ where: { id: notifBuyerId }, select: { email: true, name: true } }),
+            notifSellerId ? prisma.user.findUnique({ where: { id: notifSellerId }, select: { email: true, name: true } }) : null,
+          ]);
+          if (emailBuyer?.email) {
+            emailService.sendIfAllowed(notifBuyerId, 'P2P_COMPLETED', () =>
+              emailService.sendTransactionCompletedEmail(emailBuyer.email, {
+                name: emailBuyer.name || 'Usuário',
+                orderType: 'compra',
+                crypto: transaction.order.cryptoType,
+                cryptoAmount: transaction.order.cryptoAmount,
+                brlAmount: transaction.order.brlAmount,
+              })
+            ).catch(() => {});
+          }
+          if (emailSeller?.email) {
+            emailService.sendIfAllowed(notifSellerId!, 'P2P_COMPLETED', () =>
+              emailService.sendTransactionCompletedEmail(emailSeller.email, {
+                name: emailSeller.name || 'Usuário',
+                orderType: 'venda',
+                crypto: transaction.order.cryptoType,
+                cryptoAmount: transaction.order.cryptoAmount,
+                brlAmount: transaction.order.brlAmount,
+              })
+            ).catch(() => {});
+          }
         } catch (error) {
           console.error('Failed to send payment validated notifications:', error);
         }
@@ -232,21 +709,57 @@ export class TransactionService {
 
       return updatedTransaction;
     } else {
-      // Rejeitar transação
-      const updatedTransaction = await prisma.transaction.update({
-        where: { id: input.transactionId },
-        data: {
-          status: TransactionStatus.REJECTED,
-          validationScore: input.validationScore || 0,
-          validatedBy: input.validatedBy,
-          validatedAt: new Date(),
-        },
-      });
+      // Rejeitar transação + voltar pedido para PENDING atomicamente
+      const [updatedTransaction] = await prisma.$transaction([
+        prisma.transaction.update({
+          where: { id: input.transactionId },
+          data: {
+            status: TransactionStatus.REJECTED,
+            validationScore: input.validationScore || 0,
+            validatedBy: input.validatedBy,
+            validatedAt: new Date(),
+          },
+        }),
+        prisma.order.update({
+          where: { id: transaction.orderId },
+          data: { status: OrderStatus.PENDING },
+        }),
+      ]);
 
-      // Atualizar status do pedido para PENDING novamente
-      await prisma.order.update({
-        where: { id: transaction.orderId },
-        data: { status: OrderStatus.PENDING },
+      // Notificar comprador (pagador) que o comprovante foi rejeitado
+      setImmediate(async () => {
+        try {
+          await notificationService.createNotification({
+            userId: transaction.payerId,
+            type: 'PAYMENT_REJECTED',
+            category: 'ORDER',
+            prefCategory: 'PAYMENTS',
+            title: 'Comprovante Rejeitado',
+            message: `Seu comprovante de pagamento para ${transaction.order.cryptoAmount} ${transaction.order.cryptoType} foi rejeitado. Envie um novo comprovante.`,
+            actionUrl: `/orders/${transaction.orderId}`,
+            actionLabel: 'Ver Pedido',
+            relatedId: transaction.orderId,
+            relatedType: 'ORDER',
+            priority: 'HIGH',
+          });
+
+          const payerUser = await prisma.user.findUnique({
+            where: { id: transaction.payerId },
+            select: { email: true, name: true },
+          });
+          if (payerUser?.email) {
+            emailService.sendIfAllowed(transaction.payerId, 'PAYMENTS', () =>
+              emailService.sendPaymentRejectedEmail(payerUser.email, {
+                name: payerUser.name || 'Usuário',
+                crypto: transaction.order.cryptoType,
+                cryptoAmount: transaction.order.cryptoAmount,
+                brlAmount: transaction.order.brlAmount,
+              })
+            ).catch(() => {});
+          }
+        } catch (error) {
+          console.error('Failed to send payment rejected notifications:', error);
+        }
       });
 
       return updatedTransaction;
@@ -275,29 +788,34 @@ export class TransactionService {
       throw new Error('Você não tem permissão para disputar esta transação');
     }
 
-    // Atualizar transação para status DISPUTED
-    const updatedTransaction = await prisma.transaction.update({
-      where: { id: input.transactionId },
-      data: {
-        status: TransactionStatus.DISPUTED,
-        disputeReason: input.reason,
-        disputeData: input.disputeData ? JSON.stringify(input.disputeData) : null,
-      },
-    });
-
-    // Atualizar pedido para DISPUTED
-    await prisma.order.update({
-      where: { id: transaction.orderId },
-      data: { status: OrderStatus.DISPUTED },
-    });
+    // Atualizar transação + pedido para DISPUTED atomicamente
+    const [updatedTransaction] = await prisma.$transaction([
+      prisma.transaction.update({
+        where: { id: input.transactionId },
+        data: {
+          status: TransactionStatus.DISPUTED,
+          disputeReason: input.reason,
+          disputeData: input.disputeData ? JSON.stringify(input.disputeData) : null,
+        },
+      }),
+      prisma.order.update({
+        where: { id: transaction.orderId },
+        data: { status: OrderStatus.DISPUTED },
+      }),
+    ]);
 
     return updatedTransaction;
   }
 
   /**
-   * Atualizar reputação do usuário
+   * Atualizar contadores de transacao e recalcular reputacao composta
+   *
+   * Incrementa contadores (totalTransactions, successfulTransactions)
+   * Delega calculo de reputacao ao ReputationService (score composto)
    */
   async updateUserReputation(userId: string, success: boolean): Promise<void> {
+    const { reputationService } = await import('./reputation.service');
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
     });
@@ -309,18 +827,17 @@ export class TransactionService {
       ? user.successfulTransactions + 1
       : user.successfulTransactions;
 
-    // Calcular novo score (0-100)
-    const successRate = newSuccessfulTransactions / newTotalTransactions;
-    const reputationScore = Math.round(successRate * 100);
-
+    // Atualizar SOMENTE contadores — reputacao sera recalculada pelo ReputationService
     await prisma.user.update({
       where: { id: userId },
       data: {
         totalTransactions: newTotalTransactions,
         successfulTransactions: newSuccessfulTransactions,
-        reputationScore,
       },
     });
+
+    // Recalcular score composto
+    await reputationService.recalculateAndSave(userId);
   }
 
   /**
