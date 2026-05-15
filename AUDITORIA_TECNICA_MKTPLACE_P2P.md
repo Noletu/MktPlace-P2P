@@ -3717,10 +3717,18 @@ Distintas dos erros de TS acima — estas são suites que **compilam** mas falha
 - Cluster `exchange-rate.service.ts` (erros 14-18), `socket.test.ts` (erro 25 + TD-T27), e `notification.service.test.ts` (TD-T26) são higiene de tipos / test-infra sem impacto financeiro — Sprint 3.
 - Todas as falhas TD-T26/TD-T27 foram confirmadas pré-Sprint-1 via `git stash` da branch atual + rerun.
 
+### Pendências operacionais (não-código)
+
+Distintas dos erros de TS e falhas de teste acima — estas são ações que precisam acontecer **em ambiente real (staging/prod)** após código mergeado, mas que não dependem de mudança no código. Catalogadas aqui para não cair entre as cadeiras.
+
+| ID | Título | Fase | Razão / Detalhes |
+|----|--------|------|------------------|
+| **TECH-DEBT-OP01** | Invalidar backup codes 2FA pré-CRIT-06 em produção | 🔵 **[ADIAR PRE-PROD]** | Backup codes salvos no banco ANTES de `bea7f20` foram gerados com `Math.random()` (xorshift128+ — previsível a partir de poucas amostras). O bug está fechado no código, mas as **hashes antigas seguem válidas** no banco até serem usadas ou regeneradas. Em prod, isto é uma janela de bypass de 2FA até zerarmos. **Pré-requisitos:** (1) feature de regeneração de backup codes visível e testada na UI; (2) email transacional pronto comunicando os usuários. **Comando:** `cd apps/api && DATABASE_URL=<prod> npx tsx scripts/invalidate-2fa-backup-codes.ts` (dry-run) → `--apply`. **Smoke test do script:** ✅ executado em 2026-05-15 contra Postgres dev (9/9 verificações PASS — userA `enabled+codes` detectado/zerado, userB `disabled+codes` intocado). **Quando rodar:** logo antes do primeiro deploy a prod com usuários reais. Não fazer antes — usuários de dev/staging usariam backup codes gerados pelo novo CSPRNG normalmente. |
+
 ---
 
 **Fim do documento.**
 
-Última edição: 15/05/2026 (v1.3 — Sprint 2 sessão 1 quick wins: CRIT-09, CRIT-06, SER-21 fechados)
+Última edição: 15/05/2026 (v1.4 — Sprint 2 sessão 1 + TECH-DEBT-OP01 catalogado + smoke test do invalidate-2fa)
 Auditor: Claude (claude.ai/web)
 Próxima revisão sugerida: após Sprint 2 ou em 30 dias, o que vier primeiro.
