@@ -387,6 +387,19 @@ const systemRoles = [
 // ============================================
 
 export async function seedRBAC() {
+  // SECURITY (defesa em profundidade, consistente com seed.ts):
+  // este seed em si não tem credenciais, mas roda upserts pesados na tabela
+  // Role/Permission. Em prod, RBAC é provisionado por migração controlada,
+  // não por seed. Bloqueio impede rebuild acidental de roles em prod.
+  //
+  // Ver TECH-DEBT-OP02 na AUDITORIA para o plano operacional.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'rbac-seed.ts must NEVER run in production. ' +
+      'RBAC roles/permissions are managed via migrations in prod (see TECH-DEBT-OP02).',
+    );
+  }
+
   console.log('🌱 [RBAC Seed] Iniciando seed do sistema RBAC...');
 
   try {
