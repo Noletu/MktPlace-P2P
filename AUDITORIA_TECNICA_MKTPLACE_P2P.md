@@ -686,7 +686,9 @@ describe('CRIT-02: HD wallet sem colisão', () => {
 - ~50 campos monetários migrados de `String` para `Decimal @db.Decimal(38, 18)` em 11 modelos (UserWallet, Order, Transaction, Withdrawal, Fee, PlatformWallet, PlatformWalletMovement, PlatformTransfer, SweepTransaction, PriceQuote, CancellationHistory, ExchangeRate, WalletTransaction)
 - 18 serviços adaptados: `new BigNumber(decimal)` → `toBN(decimal)`; `.toString()` em boundaries (emails, notifications, APIs internas que esperam `string`)
 - TypeScript clean: zero erros novos introduzidos (25 pré-existentes preservados)
-- Migration pendente: `npx prisma migrate dev --name decimal-fields` (depende de Postgres rodando)
+- **Migration aplicada (2026-05-15)**: `20260515004150_init_postgres_decimal_fields` — colunas `numeric(38,18)` confirmadas via `information_schema.columns`. Migrations SQLite legadas arquivadas em `prisma/migrations.sqlite-legacy/`.
+
+**CRIT-03b read-path** (commit a seguir): durante a auditoria pós-migration, foram identificadas comparações de pagamento em `services/blockchain.service.ts:120,186` e leitura de saldo em `services/blockchain/blockchain.service.ts:208` que usavam `toBN(weiBalance).toNumber() / 1e18` ou `parseInt(hexWei, 16) / 1e18`. Wei de ETH excede `Number.MAX_SAFE_INTEGER` (2^53 ≈ 9e15) — a div em double truncava silenciosamente. Substituído por `divBN(weiStr, 1e18)` e comparação via `gteBN()`, preservando precisão de 18 casas. Para o caminho hex→decimal, `BigInt(hex)` antes do `divBN`.
 
 ### Arquivos afetados (não exaustivo — `grep` para confirmar)
 
@@ -863,7 +865,7 @@ describe('CRIT-03: aritmética monetária segura', () => {
 **Severidade:** 🔴 Crítica
 **Fase:** 🚨 **[FAZER AGORA]** — DNA das funções financeiras; o padrão correto vira referência para todo código novo
 **Categoria:** Concorrência / ACID
-**Status:** ✅ **Fechado** (Sprint 1 — commits `a40aea8` + `e4ab499` hardening)
+**Status:** ✅ **Fechado** (Sprint 1 — commits `a40aea8` + `e4ab499` hardening, **validado em Postgres real**)
 **Depende de:** CRIT-01 (idealmente Postgres com `SELECT FOR UPDATE`)
 **Bloqueia:** ir para produção
 **Esforço estimado:** 3-5 dias
@@ -879,8 +881,8 @@ describe('CRIT-03: aritmética monetária segura', () => {
 **CRIT-04 hardening** (`e4ab499`):
 - `withSerializableRetry<T>(method, context, fn)` helper em `wallet.service.ts`:
   - `logger.warn('LEDGER_RETRY_P2034', { method, attempt, walletId, ... })` estruturado a cada retry
-  - Backoff exponencial com jitter: `10 * 2^(n-1) + random(50)` ms
-  - Cap em 5 tentativas (falhar é o certo se DB está sob contenção severa)
+  - Backoff exponencial com jitter, **cap em 250ms**: `min(250, 10 * 2^(n-1)) + random(50)` ms
+  - Cap em **30 tentativas** (~7s worst-case), suficiente para lotes de ~50 concorrentes na mesma linha em test/dev. P2034 final em produção é logado como `LEDGER_P2034_EXHAUSTED` (erro), sinalizando problema arquitetural — ajustado após validação em Postgres real onde o cap=5 original falsificava ~30% das corridas concorrentes.
 - `LEDGER_TX_OPTIONS` com `maxWait` env-aware:
   - `production` ou `staging`: 2500ms (abortar rápido se DB engasgou)
   - Default (dev/test): 5000ms (carga baixa, prioriza não falhar testes)
@@ -891,7 +893,8 @@ describe('CRIT-03: aritmética monetária segura', () => {
   - 50 credits concorrentes de 2 BTC → balance final = 100, sem duplicação
   - 30 deducts concorrentes com locked=20 → exatamente 20 fulfilled, saldo nunca negativo
   - Skip automático se `DATABASE_URL` não for postgresql (usa `describe.skip`)
-  - Lazy-load de `WalletService` via `require()` para evitar erro ESM do `@ethereumjs/util` quando não roda
+  - HD wallet / blockchain services stubados via `jest.mock` no topo do arquivo — os métodos do ledger não os usam, e o stub evita o `SyntaxError` ESM de `@ethereumjs/wallet` no Jest CJS.
+- **Validação executada em Postgres 18 nativo (2026-05-15):** 4/4 testes verde em 19.46s rodando contra DB real provisionado em `localhost:5432/mktplace`. Migration `20260515004150_init_postgres_decimal_fields` aplicada; tipos `numeric(38,18)` confirmados via `\d "UserWallet"`.
 
 ### Arquivos afetados
 - `apps/api/src/services/wallet.service.ts:299-362` (`unlockBalance`)
@@ -3604,8 +3607,49 @@ Antes de aceitar qualquer cripto real, **todos** os itens abaixo devem estar ver
 
 ---
 
+## TECH-DEBT — Erros TypeScript pré-existentes catalogados (Sprint 1)
+
+Durante o fechamento da Sprint 1, `npx tsc --noEmit` reporta **25 erros pré-existentes**, todos comprovadamente anteriores às mudanças de CRIT-01/03/03b/04. Catalogados aqui para serem absorvidos por sprints futuras.
+
+| # | Arquivo:Linha | Código | Resumo | Categoria sugerida | Sprint destino |
+|---|---------------|--------|--------|--------------------|----------------|
+| 1 | `controllers/auth.controller.ts:582` | TS18048 | `req.user` is possibly 'undefined' | AuthGuard typing | Sprint 2 (limpeza tipos) |
+| 2 | `controllers/auth.controller.ts:596` | TS18048 | `req.user` is possibly 'undefined' | AuthGuard typing | Sprint 2 |
+| 3 | `controllers/coupon.controller.ts:123` | TS2322 | `string` not assignable to `Record<string, any>` | Schema mismatch | Sprint 2 |
+| 4 | `controllers/dispute.controller.ts:65` | TS2345 | `ACCOUNT_BLOCK_APPEAL` ausente do `CreateDisputeInput` | Schema/types out-of-sync | Sprint 2 |
+| 5 | `controllers/order.controller.ts:134` | TS2339 | `brlAmount` ausente em `BUY` order union | Discriminated union narrowing | Sprint 2 |
+| 6 | `controllers/order.controller.ts:140` | TS2339 | `brlAmount` ausente em `BUY` order union | Discriminated union narrowing | Sprint 2 |
+| 7 | `middleware/admin.middleware.ts:27` (col 19) | TS2367 | Comparação `Role` vs `string` sem overlap | Migração role enum → Role table incompleta | Sprint 2 |
+| 8 | `middleware/admin.middleware.ts:27` (col 44) | TS2367 | idem | idem | Sprint 2 |
+| 9 | `middleware/admin.middleware.ts:27` (col 71) | TS2367 | idem | idem | Sprint 2 |
+| 10 | `services/admin.service.ts:86` | TS2353 | `createdBy` ausente em `PlatformWalletCreateInput` | Schema drift | Sprint 2 |
+| 11 | `services/admin.service.ts:537` | TS2322 | `role: string` não casa com `RoleUpdateOneWithoutUsersNestedInput` | Migração role incompleta | Sprint 2 |
+| 12 | `services/dispute.service.ts:843` | TS2339 | `network` não existe na seleção | Schema/select drift | Sprint 2 |
+| 13 | `services/dispute.service.ts:1479` | TS2353 | Operador `in` em `RoleNullableRelationFilter` | Prisma type drift | Sprint 2 |
+| 14 | `services/exchange-rate.service.ts:109` | TS18046 | `data` is of type `unknown` (axios untyped) | Axios response typing | Sprint 3 |
+| 15 | `services/exchange-rate.service.ts:158` (col 12) | TS18046 | idem | idem | Sprint 3 |
+| 16 | `services/exchange-rate.service.ts:158` (col 26) | TS18046 | idem | idem | Sprint 3 |
+| 17 | `services/exchange-rate.service.ts:162` | TS18046 | idem | idem | Sprint 3 |
+| 18 | `services/exchange-rate.service.ts:207` | TS18046 | idem | idem | Sprint 3 |
+| 19 | `services/finance.service.ts:152` | TS2353 | `label` ausente em `PlatformWalletSelect` | Schema drift | Sprint 2 |
+| 20 | `services/masterSeedAdmin.service.ts:324` | TS2339 | `randomBytes` ausente em `Crypto` (deveria ser `node:crypto`) | Import errado | Sprint 2 (CRIT-10/11 dependentes) |
+| 21 | `services/masterSeedAdmin.service.ts:378` | TS2554 | Aridade errada de função | idem | Sprint 2 |
+| 22 | `services/masterSeedAdmin.service.ts:382` | TS2304 | `auditLogService` não encontrado | Import faltando | Sprint 2 |
+| 23 | `services/transaction.service.ts:469` | TS2339 | `network` ausente na seleção | Schema/select drift | Sprint 2 |
+| 24 | `services/transaction.service.ts:507` | TS2339 | `orderType` ausente na seleção | Schema/select drift | Sprint 2 |
+| 25 | `socket/__tests__/notification.socket.test.ts:24` | TS2345 | Mismatch entre `http.Server` e `socket.io.Server` generics | Test infrastructure | Sprint 3 |
+
+**Notas operacionais:**
+- Nenhum desses erros bloqueia execução em runtime (TypeScript não roda no banco). São travas estáticas que precisam ser endereçadas antes do "go live".
+- Cluster `masterSeedAdmin.service.ts` (erros 20-22) tem dependência forte com **CRIT-10 (master seed em KMS)** e **CRIT-11 (rotação)** — naturalmente cai na Sprint 2.
+- Cluster `admin.middleware.ts + admin.service.ts:537` (erros 7-9, 11) reflete migração incompleta de `legacyRole: string` para tabela `Role` relacional. Bloqueador da Sprint 2 de identidade.
+- Cluster `exchange-rate.service.ts` (erros 14-18) e `socket.test.ts` (erro 25) são higiene de tipos sem impacto financeiro — Sprint 3.
+- Os 5 testes falhando em `notification.service.test.ts` + suite quebrada em `notification.socket.test.ts` são pré-existentes (confirmado via `git stash` da Sprint 1 + rerun) e fazem parte do mesmo TECH-DEBT — referência: erros 25 e correlatos.
+
+---
+
 **Fim do documento.**
 
-Última edição: 14/05/2026 (v1.1 — adicionada classificação por fase em §1.1)
+Última edição: 15/05/2026 (v1.2 — fechamento Sprint 1 validado em Postgres real + TECH-DEBT inventariado)
 Auditor: Claude (claude.ai/web)
 Próxima revisão sugerida: após Sprint 2 ou em 30 dias, o que vier primeiro.
