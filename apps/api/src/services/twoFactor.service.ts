@@ -1,7 +1,28 @@
 import { PrismaClient } from '@prisma/client';
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
+import crypto from 'crypto';
 import { hashPassword, comparePassword } from '../utils/bcrypt';
+
+// CRIT-06: comprimento bruto dos backup codes (em bytes). 5 bytes = 10 hex chars
+// = 40 bits de entropia, ~1.1e12 possibilidades. Para 10 códigos/usuário, é
+// muito além de qualquer ataque por adivinhação.
+const BACKUP_CODE_BYTES = 5;
+
+// Formato exibido: XXXX-XXXX-XX (10 hex chars com dois hifens) — só UX, não
+// participa do hash. A normalização (strip non-hex, uppercase) acontece antes
+// da comparação bcrypt em useBackupCode.
+function formatBackupCode(raw: string): string {
+  return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 10)}`;
+}
+
+// Normaliza entrada do usuário: aceita com/sem hífen, com qualquer caso.
+// Retorna a forma canônica hex maiúscula (10 chars). Se o input não tiver
+// 10 chars hex após normalização, retorna a string vazia (compare falhará).
+function normalizeBackupCode(input: string): string {
+  const stripped = input.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+  return stripped.length === 10 ? stripped : '';
+}
 
 const prisma = new PrismaClient();
 
@@ -60,12 +81,13 @@ export class TwoFactorService {
       throw new Error('Token inválido');
     }
 
-    // Gerar backup codes
-    const backupCodes = this.generateBackupCodes(10);
+    // Gerar backup codes — raw para hash, formatado para exibição
+    const rawCodes = this.generateBackupCodes(10);
 
-    // Hashear backup codes para armazenamento seguro
+    // Hashear códigos raw (sem hífen) — o usuário pode digitar com ou sem
+    // hífen na verificação, normalizeBackupCode reconcilia.
     const hashedCodes = await Promise.all(
-      backupCodes.map((code) => hashPassword(code))
+      rawCodes.map((code) => hashPassword(code))
     );
 
     // Ativar 2FA e salvar backup codes
@@ -79,7 +101,7 @@ export class TwoFactorService {
 
     return {
       success: true,
-      backupCodes, // Retornar códigos em plain text apenas UMA VEZ
+      backupCodes: rawCodes.map(formatBackupCode), // exibe XXXX-XXXX-XX
     };
   }
 
@@ -154,12 +176,16 @@ export class TwoFactorService {
       return false;
     }
 
+    // Normaliza ANTES do compare — aceita XXXX-XXXX-XX, xxxxxxxxxx, etc.
+    const normalized = normalizeBackupCode(code);
+    if (!normalized) return false;
+
     try {
       const backupCodes = JSON.parse(user.twoFactorBackupCodes) as string[];
 
       // Verificar se algum código hashado corresponde
       for (let i = 0; i < backupCodes.length; i++) {
-        const isMatch = await comparePassword(code.toUpperCase(), backupCodes[i]);
+        const isMatch = await comparePassword(normalized, backupCodes[i]);
 
         if (isMatch) {
           // Remover o código usado (one-time use)
@@ -195,12 +221,21 @@ export class TwoFactorService {
     return user?.twoFactorEnabled || false;
   }
 
-  // SECURITY: Gerar backup codes (códigos de recuperação)
+  // SECURITY: Gerar backup codes (códigos de recuperação).
+  //
+  // CRIT-06: ANTES usava Math.random(), que em V8 é xorshift128+ —
+  // previsível a partir de ~5 amostras consecutivas. Atacante que viu um
+  // código por screenshot, log, ou rota de regeneração reaberta conseguia
+  // prever os demais.
+  //
+  // Agora: crypto.randomBytes(5) → 40 bits de entropia (CSPRNG). Retorna
+  // strings RAW (10 hex chars uppercase). Caller deve aplicar
+  // formatBackupCode() antes de exibir ao usuário e armazenar o hash do raw.
   generateBackupCodes(count: number = 10): string[] {
     const codes: string[] = [];
 
     for (let i = 0; i < count; i++) {
-      const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+      const code = crypto.randomBytes(BACKUP_CODE_BYTES).toString('hex').toUpperCase();
       codes.push(code);
     }
 
@@ -229,12 +264,12 @@ export class TwoFactorService {
       throw new Error('Token inválido');
     }
 
-    // Gerar novos backup codes
-    const backupCodes = this.generateBackupCodes(10);
+    // Gerar novos backup codes — raw para hash, formatado para exibição
+    const rawCodes = this.generateBackupCodes(10);
 
-    // Hashear backup codes para armazenamento seguro
+    // Hashear códigos raw (mesma convenção de enableTwoFactor)
     const hashedCodes = await Promise.all(
-      backupCodes.map((code) => hashPassword(code))
+      rawCodes.map((code) => hashPassword(code))
     );
 
     // Atualizar backup codes no banco
@@ -247,7 +282,7 @@ export class TwoFactorService {
 
     return {
       success: true,
-      backupCodes, // Retornar códigos em plain text apenas UMA VEZ
+      backupCodes: rawCodes.map(formatBackupCode), // exibe XXXX-XXXX-XX
     };
   }
 

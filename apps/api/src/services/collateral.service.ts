@@ -195,13 +195,21 @@ export class CollateralService {
   }
 
   /**
-   * Simular pagamento recebido (adapter - apenas para testes)
+   * Simular pagamento recebido (apenas para testes — bloqueado em production).
+   *
+   * CRIT-09: kill switch obrigatório. A função cria saldo via creditBalance,
+   * portanto se invocada em prod (por descuido, regressão de rota ou worker
+   * mal-configurado) inventa valor. Defense-in-depth: o controller já bloqueia
+   * por NODE_ENV, aqui é a barreira interna independente.
    */
   async simulatePaymentReceived(
     addressId: string,
     amount: string,
     txHash?: string
   ) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('simulatePaymentReceived disabled in production');
+    }
     const wallet = await WalletService.getWallet(addressId);
 
     if (!wallet) {

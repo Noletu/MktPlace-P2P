@@ -13,7 +13,8 @@ router.post('/generate', collateralController.generateDepositAddress.bind(collat
 // Verificar status do pagamento
 router.get('/:id/status', collateralController.checkPaymentStatus.bind(collateralController));
 
-// Simular pagamento (desenvolvimento apenas)
-router.post('/:id/simulate-payment', collateralController.simulatePayment.bind(collateralController));
+// CRIT-09: rota POST /:id/simulate-payment removida — invocava
+// collateralService.simulatePaymentReceived, que credita saldo. A função
+// permanece no service para testes automatizados (guard interno em prod).
 
 export default router;
