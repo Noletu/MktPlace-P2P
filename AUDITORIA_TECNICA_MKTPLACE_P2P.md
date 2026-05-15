@@ -3637,14 +3637,23 @@ Durante o fechamento da Sprint 1, `npx tsc --noEmit` reporta **25 erros pré-exi
 | 22 | `services/masterSeedAdmin.service.ts:382` | TS2304 | `auditLogService` não encontrado | Import faltando | Sprint 2 |
 | 23 | `services/transaction.service.ts:469` | TS2339 | `network` ausente na seleção | Schema/select drift | Sprint 2 |
 | 24 | `services/transaction.service.ts:507` | TS2339 | `orderType` ausente na seleção | Schema/select drift | Sprint 2 |
-| 25 | `socket/__tests__/notification.socket.test.ts:24` | TS2345 | Mismatch entre `http.Server` e `socket.io.Server` generics | Test infrastructure | Sprint 3 |
+| 25 | `socket/__tests__/notification.socket.test.ts:24` | TS2345 | Mismatch entre `http.Server` e `socket.io.Server` generics — **bloqueia compilação da suite, Jest reporta `Test suite failed to run`** (runtime impact: 0 testes de socket executados) | Test infrastructure | Sprint 3 |
+
+### Falhas de teste pré-existentes (runtime)
+
+Distintas dos erros de TS acima — estas são suites que **compilam** mas falham em tempo de execução por drift entre mocks e implementação:
+
+| ID | Suite | Detalhe | Causa-raiz | Sprint destino |
+|----|-------|---------|------------|----------------|
+| TD-T26 | `services/__tests__/notification.service.test.ts` | **5 testes falham** em 2 grupos: `createNotification › deve criar uma notificação com sucesso`, `createNotification › deve usar prioridade NORMAL como padrão`, `createNotification › deve lançar erro ao falhar ao criar notificação`, `getUserNotifications › deve buscar notificações do usuário com filtros`, `getUserNotifications › deve usar valores padrão quando filtros não fornecidos`. Mensagem comum: `TypeError: Cannot read properties of undefined (reading 'findUnique')`. | `src/__tests__/setup.ts` mocka apenas `prisma.notification.*` (create, findUnique, findMany, count, update, updateMany, delete, deleteMany). O `NotificationService` evoluiu e passou a tocar outros models (provavelmente `user`, `userNotificationPreference` ou similar) que não estão no mock global — chamada retorna `undefined.findUnique`. Solução: ampliar `setup.ts` ou mockar localmente no `describe`. | Sprint 3 (test-infra hygiene) |
+| TD-T27 | `socket/__tests__/notification.socket.test.ts` | Suite inteira não roda (`Test suite failed to run`). 0 testes executados. | Mesma raiz do erro #25 da tabela acima — falha de compilação do TypeScript impede o Jest de carregar o arquivo. Resolver o `TS2345` reabilita os testes; pode haver falhas latentes ainda assim. | Sprint 3 (depende de #25) |
 
 **Notas operacionais:**
-- Nenhum desses erros bloqueia execução em runtime (TypeScript não roda no banco). São travas estáticas que precisam ser endereçadas antes do "go live".
+- Nenhum dos 25 erros de TS bloqueia execução em runtime de produção (TypeScript não roda no banco). São travas estáticas que precisam ser endereçadas antes do "go live".
 - Cluster `masterSeedAdmin.service.ts` (erros 20-22) tem dependência forte com **CRIT-10 (master seed em KMS)** e **CRIT-11 (rotação)** — naturalmente cai na Sprint 2.
 - Cluster `admin.middleware.ts + admin.service.ts:537` (erros 7-9, 11) reflete migração incompleta de `legacyRole: string` para tabela `Role` relacional. Bloqueador da Sprint 2 de identidade.
-- Cluster `exchange-rate.service.ts` (erros 14-18) e `socket.test.ts` (erro 25) são higiene de tipos sem impacto financeiro — Sprint 3.
-- Os 5 testes falhando em `notification.service.test.ts` + suite quebrada em `notification.socket.test.ts` são pré-existentes (confirmado via `git stash` da Sprint 1 + rerun) e fazem parte do mesmo TECH-DEBT — referência: erros 25 e correlatos.
+- Cluster `exchange-rate.service.ts` (erros 14-18), `socket.test.ts` (erro 25 + TD-T27), e `notification.service.test.ts` (TD-T26) são higiene de tipos / test-infra sem impacto financeiro — Sprint 3.
+- Todas as falhas TD-T26/TD-T27 foram confirmadas pré-Sprint-1 via `git stash` da branch atual + rerun.
 
 ---
 
