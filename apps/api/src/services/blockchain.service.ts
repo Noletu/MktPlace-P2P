@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { toBN } from '../utils/money';
+import { toBN, gteBN, divBN } from '../utils/money';
 
 /**
  * Serviço para monitorar blockchain e verificar transações
@@ -117,10 +117,11 @@ export class BlockchainService {
 
       if (response.data.status === '1') {
         const balanceWei = response.data.result;
-        const balanceEth = toBN(balanceWei).toNumber() / 1e18;
-        const expected = toBN(expectedAmount).toNumber();
+        // CRIT-03b read-path: wei excede Number.MAX_SAFE_INTEGER (ETH supply ~1.2e26);
+        // .toNumber() perde precisão silenciosamente. Compare em BN, divide só pra log.
+        const balanceEthBN = divBN(balanceWei, 1e18);
 
-        if (balanceEth >= expected) {
+        if (gteBN(balanceEthBN, expectedAmount)) {
           // Buscar última transação
           const txResponse = await axios.get(apiUrl, {
             params: {
@@ -142,7 +143,7 @@ export class BlockchainService {
             return {
               received: true,
               txHash: lastTx.hash,
-              amount: balanceEth.toString(),
+              amount: balanceEthBN,
               timestamp: parseInt(lastTx.timeStamp) * 1000,
             };
           }
@@ -183,10 +184,11 @@ export class BlockchainService {
       });
 
       if (response.data.status === '1') {
-        const balance = toBN(response.data.result).toNumber() / 1e6; // USDT/USDC tem 6 decimais
-        const expected = toBN(expectedAmount).toNumber();
+        // CRIT-03b read-path: raw token amount (1e6 base units) excede safe int para supply
+        // alto (USDT ~1e17). Comparação em BN preserva precisão.
+        const balanceBN = divBN(response.data.result, 1e6);
 
-        if (balance >= expected) {
+        if (gteBN(balanceBN, expectedAmount)) {
           // Buscar transferências de token
           const txResponse = await axios.get(apiUrl, {
             params: {
@@ -207,7 +209,7 @@ export class BlockchainService {
             return {
               received: true,
               txHash: lastTx.hash,
-              amount: balance.toString(),
+              amount: balanceBN,
               timestamp: parseInt(lastTx.timeStamp) * 1000,
             };
           }
