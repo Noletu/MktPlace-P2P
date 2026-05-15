@@ -69,43 +69,10 @@ export class CollateralController {
     }
   }
 
-  /**
-   * Simula recebimento de pagamento (DESENVOLVIMENTO APENAS)
-   */
-  async simulatePayment(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-      const { amount, txHash } = req.body;
-
-      if (process.env.NODE_ENV === 'production') {
-        return res.status(403).json({
-          success: false,
-          error: 'Endpoint disponível apenas em desenvolvimento',
-        });
-      }
-
-      if (!amount) {
-        return res.status(400).json({
-          success: false,
-          error: 'Parâmetro "amount" é obrigatório',
-        });
-      }
-
-      const collateralAddress = await collateralService.simulatePaymentReceived(id, amount, txHash);
-
-      res.json({
-        success: true,
-        data: collateralAddress,
-        message: '⚠️ Pagamento simulado com sucesso (desenvolvimento)',
-      });
-    } catch (error: any) {
-      console.error('Erro ao simular pagamento:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Erro ao simular pagamento',
-      });
-    }
-  }
+  // CRIT-09: o endpoint POST /:id/simulate-payment foi REMOVIDO.
+  // A função `collateralService.simulatePaymentReceived` permanece para uso
+  // exclusivo em testes automatizados (com guard interno que lança em prod).
+  // Nunca reexpor por HTTP — ela credita saldo arbitrariamente.
 }
 
 export const collateralController = new CollateralController();

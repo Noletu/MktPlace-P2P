@@ -39,6 +39,13 @@ yarn-error.log*
 *.swp
 *.swo
 
+# SER-21: arquivos de backup do editor / refactoring incompleto.
+# Nunca devem ser versionados — mantenha versões antigas no git, não em sufixos.
+*.bak
+*.old
+*.backup
+*~
+
 # Database
 *.db
 *.sqlite

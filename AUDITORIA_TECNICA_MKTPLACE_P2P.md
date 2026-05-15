@@ -89,13 +89,13 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | CRIT-03b | String → Decimal(38,18) no schema | 1-2 dias | ✅ `4d177e6` |
 | CRIT-04 | Ledger atômico (unlock/credit/deduct) | 3-5 dias | ✅ `a40aea8` + `e4ab499` |
 | CRIT-05 | Claim atômico em submitProof/cancelOrder | 2-3 dias |
-| CRIT-06 | Backup codes 2FA com crypto.randomBytes | 1h |
+| CRIT-06 | Backup codes 2FA com crypto.randomBytes | 1h | ✅ `bea7f20` |
 | CRIT-07 | TOTP replay protection | meio dia |
 | CRIT-08 | Limpar git de credenciais e dev.db | meio dia |
-| CRIT-09 | Kill switch em simulatePaymentReceived | 15min |
+| CRIT-09 | Kill switch em simulatePaymentReceived | 15min | ✅ `c5187e6` |
 | CRIT-12 | Memzero da master seed após uso | meio dia |
 | SER-14 | COOKIE_SECRET separado do JWT_SECRET | 15min |
-| SER-21 | Remover arquivos .bak/.old/.backup | 15min |
+| SER-21 | Remover arquivos .bak/.old/.backup | 15min | ✅ `62c8b55` |
 | MED-32 | Adicionar updatedAt onde falta (junto com CRIT-01) | 1h |
 | MED-39 | Remover customDailyLimitStr zumbi (junto com CRIT-01) | 1h |
 
@@ -1280,10 +1280,34 @@ describe('CRIT-05: claim atômico em submitProof', () => {
 **Severidade:** 🔴 Crítica
 **Fase:** 🚨 **[FAZER AGORA]** — 1h de trabalho, fecha bypass de 2FA desde o início
 **Categoria:** Criptografia / RNG
-**Status:** ⬜ Aberto
+**Status:** ✅ **Fechado** (Sprint 2 — commit `bea7f20`)
 **Depende de:** —
 **Bloqueia:** —
 **Esforço estimado:** 1h + invalidação de códigos existentes
+
+### Fechamento (Sprint 2 — sessão 1 quick wins)
+
+**RNG trocado por CSPRNG:**
+- `generateBackupCodes(count)` agora usa `crypto.randomBytes(5).toString('hex').toUpperCase()` — 40 bits de entropia por código. Retorna strings **raw** (10 hex chars uppercase, sem hífen).
+- Helper `formatBackupCode(raw)` adiciona hífens para exibição (`XXXX-XXXX-XX`). Hash continua sobre o raw; UI mostra formatado. Decoupling raw/formatado permite mudar UX no futuro sem invalidar hashes.
+- Helper `normalizeBackupCode(input)` strip non-hex + uppercase antes do `bcrypt.compare`. Usuário pode digitar com hífens, sem hífens, em qualquer case.
+
+**Pontos de uso atualizados:**
+- `enableTwoFactor`: hash sobre raw, retorna formatado ao caller.
+- `regenerateBackupCodes`: idem.
+- `useBackupCode`: normaliza ANTES do compare; rejeita entrada que não vire 10 hex chars.
+
+**Script de invalidação** (`apps/api/scripts/invalidate-2fa-backup-codes.ts`):
+- Dry-run por default; `--apply` executa a invalidação.
+- `UPDATE users SET twoFactorBackupCodes = NULL WHERE twoFactorEnabled = true AND twoFactorBackupCodes IS NOT NULL`.
+- Documenta comunicação recomendada aos usuários: TOTP do app continua funcionando, só os backup codes precisam regenerar via UI (Configurações → Segurança → Regenerar Backup Codes).
+
+**Testes** (`services/__tests__/twoFactor.crit06.spec.ts`, 5/5 verde):
+- `cada código bate o padrão ^[0-9A-F]{10}$` em 50 amostras.
+- `10.000 códigos consecutivos são todos únicos` — sanity check da entropia (40 bits, P(colisão em 10k) ≈ 4.5e-5).
+- **Spy assertivo: `Math.random` NÃO é chamado** em nenhum momento de `generateBackupCodes(100)`.
+- `count default = 10`.
+- Distribuição razoável de chars (anti-bias): para cada hex char `0-9A-F`, frequência entre 250 e 1500 em 10.000 chars (esperado ~625).
 
 ### Arquivo afetado
 - `apps/api/src/services/twoFactor.service.ts:197-205`
@@ -1610,10 +1634,31 @@ gitleaks detect --source . --verbose
 **Severidade:** 🔴 Crítica
 **Fase:** 🚨 **[FAZER AGORA]** — 15 minutos; backdoor que cria dinheiro do nada se rota existir
 **Categoria:** Backdoor / Exposição
-**Status:** ⬜ Aberto
+**Status:** ✅ **Fechado** (Sprint 2 — commit `c5187e6`)
 **Depende de:** —
 **Bloqueia:** —
 **Esforço estimado:** 15min
+
+### Fechamento (Sprint 2 — sessão 1 quick wins)
+
+**Defense-in-depth aplicada em duas camadas:**
+
+1. **Service (`services/collateral.service.ts:200`)** — guard interno:
+   ```typescript
+   if (process.env.NODE_ENV === 'production') {
+     throw new Error('simulatePaymentReceived disabled in production');
+   }
+   ```
+   O throw acontece ANTES de qualquer chamada a `WalletService.getWallet`/`creditBalance`. Mesmo que um worker, script ou rota futura chame o método direto, em prod ele falha imediatamente.
+
+2. **Perímetro (`routes/collateral.routes.ts` + `controllers/collateral.controller.ts`)** — rota `POST /:id/simulate-payment` removida e método `CollateralController.simulatePayment` deletado. Comentários inline em ambos os arquivos alertam: **nunca reexpor por HTTP**.
+
+**Testes** (`services/__tests__/collateral.crit09.spec.ts`, 3/3 verde):
+- `lança em NODE_ENV=production ANTES de tocar wallet.service` — asserta que `WalletService.getWallet` e `creditBalance` **não foram chamados** (mocks com `not.toHaveBeenCalled()`).
+- `permite execução em development` — passa do guard, falha em "Wallet not found".
+- `permite execução em test` — idem.
+
+A função `simulatePaymentReceived` segue acessível em testes automatizados E2E rodando em `NODE_ENV=development|test`.
 
 ### Arquivos afetados
 - `apps/api/src/services/collateral.service.ts:172-191`
@@ -2556,7 +2601,24 @@ Frontend: ajustar `fetch` para `credentials: 'include'` e não esperar tokens na
 **Severidade:** 🟠 Sério
 **Fase:** 🚨 **[FAZER AGORA]** — 15 minutos; agrupar com CRIT-08
 **Categoria:** Higiene / Risco de exposição
+**Status:** ✅ **Fechado** (Sprint 2 — commit `62c8b55`)
 **Esforço estimado:** 15min
+
+### Fechamento (Sprint 2 — sessão 1 quick wins)
+
+Escopo expandido em relação aos 5 arquivos listados originalmente — a auditoria pede "nenhum `.old/.bak/.backup` rastreado", então `git rm` foi rodado em todos os 14 backups versionados (7 em `apps/api`, 7 em `apps/web`):
+
+- `apps/api/package.json.backup`
+- `apps/api/src/middleware/auth.middleware.ts.backup`
+- `apps/api/src/controllers/wallet.controller.ts.old`
+- `apps/api/src/routes/wallet.routes.ts.old`
+- `apps/api/src/services/wallet.service.ts.old`
+- `apps/api/src/services/support.service.ts.bak`
+- `apps/api/src/workers/deposit-monitor.worker.ts.backup`
+- `apps/web/package.json.backup`
+- `apps/web/app/admin/{audit,disputes,funds,orders,security,users}/page.tsx.backup` (6 arquivos)
+
+`.gitignore` ganhou bloco SER-21 com `*.bak / *.old / *.backup / *~` (`*.swp/*.swo` já estavam cobertos). Verificação: `git ls-files | grep -E '\.(bak|old|backup)$|~$'` retorna vazio.
 
 ### Arquivos afetados
 ```
@@ -3655,10 +3717,18 @@ Distintas dos erros de TS acima — estas são suites que **compilam** mas falha
 - Cluster `exchange-rate.service.ts` (erros 14-18), `socket.test.ts` (erro 25 + TD-T27), e `notification.service.test.ts` (TD-T26) são higiene de tipos / test-infra sem impacto financeiro — Sprint 3.
 - Todas as falhas TD-T26/TD-T27 foram confirmadas pré-Sprint-1 via `git stash` da branch atual + rerun.
 
+### Pendências operacionais (não-código)
+
+Distintas dos erros de TS e falhas de teste acima — estas são ações que precisam acontecer **em ambiente real (staging/prod)** após código mergeado, mas que não dependem de mudança no código. Catalogadas aqui para não cair entre as cadeiras.
+
+| ID | Título | Fase | Razão / Detalhes |
+|----|--------|------|------------------|
+| **TECH-DEBT-OP01** | Invalidar backup codes 2FA pré-CRIT-06 em produção | 🔵 **[ADIAR PRE-PROD]** | Backup codes salvos no banco ANTES de `bea7f20` foram gerados com `Math.random()` (xorshift128+ — previsível a partir de poucas amostras). O bug está fechado no código, mas as **hashes antigas seguem válidas** no banco até serem usadas ou regeneradas. Em prod, isto é uma janela de bypass de 2FA até zerarmos. **Pré-requisitos:** (1) feature de regeneração de backup codes visível e testada na UI; (2) email transacional pronto comunicando os usuários. **Comando:** `cd apps/api && DATABASE_URL=<prod> npx tsx scripts/invalidate-2fa-backup-codes.ts` (dry-run) → `--apply`. **Smoke test do script:** ✅ executado em 2026-05-15 contra Postgres dev (9/9 verificações PASS — userA `enabled+codes` detectado/zerado, userB `disabled+codes` intocado). **Quando rodar:** logo antes do primeiro deploy a prod com usuários reais. Não fazer antes — usuários de dev/staging usariam backup codes gerados pelo novo CSPRNG normalmente. |
+
 ---
 
 **Fim do documento.**
 
-Última edição: 15/05/2026 (v1.2 — fechamento Sprint 1 validado em Postgres real + TECH-DEBT inventariado)
+Última edição: 15/05/2026 (v1.4 — Sprint 2 sessão 1 + TECH-DEBT-OP01 catalogado + smoke test do invalidate-2fa)
 Auditor: Claude (claude.ai/web)
 Próxima revisão sugerida: após Sprint 2 ou em 30 dias, o que vier primeiro.
