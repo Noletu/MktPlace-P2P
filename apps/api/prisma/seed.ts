@@ -4,6 +4,19 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
+  // SECURITY (CRIT-08 + SER-15 mitigation): este seed contém credenciais
+  // fixas (Master@2025!, Admin@123) que SÃO seguras em dev mas NÃO podem
+  // rodar em prod. Em prod, usuários master são criados via runbook
+  // operacional (dois masters independentes, um por sócio).
+  //
+  // Ver TECH-DEBT-OP02 na AUDITORIA para o plano completo de provisionamento.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'seed.ts contains hardcoded dev credentials and must NEVER run in production. ' +
+      'Production users are provisioned via separate operational runbook (see TECH-DEBT-OP02).',
+    );
+  }
+
   console.log('🌱 Iniciando seed do banco de dados...');
 
   // ============ BUSCAR ROLES RBAC ============
