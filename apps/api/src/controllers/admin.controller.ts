@@ -6,6 +6,7 @@ import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { platformWalletService } from '../services/platformWallet.service';
 import { platformTransferService } from '../services/platform-transfer.service';
+import { toBN, sumBN } from '../utils/money';
 
 const prisma = new PrismaClient();
 
@@ -421,7 +422,7 @@ export class AdminController {
         where: { status: 'COMPLETED' },
         select: { brlAmount: true },
       });
-      const totalVolume = orders.reduce((sum, order) => sum + parseFloat(order.brlAmount || '0'), 0);
+      const totalVolume = toBN(sumBN(orders.map(o => o.brlAmount || '0'))).toNumber();
 
       res.json({
         success: true,

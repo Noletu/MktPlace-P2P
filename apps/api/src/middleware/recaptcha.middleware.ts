@@ -56,7 +56,7 @@ export const recaptchaMiddleware = async (
 
     // SECURITY: Para reCAPTCHA v3, verificar score (0.0 a 1.0, quanto maior melhor)
     if (score !== undefined) {
-      const minScore = parseFloat(process.env.RECAPTCHA_MIN_SCORE || '0.5');
+      const minScore = Number(process.env.RECAPTCHA_MIN_SCORE || '0.5');
       
       if (!success || score < minScore) {
         console.warn('[SECURITY] reCAPTCHA failed:', {

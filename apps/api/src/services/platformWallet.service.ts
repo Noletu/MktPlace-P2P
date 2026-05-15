@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { DerivationService } from './hd-wallet/derivation.service';
 import { KeyManagementService } from './hd-wallet/key-management.service';
+import { toBN, addBN, subBN, ltBN } from '../utils/money';
 
 const prisma = new PrismaClient();
 
@@ -145,12 +146,12 @@ export class PlatformWalletService {
 
       balances[wallet.cryptoType].networks.push({
         network: wallet.network,
-        balance: wallet.balance,
+        balance: wallet.balance.toString(),
         address: wallet.address,
       });
 
-      balances[wallet.cryptoType].totalBalance += parseFloat(wallet.balance || '0');
-      balances[wallet.cryptoType].totalFees += parseFloat(wallet.totalFeesCollected || '0');
+      balances[wallet.cryptoType].totalBalance += toBN(wallet.balance?.toString() || '0').toNumber();
+      balances[wallet.cryptoType].totalFees += toBN(wallet.totalFeesCollected?.toString() || '0').toNumber();
     }
 
     return Object.values(balances);
@@ -195,10 +196,8 @@ export class PlatformWalletService {
       throw new Error(`Platform wallet not found: ${cryptoType} ${network}`);
     }
 
-    const newBalance = (parseFloat(wallet.balance) + parseFloat(feeAmount)).toString();
-    const newFeesCollected = (
-      parseFloat(wallet.totalFeesCollected) + parseFloat(feeAmount)
-    ).toString();
+    const newBalance = addBN(wallet.balance, feeAmount);
+    const newFeesCollected = addBN(wallet.totalFeesCollected, feeAmount);
 
     await prisma.platformWallet.update({
       where: {
@@ -225,8 +224,8 @@ export class PlatformWalletService {
       throw new Error(`Platform wallet not found: ${cryptoType} ${network}`);
     }
 
-    const newBalance = (parseFloat(wallet.balance) + parseFloat(amount)).toString();
-    const newDeposited = (parseFloat(wallet.totalDeposited) + parseFloat(amount)).toString();
+    const newBalance = addBN(wallet.balance, amount);
+    const newDeposited = addBN(wallet.totalDeposited, amount);
 
     await prisma.platformWallet.update({
       where: {
@@ -253,15 +252,12 @@ export class PlatformWalletService {
       throw new Error(`Platform wallet not found: ${cryptoType} ${network}`);
     }
 
-    const currentBalance = parseFloat(wallet.balance);
-    const withdrawAmount = parseFloat(amount);
-
-    if (currentBalance < withdrawAmount) {
+    if (ltBN(wallet.balance, amount)) {
       throw new Error('Insufficient balance for withdrawal');
     }
 
-    const newBalance = (currentBalance - withdrawAmount).toString();
-    const newWithdrawn = (parseFloat(wallet.totalWithdrawn) + withdrawAmount).toString();
+    const newBalance = subBN(wallet.balance, amount);
+    const newWithdrawn = addBN(wallet.totalWithdrawn, amount);
 
     await prisma.platformWallet.update({
       where: {

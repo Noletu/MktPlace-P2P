@@ -1,5 +1,6 @@
 import { Order } from '@prisma/client';
 import BigNumber from 'bignumber.js';
+import { toBN, sumBN } from '../utils/money';
 import {
   OrderType,
   OrderStatus,
@@ -27,7 +28,7 @@ export class OrderService {
    * Calcula as taxas do pedido (com suporte a cupons de desconto)
    */
   async calculateFees(cryptoAmount: string, userId?: string): Promise<FeeCalculation> {
-    const amount = new BigNumber(cryptoAmount);
+    const amount = toBN(cryptoAmount);
 
     let platformFeePercentage = new BigNumber(FEE_CONFIG.PLATFORM_FEE_PERCENTAGE); // 0.015
     let appliedCoupon = null;
@@ -39,7 +40,7 @@ export class OrderService {
       if (activeCoupon) {
         const discount = new BigNumber(activeCoupon.coupon.discountPercentage).div(100);
         const originalPlatformFeePercentage = platformFeePercentage;
-        platformFeePercentage = platformFeePercentage.multipliedBy(new BigNumber(1).minus(discount));
+        platformFeePercentage = platformFeePercentage.multipliedBy(toBN("1").minus(discount));
 
         appliedCoupon = {
           couponId: activeCoupon.coupon.id,
@@ -73,7 +74,7 @@ export class OrderService {
    * o vendedor transfere cryptoAmount + payerReward para o comprador.
    */
   calculateRequiredCollateral(cryptoAmount: string): string {
-    const amount = new BigNumber(cryptoAmount);
+    const amount = toBN(cryptoAmount);
     // Incluir payerReward (1% cashback) que será dado ao comprador
     const payerReward = amount.multipliedBy(FEE_CONFIG.PAYER_REWARD_PERCENTAGE);
     return amount.plus(payerReward).toFixed(8);
@@ -88,7 +89,7 @@ export class OrderService {
    * Lucro líquido do provedor: ~1% (2.5% markup - 1.5% fee)
    */
   calculateBuyOrderCollateral(cryptoAmount: string): string {
-    const amount = new BigNumber(cryptoAmount);
+    const amount = toBN(cryptoAmount);
     // Somente platformFee (1.5%) - sem payerReward em ordens BUY
     const platformFee = amount.multipliedBy(BUY_ORDER_CONFIG.PROVIDER_COLLATERAL_FEE);
     return amount.plus(platformFee).toFixed(8);
@@ -101,10 +102,10 @@ export class OrderService {
    * - Comprador paga BRL com markup de 2.5%
    */
   async calculateBuyOrderFees(cryptoAmount: string): Promise<FeeCalculation> {
-    const amount = new BigNumber(cryptoAmount);
+    const amount = toBN(cryptoAmount);
     const platformFee = amount.multipliedBy(FEE_CONFIG.PLATFORM_FEE_PERCENTAGE);
     // Sem cashback em ordens BUY
-    const payerReward = new BigNumber(0);
+    const payerReward = toBN("0");
     const totalFee = platformFee;
     const netCryptoAmount = amount; // Comprador recebe exatamente o que pediu
 
@@ -122,10 +123,10 @@ export class OrderService {
    * Busca cotação atual e aplica markup de 2.5%
    */
   async calculateBuyOrderBrlAmount(cryptoAmount: string, cryptoType: string): Promise<string> {
-    const amount = new BigNumber(cryptoAmount);
+    const amount = toBN(cryptoAmount);
     const brlValue = await priceService.convertCryptoToBRL(amount.toNumber(), cryptoType as CryptoType);
-    const brlBase = new BigNumber(brlValue);
-    const brlWithMarkup = brlBase.multipliedBy(new BigNumber(1).plus(BUY_ORDER_CONFIG.BRL_MARKUP_PERCENTAGE));
+    const brlBase = toBN(brlValue);
+    const brlWithMarkup = brlBase.multipliedBy(toBN("1").plus(BUY_ORDER_CONFIG.BRL_MARKUP_PERCENTAGE));
     return brlWithMarkup.toFixed(2);
   }
 
@@ -162,7 +163,7 @@ export class OrderService {
     // Validar limite diario baseado em reputacao
     const limitCheck = await limitService.canUserTransact(
       input.userId,
-      parseFloat(input.brlAmount)
+      toBN(input.brlAmount).toNumber()
     );
 
     if (!limitCheck.allowed) {
@@ -231,7 +232,7 @@ export class OrderService {
 
     // Validar valores mínimos
     const minBRL = 10;
-    if (parseFloat(input.brlAmount) < minBRL) {
+    if (toBN(input.brlAmount).toNumber() < minBRL) {
       throw new Error(`Valor mínimo é R$ ${minBRL}`);
     }
 
@@ -266,7 +267,7 @@ export class OrderService {
       // Extrair e validar valor do boleto
       const boletoValue = boletoOCRService.extractValue(boletoData.barcode);
       if (boletoValue > 0) {
-        const expectedValue = parseFloat(input.brlAmount);
+        const expectedValue = toBN(input.brlAmount).toNumber();
         // Permitir 1% de diferença devido a arredondamentos
         if (Math.abs(boletoValue - expectedValue) > expectedValue * 0.01) {
           console.log(`⚠️ Valor do boleto (R$ ${boletoValue}) difere do valor do pedido (R$ ${expectedValue})`);
@@ -323,8 +324,8 @@ export class OrderService {
       });
 
       if (wallet) {
-        const availableBalanceBN = new BigNumber(wallet.availableBalance);
-        const requiredCollateralBN = new BigNumber(requiredCollateral);
+        const availableBalanceBN = toBN(wallet.availableBalance);
+        const requiredCollateralBN = toBN(requiredCollateral);
 
         const hasEnough = availableBalanceBN.gte(requiredCollateralBN);
 
@@ -408,8 +409,8 @@ export class OrderService {
       const wallet = await tx.userWallet.findUnique({ where: { id: walletId } });
       if (!wallet) throw new Error(`Carteira ${walletId} não encontrada`);
 
-      const availableBN = new BigNumber(wallet.availableBalance);
-      const amountBN = new BigNumber(collateralAmount);
+      const availableBN = toBN(wallet.availableBalance);
+      const amountBN = toBN(collateralAmount);
       if (availableBN.lt(amountBN)) {
         throw new Error(
           `Saldo insuficiente. Disponível: ${availableBN.toFixed(8)}, Necessário: ${amountBN.toFixed(8)}`
@@ -418,7 +419,7 @@ export class OrderService {
 
       // 2. Atualizar saldo da carteira atomicamente (DENTRO da mesma tx)
       const newAvailable = availableBN.minus(amountBN);
-      const newLocked = new BigNumber(wallet.lockedBalance).plus(amountBN);
+      const newLocked = toBN(wallet.lockedBalance).plus(amountBN);
       await tx.userWallet.update({
         where: { id: walletId },
         data: {
@@ -507,7 +508,7 @@ export class OrderService {
 
     // Validar limite diario baseado em reputacao (usando o brlAmount calculado)
     const brlAmount = await this.calculateBuyOrderBrlAmount(input.cryptoAmount, input.cryptoType);
-    const limitCheck = await limitService.canUserTransact(input.userId, parseFloat(brlAmount));
+    const limitCheck = await limitService.canUserTransact(input.userId, toBN(brlAmount).toNumber());
 
     if (!limitCheck.allowed) {
       throw new Error(
@@ -563,13 +564,15 @@ export class OrderService {
     // Se não tem carteira, criar automaticamente
     if (!buyerWallet) {
       console.log(`📝 [BUY ORDER] Criando carteira HD para comprador...`);
-      buyerWallet = await WalletService.createWallet(
+      const created = await WalletService.createWallet(
         input.userId,
         input.cryptoType,
         input.cryptoNetwork,
         { source: 'ORDER_BUY', details: { trigger: 'buy_order_creation' } }
       );
-      console.log(`✅ [BUY ORDER] Carteira criada: ${buyerWallet.address}`);
+      console.log(`✅ [BUY ORDER] Carteira criada: ${created.address}`);
+      // Re-fetch para garantir o tipo completo de UserWallet (createWallet retorna shape narrow)
+      buyerWallet = await prisma.userWallet.findUniqueOrThrow({ where: { id: created.id } });
     }
 
     // Calcular taxas para ordem BUY
@@ -665,7 +668,7 @@ export class OrderService {
       // Verificar limite diario do provedor (baseado em reputacao)
       const limitCheck = await limitService.canUserTransact(
         input.providerId,
-        parseFloat(order.brlAmount)
+        toBN(order.brlAmount).toNumber()
       );
 
       if (!limitCheck.allowed) {
@@ -723,9 +726,9 @@ export class OrderService {
       }
 
       // Calcular colateral necessário (crypto + 1.5% fee)
-      const requiredCollateral = this.calculateBuyOrderCollateral(order.cryptoAmount);
-      const availableBalanceBN = new BigNumber(providerWallet.availableBalance);
-      const requiredCollateralBN = new BigNumber(requiredCollateral);
+      const requiredCollateral = this.calculateBuyOrderCollateral(order.cryptoAmount.toString());
+      const availableBalanceBN = toBN(providerWallet.availableBalance);
+      const requiredCollateralBN = toBN(requiredCollateral);
 
       if (availableBalanceBN.lt(requiredCollateralBN)) {
         throw new Error(
@@ -746,7 +749,7 @@ export class OrderService {
 
       // SECURITY (C-2): Bloquear saldo do provedor DENTRO da mesma tx — atômico com a criação do match
       const newProviderAvailable = availableBalanceBN.minus(requiredCollateralBN);
-      const newProviderLocked = new BigNumber(providerWallet.lockedBalance).plus(requiredCollateralBN);
+      const newProviderLocked = toBN(providerWallet.lockedBalance).plus(requiredCollateralBN);
       await tx.userWallet.update({
         where: { id: providerWallet.id },
         data: {
@@ -837,8 +840,8 @@ export class OrderService {
               name: buyerUser.name || 'Usuário',
               orderType: 'compra',
               crypto: result.cryptoType,
-              cryptoAmount: result.cryptoAmount,
-              brlAmount: result.brlAmount,
+              cryptoAmount: result.cryptoAmount.toString(),
+              brlAmount: result.brlAmount.toString(),
             })
           ).catch(() => {});
         }
@@ -848,8 +851,8 @@ export class OrderService {
               name: providerUser.name || 'Usuário',
               orderType: 'venda',
               crypto: result.cryptoType,
-              cryptoAmount: result.cryptoAmount,
-              brlAmount: result.brlAmount,
+              cryptoAmount: result.cryptoAmount.toString(),
+              brlAmount: result.brlAmount.toString(),
             })
           ).catch(() => {});
         }
@@ -1078,7 +1081,7 @@ export class OrderService {
       // Verificar limite diario do pagador (baseado em reputacao)
       const limitCheck = await limitService.canUserTransact(
         payerId,
-        parseFloat(order.brlAmount)
+        toBN(order.brlAmount).toNumber()
       );
 
       if (!limitCheck.allowed) {
@@ -1170,8 +1173,8 @@ export class OrderService {
                 name: sellerUser.name || 'Usuário',
                 orderType: 'venda',
                 crypto: order.cryptoType,
-                cryptoAmount: order.cryptoAmount,
-                brlAmount: order.brlAmount,
+                cryptoAmount: order.cryptoAmount.toString(),
+                brlAmount: order.brlAmount.toString(),
               })
             ).catch(() => {});
           }
@@ -1181,8 +1184,8 @@ export class OrderService {
                 name: payerUser.name || 'Usuário',
                 orderType: 'compra',
                 crypto: order.cryptoType,
-                cryptoAmount: order.cryptoAmount,
-                brlAmount: order.brlAmount,
+                cryptoAmount: order.cryptoAmount.toString(),
+                brlAmount: order.brlAmount.toString(),
               })
             ).catch(() => {});
           }
@@ -1323,7 +1326,7 @@ export class OrderService {
       try {
         await WalletService.unlockBalance(
           walletToUnlock,
-          order.collateralLockedAmount,
+          order.collateralLockedAmount.toString(),
           orderId,
           `Colateral desbloqueado - pedido cancelado pelo criador`
         );
@@ -1381,7 +1384,7 @@ export class OrderService {
           where: { id: userId },
           select: { email: true, name: true },
         });
-        const emailParams = { crypto: order.cryptoType, cryptoAmount: order.cryptoAmount, brlAmount: order.brlAmount, reason };
+        const emailParams = { crypto: order.cryptoType, cryptoAmount: order.cryptoAmount.toString(), brlAmount: order.brlAmount.toString(), reason };
         if (initiatorUser?.email) {
           emailService.sendIfAllowed(userId, 'CANCELLATIONS', () =>
             emailService.sendOrderCancelledEmail(initiatorUser.email, {
@@ -1544,7 +1547,7 @@ export class OrderService {
         });
 
         // Emails de cancelamento
-        const emailParams = { crypto: order.cryptoType, cryptoAmount: order.cryptoAmount, brlAmount: order.brlAmount, reason };
+        const emailParams = { crypto: order.cryptoType, cryptoAmount: order.cryptoAmount.toString(), brlAmount: order.brlAmount.toString(), reason };
         const [payerUserEmail, sellerUserEmail] = await Promise.all([
           prisma.user.findUnique({ where: { id: payerId }, select: { email: true, name: true } }),
           prisma.user.findUnique({ where: { id: order.userId }, select: { email: true, name: true } }),
@@ -1685,7 +1688,7 @@ export class OrderService {
       try {
         await WalletService.unlockBalance(
           providerWalletId,
-          collateralAmount,
+          collateralAmount.toString(),
           orderId,
           `Colateral desbloqueado - provedor cancelou ordem BUY`
         );
@@ -1737,7 +1740,7 @@ export class OrderService {
         });
 
         // Emails de cancelamento
-        const emailParams = { crypto: order.cryptoType, cryptoAmount: order.cryptoAmount, brlAmount: order.brlAmount, reason };
+        const emailParams = { crypto: order.cryptoType, cryptoAmount: order.cryptoAmount.toString(), brlAmount: order.brlAmount.toString(), reason };
         const [providerUserEmail, buyerUserEmail] = await Promise.all([
           prisma.user.findUnique({ where: { id: providerId }, select: { email: true, name: true } }),
           prisma.user.findUnique({ where: { id: order.userId }, select: { email: true, name: true } }),
@@ -1983,12 +1986,12 @@ export class OrderService {
       }
 
       // Volume em BRL
-      const brlAmount = parseFloat(order.brlAmount);
+      const brlAmount = toBN(order.brlAmount).toNumber();
       totalVolumeBRL += brlAmount;
 
       // Volume em Crypto (diferente para vendedor e comprador)
-      const cryptoAmount = parseFloat(order.cryptoAmount);
-      const payerReward = parseFloat(order.payerReward);
+      const cryptoAmount = toBN(order.cryptoAmount).toNumber();
+      const payerReward = toBN(order.payerReward).toNumber();
 
       if (!totalVolumeCrypto[order.cryptoType]) {
         totalVolumeCrypto[order.cryptoType] = 0;

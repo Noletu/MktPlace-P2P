@@ -8,6 +8,7 @@
  */
 
 import { WalletService } from './wallet.service';
+import { toBN } from '../utils/money';
 
 export class InternalBalanceService {
   /**
@@ -134,7 +135,7 @@ export class InternalBalanceService {
       return 0;
     }
 
-    return parseFloat(wallet.availableBalance);
+    return toBN(wallet.availableBalance).toNumber();
   }
 
   /**

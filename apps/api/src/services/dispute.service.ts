@@ -15,6 +15,7 @@ import { logger } from '../utils/logger';
 import { emailService } from './email.service';
 import { DerivationService } from './hd-wallet/derivation.service';
 import BigNumber from 'bignumber.js';
+import { toBN } from '../utils/money';
 import { PlatformWalletService } from './platformWallet.service';
 import { KeyManagementService } from './hd-wallet/key-management.service';
 
@@ -180,8 +181,8 @@ export class DisputeService {
                 name: counterpartyUser.name || 'Usuário',
                 disputeTitle: dispute.title,
                 crypto: dispute.order.cryptoType,
-                cryptoAmount: dispute.order.cryptoAmount,
-                brlAmount: dispute.order.brlAmount,
+                cryptoAmount: dispute.order.cryptoAmount.toString(),
+                brlAmount: dispute.order.brlAmount.toString(),
                 creatorName: dispute.creator.name || 'Usuário',
               })
             ).catch(() => {});
@@ -585,12 +586,12 @@ export class DisputeService {
       // ═══════════════════════════════════════════════════════════════════════
       if (sellerWalletId) {
         // Usar BigNumber para evitar erros de precisao de ponto flutuante
-        const cryptoAmountBN = new BigNumber(order.cryptoAmount);
+        const cryptoAmountBN = toBN(order.cryptoAmount);
         const payerRewardBN = isBuyOrder
-          ? new BigNumber('0') // BUY orders: sem cashback
-          : new BigNumber(order.payerReward || '0'); // SELL orders: cashback
+          ? toBN('0') // BUY orders: sem cashback
+          : toBN(order.payerReward || '0'); // SELL orders: cashback
         const totalAmountBN = cryptoAmountBN.plus(payerRewardBN);
-        const platformFeeBN = new BigNumber(order.platformFee || '0');
+        const platformFeeBN = toBN(order.platformFee || '0');
 
         // Buscar carteira do vendedor (onde esta o colateral bloqueado)
         const sellerWallet = await prisma.userWallet.findUnique({
@@ -598,7 +599,7 @@ export class DisputeService {
         });
 
         if (sellerWallet) {
-          const sellerLockedBalanceBN = new BigNumber(sellerWallet.lockedBalance);
+          const sellerLockedBalanceBN = toBN(sellerWallet.lockedBalance);
 
           if (input.resolutionType === 'RELEASE_TO_BUYER' || input.resolutionType === 'PENALTY_SELLER') {
             // A FAVOR DO COMPRADOR: Transferir cripto do vendedor para o comprador
@@ -656,9 +657,9 @@ export class DisputeService {
 
             // Calcular novos saldos
             const sellerNewLockedBN = sellerLockedBalanceBN.minus(totalAmountBN);
-            const sellerNewBalanceBN = new BigNumber(sellerWallet.balance).minus(totalAmountBN);
-            const buyerNewBalanceBN = new BigNumber(buyerWallet.balance).plus(totalAmountBN);
-            const buyerNewAvailableBN = new BigNumber(buyerWallet.availableBalance).plus(totalAmountBN);
+            const sellerNewBalanceBN = toBN(sellerWallet.balance).minus(totalAmountBN);
+            const buyerNewBalanceBN = toBN(buyerWallet.balance).plus(totalAmountBN);
+            const buyerNewAvailableBN = toBN(buyerWallet.availableBalance).plus(totalAmountBN);
 
             // Pré-buscar platform wallet ANTES da transaction (reads fora, writes dentro)
             let platformWallet: any = null;
@@ -714,14 +715,14 @@ export class DisputeService {
               } else {
                 sellerLockedAfterFee = sellerNewLockedBN; // SELL: locked NÃO muda pela fee
               }
-              platformNewBalance = new BigNumber(platformWallet.balance).plus(platformFeeBN);
-              currentTotalFees = new BigNumber(platformWallet.totalFeesCollected || '0');
+              platformNewBalance = toBN(platformWallet.balance).plus(platformFeeBN);
+              currentTotalFees = toBN(platformWallet.totalFeesCollected || '0');
             }
 
             // Pré-calcular availableBalance para SELL orders com fee (fee vem do available)
             let sellerAvailableAfterFee: BigNumber | null = null;
             if (platformFeeBN.gt(0) && !isBuyOrder) {
-              sellerAvailableAfterFee = new BigNumber(sellerWallet.availableBalance).minus(platformFeeBN);
+              sellerAvailableAfterFee = toBN(sellerWallet.availableBalance).minus(platformFeeBN);
             }
 
             // Transaction atômica: todas as writes de saldo + order update
@@ -864,14 +865,14 @@ export class DisputeService {
           } else if (input.resolutionType === 'RETURN_TO_SELLER' || input.resolutionType === 'PENALTY_BUYER' || input.resolutionType === 'CANCEL_NO_PENALTY') {
             // A FAVOR DO VENDEDOR ou CANCELAMENTO: Desbloquear cripto para o vendedor
             // Usar collateralLockedAmount (valor exato que foi travado), como faz o cancelamento normal
-            const collateralLockedBN = new BigNumber(order.collateralLockedAmount || '0');
+            const collateralLockedBN = toBN(order.collateralLockedAmount || '0');
             const totalToUnlock = collateralLockedBN.gt(0)
               ? collateralLockedBN
               : (isBuyOrder ? totalAmountBN.plus(platformFeeBN) : totalAmountBN);  // fallback para ordens antigas
             const amountToUnlock = sellerLockedBalanceBN.lt(totalToUnlock) ? sellerLockedBalanceBN : totalToUnlock;
 
             const sellerNewLockedBN = sellerLockedBalanceBN.minus(amountToUnlock);
-            const sellerNewAvailableBN = new BigNumber(sellerWallet.availableBalance).plus(amountToUnlock);
+            const sellerNewAvailableBN = toBN(sellerWallet.availableBalance).plus(amountToUnlock);
 
             // Transaction atômica: unlock + WalletTransaction + order update
             await prisma.$transaction(async (tx) => {

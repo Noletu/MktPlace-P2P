@@ -6,6 +6,7 @@ import { emailService } from './email.service';
 import { clearUserPermissionCache } from '../middleware/permission.middleware';
 import { WalletService } from './wallet.service';
 import { PendingApprovalService } from './pendingApproval.service';
+import { toBN, sumBN, gtBN } from '../utils/money';
 
 const prisma = new PrismaClient();
 
@@ -260,9 +261,7 @@ export class AdminService {
       select: { brlAmount: true },
     });
 
-    const totalVolume = orders.reduce((sum, order) => {
-      return sum + parseFloat(order.brlAmount);
-    }, 0);
+    const totalVolume = toBN(sumBN(orders.map(o => o.brlAmount))).toNumber();
 
     return {
       users: {
@@ -344,7 +343,7 @@ export class AdminService {
       // Calcular limite real: preferir String (preciso) sobre Float (deprecado)
       const formulaLimit = 1000 + (user.reputationScore * 100);
       const effectiveCustom = customDailyLimitStr != null
-        ? parseFloat(customDailyLimitStr)
+        ? toBN(customDailyLimitStr).toNumber()
         : customDailyLimit ?? null;
       const dailyLimit = effectiveCustom !== null ? effectiveCustom : formulaLimit;
 
@@ -575,7 +574,7 @@ export class AdminService {
     }
 
     const effectivePrevious = user.customDailyLimitStr != null
-      ? parseFloat(user.customDailyLimitStr)
+      ? toBN(user.customDailyLimitStr).toNumber()
       : user.customDailyLimit ?? null;
     const previousLimit = effectivePrevious !== null
       ? effectivePrevious
@@ -786,7 +785,7 @@ export class AdminService {
       try {
         await WalletService.unlockBalance(
           collateralWalletId,
-          order.collateralLockedAmount,
+          order.collateralLockedAmount.toString(),
           orderId,
           `Colateral desbloqueado - pedido cancelado pelo admin`
         );
@@ -947,11 +946,11 @@ export class AdminService {
     }
 
     // 3. Validar mudanças de valor
-    if (updates.brlAmount && parseFloat(updates.brlAmount) <= 0) {
+    if (updates.brlAmount && !gtBN(updates.brlAmount, '0')) {
       throw new Error('Valor do pedido deve ser positivo');
     }
 
-    if (updates.cryptoAmount && parseFloat(updates.cryptoAmount) <= 0) {
+    if (updates.cryptoAmount && !gtBN(updates.cryptoAmount, '0')) {
       throw new Error('Quantidade de crypto deve ser positiva');
     }
 
@@ -1101,21 +1100,20 @@ export class AdminService {
         };
       }
 
-      const balance = parseFloat(wallet.balance || '0');
-      const available = parseFloat(wallet.availableBalance || '0');
-      const locked = parseFloat(wallet.lockedBalance || '0');
+      balancesByCrypto[wallet.cryptoType].total = sumBN([
+        balancesByCrypto[wallet.cryptoType].total,
+        wallet.balance || '0',
+      ]);
 
-      balancesByCrypto[wallet.cryptoType].total = (
-        parseFloat(balancesByCrypto[wallet.cryptoType].total) + balance
-      ).toString();
+      balancesByCrypto[wallet.cryptoType].available = sumBN([
+        balancesByCrypto[wallet.cryptoType].available,
+        wallet.availableBalance || '0',
+      ]);
 
-      balancesByCrypto[wallet.cryptoType].available = (
-        parseFloat(balancesByCrypto[wallet.cryptoType].available) + available
-      ).toString();
-
-      balancesByCrypto[wallet.cryptoType].locked = (
-        parseFloat(balancesByCrypto[wallet.cryptoType].locked) + locked
-      ).toString();
+      balancesByCrypto[wallet.cryptoType].locked = sumBN([
+        balancesByCrypto[wallet.cryptoType].locked,
+        wallet.lockedBalance || '0',
+      ]);
 
       balancesByCrypto[wallet.cryptoType].wallets++;
 
@@ -1124,9 +1122,9 @@ export class AdminService {
         id: wallet.id,
         address: wallet.address,
         network: wallet.network,
-        balance: wallet.balance || '0',
-        availableBalance: wallet.availableBalance || '0',
-        lockedBalance: wallet.lockedBalance || '0',
+        balance: wallet.balance?.toString() || '0',
+        availableBalance: wallet.availableBalance?.toString() || '0',
+        lockedBalance: wallet.lockedBalance?.toString() || '0',
       });
     });
 
@@ -1152,13 +1150,9 @@ export class AdminService {
     const successfulTransactions = transactions.filter(t => t.status === 'APPROVED');
     const failedTransactions = transactions.filter(t => t.status === 'REJECTED' || t.status === 'DISPUTED');
 
-    const totalVolumeBRL = successfulTransactions.reduce((sum, t) => {
-      return sum + parseFloat(t.order?.brlAmount || '0');
-    }, 0);
+    const totalVolumeBRL = toBN(sumBN(successfulTransactions.map(t => t.order?.brlAmount || '0'))).toNumber();
 
-    const totalVolumeBTC = successfulTransactions.reduce((sum, t) => {
-      return sum + parseFloat(t.order?.cryptoAmount || '0');
-    }, 0);
+    const totalVolumeBTC = toBN(sumBN(successfulTransactions.map(t => t.order?.cryptoAmount || '0'))).toNumber();
 
     // 5. Buscar últimas transações (10 mais recentes)
     const recentTransactions = await prisma.transaction.findMany({
@@ -1358,13 +1352,13 @@ export class AdminService {
         successfulTransactions: user.successfulTransactions,
         dailyLimit: (() => {
           const effective = user.customDailyLimitStr != null
-            ? parseFloat(user.customDailyLimitStr)
+            ? toBN(user.customDailyLimitStr).toNumber()
             : user.customDailyLimit ?? null;
           return effective !== null ? effective : 1000 + (user.reputationScore * 100);
         })(),
         formulaLimit: 1000 + (user.reputationScore * 100),
         customDailyLimit: user.customDailyLimitStr != null
-          ? parseFloat(user.customDailyLimitStr)
+          ? toBN(user.customDailyLimitStr).toNumber()
           : user.customDailyLimit ?? undefined,
         customLimitNote: user.customLimitNote ?? undefined,
         customLimitSetAt: user.customLimitSetAt ?? undefined,
@@ -1575,13 +1569,9 @@ export class AdminService {
     }
 
     // Calcular totais
-    const totalVolumeAllTime = allTransactions
-      .filter(t => t.status === 'APPROVED')
-      .reduce((sum, t) => sum + parseFloat(t.order?.brlAmount || '0'), 0);
-
-    const totalCryptoAllTime = allTransactions
-      .filter(t => t.status === 'APPROVED')
-      .reduce((sum, t) => sum + parseFloat(t.order?.cryptoAmount || '0'), 0);
+    const approvedTxs = allTransactions.filter(t => t.status === 'APPROVED');
+    const totalVolumeAllTime = toBN(sumBN(approvedTxs.map(t => t.order?.brlAmount || '0'))).toNumber();
+    const totalCryptoAllTime = toBN(sumBN(approvedTxs.map(t => t.order?.cryptoAmount || '0'))).toNumber();
 
     // Montar relatório completo
     return {

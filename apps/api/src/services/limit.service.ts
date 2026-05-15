@@ -1,4 +1,5 @@
 import { prisma } from '../utils/prisma';
+import { toBN, sumBN } from '../utils/money';
 
 /**
  * Service para gerenciar limites de transacao baseados em reputacao
@@ -34,7 +35,7 @@ class LimitService {
 
     // MIGRATION (H-8): Preferir customDailyLimitStr (preciso) sobre customDailyLimit (Float)
     if (user.customDailyLimitStr !== null && user.customDailyLimitStr !== undefined) {
-      return parseFloat(user.customDailyLimitStr);
+      return toBN(user.customDailyLimitStr).toNumber();
     }
     if (user.customDailyLimit !== null && user.customDailyLimit !== undefined) {
       return user.customDailyLimit;
@@ -98,31 +99,31 @@ class LimitService {
       select: { brlAmount: true },
     });
 
-    let total = 0;
+    const amounts: string[] = [];
 
     // Somar ordens SELL criadas
     for (const order of sellOrdersCreated) {
-      total += parseFloat(order.brlAmount);
+      amounts.push(order.brlAmount.toString());
     }
 
     // Somar ordens BUY criadas
     for (const order of buyOrdersCreated) {
-      total += parseFloat(order.brlAmount);
+      amounts.push(order.brlAmount.toString());
     }
 
     // Somar transacoes como pagador (apenas de ordens SELL para evitar duplicacao)
     for (const tx of transactionsAsPayer) {
       if (tx.order.orderType === 'SELL') {
-        total += parseFloat(tx.order.brlAmount);
+        amounts.push(tx.order.brlAmount.toString());
       }
     }
 
     // Somar ordens como provedor
     for (const order of ordersAsProvider) {
-      total += parseFloat(order.brlAmount);
+      amounts.push(order.brlAmount.toString());
     }
 
-    return total;
+    return toBN(sumBN(amounts)).toNumber();
   }
 
   /**
@@ -146,7 +147,7 @@ class LimitService {
     // MIGRATION (H-8): Preferir customDailyLimitStr se disponível
     const isCustomLimit = (user?.customDailyLimitStr != null) || (user?.customDailyLimit != null);
     const customValue = user?.customDailyLimitStr != null
-      ? parseFloat(user.customDailyLimitStr)
+      ? toBN(user.customDailyLimitStr).toNumber()
       : user?.customDailyLimit ?? null;
     const dailyLimit = isCustomLimit && customValue !== null
       ? customValue
@@ -192,7 +193,7 @@ class LimitService {
     // MIGRATION (H-8): Preferir customDailyLimitStr se disponível
     const isCustomLimit = (user?.customDailyLimitStr != null) || (user?.customDailyLimit != null);
     const customValue = user?.customDailyLimitStr != null
-      ? parseFloat(user.customDailyLimitStr)
+      ? toBN(user.customDailyLimitStr).toNumber()
       : user?.customDailyLimit ?? null;
     const dailyLimit = isCustomLimit && customValue !== null ? customValue : formulaLimit;
     const dailyUsed = await this.getDailyVolume(userId);

@@ -106,7 +106,7 @@ export class ExchangeRateService {
       }
 
       const data = await response.json();
-      const rate = parseFloat(data.USDBRL.bid); // bid = preço de compra
+      const rate = Number(data.USDBRL.bid); // bid = preço de compra
 
       if (isNaN(rate) || rate <= 0) {
         throw new Error('Taxa inválida');
@@ -159,7 +159,7 @@ export class ExchangeRateService {
         throw new Error('Nenhuma cotação disponível para hoje');
       }
 
-      const rate = parseFloat(data.value[0].cotacaoCompra); // Cotação de compra
+      const rate = Number(data.value[0].cotacaoCompra); // Cotação de compra
 
       if (isNaN(rate) || rate <= 0) {
         throw new Error('Taxa inválida');
@@ -262,7 +262,7 @@ export class ExchangeRateService {
       }
 
       return {
-        rate: parseFloat(lastRate.rate),
+        rate: Number(lastRate.rate),
         source: lastRate.source as ExchangeRateSource,
         timestamp: lastRate.timestamp,
         responseTime: 0,
