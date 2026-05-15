@@ -2,8 +2,10 @@
 
 > **Status:** Documentação — código de suporte ainda não implementado (veja [Pré-requisitos de código](#pré-requisitos-de-código-ainda-não-implementados)).
 > **Última atualização:** 2026-05-15
-> **Owners:** Sócio A, Sócio B
+> **Owners:** Sócio 1, Sócio 2
 > **Referências:** TECH-DEBT-OP02 · SER-15 (mitigação parcial via commits `17fea25` + `0e4f5eb`) · CRIT-08
+
+> 📖 **Como ler este runbook:** se você nunca usou terminal, SSH ou bcrypt antes, **comece pelo [Apêndice A](#apêndice-a--instalação-de-ferramentas-necessárias)** (instalação das ferramentas) e pelo [Apêndice B](#apêndice-b--glossário-expandido) (glossário com analogias). Volte aqui para os passos depois.
 
 ---
 
@@ -68,265 +70,854 @@ Antes de começar, confirmar **todos** os itens. Se algum estiver pendente, para
 - [ ] Migration `init_postgres_decimal_fields` aplicada (`npx prisma migrate deploy`)
 - [ ] RBAC seed executado em prod (`npx tsx prisma/seeds/rbac-seed.ts`) — neste momento o guard `NODE_ENV=production` AINDA NÃO bloqueia o RBAC seed se ele for promovido a "migration controlada"; por enquanto, este passo é executado uma vez antes de ativarmos o guard em prod. Veja TECH-DEBT-DEV01.
 - [ ] App rodando mas **isolado** — firewall / IP whitelist / VPN. Nenhum usuário público consegue acessar.
+- [ ] Ferramentas instaladas em ambos os PCs pessoais — veja [Apêndice A](#apêndice-a--instalação-de-ferramentas-necessárias). **Faça isto pelo menos uma semana antes do dia D**, especialmente o acesso SSH (Apêndice A.3).
 - [ ] Ambos os sócios disponíveis na mesma videochamada (Meet/Zoom/Whereby), com vídeo ligado, durante todo o procedimento
 - [ ] Ambos os sócios com gerenciador de senha pessoal (Bitwarden, 1Password) instalado e desbloqueado
-- [ ] Ambos os sócios com app authenticator no celular (Authy, Google Authenticator, 1Password)
+- [ ] Ambos os sócios com app authenticator no celular (Authy, Google Authenticator, 1Password) — instruções no Apêndice A.4
 - [ ] **Cofre físico** definido para guardar backup codes em papel — pode ser cofre da casa, cofre de aluguel em banco, ou caderno em local seguro. Decidido antes, não improvisar.
 - [ ] Documento (fora do repo) preparado para registrar: data/hora do bootstrap, email de cada sócio, quem é fallback de quem, localização do cofre dos backup codes
 
 ---
 
+## Quem está onde durante o bootstrap
+
+Esta operação envolve **TRÊS contextos diferentes** que precisam ficar claros antes de começar. Cada passo deste runbook indica em qual contexto ele acontece.
+
+### Contexto A — PC pessoal de cada sócio
+
+Sócio 1 está no computador dele, em casa/escritório. Sócio 2 está no computador dele, em casa/escritório. Cada um usa o **próprio terminal local** (PowerShell no Windows, Terminal no Mac, bash no Linux).
+
+**O que acontece aqui:**
+- Gerar a senha temporária pessoal (Passo 1)
+- Gerar o hash bcrypt da senha (Passo 2)
+- Configurar o authenticator app no celular (Passo 6)
+
+A senha temporária **NUNCA sai do PC pessoal**. Apenas o hash bcrypt é compartilhado (e mesmo o hash não revela a senha original — veja a analogia de bcrypt no [Apêndice B](#apêndice-b--glossário-expandido)).
+
+### Contexto B — Servidor de produção (via SSH)
+
+Servidor único e compartilhado, hospedado em provedor de nuvem (Supabase, AWS, etc.). Acessado via terminal SSH a partir do PC pessoal de quem tem permissão.
+
+**O que acontece aqui:**
+- Executar o script `bootstrap-prod` (que faz o INSERT dos sócios e DELETE dos defaults — Passo 3)
+- Verificar audit log (Passo 8)
+
+**Recomendação:** apenas UM dos sócios conecta no servidor (aquele com SSH configurado), com **tela compartilhada via videochamada** para o outro acompanhar em tempo real. Atomicidade da transação SQL é mais importante que "ambos executam metade" — divisão do comando entre máquinas diferentes só introduz pontos de falha.
+
+### Contexto C — Aplicação web (navegador)
+
+O próprio app `app.mktplace.com.br` (ou domínio escolhido) rodando, acessado via navegador. **Cada sócio acessa do próprio PC.**
+
+**O que acontece aqui:**
+- Primeiro login com senha temporária (Passo 4)
+- App força fluxo `/auth/setup-password` para definir senha definitiva (Passo 5)
+- App força fluxo `/auth/setup-2fa` para escanear QR code (Passo 6)
+- Verificação cruzada entre sócios (Passo 7)
+
+### Setup obrigatório antes de começar
+
+- ✅ Videochamada ativa entre os dois sócios (Google Meet, Zoom, etc.) com vídeo dos rostos ligado
+- ✅ Compartilhamento de tela testado e funcionando
+- ✅ Ambos com paciência de **aproximadamente 1 hora reservada** sem interrupções
+- ✅ Celulares de ambos carregados (>50% de bateria) com authenticator instalado
+- ✅ Caderno físico ou cofre **na mesa** para anotar backup codes (não buscar no meio do procedimento)
+- ✅ Gerenciador de senha pessoal (Bitwarden, 1Password) aberto e desbloqueado para cada um
+- ✅ Apêndice A inteiramente concluído **dias antes** — não tentar instalar ferramentas no dia D
+
+### Diagrama do fluxo
+
+```
+PC do Sócio 1 (Contexto A)              PC do Sócio 2 (Contexto A)
+──────────────────────────              ──────────────────────────
+1. Gera senha temp (terminal)           4. Gera senha temp (terminal)
+2. Gera hash bcrypt (terminal)          5. Gera hash bcrypt (terminal)
+3. Anota senha no Bitwarden             6. Anota senha no Bitwarden
+   │                                       │
+   └── envia HASH (não a senha) ──┐    ┌── envia HASH (não a senha)
+                                  ▼    ▼
+                          Servidor de Produção (Contexto B)
+                          ─────────────────────────────────
+                          7. Sócio com SSH conecta no servidor
+                             (compartilhando tela na chamada)
+                          8. Executa npm run bootstrap-prod
+                             Script roda transação SQL ÚNICA:
+                               INSERT Sócio 1 (com hash dele)
+                               INSERT Sócio 2 (com hash dele)
+                               DELETE master@mktplace.com
+                               DELETE admin@mktplace.com
+                               VERIFY count = 2 master
+                             COMMIT
+   │                                       │
+   ▼                                       ▼
+PC do Sócio 1 (Contexto C)              PC do Sócio 2 (Contexto C)
+──────────────────────────              ──────────────────────────
+9.  Acessa app no navegador             13. Acessa app no navegador
+10. Login com senha temp pessoal        14. Login com senha temp pessoal
+11. App força /auth/setup-password      15. App força /auth/setup-password
+    → define senha definitiva               → define senha definitiva
+12. App força /auth/setup-2fa           16. App força /auth/setup-2fa
+    → escaneia QR + anota                   → escaneia QR + anota
+       backup codes em papel                   backup codes em papel
+
+                            ↓
+
+                  Verificação cruzada (Contexto C)
+                  ────────────────────────────────
+                  17. Logout + relogin com 2FA (ambos)
+                  18. Teste de backup code (ambos consomem 1)
+                  19. Confere audit log no painel admin
+                  20. Abre DNS público
+```
+
+**Tempo total estimado:** 60–90 minutos do início (Passo 1) ao fim (Passo 9). A maior parte é cerimônia, não comando — não há pressa.
+
+---
+
 ## Passo a passo
 
-Cada passo abaixo tem 5 campos:
+Cada passo usa um template fixo:
 
-- **O que acontece:** explicação em linguagem humana.
-- **Comando:** o que digitar / clicar. Quem não programa pode copiar e colar.
-- **Saída esperada:** o que deve aparecer na tela.
-- **Se der erro:** o que fazer.
-- **Quem executa:** Sócio A, Sócio B, ou Ambos (cada um na própria máquina).
+- **Contexto:** A (PC pessoal) / B (Servidor SSH) / C (App web)
+- **Quem executa:** Sócio 1 / Sócio 2 / Ambos (separadamente) / Apenas um
+- **Tempo estimado:** quanto leva quando dá tudo certo
+- **O que vai acontecer:** prosa explicando o quê e por quê
+- **Como fazer:** instruções numeradas, com onde encontrar o programa e o que digitar
+- **O que esperar como resposta:** o que aparece na tela quando dá certo
+- **O que fazer se der errado:** tabela `erro → significa → resolve`
+- **Não passe para o próximo passo até:** checklist de prontidão
 
 > ⚠️ Em qualquer ponto, se algo divergir do esperado, **parar** e investigar antes de continuar. Não há pressa para colocar prod no ar; há pressa para não criar conta inválida.
 
 ---
 
-### Passo 1 — Gerar senhas temporárias (cada sócio gera a sua)
+### Passo 1 — Cada sócio gera a própria senha temporária
 
-**O que acontece:** cada sócio gera uma senha aleatória forte na própria máquina. Essa senha será usada **apenas** para o primeiro login. Logo depois, o sistema obriga trocar.
+**Contexto:** A — PC pessoal
+**Quem executa:** Ambos, **separadamente** (cada um no próprio computador)
+**Tempo estimado:** 5 minutos
 
-**Comando:**
+#### O que vai acontecer
+
+Cada sócio vai gerar, no próprio computador, uma senha aleatória forte de 32 caracteres. Essa senha será usada apenas no PRIMEIRO login — assim que entrar pela primeira vez, o sistema obriga a trocar por uma definitiva.
+
+**Analogia:** é como gerar uma chave de uso único para destrancar uma porta. A chave em si não importa depois — o que importa é que ela seja imprevisível enquanto está em uso.
+
+A senha **fica apenas no seu PC**. Você não envia ela para o outro sócio, nem para o servidor. Você só envia o "hash" dela (Passo 2).
+
+#### Como fazer
+
+**1.** Abra o terminal do seu computador.
+
+  - **Windows:** clicar no botão Iniciar → digitar `Git Bash` → abrir. (Se não tiver Git Bash, veja Apêndice A.1.)
+  - **Mac:** apertar `Cmd + Espaço` para abrir o Spotlight → digitar `Terminal` → Enter.
+  - **Linux:** abrir o aplicativo Terminal do menu.
+
+**2.** Você verá uma janela escura com texto claro. Geralmente aparece o nome do seu usuário, seguido de um símbolo `$` ou `>`, e um cursor piscando. Algo como:
+
+```
+lucas@MacBook ~ $ █
+```
+
+Esse cursor piscando indica que ele está pronto para receber um comando.
+
+**3.** Digite EXATAMENTE este comando (sem aspas, sem mudar nada):
 
 ```bash
 openssl rand -base64 32
 ```
 
-**Saída esperada:** algo como `qC2vK8m+sRtN7L1pXa9YdHfZuQwE3jBgVmK5n4oP=`.
+> 💡 **O que esse comando faz, em português:** "OpenSSL, me dê 32 bytes aleatórios e formate em texto legível usando base64". `openssl` é o programa, `rand` é o subcomando (random = aleatório), `-base64 32` significa "32 bytes em base64".
 
-**Se der erro:**
-- `command not found: openssl` → No Windows, abrir Git Bash (não cmd nem PowerShell).
-- Se realmente não tiver openssl, alternativa: `node -e "console.log(require('crypto').randomBytes(24).toString('base64'))"`.
+  > ⚠️ **Atenção:** copie e cole, não digite à mão. Um espaço ou letra trocada e o comando falha.
 
-**Quem executa:** Ambos, **separadamente**. Cada sócio gera a SUA senha temp. Cada um anota a sua no próprio gerenciador (Bitwarden/1Password). **Nunca compartilhar essa senha, nem temporariamente — ela vai virar definitiva no Passo 5.**
+**4.** Aperte `Enter`.
+
+#### O que esperar como resposta
+
+Logo abaixo do comando, aparece uma sequência de aproximadamente **44 caracteres** misturando letras maiúsculas, minúsculas, números e símbolos. Algo como:
+
+```
+qC2vK8m+sRtN7L1pXa9YdHfZuQwE3jBgVmK5n4oP=
+```
+
+Esta sequência é a sua senha temporária. **Selecione o texto** (clicando e arrastando o mouse, ou triplo-clique para selecionar a linha inteira) e copie com `Ctrl+C` (Windows/Linux) ou `Cmd+C` (Mac).
+
+**5.** Abra seu gerenciador de senha (Bitwarden, 1Password) e crie uma nova entrada:
+- **Nome:** `Master Mktplace — senha temporária 2026-05-15` (com a data de hoje)
+- **Senha:** colar o que você copiou
+- **Notas:** "Senha de UM USO. Vai ser trocada no primeiro login."
+
+**6.** Salve. **Pronto.**
+
+> 💡 **Você sabe que deu certo quando:** a string de ~44 caracteres está salva no seu gerenciador de senha e o terminal não mostrou nenhum erro vermelho.
+
+#### O que fazer se der errado
+
+| Erro que aparece | O que significa | Como resolver |
+|---|---|---|
+| `command not found: openssl` | O programa OpenSSL não está disponível no terminal | Apêndice A.1. No Windows, use Git Bash (não PowerShell normal). |
+| `openssl: error: unknown option '-base64'` | Versão muito antiga do OpenSSL | Atualizar OpenSSL ou usar fallback: `node -e "console.log(require('crypto').randomBytes(24).toString('base64'))"` |
+| Saída tem caracteres estranhos / quebrada | Provavelmente erro de copy/paste do comando | Limpar a linha (Ctrl+C para cancelar) e digitar de novo |
+
+Se aparecer algo diferente: **PARE**. Tire print da tela. Compartilhe com o outro sócio antes de continuar.
+
+#### Não passe para o próximo passo até:
+
+- [ ] A senha de ~44 caracteres está salva no seu gerenciador de senha pessoal
+- [ ] Você confirma na videochamada que o outro sócio também gerou e salvou a dele
+- [ ] **Nenhum dos dois** compartilhou a senha plain com o outro (a comunicação na chamada deve ser "salvei a minha", não "minha senha é X")
 
 ---
 
-### Passo 2 — Gerar hash bcrypt da própria senha (sem mandar a senha plain para ninguém)
+### Passo 2 — Cada sócio gera o hash bcrypt da própria senha
 
-**O que acontece:** o script de bootstrap precisa do hash bcrypt para inserir no banco. **Nunca digite a senha plain dentro do servidor remoto** — gere o hash localmente e mande apenas o hash. Hash é o que o banco armazena de qualquer jeito; vazar um hash de bcrypt 12-rounds é praticamente inútil para um atacante.
+**Contexto:** A — PC pessoal
+**Quem executa:** Ambos, **separadamente**
+**Tempo estimado:** 10 minutos
 
-**Comando:** com Node disponível na máquina local:
+#### O que vai acontecer
+
+Você vai transformar a senha do Passo 1 em uma string "embaralhada" chamada **hash bcrypt**. O servidor de produção precisa do hash (não da senha) para guardar no banco. Quando você logar no app, o servidor compara o hash do que você digitou com o hash guardado — se baterem, libera entrada.
+
+**Analogia:** imagine triturar um papel em uma trituradora de papel. Você não consegue reconstruir o papel original a partir das tiras, mas se você triturar outro papel idêntico, sai exatamente o mesmo padrão de tiras. Bcrypt funciona assim: um hash não revela a senha, mas a mesma senha sempre gera o mesmo hash (quando usa o mesmo "sal" — neste caso o hash inclui o sal junto, é só copiar o hash inteiro).
+
+**Por que isso é importante:** você vai precisar enviar o hash para quem está operando o servidor. Hash é seguro de mandar por chat/Signal/voz — mesmo que vaze, ninguém consegue descobrir sua senha a partir dele (com bcrypt 12-rounds, levaria séculos de CPU). Já senha plain não pode passar por nenhum canal externo.
+
+#### Como fazer
+
+**1.** Permaneça no mesmo terminal aberto no Passo 1 (ou abra novo se fechou).
+
+**2.** Verifique se Node.js está instalado digitando:
 
 ```bash
-node -e "console.log(require('bcryptjs').hashSync(process.argv[1], 12))" 'sua-senha-temp-do-passo-1'
+node --version
 ```
 
-**Saída esperada:** algo como `$2a$12$LRwQ5N0Yt9YJ6vG2KEhc1OFNuHKzCJzv5K8mYBpQqXJwGZdYRb1Vm`.
+  Apertar Enter. Você deve ver algo como `v18.17.0` ou `v20.x.x`. Se aparecer "command not found", instale Node primeiro (Apêndice A.2) e volte.
 
-**Se der erro:**
-- `Cannot find module 'bcryptjs'` → executar dentro de `apps/api/` (onde bcryptjs está instalado): `cd apps/api && node -e "..."`. Alternativa: `npx --yes bcryptjs-cli hash 'sua-senha' 12`.
-- Hash com tamanho diferente de ~60 chars → algo errado. Não usar.
+**3.** Cole o seguinte comando no terminal, **mas substituindo `SUA-SENHA-AQUI` pela senha temp do Passo 1**:
 
-**Quem executa:** Ambos, **separadamente**. Cada sócio gera o hash da própria senha **localmente**, depois compartilha **apenas o hash** com quem vai operar o script (pode ser por chat criptografado, Signal, ou até voz na chamada — hash é seguro de transmitir).
+```bash
+node -e "console.log(require('bcryptjs').hashSync(process.argv[1], 12))" 'SUA-SENHA-AQUI'
+```
+
+> 💡 **O que esse comando faz, em português:** "Node, execute este código JavaScript — ele importa a biblioteca bcryptjs e pede pra ela gerar o hash da senha que está como primeiro argumento, com força 12. Aí imprime o resultado." As **aspas simples** em volta da senha são importantes para que caracteres especiais (como `+`, `=`, `/`) não sejam interpretados como comandos.
+
+  > ⚠️ **Atenção:** sua senha do Passo 1 pode conter caracteres especiais. As aspas simples evitam problemas. **Se sua senha tem aspa simples dentro**, gere outra no Passo 1.
+
+**4.** Apertar `Enter`.
+
+> 💡 O comando pode demorar **2–3 segundos** rodando — é o bcrypt fazendo cálculo intencional para ser lento (essa lentidão é a defesa contra ataques de força bruta).
+
+#### O que esperar como resposta
+
+Aparece uma linha começando com `$2a$12$` ou `$2b$12$`, com aproximadamente **60 caracteres** no total:
+
+```
+$2a$12$LRwQ5N0Yt9YJ6vG2KEhc1OFNuHKzCJzv5K8mYBpQqXJwGZdYRb1Vm
+```
+
+Essa é a forma "embaralhada" da sua senha. Pode (e deve) compartilhar com quem vai operar o servidor.
+
+**5.** Selecione e copie a string inteira (do `$2a$12$...` até o último caractere).
+
+**6.** Envie para o sócio que vai operar o servidor via canal de chat criptografado (Signal recomendado, ou via voz na chamada lendo letra por letra — hash é seguro). **NÃO envie sua senha plain do Passo 1, só o hash deste passo.**
+
+#### O que fazer se der errado
+
+| Erro que aparece | O que significa | Como resolver |
+|---|---|---|
+| `command not found: node` | Node.js não instalado | Apêndice A.2 |
+| `Cannot find module 'bcryptjs'` | A biblioteca bcryptjs não está acessível neste diretório | Mude para uma pasta do projeto (ex.: `cd ~/projetos/MktPlace-P2P/apps/api`) e tente de novo. Alternativa: `npm install -g bcryptjs` primeiro. |
+| Hash com menos de 50 ou mais de 70 caracteres | Algo cortou a saída ou o argumento foi mal-passado | Não use esse hash. Repita o comando garantindo aspas simples corretas em volta da senha. |
+| Saída em branco, sem erro | Provavelmente a senha não chegou como argumento | Confira se você substituiu `SUA-SENHA-AQUI` e manteve as aspas simples |
+
+#### Não passe para o próximo passo até:
+
+- [ ] Você tem o hash bcrypt de ~60 caracteres começando com `$2a$12$` ou `$2b$12$`
+- [ ] Você enviou o hash (não a senha plain) para o sócio operador via canal seguro
+- [ ] O sócio operador confirma na chamada que recebeu o hash de ambos os sócios
 
 ---
 
-### Passo 3 — Executar `npm run bootstrap-prod`
+### Passo 3 — Sócio operador executa o script `bootstrap-prod` no servidor
 
-**O que acontece:** o script `apps/api/scripts/bootstrap-prod.ts` (a ser escrito — veja [Anatomia](#anatomia-do-script-bootstrap-prodts)) é executado **no servidor de produção**, conectado ao banco de produção. Ele:
+**Contexto:** B — Servidor de produção (via SSH a partir do PC do operador)
+**Quem executa:** **Apenas um sócio** — aquele com acesso SSH ao servidor. O outro acompanha por compartilhamento de tela.
+**Tempo estimado:** 15 minutos
 
-1. Confirma que `NODE_ENV=production` (anti-acidente em dev).
-2. Pede interativamente: email do Sócio A, hash do Sócio A, email do Sócio B, hash do Sócio B.
-3. Abre uma transação SQL.
-4. INSERT do Sócio A com role master, `forcePasswordReset=true`, `force2FASetup=true`.
-5. INSERT do Sócio B com mesmas flags.
-6. DELETE dos usuários `master@mktplace.com` e `admin@mktplace.com` se existirem.
-7. Verifica que `SELECT COUNT(*) FROM "User" WHERE roleId = <master_role_id>` retorna exatamente 2.
-8. Commit da transação.
-9. Imprime resumo do audit log.
+#### O que vai acontecer
 
-**Comando:** dentro do servidor de produção, na pasta do projeto:
+O sócio operador vai se conectar no servidor de produção remotamente (usando SSH, que é como um "TeamViewer via texto"), e executar um script que faz **uma única operação atômica** no banco:
+
+1. Cria o usuário do Sócio 1 (com o hash que o Sócio 1 enviou)
+2. Cria o usuário do Sócio 2 (com o hash que o Sócio 2 enviou)
+3. Apaga `master@mktplace.com` e `admin@mktplace.com` se existirem
+4. Verifica que existem exatamente 2 masters no banco
+5. Confirma a transação
+
+**Analogia da "transação atômica":** imagine uma operação bancária de transferência entre duas contas — `tirar de A` e `colocar em B`. Se a luz cair no meio, você não pode terminar com `tirou de A` mas `não colocou em B`. Ou tudo acontece, ou nada acontece. É o que o `BEGIN ... COMMIT` do SQL faz aqui.
+
+**Atenção:** o script ainda **não está implementado**. Esta versão do runbook descreve como ele DEVE funcionar quando existir (especificação está em [Anatomia do script](#anatomia-do-script-bootstrap-prodts)). Até lá, o procedimento alternativo é executar o SQL bloco a bloco manualmente via `psql`.
+
+#### Como fazer
+
+**1.** Confirme com o outro sócio (na chamada) que ele vai compartilhar a tela enquanto você executa.
+
+**2.** No seu terminal local, conecte ao servidor via SSH:
 
 ```bash
-cd /caminho/para/MktPlace-P2P/apps/api
-NODE_ENV=production npm run bootstrap-prod
+ssh usuario@ip-do-servidor-de-producao
 ```
 
-**Saída esperada:**
+Substituir `usuario` pelo seu nome de usuário no servidor e `ip-do-servidor-de-producao` pelo IP ou hostname real.
+
+> 💡 **O que é SSH:** Secure Shell. É um protocolo para abrir um terminal **dentro** de outro computador, pela internet, de forma segura (encriptada). Você digita comandos no seu PC, mas eles rodam no servidor remoto, e a resposta volta para sua tela.
+
+  > ⚠️ Se essa é a primeira vez conectando, configure SSH **dias antes** seguindo o Apêndice A.3.
+
+**3.** O servidor pede confirmação da chave (na primeira vez) ou sua senha SSH:
+
+```
+The authenticity of host 'ip (xxx.xxx.xxx.xxx)' can't be established.
+ECDSA key fingerprint is SHA256:abc...xyz.
+Are you sure you want to continue connecting (yes/no/[fingerprint])?
+```
+
+Digite `yes` e Enter (apenas na PRIMEIRA conexão; depois ele lembra).
+
+**4.** Você agora está com um prompt do servidor, algo como:
+
+```
+admin@prod-server:~$
+```
+
+**5.** Navegue até a pasta da API:
+
+```bash
+cd /var/www/MktPlace-P2P/apps/api
+```
+
+(O caminho exato depende de onde o app foi instalado. Confirmar com quem provisionou o servidor.)
+
+**6.** Confirme que está em produção real:
+
+```bash
+echo $NODE_ENV
+```
+
+  Deve retornar `production`. Se retornar vazio ou outra coisa, **PARE** — você está no lugar errado.
+
+**7.** Execute o script (quando ele existir):
+
+```bash
+npm run bootstrap-prod
+```
+
+#### O que esperar como resposta
+
+O script é interativo. Ele vai mostrar uma série de telas:
 
 ```
 ═══ Bootstrap de masters em produção ═══
 ✓ NODE_ENV=production confirmado
 ✓ Banco alcançável (postgres://...mktplace)
-? Email do Sócio A:  socio-a@dominio-real.com.br
-? Hash bcrypt do Sócio A:  $2a$12$...
-? Email do Sócio B:  socio-b@dominio-real.com.br
-? Hash bcrypt do Sócio B:  $2a$12$...
+? Email do Sócio 1:  ▮
+```
 
+O cursor pisca esperando o email do Sócio 1. **Digite o email definitivo** do Sócio 1 (ex.: `socio1@dominio-real.com.br`), Enter.
+
+```
+? Hash bcrypt do Sócio 1:  ▮
+```
+
+Cole o hash do Sócio 1 que você recebeu no Passo 2. Enter.
+
+Repita para Sócio 2 (email + hash).
+
+O script mostra um resumo:
+
+```
 Resumo (NADA foi escrito ainda):
   - Criar 2 usuários com role master
   - Deletar masters default se existirem (master@/admin@mktplace.com)
   - Flags forcePasswordReset=true e force2FASetup=true em ambos
-? Confirmar? (digite "SIM, EXECUTAR"):  SIM, EXECUTAR
+? Confirmar? (digite "SIM, EXECUTAR"):  ▮
+```
 
+**Leia o resumo em voz alta na chamada com o outro sócio.** Se ambos confirmam que está correto, digite `SIM, EXECUTAR` (com vírgula e maiúsculas, exatamente assim), Enter.
+
+```
 Executando transação...
-✓ Sócio A inserido (id=...)
-✓ Sócio B inserido (id=...)
+✓ Sócio 1 inserido (id=clxxx...)
+✓ Sócio 2 inserido (id=clyyy...)
 ✓ master@mktplace.com deletado
 ✓ admin@mktplace.com deletado
 ✓ Verificação: 2 usuários master no banco
 ✓ Transação comitada
 
 Audit log (últimos 4 eventos):
-  USER_CREATED  socio-a@dominio-real.com.br  por SYSTEM
-  USER_CREATED  socio-b@dominio-real.com.br  por SYSTEM
+  USER_CREATED  socio1@dominio-real.com.br  por SYSTEM
+  USER_CREATED  socio2@dominio-real.com.br  por SYSTEM
   USER_DELETED  master@mktplace.com           por SYSTEM
   USER_DELETED  admin@mktplace.com            por SYSTEM
 
 ✓ Bootstrap concluído. Próximo passo: cada sócio acessa /auth/login
 ```
 
-**Se der erro:**
-- `NODE_ENV !== 'production'` → não rodar em outro ambiente que não prod real. Se for prod, conferir o `.env` ou variáveis do serviço.
-- `Can't reach database server` → checar `DATABASE_URL` e conectividade do servidor com o banco.
-- Erro de constraint em INSERT (ex.: email duplicado) → algum usuário com esse email já existe. Investigar antes de prosseguir; provavelmente runbook foi executado parcialmente antes.
-- Script aborta antes do commit → **nada foi gravado** (atomicidade). Investigar e reexecutar.
+> 💡 **Você sabe que deu certo quando:** a linha `✓ Transação comitada` aparece, seguida do audit log com os 4 eventos.
 
-**Quem executa:** Um sócio só roda o script (o que tem acesso SSH ao servidor de prod). Ambos os emails/hashes precisam estar disponíveis. **O outro sócio acompanha por compartilhamento de tela.**
+#### O que fazer se der errado
+
+| Erro que aparece | O que significa | Como resolver |
+|---|---|---|
+| `NODE_ENV !== 'production'` | Variável de ambiente errada no servidor | Conferir `.env` do servidor ou as variáveis do serviço systemd / PM2 / Docker |
+| `Can't reach database server` | App não consegue conversar com o Postgres | Conferir `DATABASE_URL`, firewall do banco, e se o Postgres está rodando |
+| `Unique constraint failed on the fields: (email)` | Já existe usuário com esse email | Algum INSERT manual aconteceu antes. Investigar antes de prosseguir (NÃO sobrescrever); ver [Plano de recuperação](#plano-de-recuperação-em-desastre). |
+| Script aborta antes de "Transação comitada" | **Nada foi gravado** (atomicidade SQL). Estado igual ao antes. | Ler a mensagem de erro, corrigir o input, e reexecutar do Passo 7. |
+| `Erro: count = 1` ou `count = 3` | Verificação interna falhou — quantidade errada de masters | NÃO comitar. Sair do script (Ctrl+C se travado). Investigar manualmente com `psql`. |
+
+#### Não passe para o próximo passo até:
+
+- [ ] A linha `✓ Transação comitada` apareceu
+- [ ] O audit log mostrou `USER_CREATED` para os 2 sócios novos
+- [ ] O outro sócio confirmou pela chamada que viu o mesmo na tela compartilhada
+- [ ] Você fez `exit` para sair do servidor (ou pelo menos sabe que pode fechar essa janela do terminal — o trabalho no Contexto B acabou por enquanto)
 
 ---
 
-### Passo 4 — Cada sócio acessa o app e faz primeiro login com senha temp
+### Passo 4 — Cada sócio faz primeiro login com a senha temporária
 
-**O que acontece:** com os usuários no banco e o app rodando (mesmo que isolado por VPN/whitelist), cada sócio abre o navegador e tenta logar com email + senha temporária do Passo 1.
+**Contexto:** C — App web
+**Quem executa:** Ambos, **separadamente** (cada um no próprio navegador)
+**Tempo estimado:** 5 minutos
 
-**Comando:** abrir no navegador:
+#### O que vai acontecer
+
+Com os usuários criados no banco e o app rodando (mesmo isolado por VPN/whitelist), cada sócio abre o navegador e faz login pela primeira vez usando seu email + a senha temporária que gerou no Passo 1.
+
+O app vai **imediatamente** detectar a flag `forcePasswordReset=true` e redirecionar para a tela de "definir nova senha" (Passo 5). Você NÃO terá acesso a nada do dashboard antes de definir a senha definitiva.
+
+#### Como fazer
+
+**1.** Abra seu navegador preferido (Chrome, Firefox, Edge, Safari).
+
+**2.** Acesse a URL do app:
 
 ```
 https://app.mktplace.com.br/auth/login
 ```
 
-Digitar email + senha temporária.
+(Substituir pelo domínio real se for diferente.)
 
-**Saída esperada:** login bem-sucedido, mas o app **imediatamente** redireciona para `/auth/setup-password` (porque `forcePasswordReset=true`).
+**3.** Na tela de login, preencha:
+- **Email:** seu email definitivo (mesmo que o sócio operador inseriu no Passo 3)
+- **Senha:** a senha temporária do Passo 1 (cole direto do seu Bitwarden — não digite à mão)
 
-**Se der erro:**
-- `Email ou senha inválidos` → conferir se a senha digitada é a mesma que gerou o hash no Passo 2. Erro mais comum: copiar/colar pegou espaço extra.
-- App não redireciona, fica em `/dashboard` → o middleware de force-reset não está aplicado. **Parar e investigar.** Sócio NÃO deve continuar usando a conta nesse estado — significa que o código de proteção não está rodando.
+**4.** Clique em **Entrar** (ou Login).
 
-**Quem executa:** Ambos, separadamente, cada um na própria máquina.
+#### O que esperar como resposta
+
+A página carrega por um segundo e **redireciona automaticamente** para uma nova URL:
+
+```
+https://app.mktplace.com.br/auth/setup-password
+```
+
+A tela exibida pede para você definir uma nova senha. Você NÃO vê o dashboard normal — você vê uma tela "definir senha definitiva".
+
+> 💡 **Você sabe que deu certo quando:** a URL no navegador mudou para `/auth/setup-password` automaticamente, sem você clicar em nada.
+
+#### O que fazer se der errado
+
+| Erro que aparece | O que significa | Como resolver |
+|---|---|---|
+| `Email ou senha inválidos` | A senha digitada não bate com o hash no banco | 1) Confirme o email exato. 2) Cole a senha do Bitwarden de novo — pode ter pegado um espaço extra. 3) Confirme com o operador se o hash do seu sócio (no Passo 3) era o seu mesmo. |
+| Login funciona mas vai pro dashboard normal | A flag `forcePasswordReset` não está vigorando | **PARE.** O middleware de proteção não está aplicado. Avisar o sócio operador e investigar antes de continuar — significa que prod está sem proteção. |
+| Página em branco / erro 500 | App quebrou | Print da tela, mostrar pro operador. Sem isolamento (DNS público fechado por enquanto), só os dois sócios podem testar. |
+| `Conexão recusada` | Você não está dentro da VPN ou IP whitelist | Conferir VPN ativa. Se quem provisionou disse "tem que estar no VPN da empresa", abrir o VPN antes. |
+
+#### Não passe para o próximo passo até:
+
+- [ ] Seu navegador está em `/auth/setup-password`
+- [ ] O outro sócio confirma pela chamada que também está em `/auth/setup-password`
+- [ ] Nenhum dos dois conseguiu acessar `/dashboard` direto após o login
 
 ---
 
-### Passo 5 — Definir senha definitiva (rota `/auth/setup-password`)
+### Passo 5 — Cada sócio define a senha definitiva
 
-**O que acontece:** o app pede a nova senha. Cada sócio gera uma senha **definitiva** (forte, no Bitwarden) e digita aqui. Após salvar, `forcePasswordReset` vira `false` no banco.
+**Contexto:** C — App web
+**Quem executa:** Ambos, **separadamente**
+**Tempo estimado:** 5 minutos
 
-**Comando:** dentro da UI:
+#### O que vai acontecer
 
-1. Gerar nova senha forte no gerenciador (Bitwarden / 1Password): mínimo 16 caracteres, mix de letras/números/símbolos.
-2. **Salvar no gerenciador ANTES de submeter** (se a tela travar depois, a senha está perdida).
-3. Digitar a nova senha duas vezes no formulário.
-4. Submit.
+Agora você vai trocar a senha temporária (que pode ter passado por canais menos seguros como chat ou voz) por uma definitiva, gerada e armazenada **exclusivamente** dentro do seu gerenciador de senha pessoal.
 
-**Saída esperada:** redirect imediato para `/auth/setup-2fa` (porque `force2FASetup` ainda é `true`).
+Esta senha nasce dentro do seu navegador com TLS, dentro do seu Bitwarden, e nunca sai daí. **Use o gerador do próprio gerenciador** para criá-la — não invente.
 
-**Se der erro:**
-- "Senha muito fraca" → respeitar política de senha do app. Reler requisitos.
-- Submit volta para `/auth/setup-password` sem feedback → erro de rede. Tentar de novo; a senha não foi gravada (transação atômica no backend).
-- App vai para `/dashboard` em vez de `/auth/setup-2fa` → `force2FASetup` não está sendo respeitado. **Parar.** A janela sem 2FA é exatamente o que este runbook está prevenindo.
+#### Como fazer
 
-**Quem executa:** Ambos, separadamente.
+**1.** Antes de qualquer outra coisa, abra seu gerenciador (Bitwarden / 1Password) e crie uma nova entrada:
+- **Nome:** `Master Mktplace — senha definitiva`
+- **Email:** seu email do app
+- **Senha:** clique no botão de **gerar senha** e configure:
+  - Comprimento: **mínimo 20 caracteres**
+  - Tipo: letras maiúsculas + minúsculas + números + símbolos
+  - Clique em "Salvar" para colocar no vault
+
+**2.** Volte ao navegador, na tela `/auth/setup-password`.
+
+**3.** Cole a senha do gerenciador no campo "Nova senha".
+
+**4.** Cole a mesma senha no campo "Confirmar senha" (geralmente o gerenciador tem botão de "preencher" que faz isso automaticamente).
+
+**5.** Clique em **Salvar** (ou "Definir senha", como o botão for chamado).
+
+> ⚠️ **CRÍTICO:** salve a senha no gerenciador ANTES de clicar em Salvar. Se a página travar ou der erro de rede no meio, e você não tiver salvado, a senha está perdida — e você não conseguirá logar de novo. O bcrypt da senha já estará no banco, mas você nem sabe qual senha gerou aquele hash.
+
+#### O que esperar como resposta
+
+A página carrega e redireciona automaticamente para:
+
+```
+https://app.mktplace.com.br/auth/setup-2fa
+```
+
+A nova tela mostra um QR code grande e uma instrução pra escanear com o app authenticator.
+
+> 💡 **Você sabe que deu certo quando:** a URL mudou para `/auth/setup-2fa` e você vê um QR code.
+
+#### O que fazer se der errado
+
+| Erro que aparece | O que significa | Como resolver |
+|---|---|---|
+| `Senha muito fraca` | Política do app rejeitou a senha | Ler os requisitos da tela. Geralmente precisa de letra maiúscula + número + símbolo. Use o gerador do Bitwarden. |
+| Submit volta para a mesma tela sem feedback claro | Erro de rede ou validação silenciosa | Conferir console do navegador (F12 → aba Console). Tentar de novo. A senha definitiva NÃO foi gravada se o submit falhou — está seguro repetir. |
+| Após submit vai para `/dashboard` em vez de `/auth/setup-2fa` | `force2FASetup` não está sendo respeitado | **PARE.** Avisar operador. A janela "sem 2FA" é justamente o que este runbook está prevenindo. |
+| Você esqueceu de salvar no gerenciador antes de submeter, e agora não lembra a senha | Coisa séria | Ver [Plano de recuperação: Sócio perde acesso à senha](#cenário-sócio-perde-acesso-à-senha). |
+
+#### Não passe para o próximo passo até:
+
+- [ ] A senha definitiva está salva no seu gerenciador
+- [ ] O navegador está em `/auth/setup-2fa` mostrando o QR code
+- [ ] O outro sócio confirma pela chamada o mesmo estado
 
 ---
 
-### Passo 6 — Habilitar 2FA (rota `/auth/setup-2fa`)
+### Passo 6 — Cada sócio habilita o 2FA com QR code + anota backup codes em papel
 
-**O que acontece:** o app gera um QR code e um secret TOTP. O sócio escaneia com o app authenticator e digita o código de 6 dígitos para confirmar. Em seguida, o app exibe 10 **backup codes** (gerados via `crypto.randomBytes` — fix do CRIT-06). Esses códigos servem para recuperação se o sócio perder o celular.
+**Contexto:** C — App web + celular
+**Quem executa:** Ambos, **separadamente**
+**Tempo estimado:** 10 minutos
 
-**Comando:**
+#### O que vai acontecer
 
-1. Abrir Authy / Google Authenticator no celular.
-2. "Adicionar conta" → escanear QR code da tela.
-3. Confirmar que o app authenticator agora mostra um código de 6 dígitos rotativo a cada 30s.
-4. Digitar o código atual no formulário do app web.
-5. Submit.
-6. O app web exibe **10 backup codes** em formato `XXXX-XXXX-XX`.
-7. **Anotar os 10 códigos em papel** (não em arquivo digital).
-8. Guardar o papel no cofre físico decidido nos pré-requisitos.
+O 2FA (autenticação de dois fatores) adiciona uma segunda barreira após a senha: um código de 6 dígitos que muda a cada 30 segundos, gerado pelo seu celular. Isso significa que mesmo se alguém descobrir sua senha, não consegue entrar sem ter seu celular físico.
 
-**Saída esperada:** após salvar os backup codes, o app redireciona para `/dashboard` e o sócio agora tem acesso completo de master.
+Você vai usar o app authenticator (Authy, Google Authenticator, ou 1Password — veja [Apêndice A.4](#a4--instalar-authenticator-app-no-celular)) para escanear um **QR code** mostrado no navegador. A partir daí, sempre que logar, o app web pedirá o código de 6 dígitos que está rotativo no seu celular.
 
-**Se der erro:**
-- Código TOTP não aceito → relógio do celular fora de sincronia. Em Android: Configurações → Data e hora → "definir automaticamente". Em iOS: idem. Tentar de novo após sincronizar.
-- Tela de backup codes some antes de anotar → ela só aparece uma vez. **Não voltar para o dashboard sem ter anotado.** Se aconteceu, ir em Configurações → Segurança → "Regenerar Backup Codes" para invalidar os perdidos e gerar novos.
+Depois de habilitar, o app web mostra **10 backup codes** — usáveis uma vez cada, no caso de o celular sumir / ser roubado / quebrar. Você vai **anotar esses 10 códigos em papel** e guardar no cofre físico definido nos pré-requisitos.
 
-**Quem executa:** Ambos, separadamente.
+> ⚠️ **A tela de backup codes aparece UMA VEZ.** Se você fechar / dar refresh / clicar errado antes de anotar, os códigos somem. Tenha o caderno + caneta na mesa **antes** de chegar nesta tela.
+
+#### Como fazer
+
+**1.** Pegue seu celular. Abra o app authenticator (Authy / Google Authenticator / 1Password).
+
+**2.** No app authenticator, encontre o botão **"Adicionar conta"** (geralmente um `+` no canto superior).
+
+**3.** Escolha **"Escanear QR code"**. O app vai pedir permissão da câmera — autorize.
+
+**4.** Aponte a câmera do celular para o QR code mostrado no navegador (a tela `/auth/setup-2fa`). O app reconhece automaticamente.
+
+**5.** O app authenticator agora mostra uma nova entrada:
+- **Nome:** "Mktplace da Liberdade (seu@email.com)"
+- **Código:** 6 dígitos que mudam a cada 30 segundos (com um pequeno círculo que esvazia indicando quanto tempo falta)
+
+**6.** No navegador, digite o código de 6 dígitos **atual** (o que está visível no celular agora) no campo de confirmação.
+
+**7.** Clique em **Verificar** (ou "Confirmar", "Habilitar 2FA", como for chamado).
+
+#### O que esperar como resposta
+
+A página confirma sucesso e mostra os **10 backup codes** em formato `XXXX-XXXX-XX`:
+
+```
+✓ 2FA habilitado com sucesso.
+
+⚠️ ANOTE OS BACKUP CODES ABAIXO. Esta tela NÃO voltará.
+
+  A1B2-C3D4-E5    F6G7-H8I9-J0    K1L2-M3N4-O5
+  P6Q7-R8S9-T0    U1V2-W3X4-Y5    Z6A7-B8C9-D0
+  E1F2-G3H4-I5    J6K7-L8M9-N0    O1P2-Q3R4-S5
+  T6U7-V8W9-X0
+```
+
+**8.** Pegue caderno e caneta. **Anote os 10 códigos à mão, em papel.** Não no celular, não em app de notas digital, não em arquivo de texto. Em papel.
+
+**9.** Releia os códigos do papel comparando com a tela, garantindo que copiou corretamente cada caractere.
+
+**10.** Apenas DEPOIS de anotar todos os 10 em papel e conferir, clique no botão **"Já anotei — continuar"** (ou similar). A tela desaparece.
+
+**11.** Guarde o papel no cofre físico decidido nos pré-requisitos. **Lembre onde guardou** — anote isso no documento operacional externo (cofre/wiki interna).
+
+#### O que esperar como resposta (continuação)
+
+Após o "Já anotei — continuar", o app redireciona para:
+
+```
+https://app.mktplace.com.br/dashboard
+```
+
+Você agora tem acesso completo de master. O fluxo de force-reset / force-2fa terminou.
+
+> 💡 **Você sabe que deu certo quando:** está no dashboard normal do app E tem os 10 backup codes em papel no cofre.
+
+#### O que fazer se der errado
+
+| Erro que aparece | O que significa | Como resolver |
+|---|---|---|
+| `Código TOTP inválido` | O relógio do celular está dessincronizado | **Android:** Configurações → Data e hora → Definir automaticamente. **iOS:** Ajustes → Geral → Data e hora → Automaticamente. Aguardar 30s, tentar de novo com o novo código que apareceu. |
+| App authenticator não reconhece o QR code | Câmera com foco ruim, ou QR muito longe / muito perto | Ajustar distância. Aumentar zoom da página web (Ctrl + ou Cmd +) para o QR ficar maior. |
+| Tela de backup codes sumiu sem você anotar | Refresh acidental ou cliquei "continuar" cedo demais | **NÃO entre em pânico.** Vá em **Configurações → Segurança → "Regenerar Backup Codes"**. Isso invalida os perdidos e gera 10 novos. Anotar com calma desta vez. |
+| Sem app authenticator no celular ainda | Faltou instalar | Apêndice A.4. Instala o Authy ou Google Authenticator e volta. |
+
+#### Não passe para o próximo passo até:
+
+- [ ] Você está no `/dashboard` do app
+- [ ] Os 10 backup codes estão anotados em papel
+- [ ] O papel está no cofre físico (não no bolso, não na bolsa)
+- [ ] Você anotou no documento operacional externo: "Backup codes 2FA Sócio X estão em [local do cofre]"
+- [ ] O outro sócio confirma pela chamada que está no mesmo estado (dashboard + backup codes em papel)
 
 ---
 
 ### Passo 7 — Verificação cruzada entre sócios
 
-**O que acontece:** sócios validam o trabalho um do outro. Confirma que ambos têm acesso e que ninguém configurou nada errado.
+**Contexto:** C — App web
+**Quem executa:** Ambos em paralelo, comunicando-se na chamada
+**Tempo estimado:** 10 minutos
 
-**Comando:**
+#### O que vai acontecer
 
-1. Cada sócio faz logout e tenta login de novo, completo, com 2FA. Confirma que funciona.
-2. Cada sócio tenta usar **um** backup code para login (consome um dos 10 — sobram 9). Confirma que funciona.
-3. Cada sócio confirma na UI: Configurações → Segurança → "Backup codes restantes: 9".
-4. Cada sócio confere o painel admin: ele consegue ver a lista de roles e o próprio nome aparece como master.
+Bootstrap só termina quando ambos os sócios validaram o trabalho um do outro. Você vai testar logout + login completo com 2FA, e usar **um** dos seus backup codes (consumindo 1 dos 10) para confirmar que o caminho de recuperação funciona.
 
-**Saída esperada:** todos os 4 sub-passos OK em ambos os sócios.
+Após este passo, cada um tem 9 backup codes restantes. Anote essa contagem no documento operacional.
 
-**Se der erro:**
-- Algum sócio não consegue logar → recuperar pelo backup code; se nem isso funciona, ver [Plano de recuperação](#plano-de-recuperação-em-desastre).
-- Algum sócio aparece com role diferente de master → houve erro no INSERT do Passo 3. **Não tentar corrigir via UI agora** (estado inconsistente). Rodar [recuperação](#cenário-bootstrap-falha-no-meio-rollback).
+#### Como fazer
 
-**Quem executa:** Ambos, em paralelo, comunicando-se na chamada.
+**Sub-passo 7.1 — Logout e relogin com 2FA (ambos, paralelo)**
+
+**1.** Clique em "Sair" / "Logout" no app.
+
+**2.** Você vai para a tela de login.
+
+**3.** Faça login com email + senha definitiva (do Bitwarden, Passo 5).
+
+**4.** O app pede o código TOTP de 6 dígitos.
+
+**5.** Abra o app authenticator no celular, pegue o código atual, digite.
+
+**6.** Submit. Você cai no dashboard novamente.
+
+> 💡 Confirma com o outro sócio na chamada: "Loguei com 2FA, tô no dashboard". O outro responde igual.
+
+**Sub-passo 7.2 — Teste de backup code (ambos, paralelo, consome 1 dos 10)**
+
+**1.** Logout de novo.
+
+**2.** Faça login com email + senha definitiva.
+
+**3.** Na tela de 2FA, procure o link/botão **"Usar backup code"** (ou similar).
+
+**4.** Pegue **um** dos 10 backup codes do papel. Digite no campo (pode digitar com ou sem hífens — o app normaliza).
+
+**5.** Submit. Você cai no dashboard.
+
+**6.** **Risque o código usado no papel** (esse não pode ser reutilizado).
+
+**Sub-passo 7.3 — Conferir contagem de backup codes restantes**
+
+**1.** No dashboard, vá em **Configurações → Segurança**.
+
+**2.** Encontre a linha "Backup codes restantes".
+
+**3.** Deve mostrar **9** (gastou 1 no sub-passo 7.2).
+
+**Sub-passo 7.4 — Confirmar role master**
+
+**1.** Vá em **Painel Admin** (link no menu).
+
+**2.** Acesse **Usuários**.
+
+**3.** Encontre seu próprio email na lista. Confirme:
+   - Role: `MASTER`
+   - Status: ativo
+   - 2FA: habilitado
+   - Backup codes: 9
+
+**4.** Comunique pelo chat / chamada: "Sócio X confirma role master + 9 backup codes".
+
+#### O que esperar como resposta
+
+- Login completo (senha + 2FA) funciona em ambos
+- Backup code consome 1, sobram 9 — visível na tela de Segurança
+- Painel admin mostra ambos os sócios como master ativos com 2FA habilitado
+
+> 💡 **Você sabe que deu certo quando:** ambos os sócios conseguem entrar com 2FA, gastaram 1 backup code com sucesso, e veem o outro na lista de masters no admin.
+
+#### O que fazer se der errado
+
+| Erro que aparece | O que significa | Como resolver |
+|---|---|---|
+| Login normal funciona, mas TOTP rejeita o código | Relógio do celular dessincronizado | Mesma fix do Passo 6: sincronizar relógio do sistema. |
+| Backup code é rejeitado | Pode ter digitado errado, ou já usou esse antes | Conferir letra por letra com o papel. Os códigos são case-insensitive mas qualquer typo invalida. Se conferir e ainda rejeitar, problema no app — printar e parar. |
+| Contagem mostra menos que 9 backup codes restantes | Pode ter consumido mais de 1 sem perceber | Aceitável se você testou repetidamente. Anotar a contagem real. |
+| Sócio aparece com role diferente de master | Bug no INSERT do Passo 3 | **PARE.** Estado inconsistente. NÃO tentar corrigir via UI. Rodar [Cenário: Bootstrap falha no meio](#cenário-bootstrap-falha-no-meio-rollback). |
+| Sócio NÃO aparece na lista de usuários | INSERT do Passo 3 não aconteceu para este sócio | **PARE.** Mesmo cenário acima. |
+
+#### Não passe para o próximo passo até:
+
+- [ ] Ambos os sócios logaram com 2FA pelo menos uma vez
+- [ ] Ambos gastaram 1 backup code com sucesso (sobram 9 cada)
+- [ ] Ambos veem o outro como master ativo no painel admin
+- [ ] Documento operacional externo anotado: "Sócio 1 = 9 backup codes restantes. Sócio 2 = 9 backup codes restantes. Data: 2026-05-15."
 
 ---
 
 ### Passo 8 — Confirmar audit log
 
-**O que acontece:** evidência registrada permanentemente de que o bootstrap foi feito corretamente. Útil para auditorias futuras, compliance, e revisões internas.
+**Contexto:** C — App web (painel admin)
+**Quem executa:** **Apenas um sócio** (o outro acompanha via screen share)
+**Tempo estimado:** 5 minutos
 
-**Comando:** um dos sócios (qualquer) acessa o painel admin → Audit Logs → filtra pelas últimas 2 horas. Confere que existem:
+#### O que vai acontecer
 
-- `USER_CREATED` para `socio-a@dominio-real.com.br`
-- `USER_CREATED` para `socio-b@dominio-real.com.br`
-- `USER_DELETED` para `master@mktplace.com` (se existia)
-- `USER_DELETED` para `admin@mktplace.com` (se existia)
-- `PASSWORD_CHANGED` para ambos os sócios
-- `2FA_ENABLED` para ambos os sócios
+O audit log é o "diário de bordo" do sistema — toda ação sensível deixa um registro permanente. Para evidência em auditorias futuras, compliance, e revisões internas, você vai confirmar que o bootstrap deixou os rastros corretos.
 
-**Saída esperada:** 8 eventos (ou 6, se os defaults não existiam previamente).
+#### Como fazer
 
-**Se der erro:**
-- Algum evento ausente → o sistema de audit não capturou. **Parar e investigar** antes de abrir prod ao público — sem trilha de auditoria não há compliance.
-- Eventos fora de ordem (ex.: `2FA_ENABLED` antes de `PASSWORD_CHANGED`) → fluxo de força-reset/força-2FA tem bug. Reportar.
+**1.** No app, vá em **Painel Admin → Audit Logs** (ou "Logs de Auditoria", como for nomeado).
 
-**Quem executa:** Sócio A (com Sócio B acompanhando por screen share).
+**2.** Filtre por:
+   - **Período:** últimas 2 horas
+   - **Tipo:** todos (não filtre por tipo)
+
+**3.** Confira a lista. Deve haver os seguintes eventos, todos com timestamp recente:
+
+| Tipo de evento | Sujeito (o usuário afetado) | Ator (quem fez) |
+|---|---|---|
+| `USER_CREATED` | socio1@dominio-real.com.br | `SYSTEM` (bootstrap-prod) |
+| `USER_CREATED` | socio2@dominio-real.com.br | `SYSTEM` |
+| `USER_DELETED` | master@mktplace.com | `SYSTEM` (se existia) |
+| `USER_DELETED` | admin@mktplace.com | `SYSTEM` (se existia) |
+| `PASSWORD_CHANGED` | socio1@... | socio1@... (próprio usuário no Passo 5) |
+| `PASSWORD_CHANGED` | socio2@... | socio2@... |
+| `2FA_ENABLED` | socio1@... | socio1@... |
+| `2FA_ENABLED` | socio2@... | socio2@... |
+
+**4.** Eventos esperados: **8** (ou **6**, se os defaults `master@`/`admin@mktplace.com` não existiam previamente).
+
+#### O que esperar como resposta
+
+Lista do audit log mostra os 6-8 eventos esperados, na ordem cronológica: primeiro os `USER_CREATED`+`USER_DELETED` (do Passo 3, agrupados por timestamp), depois `PASSWORD_CHANGED` (do Passo 5), depois `2FA_ENABLED` (do Passo 6).
+
+#### O que fazer se der errado
+
+| Erro / Anomalia | O que significa | Como resolver |
+|---|---|---|
+| Algum evento ausente | O sistema de audit log não capturou aquele ponto | **PARE antes de abrir prod ao público.** Sem trilha de auditoria não há compliance. Reportar o que está faltando. |
+| Eventos fora de ordem (ex.: `2FA_ENABLED` antes de `PASSWORD_CHANGED` para o mesmo sócio) | Fluxo de force-reset/force-2fa tem bug | Reportar como bug. Pode-se prosseguir, mas anotar no incident log para corrigir antes do go-live. |
+| Aparece `USER_CREATED` para email que vocês não esperavam | Alguém INSERT-ou outro usuário no banco | Investigar imediatamente. Conferir se foi durante o bootstrap (improvável) ou se aconteceu antes (mais sério). |
+
+#### Não passe para o próximo passo até:
+
+- [ ] Os 6-8 eventos esperados estão visíveis no audit log
+- [ ] Timestamp dos eventos é compatível com a hora do bootstrap (não muito antes nem muito depois)
+- [ ] Outro sócio confirmou pela tela compartilhada que viu o mesmo
 
 ---
 
 ### Passo 9 — Abrir DNS público
 
-**O que acontece:** remoção do isolamento de rede. A partir daqui o app passa a receber tráfego público real.
+**Contexto:** depende da infra escolhida (painel do provedor de cloud / Cloudflare / DNS provider)
+**Quem executa:** Sócio que tem acesso ao painel da infra. O outro confirma de uma rede externa.
+**Tempo estimado:** 5 minutos (de execução) + até 48 horas (propagação de DNS, geralmente 5-30 minutos)
 
-**Comando:** depende da infra escolhida — pode ser:
+#### O que vai acontecer
 
-- Remover regra de firewall que limitava por IP.
-- Apontar registro A/AAAA do DNS para o IP público.
-- Ativar Cloudflare WAF + DNS proxy.
+Até agora o app estava "isolado" — acessível apenas via VPN, IP whitelist, ou rede interna. Este passo remove o isolamento e o app passa a receber tráfego público real.
 
-**Saída esperada:** acesso externo (de uma 4G, por exemplo) consegue chegar em `https://app.mktplace.com.br`.
+A partir daqui, qualquer pessoa na internet pode chegar em `https://app.mktplace.com.br` (ou o domínio escolhido). Por isso fizemos todo o resto antes — para que NÃO exista master com senha default, sem 2FA, exposto à internet.
 
-**Se der erro:**
-- Domínio não resolve → propagação de DNS (até 48h, geralmente 5-30min). Esperar.
-- 502/504 → app não está respondendo no IP exposto. Conferir saúde do serviço.
+#### Como fazer
 
-**Quem executa:** Sócio que tem acesso ao painel da infra. Outro sócio confirma de uma rede externa que o app responde.
+A operação depende do provedor de DNS / cloud. As três variações mais comuns:
 
-**Após este passo:** o bootstrap está concluído. Documentar no arquivo externo (cofre/wiki interna): data/hora exata, emails finais dos dois masters, localização dos backup codes em papel de cada sócio, próxima data de revisão (recomendado: 90 dias para confirmar que ambos ainda têm acesso).
+**Variação 1 — Remover regra de firewall que limitava por IP:**
+1. Painel do provedor (AWS Security Groups, GCP Firewall, etc.)
+2. Localizar a regra que permitia apenas IPs específicos (escritório, casa dos sócios, VPN)
+3. Substituir por regra permitindo `0.0.0.0/0` nas portas 80/443
+
+**Variação 2 — Apontar registro DNS para o IP público:**
+1. Painel do DNS (Cloudflare, Route 53, registro.br, etc.)
+2. Localizar registro tipo `A` para `app.mktplace.com.br`
+3. Mudar valor para o IP público do servidor
+4. TTL recomendado: 300s (5min) durante o lançamento, sobe depois
+
+**Variação 3 — Cloudflare WAF + DNS proxy:**
+1. Cloudflare → DNS
+2. Adicionar registro `A` apontando para o IP do servidor
+3. Ativar o "proxied" (nuvem laranja) — isso oculta o IP real
+4. Em WAF, confirmar que as regras padrão estão ativas
+
+#### O que esperar como resposta
+
+Depois da mudança:
+
+**1.** Aguarde 5-30 minutos para a propagação de DNS.
+
+**2.** O outro sócio, **fora da rede interna** (ex.: usando 4G do celular para tetherar o notebook, ou de uma rede externa), tenta acessar:
+
+```
+https://app.mktplace.com.br
+```
+
+**3.** Página carrega normalmente — tela de login.
+
+**4.** Não tente logar do 4G. Apenas confirme que a página carrega de fora.
+
+> 💡 **Você sabe que deu certo quando:** o sócio que está em rede externa consegue chegar na tela de login do app.
+
+#### O que fazer se der errado
+
+| Erro que aparece | O que significa | Como resolver |
+|---|---|---|
+| Domínio não resolve (`DNS_PROBE_FINISHED_NXDOMAIN`) | Propagação ainda não terminou | Aguardar mais 30-60 min. Se passou 4h e ainda não resolve, conferir o registro DNS na ferramenta. |
+| `502 Bad Gateway` / `504 Gateway Timeout` | DNS resolveu, mas o app não está respondendo no IP exposto | Conferir saúde do serviço (status do PM2/systemd/Docker), logs do app, e se o firewall do servidor permite tráfego nas portas 80/443. |
+| `Connection refused` | A porta não está aberta | Conferir Security Group / Firewall do provedor. |
+| Certificado SSL inválido / não confiável | HTTPS não está configurado corretamente | Provavelmente certbot/Let's Encrypt não rodou ou expirou. Reissue do certificado. **NÃO** sirva o app em HTTP — fechar de novo e investigar. |
+
+#### Não passe para o próximo passo até:
+
+- [ ] O sócio fora da rede interna confirma acesso à tela de login
+- [ ] Certificado HTTPS está válido (cadeado verde no navegador)
+- [ ] Nenhuma das duas máquinas dos sócios precisa de VPN ativo para acessar o app
+
+---
+
+### Depois do Passo 9 — Documentação final
+
+O bootstrap está concluído. Antes de fechar a chamada, documentar no arquivo externo (cofre/wiki interna, NÃO no repo):
+
+- ✅ Data e hora exata do bootstrap (timestamp do audit log)
+- ✅ Email final de cada sócio
+- ✅ Localização exata do cofre físico onde estão os backup codes em papel de cada sócio
+- ✅ Quem é fallback de quem (o Sócio 1 recupera Sócio 2, e vice-versa)
+- ✅ Próxima data de revisão recomendada: **90 dias** — uma data marcada na agenda dos dois, para confirmar que ambos ainda têm acesso (faz um login completo de verificação).
+- ✅ Como cada sócio armazenou a senha definitiva (Bitwarden / 1Password / etc.)
 
 ---
 
@@ -339,10 +930,10 @@ O script ainda **não foi escrito**. Esta seção descreve o que ele DEVE fazer,
 1. **Validação de ambiente:** confirma `NODE_ENV === 'production'`. Se não, aborta com erro explicando que este script só roda em prod (espelho do guard em `seed.ts`).
 2. **Conexão:** instancia o PrismaClient e valida que o banco é alcançável e a migration de schema está aplicada. Aborta se a tabela `User` não existir.
 3. **Inputs interativos:** pede via prompt (não argv, para evitar histórico bash com hashes):
-   - Email do Sócio A
-   - Hash bcrypt do Sócio A
-   - Email do Sócio B
-   - Hash bcrypt do Sócio B
+   - Email do Sócio 1
+   - Hash bcrypt do Sócio 1
+   - Email do Sócio 2
+   - Hash bcrypt do Sócio 2
 4. **Validação de inputs:**
    - Emails são válidos sintaticamente.
    - Hashes parecem bcrypt válido (`$2a$12$...` ou `$2b$12$...`, total ~60 chars).
@@ -350,8 +941,8 @@ O script ainda **não foi escrito**. Esta seção descreve o que ele DEVE fazer,
    - Nenhum dos emails é `master@mktplace.com` ou `admin@mktplace.com` (defaults proibidos).
 5. **Resumo + confirmação dupla:** mostra o que vai acontecer e exige que o operador digite literalmente `SIM, EXECUTAR`. Qualquer outra coisa aborta.
 6. **Transação atômica:** uma única `prisma.$transaction(async tx => {...})` com:
-   - `tx.user.create()` para Sócio A com `forcePasswordReset=true`, `force2FASetup=true`, `roleId=<master>`, `legacyRole='MASTER'`.
-   - `tx.user.create()` para Sócio B com mesmas flags.
+   - `tx.user.create()` para Sócio 1 com `forcePasswordReset=true`, `force2FASetup=true`, `roleId=<master>`, `legacyRole='MASTER'`.
+   - `tx.user.create()` para Sócio 2 com mesmas flags.
    - `tx.user.deleteMany({ where: { email: { in: ['master@mktplace.com', 'admin@mktplace.com'] } } })`.
    - Inserção dos 8 eventos de audit log correspondentes (`USER_CREATED` x2 e `USER_DELETED` x até 2).
    - Query final dentro da TX: `tx.user.count({ where: { roleId: masterRoleId } })`. Se não for exatamente 2, lança erro → transação aborta automaticamente.
@@ -378,19 +969,19 @@ async function main() {
 
   // 3. Inputs
   const inputs = await prompt([
-    { type: 'text', name: 'emailA',  message: 'Email do Sócio A' },
-    { type: 'password', name: 'hashA', message: 'Hash bcrypt do Sócio A' },
-    { type: 'text', name: 'emailB',  message: 'Email do Sócio B' },
-    { type: 'password', name: 'hashB', message: 'Hash bcrypt do Sócio B' },
+    { type: 'text',     name: 'email1', message: 'Email do Sócio 1' },
+    { type: 'password', name: 'hash1',  message: 'Hash bcrypt do Sócio 1' },
+    { type: 'text',     name: 'email2', message: 'Email do Sócio 2' },
+    { type: 'password', name: 'hash2',  message: 'Hash bcrypt do Sócio 2' },
   ]);
 
   // 4. Validação (omitida no pseudo-código)
-  validateEmail(inputs.emailA);
-  validateEmail(inputs.emailB);
-  validateBcryptHash(inputs.hashA);
-  validateBcryptHash(inputs.hashB);
-  if (inputs.emailA === inputs.emailB) abort('Emails idênticos');
-  if (FORBIDDEN_EMAILS.has(inputs.emailA) || FORBIDDEN_EMAILS.has(inputs.emailB)) {
+  validateEmail(inputs.email1);
+  validateEmail(inputs.email2);
+  validateBcryptHash(inputs.hash1);
+  validateBcryptHash(inputs.hash2);
+  if (inputs.email1 === inputs.email2) abort('Emails idênticos');
+  if (FORBIDDEN_EMAILS.has(inputs.email1) || FORBIDDEN_EMAILS.has(inputs.email2)) {
     abort('Email default proibido em prod');
   }
 
@@ -403,20 +994,20 @@ async function main() {
 
   // 6. Transação atômica
   await prisma.$transaction(async (tx) => {
-    const a = await tx.user.create({
+    const u1 = await tx.user.create({
       data: {
-        email: inputs.emailA,
-        password: inputs.hashA,
+        email: inputs.email1,
+        password: inputs.hash1,
         roleId: masterRole.id,
         legacyRole: 'MASTER',
         forcePasswordReset: true, // schema pendente — SER-15
         force2FASetup: true,      // schema pendente — SER-15
       },
     });
-    const b = await tx.user.create({
+    const u2 = await tx.user.create({
       data: {
-        email: inputs.emailB,
-        password: inputs.hashB,
+        email: inputs.email2,
+        password: inputs.hash2,
         roleId: masterRole.id,
         legacyRole: 'MASTER',
         forcePasswordReset: true,
@@ -429,8 +1020,8 @@ async function main() {
 
     // Audit log (estrutura a confirmar — pode usar AuditLogService existente)
     await tx.auditLog.createMany({ data: [
-      { type: 'USER_CREATED', subjectId: a.id, actorId: 'SYSTEM' },
-      { type: 'USER_CREATED', subjectId: b.id, actorId: 'SYSTEM' },
+      { type: 'USER_CREATED', subjectId: u1.id, actorId: 'SYSTEM' },
+      { type: 'USER_CREATED', subjectId: u2.id, actorId: 'SYSTEM' },
       // + USER_DELETED para cada default que foi de fato deletado
     ]});
 
@@ -469,6 +1060,8 @@ Cada um destes erros já foi cometido por alguém em algum sistema. Lista é pro
 - ❌ **Reutilizar a senha temporária do Passo 1 como senha definitiva no Passo 5.** A senha do Passo 1 pode ter passado por canais menos seguros (chat, voz). A senha do Passo 5 nasce já dentro de um navegador com TLS válido.
 
 - ❌ **Documentar quem é fallback de quem no próprio repo do código.** Documentação operacional de credenciais vai em cofre/wiki interna, não em commit público.
+
+- ❌ **Usar SMS como segundo fator.** SMS é vulnerável a SIM swap (atacante convence operadora a transferir seu chip). 2FA por SMS é melhor que nada para usuários comuns, mas para conta master é inaceitável. Use TOTP app (Authy/Google Authenticator) ou chave hardware (YubiKey).
 
 ---
 
@@ -585,7 +1178,7 @@ Cenários que vão acontecer eventualmente. Soluções pré-acordadas.
 
 **Resposta:**
 
-1. Pela atomicidade Postgres, nada foi gravado. Verificar com `SELECT COUNT(*) FROM "User" WHERE email IN ('socio-a@...', 'socio-b@...');` → esperado 0.
+1. Pela atomicidade Postgres, nada foi gravado. Verificar com `SELECT COUNT(*) FROM "User" WHERE email IN ('socio1@...', 'socio2@...');` → esperado 0.
 2. Identificar a causa: emails idênticos? hash mal-formado? validação ausente no script?
 3. Corrigir input e reexecutar do Passo 3.
 4. Se a verificação retornou número diferente de 0, investigar quem inseriu — pode ter sido o seed default rodando antes (mesmo com guard) ou um INSERT manual. Limpar com `DELETE` antes de reexecutar.
@@ -604,12 +1197,255 @@ Cenários que vão acontecer eventualmente. Soluções pré-acordadas.
 
 ---
 
-## Glossário rápido
+## Apêndice A — Instalação de ferramentas necessárias
 
-- **2FA / TOTP** — autenticação de dois fatores. Você loga com senha + código de 6 dígitos que muda a cada 30s.
-- **Bcrypt** — algoritmo de hash de senha. O banco armazena o hash, nunca a senha plain.
-- **Backup code** — código de uma vez usável para login sem 2FA, quando o celular sumiu. Anotado em papel.
-- **Bootstrap** — primeira execução, criar do zero, "ligar o sistema".
-- **SPOF** — Single Point Of Failure. Algo que, se falhar, derruba o sistema inteiro.
-- **Transação atômica** — sequência de operações que ou acontecem todas, ou nenhuma. Sem meio-termo.
-- **`forcePasswordReset` / `force2FASetup`** — flags no usuário que obrigam o app a redirecionar para a tela de setup correspondente até a flag virar `false`. Maneira de criar usuários "incompletos" que ganham acesso só depois de configurar.
+> ⚠️ **Faça este apêndice inteiro pelo menos uma semana antes do dia D.** Acesso SSH em particular (A.3) pode levar dias para resolver se o provedor exigir aprovação manual da chave pública. No dia do bootstrap, todas as ferramentas precisam estar funcionando.
+
+### A.1 — Instalar OpenSSL (gerador de senha aleatória)
+
+**O que é:** OpenSSL é uma biblioteca/programa de criptografia. Aqui usamos só uma função pequena dele (`rand`) para gerar bytes aleatórios criptograficamente seguros.
+
+#### Windows
+1. Baixar **Git for Windows**: https://git-scm.com/download/win
+2. Executar o instalador. **Manter todas as opções padrão**. Em particular, deixar marcado "Git Bash Here" e "Use Git from the Windows Command Prompt".
+3. Após instalar, fechar e reabrir o terminal.
+4. **Importante:** use o **Git Bash** (não o `cmd` nem o PowerShell normal). Para abrir: Iniciar → digitar "Git Bash" → Enter.
+
+#### Mac
+OpenSSL já vem instalado nativamente. Nenhuma instalação necessária.
+
+> 💡 Versão recente do Mac (Ventura+) usa LibreSSL em vez de OpenSSL. Os comandos básicos usados aqui funcionam igual.
+
+#### Linux (Ubuntu/Debian)
+```bash
+sudo apt update && sudo apt install openssl
+```
+
+#### Verificar instalação
+Em qualquer sistema, abrir terminal e rodar:
+```bash
+openssl version
+```
+
+Saída esperada: algo como `OpenSSL 3.0.7` ou `LibreSSL 3.3.6`. Se aparecer "command not found", a instalação falhou — repita.
+
+---
+
+### A.2 — Instalar Node.js (para gerar hash bcrypt)
+
+**O que é:** Node.js é um runtime que executa JavaScript fora do navegador. Aqui usamos só para rodar um comando de uma linha que chama a biblioteca `bcryptjs` para gerar o hash.
+
+#### Todos os sistemas
+1. Acessar https://nodejs.org/
+2. Baixar a versão **LTS** (botão verde à esquerda). LTS = Long-Term Support, mais estável.
+3. Executar o instalador. **Manter todas as opções padrão**. Em particular, deixar marcado "Automatically install necessary tools" no Windows.
+4. Após instalar, fechar e reabrir o terminal.
+
+#### Verificar instalação
+```bash
+node --version
+npm --version
+```
+
+Saída esperada:
+```
+v20.10.0    (ou versão similar; qualquer 18+ serve)
+10.2.3      (versão do npm que veio junto)
+```
+
+#### Instalar bcryptjs globalmente (atalho)
+Para evitar erro de "Cannot find module 'bcryptjs'" no Passo 2:
+```bash
+npm install -g bcryptjs
+```
+
+Se aparecer "permission denied" no Mac/Linux, prefixar com `sudo`:
+```bash
+sudo npm install -g bcryptjs
+```
+
+> 💡 Alternativa sem instalação global: rodar o comando do Passo 2 de dentro da pasta `apps/api/` do projeto (onde bcryptjs já está como dependência).
+
+---
+
+### A.3 — Configurar acesso SSH ao servidor de produção
+
+> ⚠️ **Esta é a etapa que mais demora.** Fazer **pelo menos uma semana antes** do dia D.
+
+**O que é SSH:** Secure Shell. Permite abrir um terminal **dentro** de outro computador, pela internet, de forma encriptada. É como o TeamViewer / AnyDesk, mas via linha de comando — apenas texto, sem interface gráfica.
+
+**Modelo de autenticação:** ao invés de senha, SSH usa um **par de chaves** — uma pública (que você compartilha com o servidor) e uma privada (que NUNCA sai do seu PC). Quem tem a chave privada prova quem é.
+
+#### Passo A.3.1 — Gerar par de chaves SSH no seu PC
+
+**1.** Abrir terminal (Git Bash no Windows, Terminal no Mac, bash no Linux).
+
+**2.** Rodar:
+```bash
+ssh-keygen -t ed25519 -C "seu.email@dominio.com"
+```
+
+Substituir pelo seu email. O `-t ed25519` escolhe o algoritmo (moderno e seguro), o `-C` adiciona um comentário (seu email, para identificar a chave depois).
+
+**3.** Quando perguntar "Enter file in which to save the key", **apertar Enter** para aceitar o padrão (`~/.ssh/id_ed25519`).
+
+**4.** Quando perguntar "Enter passphrase":
+- **Recomendado:** digitar uma senha forte (passphrase) — protege a chave caso roubem seu PC.
+- **Mínimo:** apertar Enter duas vezes (passphrase vazia — chave fica protegida só pelo controle do seu PC).
+
+> ⚠️ Se digitar passphrase, **salvar no seu gerenciador de senha**. Sem ela, a chave fica inutilizável.
+
+**5.** Apertar Enter para confirmar a passphrase.
+
+#### Passo A.3.2 — Pegar a chave pública
+
+```bash
+cat ~/.ssh/id_ed25519.pub
+```
+
+Saída: uma única linha começando com `ssh-ed25519 AAAA...`, terminando com seu email.
+
+**Copiar essa linha inteira.** Essa é a sua chave pública. Compartilhar livremente — não é segredo.
+
+#### Passo A.3.3 — Compartilhar a chave pública com o provedor
+
+Cada provedor de cloud tem um lugar diferente para colar isso:
+
+- **AWS:** EC2 → Key Pairs → Import Key Pair → Colar
+- **GCP:** Compute Engine → Metadata → SSH Keys → Add → Colar
+- **DigitalOcean / Vultr / Linode:** Settings → Security → SSH Keys → Add → Colar
+- **Servidor próprio (VPS):** sysadmin precisa adicionar manualmente no `/home/seu-usuario/.ssh/authorized_keys` do servidor
+
+#### Passo A.3.4 — Testar a conexão
+
+```bash
+ssh -i ~/.ssh/id_ed25519 usuario@ip-do-servidor
+```
+
+Substituir `usuario` pelo seu nome no servidor e `ip-do-servidor` pelo IP real.
+
+**Primeira vez:** vai perguntar "Are you sure you want to continue connecting?" — digitar `yes` e Enter.
+
+**Sucesso:** aparece o prompt do servidor (`usuario@hostname:~$`). Você está dentro. Digite `exit` para sair.
+
+**Falha comum:** `Permission denied (publickey)` — sua chave pública não foi instalada no servidor corretamente. Verificar com quem provisionou.
+
+---
+
+### A.4 — Instalar authenticator app no celular
+
+**O que é:** app que gera os códigos TOTP (Time-based One-Time Password) de 6 dígitos que rotacionam a cada 30s. É o seu "segundo fator" após a senha.
+
+#### Opções recomendadas (em ordem de preferência)
+
+**1. Authy** (Twilio) — **recomendado**
+- Sincroniza entre dispositivos (você pode ter no celular + notebook + tablet).
+- Backup encriptado na nuvem do Twilio (recupera se perder o celular).
+- Free.
+- Apps: iOS (App Store) e Android (Play Store) e Desktop.
+
+**2. Google Authenticator**
+- Simples, sem nuvem.
+- Backup só com QR code de exportação (você decide migrar quando troca de celular).
+- Free.
+
+**3. 1Password** (se você já usa 1Password como gerenciador)
+- Integra TOTP dentro do gerenciador.
+- Vantagem: tudo em um lugar. **Desvantagem:** se 1Password vaza, vaza tudo. Para conta master, considere separar (TOTP em Authy / GA, senhas em 1Password).
+
+#### ❌ NÃO usar
+- **SMS como 2FA.** Vulnerável a SIM swap (atacante convence sua operadora a transferir seu número para um chip dele). Já levou a roubo de contas master de bancos, exchanges, etc.
+- **Email como 2FA.** Defeats the purpose — se o atacante já tem sua senha, provavelmente já tem seu email também.
+
+#### Setup
+
+**1.** Instalar o app escolhido na loja oficial (App Store / Play Store). Cuidado com falsificações.
+
+**2.** Abrir o app. Geralmente pede um PIN/biometria de proteção — configurar.
+
+**3.** O app está pronto. Você vai adicionar a primeira conta (a conta master do app) no Passo 6 do runbook, escaneando o QR code.
+
+#### Verificação
+
+Antes do dia D, confirmar que você consegue:
+- Abrir o app
+- Adicionar uma conta de teste (use o GitHub 2FA ou similar pra testar, depois remove)
+- Ler o código de 6 dígitos rotativo
+
+---
+
+## Apêndice B — Glossário expandido
+
+Cada termo abaixo aparece em algum momento neste runbook. Definição + analogia + onde aparece.
+
+### 2FA / TOTP
+
+- **O que é:** "Two-Factor Authentication" (2FA) — autenticação de dois fatores. Você precisa de DUAS coisas pra logar: a senha (algo que você sabe) E um código que muda (algo que você tem — neste caso seu celular). TOTP é o algoritmo específico que gera código baseado em tempo (`T = Time-based`).
+- **Analogia:** entrar em um cofre bancário. Não basta a senha do cofre — o gerente também precisa girar uma chave física que só ele tem. Sem as duas coisas, não abre.
+- **Onde aparece:** Passo 6 (habilitar 2FA pela primeira vez), Passo 7 (usar 2FA no login), Apêndice A.4 (instalar app authenticator).
+
+### bcrypt
+
+- **O que é:** algoritmo que transforma uma senha em uma sequência "embaralhada" (hash) que não pode ser revertida. O processo é intencionalmente lento (~200ms por hash) para dificultar ataques de força bruta. "12 rounds" significa que o algoritmo repete um cálculo 2^12 = 4096 vezes.
+- **Analogia:** imagine triturar um papel em uma trituradora de papel **muito boa** (que demora 2 segundos por papel). Você pode comparar dois papéis triturados pra ver se eram iguais (gerando outro com a mesma senha), mas não consegue reconstruir o original. E o "demorar 2 segundos" é proposital — se um atacante tem 1 milhão de senhas pra testar, leva 23 dias só pra terminar de testar.
+- **Onde aparece:** Passo 2 (gerar hash da senha), Passo 3 (script insere o hash no banco), Passo 5 (app gera hash da nova senha definitiva).
+
+### hash
+
+- **O que é:** uma "impressão digital" de qualquer dado. Texto, arquivo, senha — qualquer coisa pode ter um hash. A função hash sempre gera saída do mesmo tamanho (para bcrypt-12, sempre ~60 caracteres). Dois dados iguais geram o mesmo hash; um único caractere mudado gera um hash completamente diferente.
+- **Analogia:** assinatura cardíaca. Dois eletrocardiogramas da mesma pessoa em momentos diferentes batem (são compatíveis); de pessoas diferentes, nunca batem. Mas você não pode reconstruir a pessoa a partir do eletrocardiograma.
+- **Onde aparece:** bcrypt é uma forma específica de hash. Hash também aparece no audit log (cada evento tem um hash do conteúdo para detecção de adulteração).
+
+### SSH
+
+- **O que é:** "Secure Shell" — um protocolo de rede que permite executar comandos em um computador remoto através de um canal criptografado. Você digita no seu PC, o comando viaja pela internet protegido, executa no servidor, e a resposta volta para sua tela.
+- **Analogia:** como o TeamViewer ou AnyDesk, mas só texto (sem mouse, sem imagens). Você vê o terminal do servidor como se fosse seu, e ninguém no meio do caminho consegue bisbilhotar o que você digita ou o que aparece na tela.
+- **Onde aparece:** Passo 3 (conectar ao servidor de produção), Apêndice A.3 (configurar acesso).
+
+### SQL
+
+- **O que é:** "Structured Query Language" — linguagem para conversar com banco de dados relacional (Postgres, MySQL, SQLite, etc.). Você escreve frases que descrevem o que quer (`SELECT name FROM users WHERE id = 1`) e o banco responde com os dados.
+- **Analogia:** é como dar instruções para um arquivista numa biblioteca enorme. Você não anda nas estantes — você fala "me traga todos os livros de João da seção história, organizados por data". O arquivista faz o trabalho e te entrega a pilha.
+- **Onde aparece:** Passo 3 (o script bootstrap-prod executa SQL para criar usuários e apagar defaults). Plano de recuperação (consultas manuais via `psql`).
+
+### Transação atômica
+
+- **O que é:** uma sequência de operações no banco que **ou acontece toda inteira, ou nenhuma parte dela acontece**. Não existe "metade feita". Em SQL, é o bloco `BEGIN ... COMMIT`. Se algo der errado no meio, o banco faz `ROLLBACK` automaticamente e volta tudo ao estado anterior.
+- **Analogia:** transferência bancária entre duas contas. O dinheiro **tem** que sair da conta A E entrar na conta B. Se a luz cair entre as duas operações, o sistema não pode parar com "saiu de A, não entrou em B" — isso seria perder dinheiro. Ou tudo ou nada.
+- **Onde aparece:** Passo 3 (INSERT sócios + DELETE defaults é UMA transação — se qualquer parte falhar, nada é gravado). Princípio de segurança 5.
+
+### SPOF (Single Point of Failure)
+
+- **O que é:** "Único Ponto de Falha" — um componente que, se quebrar, derruba o sistema inteiro. Servidor único, único administrador, único banco sem réplica, chave única sem backup.
+- **Analogia:** se uma ponte é o único caminho para uma ilha, ela é SPOF da ilha. Caiu a ponte, a ilha fica isolada. Solução: construir uma segunda ponte (ou ter barco de backup).
+- **Onde aparece:** Princípio de segurança 2 (dois masters independentes são a solução para evitar que UM sócio se torne SPOF de acesso administrativo). Plano de recuperação (cenário single-master operation).
+
+### Audit log
+
+- **O que é:** "Log de auditoria" — registro permanente, **somente-leitura**, de toda ação sensível no sistema. Quem fez, o quê, em quem, e quando. Não pode ser apagado nem editado pelo próprio app — só visualizado.
+- **Analogia:** o livro de visitas de um cofre bancário. Toda vez que alguém abre, fica registrado: nome, data, hora, motivo. Auditor pode ler, mas ninguém pode rasgar páginas.
+- **Onde aparece:** Passo 8 (conferir que os 8 eventos esperados foram registrados). Princípio implícito em todos os princípios de segurança.
+
+### Bootstrap
+
+- **O que é:** "puxar a bota" (do inglês "pull yourself up by your bootstraps") — a primeira execução, o ato de criar algo do zero. Em sistemas, é o procedimento inicial que coloca um ambiente em estado "pronto pra uso", a partir do nada.
+- **Analogia:** "ligar o sistema pela primeira vez". É como abrir uma loja nova: você precisa decidir o nome, contratar funcionários, definir os primeiros produtos. Depois que está aberta, é só operar — bootstrap é só uma vez.
+- **Onde aparece:** o título deste runbook, o nome do script (`bootstrap-prod.ts`). Toda a sua razão de existir.
+
+### Atomicidade
+
+- **O que é:** propriedade de "ser indivisível" — não pode ser quebrado em partes intermediárias. Em banco de dados, é a "A" do ACID (Atomicity, Consistency, Isolation, Durability).
+- **Analogia:** acender uma luz. Ou ela está acesa, ou apagada — não existe "meio acesa" como estado válido permanente. (Pode estar piscando, mas isso é uma sequência rápida de "acesa" e "apagada" — cada estado individual é binário.)
+- **Onde aparece:** Princípio 5, Passo 3, Anatomia do script. É o que torna o INSERT+DELETE seguro em conjunto.
+
+### `forcePasswordReset` e `force2FASetup`
+
+- **O que são:** flags booleanas no model `User` (campos a serem adicionados — veja Pré-requisitos de código). Quando `true`, fazem o middleware do app **redirecionar TODA requisição autenticada** para a tela de setup correspondente. O usuário não consegue navegar para nenhuma outra rota até concluir o setup, momento em que a flag vira `false`.
+- **Analogia:** como aquele aviso "você precisa atualizar seus dados antes de continuar" que alguns sistemas mostram após login. Mas mais rigoroso: você nem chega na home — toda URL leva pra `/setup`.
+- **Onde aparece:** Passos 4-6 (o app força a sequência setup-password → setup-2fa → dashboard porque essas flags vêm `true` direto do INSERT do bootstrap). Princípio 4.
+
+### TLS
+
+- **O que é:** "Transport Layer Security" — protocolo que cripta a comunicação entre seu navegador e o servidor. É o que faz o cadeado verde aparecer e o "https" em vez de "http". Versão antiga era chamada SSL.
+- **Analogia:** envelope lacrado pelos correios. Sem TLS, qualquer um no caminho (provedor de internet, roteador público, etc.) consegue ler o que você digita. Com TLS, só o destinatário pode abrir.
+- **Onde aparece:** Passo 9 (confirmar cadeado verde antes de abrir DNS). Princípio implícito: comunicação master só por canais com TLS válido.
