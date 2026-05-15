@@ -16,6 +16,7 @@ import { PrismaClient } from '@prisma/client';
 import { SweepService } from '../services/sweep.service';
 import { BlockchainService } from '../services/blockchain/blockchain.service';
 import BigNumber from 'bignumber.js';
+import { toBN } from '../utils/money';
 
 const prisma = new PrismaClient();
 
@@ -50,7 +51,7 @@ async function initialSweep() {
         wallet.address,
         wallet.network
       );
-      const balance = parseFloat(onChainBalance);
+      const balance = toBN(onChainBalance).toNumber();
       const threshold = SweepService.MIN_SWEEP_THRESHOLD[wallet.cryptoType] || 0.001;
 
       if (balance >= threshold) {
@@ -133,11 +134,11 @@ async function initialSweep() {
     });
 
     const totalUserBalance = userWallets.reduce(
-      (sum, w) => sum.plus(w.balance),
-      new BigNumber(0)
+      (sum, w) => sum.plus(toBN(w.balance)),
+      toBN("0")
     );
 
-    const hotBalance = new BigNumber(hotWallet.balance);
+    const hotBalance = toBN(hotWallet.balance);
     const delta = hotBalance.minus(totalUserBalance);
 
     const status = delta.gte(0) ? '✅ SOLVENT' : '🚨 INSOLVENT';

@@ -5,6 +5,7 @@ import { TransactionSenderService } from './blockchain/transaction-sender.servic
 import { platformWalletService, PlatformWalletService } from './platformWallet.service';
 import { twoFactorService } from './twoFactor.service';
 import { auditLogService } from './auditLog.service';
+import { toBN, ltBN, gtBN, subBN } from '../utils/money';
 
 const prisma = new PrismaClient();
 
@@ -75,21 +76,19 @@ export class PlatformTransferService {
 
     // 4. Validar valor mínimo
     const minimumAmount = FeeEstimatorService.getMinimumWithdrawal(wallet.network, wallet.cryptoType);
-    const transferAmount = parseFloat(amount);
-    if (transferAmount <= 0) {
+    if (!gtBN(amount, '0')) {
       throw new Error('Valor da transferência deve ser maior que zero');
     }
-    if (transferAmount < parseFloat(minimumAmount)) {
+    if (ltBN(amount, minimumAmount)) {
       throw new Error(
         `Valor mínimo para ${wallet.cryptoType}/${wallet.network}: ${minimumAmount}`
       );
     }
 
     // 5. Validar saldo suficiente
-    const availableBalance = parseFloat(wallet.availableBalance);
-    if (availableBalance < transferAmount) {
+    if (gtBN(amount, wallet.availableBalance)) {
       throw new Error(
-        `Saldo insuficiente. Disponível: ${availableBalance}, Solicitado: ${transferAmount}`
+        `Saldo insuficiente. Disponível: ${wallet.availableBalance}, Solicitado: ${amount}`
       );
     }
 
@@ -165,7 +164,7 @@ export class PlatformTransferService {
             privateKey,
             wallet.address,
             transfer.toAddress,
-            parseFloat(transfer.amount),
+            toBN(transfer.amount).toNumber(),
             feeEstimate.feeRate || 10
           );
           break;
@@ -176,7 +175,7 @@ export class PlatformTransferService {
           txResult = await TransactionSenderService.sendEVMTransaction(
             privateKey,
             transfer.toAddress,
-            transfer.amount,
+            transfer.amount.toString(),
             wallet.network,
             wallet.cryptoType
           );
@@ -186,7 +185,7 @@ export class PlatformTransferService {
           txResult = await TransactionSenderService.sendSolanaTransaction(
             privateKey,
             transfer.toAddress,
-            transfer.amount,
+            transfer.amount.toString(),
             wallet.cryptoType
           );
           break;
@@ -212,7 +211,7 @@ export class PlatformTransferService {
       await platformWalletService.recordWithdrawal(
         wallet.cryptoType,
         wallet.network,
-        transfer.amount
+        transfer.amount.toString()
       );
       const walletAfter = await platformWalletService.getPlatformWallet(wallet.cryptoType, wallet.network);
 
@@ -222,9 +221,9 @@ export class PlatformTransferService {
           platformWalletId: wallet.id,
           type: 'TRANSFER_OUT',
           direction: 'OUT',
-          amount: transfer.amount,
-          balanceBefore: walletBefore.balance,
-          balanceAfter: walletAfter.balance,
+          amount: transfer.amount.toString(),
+          balanceBefore: walletBefore.balance.toString(),
+          balanceAfter: walletAfter.balance.toString(),
           description: `Transferência para ${transfer.toAddress}`,
           txHash: txResult.txHash,
           toAddress: transfer.toAddress,
@@ -311,18 +310,17 @@ export class PlatformTransferService {
 
     // Estimar fee
     const feeEstimate = await FeeEstimatorService.estimateFee(wallet.network, wallet.cryptoType);
-    const networkFee = parseFloat(feeEstimate.estimatedFee);
-    const amountNum = parseFloat(amount);
-
     // Para tokens (USDT/USDC), a fee é paga em moeda nativa (ETH/SOL)
     const isToken = ['USDT', 'USDC'].includes(wallet.cryptoType);
     const amountToReceive = isToken
       ? amount
-      : Math.max(0, amountNum - networkFee).toFixed(8);
+      : toBN(amount).minus(toBN(feeEstimate.estimatedFee)).isNegative()
+        ? '0'
+        : subBN(amount, feeEstimate.estimatedFee);
 
     // Valor mínimo
     const minimumAmount = FeeEstimatorService.getMinimumWithdrawal(wallet.network, wallet.cryptoType);
-    const isAboveMinimum = amountNum >= parseFloat(minimumAmount);
+    const isAboveMinimum = !ltBN(amount, minimumAmount);
 
     return {
       amount,
@@ -332,7 +330,7 @@ export class PlatformTransferService {
       feeNote: isToken
         ? `A taxa de rede é paga em ${wallet.network === 'SOLANA' ? 'SOL' : 'ETH'} (separada do valor)`
         : 'A taxa de rede será descontada do valor enviado',
-      isValid: isValidAddress && isAboveMinimum && amountNum <= parseFloat(wallet.availableBalance),
+      isValid: isValidAddress && isAboveMinimum && !gtBN(amount, wallet.availableBalance),
       isValidAddress,
       isAboveMinimum,
       minimumAmount,

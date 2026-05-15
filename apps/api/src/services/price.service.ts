@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { CryptoType, COINGECKO_IDS, PriceQuote } from '../types/crypto.types';
 import { ExchangeRateService } from './exchange-rate.service';
+import { toBN } from '../utils/money';
 
 const prisma = new PrismaClient();
 
@@ -98,7 +99,7 @@ export class PriceService {
       if (lastQuote) {
         return {
           crypto,
-          brlPrice: lastQuote.brlPrice,
+          brlPrice: lastQuote.brlPrice.toString(),
           usdPrice: '0', // Não temos USD no banco
           timestamp: lastQuote.createdAt,
         };
@@ -136,14 +137,14 @@ export class PriceService {
 
   async convertBRLtoCrypto(brlAmount: number, crypto: CryptoType): Promise<string> {
     const price = await this.getPrice(crypto);
-    const brlPrice = parseFloat(price.brlPrice);
+    const brlPrice = toBN(price.brlPrice).toNumber();
     const cryptoAmount = brlAmount / brlPrice;
     return cryptoAmount.toFixed(8);
   }
 
   async convertCryptoToBRL(cryptoAmount: number, crypto: CryptoType): Promise<string> {
     const price = await this.getPrice(crypto);
-    const brlPrice = parseFloat(price.brlPrice);
+    const brlPrice = toBN(price.brlPrice).toNumber();
     const brlAmount = cryptoAmount * brlPrice;
     return brlAmount.toFixed(2);
   }

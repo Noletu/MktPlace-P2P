@@ -1,5 +1,7 @@
-import {PrismaClient} from '@prisma/client';
+import {PrismaClient, Prisma} from '@prisma/client';
 import BigNumber from 'bignumber.js';
+import { toBN, addBN, subBN } from '../utils/money';
+import { logger } from '../utils/logger';
 import {DerivationService} from './hd-wallet/derivation.service';
 import {KeyManagementService} from './hd-wallet/key-management.service';
 import {BlockchainService} from './blockchain/blockchain.service';
@@ -8,6 +10,54 @@ import {emailService} from './email.service';
 import {notificationService} from './notification.service';
 
 const prisma = new PrismaClient();
+
+// CRIT-04: Configuração de transação atômica por ambiente.
+// maxWait: tempo limite para adquirir conexão+lock antes de abortar.
+//   - Dev/test: 5s (carga baixa, prioriza não falhar testes)
+//   - Staging/Prod: 2500ms (carga alta, abortar rápido evita filas se DB engasgou)
+// timeout: tempo máximo para a transação INTEIRA executar (read+write+commit).
+const IS_PROD_LIKE = ['production', 'staging'].includes(process.env.NODE_ENV ?? '');
+const LEDGER_TX_OPTIONS = {
+  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  maxWait: IS_PROD_LIKE ? 2500 : 5000,
+  timeout: 10000,
+} as const;
+
+// CRIT-04: Retry estruturado para conflito de serialização (P2034).
+// - Backoff exponencial com jitter (cap em 250ms) para evitar thundering herd
+// - Até 30 tentativas: aguenta lotes ~50 concorrentes em test/dev sem falsos negativos.
+//   Em produção, contenção real desse porte indica problema arquitetural — vai falhar
+//   após ~7s de retries e logar P2034_EXHAUSTED para o observability pegar.
+// - logger.warn estruturado em cada retry para visibilidade operacional.
+async function withSerializableRetry<T>(
+  method: string,
+  context: Record<string, unknown>,
+  fn: () => Promise<T>,
+  attempt = 1,
+  maxAttempts = 30,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (e: any) {
+    if (e?.code === 'P2034' && attempt < maxAttempts) {
+      logger.warn('LEDGER_RETRY_P2034', {
+        method,
+        attempt,
+        maxAttempts,
+        ...context,
+        timestamp: new Date().toISOString(),
+      });
+      const backoffMs =
+        Math.min(250, 10 * Math.pow(2, attempt - 1)) + Math.floor(Math.random() * 50);
+      await new Promise(r => setTimeout(r, backoffMs));
+      return withSerializableRetry(method, context, fn, attempt + 1, maxAttempts);
+    }
+    if (e?.code === 'P2034') {
+      logger.error('LEDGER_P2034_EXHAUSTED', { method, maxAttempts, ...context });
+    }
+    throw e;
+  }
+}
 
 /**
  * Wallet Service
@@ -165,9 +215,9 @@ export class WalletService {
 
     // Fix: corrigir saldos bloqueados negativos diretamente (sempre invalido)
     for (const wallet of wallets) {
-      const lockedBN = new BigNumber(wallet.lockedBalance);
+      const lockedBN = toBN(wallet.lockedBalance);
       if (lockedBN.isNegative()) {
-        const balanceBN = new BigNumber(wallet.balance);
+        const balanceBN = toBN(wallet.balance);
         const correctedAvailable = BigNumber.max(0, balanceBN).toFixed(8);
         console.log(
           `🚨 [FIX] Wallet ${wallet.id} (${wallet.cryptoType}) tem lockedBalance negativo: ${wallet.lockedBalance}. Corrigindo para 0.`
@@ -179,8 +229,8 @@ export class WalletService {
             availableBalance: correctedAvailable,
           },
         });
-        wallet.lockedBalance = '0';
-        wallet.availableBalance = correctedAvailable;
+        wallet.lockedBalance = new Prisma.Decimal('0');
+        wallet.availableBalance = new Prisma.Decimal(correctedAvailable);
       }
     }
 
@@ -232,8 +282,8 @@ export class WalletService {
         throw new Error(`Wallet ${walletId} not found`);
       }
 
-      const availableBN = new BigNumber(wallet.availableBalance);
-      const amountBN = new BigNumber(amount);
+      const availableBN = toBN(wallet.availableBalance);
+      const amountBN = toBN(amount);
 
       if (availableBN.lt(amountBN)) {
         throw new Error(
@@ -243,7 +293,7 @@ export class WalletService {
 
       // Atualizar saldos
       const newAvailableBN = availableBN.minus(amountBN);
-      const newLockedBN = new BigNumber(wallet.lockedBalance).plus(amountBN);
+      const newLockedBN = toBN(wallet.lockedBalance).plus(amountBN);
 
       await tx.userWallet.update({
         where: {id: walletId},
@@ -301,66 +351,49 @@ export class WalletService {
     amount: string,
     orderId: string,
     reason: string = 'Collateral unlocked'
-  ) {
-    const wallet = await prisma.userWallet.findUnique({
-      where: {id: walletId},
-    });
+  ): Promise<{ success: boolean; newAvailableBalance: string; newLockedBalance: string }> {
+    return withSerializableRetry('unlockBalance', { walletId, amount, orderId }, () =>
+      prisma.$transaction(async (tx) => {
+        // Lê saldo dentro da transação — previne leitura stale concorrente
+        const wallet = await tx.userWallet.findUnique({ where: { id: walletId } });
 
-    if (!wallet) {
-      throw new Error(`Wallet ${walletId} not found`);
-    }
+        if (!wallet) throw new Error(`Wallet ${walletId} not found`);
 
-    const lockedBN = new BigNumber(wallet.lockedBalance);
-    const amountBN = new BigNumber(amount);
+        const lockedBN = toBN(wallet.lockedBalance);
+        const amountBN = toBN(amount);
 
-    if (lockedBN.lt(amountBN)) {
-      throw new Error(
-        `Cannot unlock ${amountBN.toFixed(8)}. Only ${lockedBN.toFixed(8)} is locked.`
-      );
-    }
+        if (lockedBN.lt(amountBN)) {
+          throw new Error(
+            `Cannot unlock ${amountBN.toFixed(8)}. Only ${lockedBN.toFixed(8)} is locked.`
+          );
+        }
 
-    // Atualizar saldos
-    const newLockedBN = lockedBN.minus(amountBN);
-    const newAvailableBN = new BigNumber(wallet.availableBalance).plus(amountBN);
+        const newLockedBalance = subBN(wallet.lockedBalance, amount);
+        const newAvailableBalance = addBN(wallet.availableBalance, amount);
 
-    await prisma.$transaction([
-      // Atualizar carteira
-      prisma.userWallet.update({
-        where: {id: walletId},
-        data: {
-          availableBalance: newAvailableBN.toFixed(8),
-          lockedBalance: newLockedBN.toFixed(8),
-        },
-      }),
+        await tx.userWallet.update({
+          where: { id: walletId },
+          data: { availableBalance: newAvailableBalance, lockedBalance: newLockedBalance },
+        });
 
-      // Registrar transação
-      prisma.walletTransaction.create({
-        data: {
-          walletId,
-          userId: wallet.userId,
-          type: 'UNLOCK',
-          amount: amount,
-          balanceBefore: wallet.availableBalance,
-          balanceAfter: newAvailableBN.toFixed(8),
-          description: reason,
-          metadata: JSON.stringify({
-            orderId,
-            unlockedAmount: amount,
-            timestamp: new Date().toISOString(),
-          }),
-        },
-      }),
-    ]);
+        await tx.walletTransaction.create({
+          data: {
+            walletId,
+            userId: wallet.userId,
+            type: 'UNLOCK',
+            amount,
+            balanceBefore: wallet.availableBalance,
+            balanceAfter: newAvailableBalance,
+            description: reason,
+            metadata: JSON.stringify({ orderId, unlockedAmount: amount, timestamp: new Date().toISOString() }),
+          },
+        });
 
-    console.log(
-      `🔓 Unlocked ${amount} ${wallet.cryptoType} in wallet ${walletId} for order ${orderId}`
+        console.log(`🔓 Unlocked ${amount} ${wallet.cryptoType} in wallet ${walletId} for order ${orderId}`);
+
+        return { success: true, newAvailableBalance, newLockedBalance };
+      }, LEDGER_TX_OPTIONS),
     );
-
-    return {
-      success: true,
-      newAvailableBalance: newAvailableBN.toFixed(8),
-      newLockedBalance: newLockedBN.toFixed(8),
-    };
   }
 
   /**
@@ -376,86 +409,63 @@ export class WalletService {
     amount: string,
     reason: string,
     fromLocked: boolean = true
-  ) {
-    const wallet = await prisma.userWallet.findUnique({
-      where: {id: walletId},
-    });
+  ): Promise<{ success: boolean; newBalance: string; newAvailableBalance: string; newLockedBalance: string }> {
+    return withSerializableRetry('deductBalance', { walletId, amount, fromLocked }, () =>
+      prisma.$transaction(async (tx) => {
+        // Lê saldo dentro da transação — previne leitura stale concorrente
+        const wallet = await tx.userWallet.findUnique({ where: { id: walletId } });
 
-    if (!wallet) {
-      throw new Error(`Wallet ${walletId} not found`);
-    }
+        if (!wallet) throw new Error(`Wallet ${walletId} not found`);
 
-    const amountBN = new BigNumber(amount);
-    let newBalanceBN: BigNumber;
-    let newAvailableBN: BigNumber;
-    let newLockedBN: BigNumber;
+        const amountBN = toBN(amount);
+        let newBalance: string;
+        let newAvailableBalance: string;
+        let newLockedBalance: string;
 
-    if (fromLocked) {
-      // Deduzir de saldo bloqueado
-      const lockedBN = new BigNumber(wallet.lockedBalance);
-      if (lockedBN.lt(amountBN)) {
-        throw new Error(`Insufficient locked balance`);
-      }
+        if (fromLocked) {
+          if (toBN(wallet.lockedBalance).lt(amountBN)) {
+            throw new Error(`Insufficient locked balance`);
+          }
+          newLockedBalance = subBN(wallet.lockedBalance, amount);
+          newAvailableBalance = wallet.availableBalance.toString();
+          newBalance = subBN(wallet.balance, amount);
+        } else {
+          if (toBN(wallet.availableBalance).lt(amountBN)) {
+            throw new Error(`Insufficient available balance`);
+          }
+          newAvailableBalance = subBN(wallet.availableBalance, amount);
+          newLockedBalance = wallet.lockedBalance.toString();
+          newBalance = subBN(wallet.balance, amount);
+        }
 
-      newLockedBN = lockedBN.minus(amountBN);
-      newAvailableBN = new BigNumber(wallet.availableBalance);
-      newBalanceBN = new BigNumber(wallet.balance).minus(amountBN);
-    } else {
-      // Deduzir de saldo disponível
-      const availableBN = new BigNumber(wallet.availableBalance);
-      if (availableBN.lt(amountBN)) {
-        throw new Error(`Insufficient available balance`);
-      }
+        await tx.userWallet.update({
+          where: { id: walletId },
+          data: {
+            balance: newBalance,
+            availableBalance: newAvailableBalance,
+            lockedBalance: newLockedBalance,
+            totalUsed: addBN(wallet.totalUsed, amount),
+          },
+        });
 
-      newAvailableBN = availableBN.minus(amountBN);
-      newLockedBN = new BigNumber(wallet.lockedBalance);
-      newBalanceBN = new BigNumber(wallet.balance).minus(amountBN);
-    }
+        await tx.walletTransaction.create({
+          data: {
+            walletId,
+            userId: wallet.userId,
+            type: 'DEDUCT',
+            amount,
+            balanceBefore: wallet.balance,
+            balanceAfter: newBalance,
+            description: reason,
+            metadata: JSON.stringify({ fromLocked, timestamp: new Date().toISOString() }),
+          },
+        });
 
-    const newBalance = newBalanceBN.toFixed(8);
-    const newAvailableBalance = newAvailableBN.toFixed(8);
-    const newLockedBalance = newLockedBN.toFixed(8);
+        console.log(`💸 Deducted ${amount} ${wallet.cryptoType} from wallet ${walletId} (${reason})`);
 
-    await prisma.$transaction([
-      // Atualizar carteira
-      prisma.userWallet.update({
-        where: {id: walletId},
-        data: {
-          balance: newBalance,
-          availableBalance: newAvailableBalance,
-          lockedBalance: newLockedBalance,
-          totalUsed: new BigNumber(wallet.totalUsed).plus(amountBN).toFixed(8),
-        },
-      }),
-
-      // Registrar transação
-      prisma.walletTransaction.create({
-        data: {
-          walletId,
-          userId: wallet.userId,
-          type: 'DEDUCT',
-          amount: amount,
-          balanceBefore: wallet.balance,
-          balanceAfter: newBalance,
-          description: reason,
-          metadata: JSON.stringify({
-            fromLocked,
-            timestamp: new Date().toISOString(),
-          }),
-        },
-      }),
-    ]);
-
-    console.log(
-      `💸 Deducted ${amount} ${wallet.cryptoType} from wallet ${walletId} (${reason})`
+        return { success: true, newBalance, newAvailableBalance, newLockedBalance };
+      }, LEDGER_TX_OPTIONS),
     );
-
-    return {
-      success: true,
-      newBalance,
-      newAvailableBalance,
-      newLockedBalance,
-    };
   }
 
   /**
@@ -472,61 +482,45 @@ export class WalletService {
     amount: string,
     reason: string,
     orderId?: string
-  ) {
-    const wallet = await prisma.userWallet.findUnique({
-      where: {id: walletId},
-    });
+  ): Promise<{ success: boolean; newBalance: string; newAvailableBalance: string }> {
+    return withSerializableRetry('creditBalance', { walletId, amount, orderId }, () =>
+      prisma.$transaction(async (tx) => {
+        // Lê saldo dentro da transação — previne leitura stale concorrente
+        const wallet = await tx.userWallet.findUnique({ where: { id: walletId } });
 
-    if (!wallet) {
-      throw new Error(`Wallet ${walletId} not found`);
-    }
+        if (!wallet) throw new Error(`Wallet ${walletId} not found`);
 
-    const amountBN = new BigNumber(amount);
+        const newBalance = addBN(wallet.balance, amount);
+        const newAvailableBalance = addBN(wallet.availableBalance, amount);
 
-    // Atualizar saldos
-    const newBalance = new BigNumber(wallet.balance).plus(amountBN).toFixed(8);
-    const newAvailableBalance = new BigNumber(wallet.availableBalance).plus(amountBN).toFixed(8);
+        await tx.userWallet.update({
+          where: { id: walletId },
+          data: {
+            balance: newBalance,
+            availableBalance: newAvailableBalance,
+            totalDeposited: addBN(wallet.totalDeposited, amount),
+          },
+        });
 
-    await prisma.$transaction([
-      // Atualizar carteira
-      prisma.userWallet.update({
-        where: {id: walletId},
-        data: {
-          balance: newBalance,
-          availableBalance: newAvailableBalance,
-          totalDeposited: new BigNumber(wallet.totalDeposited).plus(amountBN).toFixed(8),
-        },
-      }),
+        await tx.walletTransaction.create({
+          data: {
+            walletId,
+            userId: wallet.userId,
+            type: 'CREDIT',
+            amount,
+            balanceBefore: wallet.balance,
+            balanceAfter: newBalance,
+            description: reason,
+            orderId,
+            metadata: JSON.stringify({ creditAmount: amount, orderId, timestamp: new Date().toISOString() }),
+          },
+        });
 
-      // Registrar transação
-      prisma.walletTransaction.create({
-        data: {
-          walletId,
-          userId: wallet.userId,
-          type: 'CREDIT',
-          amount: amount,
-          balanceBefore: wallet.balance,
-          balanceAfter: newBalance,
-          description: reason,
-          orderId: orderId,
-          metadata: JSON.stringify({
-            creditAmount: amount,
-            orderId: orderId,
-            timestamp: new Date().toISOString(),
-          }),
-        },
-      }),
-    ]);
+        console.log(`✅ Credited ${amount} ${wallet.cryptoType} to wallet ${walletId} (${reason})`);
 
-    console.log(
-      `✅ Credited ${amount} ${wallet.cryptoType} to wallet ${walletId} (${reason})`
+        return { success: true, newBalance, newAvailableBalance };
+      }, LEDGER_TX_OPTIONS),
     );
-
-    return {
-      success: true,
-      newBalance,
-      newAvailableBalance,
-    };
   }
 
   /**
@@ -596,14 +590,14 @@ export class WalletService {
       throw new Error(`Wallet ${walletId} not found`);
     }
 
-    const amountBN = new BigNumber(amount);
+    const amountBN = toBN(amount);
     if (amountBN.lte(0) || amountBN.isNaN()) {
       throw new Error('Amount must be a positive number');
     }
 
     // Calcular novos saldos
-    const newBalance = new BigNumber(wallet.balance).plus(amountBN).toFixed(8);
-    const newAvailableBalance = new BigNumber(wallet.availableBalance).plus(amountBN).toFixed(8);
+    const newBalance = toBN(wallet.balance).plus(amountBN).toFixed(8);
+    const newAvailableBalance = toBN(wallet.availableBalance).plus(amountBN).toFixed(8);
 
     // Atualizar carteira e criar registro de transação
     await prisma.$transaction([
@@ -613,7 +607,7 @@ export class WalletService {
         data: {
           balance: newBalance,
           availableBalance: newAvailableBalance,
-          totalDeposited: new BigNumber(wallet.totalDeposited).plus(amountBN).toFixed(8),
+          totalDeposited: toBN(wallet.totalDeposited).plus(amountBN).toFixed(8),
           lastSyncedAt: new Date(),
         },
       }),
@@ -711,8 +705,8 @@ export class WalletService {
 
     // Estimar fee
     const feeEstimate = await FeeEstimatorService.estimateFee(wallet.network, wallet.cryptoType);
-    const networkFee = parseFloat(feeEstimate.estimatedFee);
-    const amountNum = parseFloat(amount);
+    const networkFee = toBN(feeEstimate.estimatedFee).toNumber();
+    const amountNum = toBN(amount).toNumber();
 
     // Para tokens (USDT/USDC), a fee é paga em moeda nativa
     const isToken = ['USDT', 'USDC'].includes(wallet.cryptoType);
@@ -722,7 +716,7 @@ export class WalletService {
 
     // Verificar valor mínimo
     const minimumAmount = FeeEstimatorService.getMinimumWithdrawal(wallet.network, wallet.cryptoType);
-    const isAboveMinimum = amountNum >= parseFloat(minimumAmount);
+    const isAboveMinimum = amountNum >= toBN(minimumAmount).toNumber();
 
     return {
       amount,
@@ -732,7 +726,7 @@ export class WalletService {
       feeNote: isToken
         ? `A taxa de rede é paga em ${wallet.network === 'SOLANA' ? 'SOL' : 'ETH'} (separada do valor do saque)`
         : `A taxa de rede será descontada do valor enviado`,
-      isValid: isValidAddress && isAboveMinimum && amountNum <= parseFloat(wallet.availableBalance),
+      isValid: isValidAddress && isAboveMinimum && amountNum <= toBN(wallet.availableBalance).toNumber(),
       isValidAddress,
       isAboveMinimum,
       minimumAmount,
@@ -770,15 +764,15 @@ export class WalletService {
 
     // 2. Validar valor mínimo
     const minimumAmount = FeeEstimatorService.getMinimumWithdrawal(wallet.network, wallet.cryptoType);
-    const withdrawAmount = parseFloat(amount);
-    if (withdrawAmount < parseFloat(minimumAmount)) {
+    const withdrawAmount = toBN(amount).toNumber();
+    if (withdrawAmount < toBN(minimumAmount).toNumber()) {
       throw new Error(
         `Valor mínimo de saque para ${wallet.cryptoType}/${wallet.network}: ${minimumAmount}`
       );
     }
 
     // 3. Verificar saldo disponível
-    const availableBalance = parseFloat(wallet.availableBalance);
+    const availableBalance = toBN(wallet.availableBalance).toNumber();
     if (availableBalance < withdrawAmount) {
       throw new Error(
         `Saldo insuficiente. Disponível: ${availableBalance}, Solicitado: ${withdrawAmount}`
@@ -863,9 +857,9 @@ export class WalletService {
   ) {
     // Guard: se todos os 3 campos são fornecidos, validar invariante B = A + L
     if (data.balance !== undefined && data.availableBalance !== undefined && data.lockedBalance !== undefined) {
-      const bBN = new BigNumber(data.balance);
-      const aBN = new BigNumber(data.availableBalance);
-      const lBN = new BigNumber(data.lockedBalance);
+      const bBN = toBN(data.balance);
+      const aBN = toBN(data.availableBalance);
+      const lBN = toBN(data.lockedBalance);
       if (!bBN.eq(aBN.plus(lBN))) {
         throw new Error(
           `Invariant violation: balance (${bBN.toFixed(8)}) != available (${aBN.toFixed(8)}) + locked (${lBN.toFixed(8)})`
@@ -925,8 +919,8 @@ export class WalletService {
           return true;
         });
         let realLockedBN = allLocked.reduce(
-          (sum, order) => sum.plus(new BigNumber(order.collateralLockedAmount || '0')),
-          new BigNumber(0)
+          (sum, order) => sum.plus(toBN(order.collateralLockedAmount || '0')),
+          toBN("0")
         );
 
         // Incluir bloqueios manuais de admin (ADMIN_LOCK - ADMIN_UNLOCK).
@@ -939,19 +933,19 @@ export class WalletService {
           0,
           adminLockTxs.reduce((sum, tx) => {
             return tx.type === 'ADMIN_LOCK'
-              ? sum.plus(tx.amount)
-              : sum.minus(tx.amount);
-          }, new BigNumber(0))
+              ? sum.plus(toBN(tx.amount))
+              : sum.minus(toBN(tx.amount));
+          }, toBN("0"))
         );
         realLockedBN = realLockedBN.plus(netAdminLockedBN);
 
         // Saldo bloqueado nunca pode ser negativo
         if (realLockedBN.isNegative()) {
-          realLockedBN = new BigNumber(0);
+          realLockedBN = toBN("0");
         }
 
-        const currentLockedBN = new BigNumber(wallet.lockedBalance);
-        const balanceBN = new BigNumber(wallet.balance);
+        const currentLockedBN = toBN(wallet.lockedBalance);
+        const balanceBN = toBN(wallet.balance);
 
         console.log(
           `🔍 [recalc] wallet ${wallet.cryptoType}: locked=${currentLockedBN.toFixed(8)}, realLocked=${realLockedBN.toFixed(8)}, orders=${allLocked.length}`
@@ -961,7 +955,7 @@ export class WalletService {
           // Calcular novo available garantindo que nao ultrapasse o balance total
           let newAvailable = balanceBN.minus(realLockedBN);
           if (newAvailable.isNegative()) {
-            newAvailable = new BigNumber(0);
+            newAvailable = toBN("0");
           }
 
           await prisma.$transaction([

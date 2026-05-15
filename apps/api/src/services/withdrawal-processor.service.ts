@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import BigNumber from 'bignumber.js';
+import { toBN } from '../utils/money';
 import { KeyManagementService } from './hd-wallet/key-management.service';
 import { TransactionSenderService } from './blockchain/transaction-sender.service';
 import { FeeEstimatorService } from './blockchain/fee-estimator.service';
@@ -74,8 +75,8 @@ export class WithdrawalProcessorService {
     }
 
     // 3. Verificar valor mínimo (amount deve cobrir pelo menos a fee)
-    const amountBN = new BigNumber(withdrawal.amount);
-    const networkFeeBN = new BigNumber(feeEstimate.estimatedFee);
+    const amountBN = toBN(withdrawal.amount);
+    const networkFeeBN = toBN(feeEstimate.estimatedFee);
 
     // Para tokens ERC-20/SPL, a fee é paga em moeda nativa (ETH/SOL), não no token
     // Então o amount do saque não precisa cobrir a fee do gas
@@ -92,8 +93,8 @@ export class WithdrawalProcessorService {
     // 4. Calcular valor a enviar
     // Para tokens: enviar o valor total (fee é paga em moeda nativa)
     // Para moeda nativa (BTC, ETH, SOL): descontar fee do valor
-    const amountToSend = isToken
-      ? withdrawal.amount
+    const amountToSend: string = isToken
+      ? withdrawal.amount.toString()
       : amountBN.minus(networkFeeBN).toFixed(8);
 
     // 5. Marcar como PROCESSING
@@ -123,8 +124,8 @@ export class WithdrawalProcessorService {
     }
 
     // 7. Verificar solvência do hot wallet
-    const hotBalanceBN = new BigNumber(hotWallet.balance);
-    const withdrawAmountBN = new BigNumber(withdrawal.amount);
+    const hotBalanceBN = toBN(hotWallet.balance);
+    const withdrawAmountBN = toBN(withdrawal.amount);
     const totalNeededBN = isToken ? withdrawAmountBN : withdrawAmountBN.plus(networkFeeBN);
 
     if (hotBalanceBN.lt(totalNeededBN)) {
@@ -166,7 +167,7 @@ export class WithdrawalProcessorService {
             privateKey,
             fromAddress,          // hot wallet address
             withdrawal.toAddress,
-            parseFloat(amountToSend),
+            toBN(amountToSend).toNumber(),
             feeEstimate.feeRate || 10
           );
           break;
@@ -198,17 +199,17 @@ export class WithdrawalProcessorService {
       }
 
       // 10-13. Transaction atômica: withdrawal COMPLETED + deduzir usuário + hot wallet + WalletTransactions
-      const deductBN = new BigNumber(withdrawal.amount);
-      const lockedBN = new BigNumber(wallet.lockedBalance);
+      const deductBN = toBN(withdrawal.amount);
+      const lockedBN = toBN(wallet.lockedBalance);
       if (lockedBN.lt(deductBN)) {
         throw new Error('Insufficient locked balance');
       }
 
       const newLockedBalance = lockedBN.minus(deductBN).toFixed(8);
-      const newBalance = new BigNumber(wallet.balance).minus(deductBN).toFixed(8);
-      const newAvailableBalance = new BigNumber(newBalance).minus(newLockedBalance).toFixed(8);
-      const newTotalUsed = new BigNumber(wallet.totalUsed).plus(deductBN).toFixed(8);
-      const newTotalWithdrawn = new BigNumber(wallet.totalWithdrawn).plus(deductBN).toFixed(8);
+      const newBalance = toBN(wallet.balance).minus(deductBN).toFixed(8);
+      const newAvailableBalance = toBN(newBalance).minus(newLockedBalance).toFixed(8);
+      const newTotalUsed = toBN(wallet.totalUsed).plus(deductBN).toFixed(8);
+      const newTotalWithdrawn = toBN(wallet.totalWithdrawn).plus(deductBN).toFixed(8);
 
       await prisma.$transaction(async (tx) => {
         // 0. Marcar withdrawal como COMPLETED (dentro da tx!)
@@ -240,8 +241,8 @@ export class WithdrawalProcessorService {
             walletId: wallet.id,
             userId: wallet.userId,
             type: 'DEDUCT',
-            amount: withdrawal.amount,
-            balanceBefore: wallet.balance,
+            amount: withdrawal.amount.toString(),
+            balanceBefore: wallet.balance.toString(),
             balanceAfter: newBalance,
             description: `Withdrawal to ${withdrawal.toAddress}`,
             metadata: JSON.stringify({
@@ -257,7 +258,7 @@ export class WithdrawalProcessorService {
           where: { id: hotWallet.id },
           data: {
             balance: hotWalletNewBalance,
-            totalWithdrawn: new BigNumber(hotWallet.totalWithdrawn).plus(withdrawAmountBN).toFixed(8),
+            totalWithdrawn: toBN(hotWallet.totalWithdrawn).plus(withdrawAmountBN).toFixed(8),
           },
         });
 
@@ -266,8 +267,8 @@ export class WithdrawalProcessorService {
           platformWalletId: hotWallet.id,
           type: 'WITHDRAWAL_OUT',
           direction: 'OUT',
-          amount: withdrawal.amount,
-          balanceBefore: hotWallet.balance,
+          amount: withdrawal.amount.toString(),
+          balanceBefore: hotWallet.balance.toString(),
           balanceAfter: hotWalletNewBalance,
           description: `Saque processado para ${withdrawal.toAddress}`,
           txHash: result.txHash,
@@ -287,8 +288,8 @@ export class WithdrawalProcessorService {
             walletId: wallet.id,
             userId: wallet.userId,
             type: 'WITHDRAWAL',
-            amount: withdrawal.amount,
-            balanceBefore: wallet.balance,
+            amount: withdrawal.amount.toString(),
+            balanceBefore: wallet.balance.toString(),
             balanceAfter: newBalance,
             txHash: result.txHash,
             description: `Saque para ${withdrawal.toAddress} (via hot wallet)`,
@@ -308,7 +309,7 @@ export class WithdrawalProcessorService {
       try {
         await notificationService.notifyWithdrawalProcessed(
           wallet.userId,
-          withdrawal.amount,
+          withdrawal.amount.toString(),
           wallet.cryptoType,
           result.txHash
         );
@@ -321,7 +322,7 @@ export class WithdrawalProcessorService {
         await emailService.sendIfAllowed(wallet.userId, 'WITHDRAWALS', () =>
           emailService.sendWithdrawalCompletedEmail(wallet.user.email, {
             name: wallet.user.name || 'Usuário',
-            amount: withdrawal.amount,
+            amount: withdrawal.amount.toString(),
             crypto: wallet.cryptoType,
             network: wallet.network,
             toAddress: withdrawal.toAddress,
@@ -430,7 +431,7 @@ export class WithdrawalProcessorService {
         await emailService.sendIfAllowed(user.id, 'WITHDRAWALS', () =>
           emailService.sendWithdrawalApprovedEmail(user.email, {
             name: user.name || 'Usuário',
-            amount: withdrawal.amount,
+            amount: withdrawal.amount.toString(),
             crypto: withdrawalWithUser.wallet.cryptoType,
             network: withdrawalWithUser.wallet.network,
           })
@@ -478,7 +479,7 @@ export class WithdrawalProcessorService {
     // Desbloquear saldo
     await WalletService.unlockBalance(
       withdrawal.walletId,
-      withdrawal.amount,
+      withdrawal.amount.toString(),
       withdrawalId,
       `Withdrawal rejected by admin: ${note}`
     );
@@ -512,7 +513,7 @@ export class WithdrawalProcessorService {
         await emailService.sendIfAllowed(withdrawal.wallet.userId, 'WITHDRAWALS', () =>
           emailService.sendWithdrawalRejectedEmail(userForEmail.email, {
             name: userForEmail.name || 'Usuário',
-            amount: withdrawal.amount,
+            amount: withdrawal.amount.toString(),
             crypto: withdrawal.wallet.cryptoType,
             reason: note,
           })

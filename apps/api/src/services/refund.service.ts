@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { internalBalanceService } from './internal-balance.service';
+import { toBN } from '../utils/money';
 
 const prisma = new PrismaClient();
 
@@ -31,13 +32,11 @@ export class RefundService {
       throw new Error('Pedido não encontrado');
     }
 
-    const collateralAmount = parseFloat(order.cryptoAmount);
+    const collateralAmount = toBN(order.cryptoAmount).toNumber();
     const network = order.cryptoNetwork as keyof typeof REFUND_CONFIG.NETWORK_FEES;
 
     // Estimativa de taxa de rede
-    const networkFeeEstimate = parseFloat(
-      REFUND_CONFIG.NETWORK_FEES[network] || '5.00'
-    );
+    const networkFeeEstimate = toBN(REFUND_CONFIG.NETWORK_FEES[network] || '5.00').toNumber();
 
     // Taxa de processamento (margem de segurança)
     const processingFee = collateralAmount * REFUND_CONFIG.NETWORK_FEE_BUFFER_PERCENTAGE;
@@ -117,7 +116,7 @@ export class RefundService {
         userId,
         order.cryptoType,
         order.cryptoNetwork,
-        order.cryptoAmount
+        order.cryptoAmount.toString()
       );
 
       // Atualizar ordem

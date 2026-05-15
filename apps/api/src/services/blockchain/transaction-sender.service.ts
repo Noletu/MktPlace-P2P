@@ -1,6 +1,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { BIP32Factory } from 'bip32';
 import * as ecc from 'tiny-secp256k1';
+import { toIntegerDown } from '../../utils/money';
 import { Wallet as EthereumWallet } from '@ethereumjs/wallet';
 import {
   Connection,
@@ -256,7 +257,8 @@ export class TransactionSenderService {
       }
 
       // USDT/USDC têm 6 decimais
-      const amountInSmallestUnit = BigInt(Math.floor(parseFloat(amount) * 1e6));
+      // ROUND_DOWN explícito: nunca creditar mais smallest-units do que o usuário possui
+      const amountInSmallestUnit = BigInt(toIntegerDown(amount, 1e6).toFixed(0));
 
       // transfer(address,uint256) function selector: 0xa9059cbb
       const paddedTo = toAddress.replace('0x', '').padStart(64, '0');
@@ -267,7 +269,8 @@ export class TransactionSenderService {
       gasLimit = 65000;
     } else {
       // ETH nativo
-      txValue = BigInt(Math.floor(parseFloat(amount) * 1e18));
+      // ROUND_DOWN explícito: 1e18 wei excede Number.MAX_SAFE_INTEGER, usar toFixed(0) → BigInt
+      txValue = BigInt(toIntegerDown(amount, 1e18).toFixed(0));
       txDataHex = '0x';
       txTo = toAddress;
       gasLimit = 21000;
@@ -353,7 +356,7 @@ export class TransactionSenderService {
       const mint = new PublicKey(mintStr);
 
       // USDT/USDC no Solana tem 6 decimais
-      const amountLamports = BigInt(Math.floor(parseFloat(amount) * 1e6));
+      const amountLamports = BigInt(toIntegerDown(amount, 1e6).toFixed(0));
 
       // Obter/criar ATA do destinatário
       const fromATA = await getAssociatedTokenAddress(mint, keypair.publicKey);
@@ -391,7 +394,8 @@ export class TransactionSenderService {
       });
     } else {
       // SOL nativo
-      const lamports = Math.floor(parseFloat(amount) * 1e9);
+      // SOL: 1e9 lamports cabe em Number safe range, mas usar BigInt por consistência
+      const lamports = Number(toIntegerDown(amount, 1e9).toFixed(0));
 
       const transaction = new SolanaTransaction().add(
         SystemProgram.transfer({

@@ -2,6 +2,7 @@ import {PrismaClient} from '@prisma/client';
 import {BlockchainService} from '../services/blockchain/blockchain.service';
 import {WorkerStateService} from '../services/workerState.service';
 import BigNumber from 'bignumber.js';
+import { toBN } from '../utils/money';
 
 const prisma = new PrismaClient();
 
@@ -111,8 +112,8 @@ export class BalanceSyncWorker {
       hotWallet.network
     );
 
-    const savedBalance = parseFloat(hotWallet.balance);
-    const currentBalance = parseFloat(onChainBalance);
+    const savedBalance = toBN(hotWallet.balance).toNumber();
+    const currentBalance = toBN(onChainBalance).toNumber();
 
     const diff = Math.abs(currentBalance - savedBalance);
     if (diff > 0.00000001) {
@@ -151,11 +152,11 @@ export class BalanceSyncWorker {
       });
 
       const totalUserBalance = userWallets.reduce(
-        (sum, w) => sum.plus(w.balance),
-        new BigNumber(0)
+        (sum, w) => sum.plus(toBN(w.balance)),
+        toBN("0")
       );
 
-      const hotBalance = new BigNumber(hotWallet.balance);
+      const hotBalance = toBN(hotWallet.balance);
       const delta = hotBalance.minus(totalUserBalance);
 
       if (delta.lt(0)) {

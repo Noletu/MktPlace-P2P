@@ -1,6 +1,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import {Connection, PublicKey} from '@solana/web3.js';
 import axios from 'axios';
+import { divBN } from '../../utils/money';
 
 /**
  * Blockchain Service
@@ -203,11 +204,11 @@ export class BlockchainService {
         id: 1,
       });
 
-      // Converter hex para decimal e depois para ETH
-      const weiBalance = parseInt(response.data.result, 16);
-      const ethBalance = weiBalance / 1e18;
-
-      return ethBalance.toString();
+      // CRIT-03b read-path: wei pode exceder Number.MAX_SAFE_INTEGER (ETH supply ~1.2e26).
+      // parseInt(hex,16) trunca silenciosamente; usa BigInt -> BN.
+      const weiHex: string = response.data.result;
+      const weiStr = BigInt(weiHex).toString();
+      return divBN(weiStr, 1e18);
     } catch (error) {
       console.error(`Error fetching ${network} balance:`, error);
       return '0';

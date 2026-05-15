@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { toBN, sumBN } from '../utils/money';
 
 const prisma = new PrismaClient();
 
@@ -44,10 +45,7 @@ export class FinanceService {
     });
 
     // Calcular total de taxas
-    const totalFees = completedOrders.reduce(
-      (sum, order) => sum + parseFloat(order.platformFee || '0'),
-      0
-    );
+    const totalFees = toBN(sumBN(completedOrders.map(order => order.platformFee || '0'))).toNumber();
 
     // Calcular por mês (últimos 12 meses)
     const byMonth = this.calculateByMonth(completedOrders);
@@ -96,7 +94,7 @@ export class FinanceService {
    * Calcular taxas por mês (últimos 12 meses)
    */
   private calculateByMonth(
-    orders: Array<{ platformFee: string | null; createdAt: Date }>
+    orders: Array<{ platformFee: { toString(): string } | null; createdAt: Date }>
   ): Array<{ month: string; amount: string }> {
     const monthlyData: Record<string, number> = {};
     const now = new Date();
@@ -108,7 +106,7 @@ export class FinanceService {
           order.createdAt.getMonth() + 1
         ).padStart(2, '0')}`;
         monthlyData[monthKey] =
-          (monthlyData[monthKey] || 0) + parseFloat(order.platformFee || '0');
+          (monthlyData[monthKey] || 0) + toBN(order.platformFee?.toString() || '0').toNumber();
       }
     });
 
@@ -124,14 +122,14 @@ export class FinanceService {
    * Calcular taxas por tipo de crypto
    */
   private calculateByCrypto(
-    orders: Array<{ platformFee: string | null; cryptoType: string }>
+    orders: Array<{ platformFee: { toString(): string } | null; cryptoType: string }>
   ): Array<{ crypto: string; amount: string }> {
     const cryptoData: Record<string, number> = {};
 
     orders.forEach((order) => {
       cryptoData[order.cryptoType] =
         (cryptoData[order.cryptoType] || 0) +
-        parseFloat(order.platformFee || '0');
+        toBN(order.platformFee?.toString() || '0').toNumber();
     });
 
     return Object.entries(cryptoData).map(([crypto, amount]) => ({
