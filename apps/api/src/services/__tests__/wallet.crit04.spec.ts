@@ -1,14 +1,19 @@
 // CRIT-04: integration test — requer Postgres real rodando.
-// Pré-requisito: docker compose -f infra/docker/docker-compose.yml up -d postgres
-//                npx prisma migrate dev (no apps/api)
+// Pré-requisito: Postgres acessível no DATABASE_URL + migrations aplicadas.
 //
-// O setup.ts global mocka @prisma/client. Aqui desabilitamos esse mock
-// e usamos uma instância real apontando para o DATABASE_URL configurado.
-//
-// NOTA: WalletService transitivamente importa @ethereumjs/wallet (ESM) que quebra
-// no Jest CJS sem transformIgnorePatterns. Por isso usamos `require()` lazy DENTRO
-// das funções, executando apenas quando o teste roda (com Postgres up).
+// 1) setup.ts global mocka @prisma/client. Aqui desabilitamos para usar Prisma real.
+// 2) WalletService importa transitivamente @ethereumjs/wallet (ESM) via
+//    derivation.service / key-management.service / blockchain.service /
+//    fee-estimator.service. Esses caminhos NÃO são exercitados pelos métodos do
+//    ledger (unlock/deduct/credit), então stubamos os módulos para evitar o
+//    SyntaxError do Jest CJS ao parsear ESM.
 jest.unmock('@prisma/client');
+jest.mock('../hd-wallet/derivation.service', () => ({ DerivationService: {} }));
+jest.mock('../hd-wallet/key-management.service', () => ({ KeyManagementService: {} }));
+jest.mock('../blockchain/blockchain.service', () => ({ BlockchainService: {} }));
+jest.mock('../blockchain/fee-estimator.service', () => ({ FeeEstimatorService: {} }));
+jest.mock('../email.service', () => ({ emailService: { sendEmail: jest.fn() } }));
+jest.mock('../notification.service', () => ({ notificationService: { create: jest.fn() } }));
 
 const RUN_INTEGRATION = (process.env.DATABASE_URL ?? '').startsWith('postgresql://');
 const describeIfPg = RUN_INTEGRATION ? describe : describe.skip;

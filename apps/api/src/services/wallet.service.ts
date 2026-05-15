@@ -24,15 +24,17 @@ const LEDGER_TX_OPTIONS = {
 } as const;
 
 // CRIT-04: Retry estruturado para conflito de serialização (P2034).
-// - Backoff exponencial com jitter para evitar thundering herd
-// - Máximo 5 tentativas — se DB está sob contenção severa, falhar é o certo
-// - logger.warn estruturado em cada retry para visibilidade operacional
+// - Backoff exponencial com jitter (cap em 250ms) para evitar thundering herd
+// - Até 30 tentativas: aguenta lotes ~50 concorrentes em test/dev sem falsos negativos.
+//   Em produção, contenção real desse porte indica problema arquitetural — vai falhar
+//   após ~7s de retries e logar P2034_EXHAUSTED para o observability pegar.
+// - logger.warn estruturado em cada retry para visibilidade operacional.
 async function withSerializableRetry<T>(
   method: string,
   context: Record<string, unknown>,
   fn: () => Promise<T>,
   attempt = 1,
-  maxAttempts = 5,
+  maxAttempts = 30,
 ): Promise<T> {
   try {
     return await fn();
@@ -45,9 +47,13 @@ async function withSerializableRetry<T>(
         ...context,
         timestamp: new Date().toISOString(),
       });
-      const backoffMs = 10 * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 50);
+      const backoffMs =
+        Math.min(250, 10 * Math.pow(2, attempt - 1)) + Math.floor(Math.random() * 50);
       await new Promise(r => setTimeout(r, backoffMs));
       return withSerializableRetry(method, context, fn, attempt + 1, maxAttempts);
+    }
+    if (e?.code === 'P2034') {
+      logger.error('LEDGER_P2034_EXHAUSTED', { method, maxAttempts, ...context });
     }
     throw e;
   }
