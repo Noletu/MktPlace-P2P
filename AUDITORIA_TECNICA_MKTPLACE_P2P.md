@@ -2267,7 +2267,18 @@ app.use(cookieParser(process.env.COOKIE_SECRET));
 **Severidade:** 🟠 Sério
 **Fase:** 🔵 **[ADIAR PRE-STAGING]** — em dev, credenciais fixas facilitam debug (desde que arquivo esteja fora do git via CRIT-08). Mínimo agora: seed gera password aleatório se `NODE_ENV=production`
 **Categoria:** Operacional / Bootstrapping
+**Status:** 🟡 **Mitigação parcial** (commits `17fea25` + `0e4f5eb`) — finding continua aberto
 **Esforço estimado:** meio dia
+
+### Mitigação parcial (Sprint 2 — Caminho C)
+
+O fix definitivo (seed gerar password aleatório + emitir) continua planejado para PRE-STAGING. Enquanto isso, foi adicionado **guard NODE_ENV=production** em `prisma/seed.ts` e `prisma/seeds/rbac-seed.ts`:
+
+- O guard lança `Error` imediatamente no topo da função, ANTES de qualquer query Prisma ou bcrypt.
+- Mensagem aponta para o runbook operacional em **TECH-DEBT-OP02** (provisionamento real de master/admin em prod).
+- 4 testes em `prisma/__tests__/seed-guard.spec.ts` validam o guard (spawn real do tsx + asserção que mensagem do guard aparece em prod e ausência de erro de conexão Prisma = guard parou ANTES do DB).
+
+**Por que isto não fecha SER-15:** a defesa em profundidade impede o seed de rodar em prod, mas não resolve "como provisionar credenciais reais". Isso continua sendo escopo do fix completo (geração aleatória + handoff seguro) + runbook (TECH-DEBT-OP02).
 
 ### Arquivo afetado
 - `apps/api/prisma/seed.ts` (verificar)
@@ -3717,6 +3728,14 @@ Distintas dos erros de TS acima — estas são suites que **compilam** mas falha
 - Cluster `exchange-rate.service.ts` (erros 14-18), `socket.test.ts` (erro 25 + TD-T27), e `notification.service.test.ts` (TD-T26) são higiene de tipos / test-infra sem impacto financeiro — Sprint 3.
 - Todas as falhas TD-T26/TD-T27 foram confirmadas pré-Sprint-1 via `git stash` da branch atual + rerun.
 
+### Pendências de developer-experience (DX)
+
+Problemas que não causam falha em produção, mas atrapalham desenvolvimento ou onboarding. Identificados durante operação normal (ex.: reset de banco dev), com solução conhecida.
+
+| ID | Problema | Fase | Solução proposta | Esforço |
+|----|----------|------|------------------|---------|
+| **TECH-DEBT-DEV01** | Seed pipeline não é one-shot: `prisma/seed.ts` depende de `prisma/seeds/rbac-seed.ts` ter sido executado antes. Quando a ordem é invertida, falha cripticamente com `❌ Roles RBAC não encontrados! Execute primeiro: npx tsx prisma/seeds/rbac-seed.ts` no meio do output do `prisma migrate reset`. Observado em 2026-05-15 ao executar Caminho A (reset de banco dev). | 🚨 **[FAZER AGORA]** — próxima sessão | Duas opções: (a) `prisma/seed.ts` importa e chama `seedRBAC()` automaticamente antes da criação dos usuários, garantindo ordem correta independente de quem invoca; (b) consolidar tudo em script único `prisma/seed.ts`. Preferência por (a) — mantém modularidade. | 30min |
+
 ### Pendências operacionais (não-código)
 
 Distintas dos erros de TS e falhas de teste acima — estas são ações que precisam acontecer **em ambiente real (staging/prod)** após código mergeado, mas que não dependem de mudança no código. Catalogadas aqui para não cair entre as cadeiras.
@@ -3724,11 +3743,12 @@ Distintas dos erros de TS e falhas de teste acima — estas são ações que pre
 | ID | Título | Fase | Razão / Detalhes |
 |----|--------|------|------------------|
 | **TECH-DEBT-OP01** | Invalidar backup codes 2FA pré-CRIT-06 em produção | 🔵 **[ADIAR PRE-PROD]** | Backup codes salvos no banco ANTES de `bea7f20` foram gerados com `Math.random()` (xorshift128+ — previsível a partir de poucas amostras). O bug está fechado no código, mas as **hashes antigas seguem válidas** no banco até serem usadas ou regeneradas. Em prod, isto é uma janela de bypass de 2FA até zerarmos. **Pré-requisitos:** (1) feature de regeneração de backup codes visível e testada na UI; (2) email transacional pronto comunicando os usuários. **Comando:** `cd apps/api && DATABASE_URL=<prod> npx tsx scripts/invalidate-2fa-backup-codes.ts` (dry-run) → `--apply`. **Smoke test do script:** ✅ executado em 2026-05-15 contra Postgres dev (9/9 verificações PASS — userA `enabled+codes` detectado/zerado, userB `disabled+codes` intocado). **Quando rodar:** logo antes do primeiro deploy a prod com usuários reais. Não fazer antes — usuários de dev/staging usariam backup codes gerados pelo novo CSPRNG normalmente. |
+| **TECH-DEBT-OP02** | Provisionamento de master/admin em produção | 🔵 **[ADIAR PRE-PROD]** | **Decisão registrada:** NÃO usar `prisma/seed.ts` em produção (já há guard `NODE_ENV=production` que lança — commits `17fea25` + `0e4f5eb`). Provisionamento real exige runbook operacional dedicado. **Plano:** (1) gerar senhas fortes via `openssl rand -base64 32` (ou ferramenta equivalente do gestor de secrets); (2) criar **DOIS usuários master independentes** (um por sócio) — quebra de single-point-of-failure de chave; (3) excluir os usuários default `master@mktplace.com` e `admin@mktplace.com` se eles foram criados em algum ambiente intermediário; (4) habilitar 2FA obrigatório imediato em ambos os masters antes do primeiro acesso compartilhado; (5) documentar em local versionado fora deste repo (cofre/wiki interna) qual sócio detém quais credenciais, quem é fallback, e a cerimônia de rotação. **Onde isto vive:** documento separado tipo `docs/runbook-prod-bootstrap.md` (ainda não criado) — esta entrada é só o ponteiro até criarmos. **Quando rodar:** ao provisionar o ambiente de produção pela primeira vez, antes de qualquer usuário real ter acesso. |
 
 ---
 
 **Fim do documento.**
 
-Última edição: 15/05/2026 (v1.4 — Sprint 2 sessão 1 + TECH-DEBT-OP01 catalogado + smoke test do invalidate-2fa)
+Última edição: 15/05/2026 (v1.5 — Caminho C: guard NODE_ENV=production em seeds + TECH-DEBT-DEV01 + TECH-DEBT-OP02 + SER-15 com mitigação parcial)
 Auditor: Claude (claude.ai/web)
 Próxima revisão sugerida: após Sprint 2 ou em 30 dias, o que vier primeiro.
