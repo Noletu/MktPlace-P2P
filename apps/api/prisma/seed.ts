@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { seedRBAC } from './seeds/rbac-seed';
 
 const prisma = new PrismaClient();
 
@@ -19,19 +20,23 @@ async function main() {
 
   console.log('🌱 Iniciando seed do banco de dados...');
 
-  // ============ BUSCAR ROLES RBAC ============
-  const masterRole = await prisma.role.findUnique({
+  // ============ ORQUESTRAÇÃO RBAC (TECH-DEBT-DEV01) ============
+  // Antes: este seed exigia `rbac-seed.ts` ter rodado antes em comando
+  // separado. Falha cripticamente se a ordem fosse invertida.
+  // Agora: chamamos seedRBAC() aqui. seedRBAC é idempotente (usa upsert
+  // por slug/name em tudo) — re-rodar não duplica nem invalida nada.
+  // `npx prisma db seed` agora é one-shot.
+  await seedRBAC();
+
+  // Após seedRBAC(), os roles 'master' e 'admin' EXISTEM com certeza.
+  // findUniqueOrThrow torna o contrato explícito.
+  const masterRole = await prisma.role.findUniqueOrThrow({
     where: { slug: 'master' },
   });
 
-  const adminRole = await prisma.role.findUnique({
+  const adminRole = await prisma.role.findUniqueOrThrow({
     where: { slug: 'admin' },
   });
-
-  if (!masterRole || !adminRole) {
-    console.error('❌ Roles RBAC não encontrados! Execute primeiro: npx tsx prisma/seeds/rbac-seed.ts');
-    process.exit(1);
-  }
 
   // ============ CRIAR USUÁRIO MASTER ============
   const masterEmail = 'master@mktplace.com';
