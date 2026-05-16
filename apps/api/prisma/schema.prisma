@@ -44,10 +44,11 @@ model User {
   legacyRole String @default("USER")
 
   // SECURITY: 2FA
-  twoFactorEnabled     Boolean @default(false)
-  twoFactorSecret      String?
-  twoFactorTempSecret  String? // Secret temporário durante setup
-  twoFactorBackupCodes String? // JSON array de códigos hasheados
+  twoFactorEnabled       Boolean @default(false)
+  twoFactorSecret        String?
+  twoFactorTempSecret    String? // Secret temporário durante setup
+  twoFactorBackupCodes   String? // JSON array de códigos hasheados
+  twoFactorLastUsedStep  BigInt? // CRIT-07: último timestep TOTP aceito (Unix epoch / 30). Anti-replay: token cujo step seja <= este valor é rejeitado.
 
   // PASSWORD RESET
   passwordResetToken   String?

@@ -3,6 +3,17 @@ import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 import crypto from 'crypto';
 import { hashPassword, comparePassword } from '../utils/bcrypt';
+import { securityLogger } from '../utils/logger';
+
+// CRIT-07: TOTP step duration em segundos. RFC 6238 default = 30s.
+// O step absoluto que um token assinado corresponde é floor(unix_epoch / 30).
+const TOTP_STEP_SECONDS = 30;
+
+// Calcula o step absoluto atual (em UTC). Helper isolado pra facilitar mock
+// em testes (mockando Date.now ou injetando custom "now").
+function currentAbsoluteStep(nowMs: number = Date.now()): number {
+  return Math.floor(nowMs / 1000 / TOTP_STEP_SECONDS);
+}
 
 // CRIT-06: comprimento bruto dos backup codes (em bytes). 5 bytes = 10 hex chars
 // = 40 bits de entropia, ~1.1e12 possibilidades. Para 10 códigos/usuário, é
@@ -127,13 +138,16 @@ export class TwoFactorService {
       throw new Error('Token inválido');
     }
 
-    // Desativar 2FA e remover secret e backup codes
+    // Desativar 2FA e remover secret, backup codes e step usado.
+    // CRIT-07: zerar twoFactorLastUsedStep evita que um secret antigo
+    // re-habilitado venha com restrição irrelevante.
     await prisma.user.update({
       where: { id: userId },
       data: {
         twoFactorEnabled: false,
         twoFactorSecret: null,
         twoFactorBackupCodes: null,
+        twoFactorLastUsedStep: null,
       },
     });
 
@@ -141,6 +155,22 @@ export class TwoFactorService {
   }
 
   // SECURITY: Verificar token 2FA no login (aceita TOTP ou backup code)
+  //
+  // CRIT-07 — Replay protection:
+  // RFC 6238 §5.2 obriga implementações a rejeitar reuso do MESMO token TOTP
+  // dentro da janela de validade (até ~90s com WINDOW=1). Sem isso, atacante
+  // que vê o código uma vez (shoulder-surf, screen-share, extensão maliciosa,
+  // MITM em conexão inicial) consegue reusar até o timestep avançar.
+  //
+  // Implementação:
+  // 1. verifyDelta retorna { delta } se válido (delta = offset de step
+  //    relativo ao "agora"; -1/0/+1 com WINDOW=1). Se inválido, undefined.
+  // 2. Calculamos o step absoluto que o token assinou (currentStep) e
+  //    comparamos com twoFactorLastUsedStep. Se <= último usado, é replay.
+  // 3. Update do twoFactorLastUsedStep via updateMany com guard atômico
+  //    (WHERE OR [null, lt: currentStep]) — duas requests com o mesmo token
+  //    em paralelo: apenas a primeira faz count=1, a segunda recebe count=0
+  //    e cai como replay (anti-race no nível de banco).
   async verifyToken(userId: string, token: string): Promise<boolean> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -150,19 +180,64 @@ export class TwoFactorService {
       return false;
     }
 
-    // Primeiro tentar como TOTP (código do app)
-    const isTOTPValid = speakeasy.totp.verify({
+    // verifyDelta: retorna { delta: number } se válido, undefined se não.
+    const result = speakeasy.totp.verifyDelta({
       secret: user.twoFactorSecret,
       encoding: 'base32',
       token,
       window: WINDOW,
     });
 
-    if (isTOTPValid) {
+    if (result) {
+      // Step absoluto exato que este token assinou.
+      const currentStep = currentAbsoluteStep() + result.delta;
+      const lastUsedStep = user.twoFactorLastUsedStep;
+
+      // CRIT-07 replay check: se já consumimos este step (ou um futuro,
+      // teoricamente impossível mas defensivo).
+      if (lastUsedStep !== null && BigInt(currentStep) <= lastUsedStep) {
+        securityLogger.totpReplay(userId, {
+          currentStep,
+          lastUsed: lastUsedStep.toString(),
+          reason: 'step_already_consumed',
+        });
+        // Não cai para backup code: TOTP de 6 dígitos não normaliza pra
+        // backup code (precisa de 10 hex chars). Mas mesmo se normalizasse,
+        // o replay é forte sinal — fail explícito.
+        return false;
+      }
+
+      // Update atômico anti-race. Só atualiza se a coluna ainda for null OU
+      // estritamente menor que currentStep. Concorrência: duas requests com
+      // o mesmo token e mesmo lastUsedStep (ex.: null) — a primeira faz a
+      // condição evaporar (vira currentStep), a segunda encontra
+      // lastUsedStep == currentStep e recebe count=0.
+      const updated = await prisma.user.updateMany({
+        where: {
+          id: userId,
+          OR: [
+            { twoFactorLastUsedStep: null },
+            { twoFactorLastUsedStep: { lt: BigInt(currentStep) } },
+          ],
+        },
+        data: { twoFactorLastUsedStep: BigInt(currentStep) },
+      });
+
+      if (updated.count === 0) {
+        // Race detectada: outro request paralelo marcou esse step entre
+        // nosso findUnique e nosso updateMany. Tratamos como replay.
+        securityLogger.totpReplay(userId, {
+          currentStep,
+          lastUsed: 'race_lost',
+          reason: 'concurrent_update',
+        });
+        return false;
+      }
+
       return true;
     }
 
-    // Se TOTP falhou, tentar como backup code
+    // Token TOTP não válido — tentar como backup code (CRIT-06 intacto).
     return await this.useBackupCode(userId, token);
   }
 
