@@ -90,7 +90,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | CRIT-04 | Ledger atômico (unlock/credit/deduct) | 3-5 dias | ✅ `a40aea8` + `e4ab499` |
 | CRIT-05 | Claim atômico em submitProof/cancelOrder | 2-3 dias |
 | CRIT-06 | Backup codes 2FA com crypto.randomBytes | 1h | ✅ `bea7f20` |
-| CRIT-07 | TOTP replay protection | meio dia |
+| CRIT-07 | TOTP replay protection | meio dia | ✅ `38219ab` + `e9fcea3` |
 | CRIT-08 | Limpar git de credenciais e dev.db | meio dia |
 | CRIT-09 | Kill switch em simulatePaymentReceived | 15min | ✅ `c5187e6` |
 | CRIT-12 | Memzero da master seed após uso | meio dia |
@@ -1409,10 +1409,39 @@ describe('CRIT-06: backup codes seguros', () => {
 **Severidade:** 🔴 Crítica
 **Fase:** 🚨 **[FAZER AGORA]** — meio dia; entrega 2FA correto desde já
 **Categoria:** 2FA / Replay
-**Status:** ⬜ Aberto
+**Status:** ✅ **Fechado** (Sprint 2 sessão 2 — commits `38219ab` + `e9fcea3`)
 **Depende de:** —
 **Bloqueia:** —
 **Esforço estimado:** meio dia
+
+### Fechamento (Sprint 2 — sessão 2)
+
+**Schema:** novo campo `User.twoFactorLastUsedStep BigInt?` (migration `20260516151623_add_totp_last_used_step`). Armazena o timestep absoluto (`floor(unix / 30)`) do último TOTP aceito. Null quando 2FA nunca foi usado ou foi desabilitado (resetado em `disableTwoFactor`).
+
+**verifyToken** (`twoFactor.service.ts`):
+- `speakeasy.totp.verify` → `speakeasy.totp.verifyDelta`. Verifica retorna `{ delta }` se válido (com `WINDOW=1`, delta ∈ {-1, 0, +1} aceita pequeno clock skew do cliente) ou `undefined` se inválido.
+- Calcula `currentStep = floor(Date.now()/1000/30) + delta` — o step absoluto que o token de fato assinou.
+- **Replay check:** se `lastUsedStep !== null && BigInt(currentStep) <= lastUsedStep`, rejeita imediatamente e loga `securityLogger.totpReplay({userId, currentStep, lastUsed, reason: 'step_already_consumed'})`. Não cai para backup code: TOTP 6 dígitos não normaliza para backup code de 10 hex chars (CRIT-06) e o sinal de replay é forte demais para silenciar.
+- **Anti-race atômico:** update via `prisma.user.updateMany` com `WHERE id = userId AND (twoFactorLastUsedStep IS NULL OR twoFactorLastUsedStep < currentStep)`. Duas requests paralelas com o mesmo token: ambas passam pelo replay check (lastUsedStep ainda null), ambas chamam updateMany; a primeira recebe `count=1`, a segunda recebe `count=0` (a condição WHERE falhou após a primeira escrever) e é tratada como replay (`reason: 'concurrent_update'`).
+- Fallback para `useBackupCode` preservado para o caso de token inválido (TOTP errado, expirado fora de window=1). Backup codes do CRIT-06 inalterados.
+
+**Logger:** novo método `securityLogger.totpReplay(userId, { currentStep, lastUsed, reason })` em `utils/logger.ts`. Vai para o transport `security-*.log` (retenção 90d) via winston.
+
+**Testes** (`services/__tests__/twoFactor.crit07.spec.ts`, 6/6 verde em ~5s):
+- (a) Token TOTP válido novo aceito; `twoFactorLastUsedStep` marcado com `nowStep`.
+- (b) Mesmo token reusado em segundos rejeitado; step gravado não regride.
+- (c) Token gerado para `nowSec + 30` aceito quando "agora" avança um step (Date.now mockado).
+- (d) Token de step passado (delta=-1) aceito uma vez; replay rejeitado; token atual continua funcionando (step novo > step anterior).
+- (e) `securityLogger.totpReplay` chamado uma vez no replay attempt, com `reason: 'step_already_consumed'`.
+- (f) **Atomicidade:** `Promise.all([verifyToken, verifyToken])` com mesmo token → exatamente 1 sucesso + 1 falha. Estado final corretamente marcado.
+
+**Validações cruzadas:** `twoFactor.crit06.spec.ts` (5/5) + `seed-guard.spec.ts` (4/4) + `seed-pipeline.spec.ts` (4/4) seguem verde. `npx tsc --noEmit` reporta os mesmos 25 erros pré-existentes, sem novos.
+
+**Vetores cobertos** (do enunciado do finding):
+- Shoulder-surfing: atacante vê código por cima do ombro → tenta reutilizar → rejeitado.
+- Screen-share / extensão maliciosa: código capturado durante login legítimo → atacante tenta antes do step expirar → rejeitado.
+- MITM em conexão inicial sem TLS válido: mesmo cenário, mesmo resultado.
+- Race condition (atacante envia request paralelo no MESMO step): `count=0` na segunda updateMany detecta.
 
 ### Arquivo afetado
 - `apps/api/src/services/twoFactor.service.ts:122-145` (`verifyToken`)
@@ -3749,6 +3778,6 @@ Distintas dos erros de TS e falhas de teste acima — estas são ações que pre
 
 **Fim do documento.**
 
-Última edição: 16/05/2026 (v1.7 — TECH-DEBT-DEV01 fechado: seed pipeline one-shot via `seed.ts` orquestrando `seedRBAC` automaticamente; commits `fb6edbb` + `176b2dc`)
+Última edição: 16/05/2026 (v1.8 — CRIT-07 fechado: TOTP replay protection via `twoFactorLastUsedStep` + verifyDelta + updateMany atômico anti-race; Sprint 2 sessão 2)
 Auditor: Claude (claude.ai/web)
 Próxima revisão sugerida: após Sprint 2 ou em 30 dias, o que vier primeiro.
