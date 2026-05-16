@@ -3734,7 +3734,7 @@ Problemas que não causam falha em produção, mas atrapalham desenvolvimento ou
 
 | ID | Problema | Fase | Solução proposta | Esforço |
 |----|----------|------|------------------|---------|
-| **TECH-DEBT-DEV01** | Seed pipeline não é one-shot: `prisma/seed.ts` depende de `prisma/seeds/rbac-seed.ts` ter sido executado antes. Quando a ordem é invertida, falha cripticamente com `❌ Roles RBAC não encontrados! Execute primeiro: npx tsx prisma/seeds/rbac-seed.ts` no meio do output do `prisma migrate reset`. Observado em 2026-05-15 ao executar Caminho A (reset de banco dev). | 🚨 **[FAZER AGORA]** — próxima sessão | Duas opções: (a) `prisma/seed.ts` importa e chama `seedRBAC()` automaticamente antes da criação dos usuários, garantindo ordem correta independente de quem invoca; (b) consolidar tudo em script único `prisma/seed.ts`. Preferência por (a) — mantém modularidade. | 30min |
+| **TECH-DEBT-DEV01** | Seed pipeline não é one-shot: `prisma/seed.ts` depende de `prisma/seeds/rbac-seed.ts` ter sido executado antes. Quando a ordem é invertida, falha cripticamente com `❌ Roles RBAC não encontrados! Execute primeiro: npx tsx prisma/seeds/rbac-seed.ts` no meio do output do `prisma migrate reset`. Observado em 2026-05-15 ao executar Caminho A (reset de banco dev). | ✅ **Fechado** (commits `fb6edbb` + `176b2dc` em 2026-05-16) | **Solução aplicada (opção a):** `seed.ts` agora importa `seedRBAC` de `./seeds/rbac-seed` e chama `await seedRBAC()` no início da `main()`, logo após o guard `NODE_ENV=production`. `seedRBAC` já era idempotente (upsert por slug/name em tudo) — re-rodar não duplica. `findUnique` defensivo + `process.exit(1)` substituído por `findUniqueOrThrow` (pós-seedRBAC, contrato garante existência). `rbac-seed.ts` preservado como standalone-executável via `if (require.main === module)`. **Tests:** `prisma/__tests__/seed-pipeline.spec.ts` 4/4 verde (DB virgem→cria tudo; DB populado→idempotente; users zerados/RBAC intacto→recria só users; drop RBAC inteiro→seed reconstrói sem mensagem antiga). **Validado** em Postgres dev: `migrate reset --force` é one-shot end-to-end em 2026-05-16. | 30min |
 
 ### Pendências operacionais (não-código)
 
@@ -3749,6 +3749,6 @@ Distintas dos erros de TS e falhas de teste acima — estas são ações que pre
 
 **Fim do documento.**
 
-Última edição: 15/05/2026 (v1.6 — runbook de bootstrap de prod documentado em `docs/runbook-prod-bootstrap.md`, TECH-DEBT-OP02 evoluído com referência ao runbook; sucessor de v1.5 do PR #3)
+Última edição: 16/05/2026 (v1.7 — TECH-DEBT-DEV01 fechado: seed pipeline one-shot via `seed.ts` orquestrando `seedRBAC` automaticamente; commits `fb6edbb` + `176b2dc`)
 Auditor: Claude (claude.ai/web)
 Próxima revisão sugerida: após Sprint 2 ou em 30 dias, o que vier primeiro.
