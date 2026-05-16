@@ -122,6 +122,19 @@ export const securityLogger = {
       timestamp: new Date().toISOString(),
     });
   },
+
+  // CRIT-07: token TOTP recebido foi assinado pelo secret correto mas seu
+  // timestep já está marcado como consumido em twoFactorLastUsedStep. Pode
+  // ser comportamento do próprio usuário (botão "voltar" do navegador, duplo
+  // clique) ou ataque (shoulder-surfing, screen-share, MITM). Logado em
+  // arquivo separado de segurança (rotação 90d) para correlação posterior.
+  totpReplay: (userId: string, metadata: { currentStep: number | string; lastUsed: number | string; reason?: string }) => {
+    logger.warn('TOTP_REPLAY_DETECTED', {
+      userId,
+      ...metadata,
+      timestamp: new Date().toISOString(),
+    });
+  },
 };
 
 // SECURITY: Logger para operações críticas
