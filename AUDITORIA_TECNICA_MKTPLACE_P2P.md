@@ -91,7 +91,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | CRIT-05 | Claim atômico em submitProof/cancelOrder | 2-3 dias |
 | CRIT-06 | Backup codes 2FA com crypto.randomBytes | 1h | ✅ `bea7f20` |
 | CRIT-07 | TOTP replay protection | meio dia | ✅ `38219ab` + `e9fcea3` |
-| CRIT-08 | Limpar git de credenciais e dev.db | meio dia |
+| CRIT-08 | Limpar git de credenciais e dev.db | meio dia | ✅ Sprint 2 sessão 3 (git filter-repo + force-push 2026-05-16) |
 | CRIT-09 | Kill switch em simulatePaymentReceived | 15min | ✅ `c5187e6` |
 | CRIT-12 | Memzero da master seed após uso | meio dia |
 | SER-14 | COOKIE_SECRET separado do JWT_SECRET | 15min |
@@ -1572,10 +1572,66 @@ describe('CRIT-07: replay protection TOTP', () => {
 **Severidade:** 🔴 Crítica
 **Fase:** 🚨 **[FAZER AGORA]** — quanto mais commits em cima, mais sujo fica o `git filter-repo` depois
 **Categoria:** Operacional / Segurança
-**Status:** ⬜ Aberto
+**Status:** ✅ **Fechado** (Sprint 2 sessão 3 — operação destrutiva em 2026-05-16, ver Fechamento abaixo)
 **Depende de:** —
 **Bloqueia:** —
 **Esforço estimado:** meio dia
+
+### Fechamento (Sprint 2 — Sessão 3)
+
+**Operação destrutiva executada em 2026-05-16.** `git filter-repo` (v `a40bce548d2c`, instalado via `pip install git-filter-repo`) reescreveu o histórico completo do repositório local + force-push para `origin`.
+
+**Comando executado:**
+```bash
+git filter-repo --force --invert-paths \
+  --path CREDENCIAIS_ADMIN.md \
+  --path apps/api/prisma/dev.db \
+  --path-glob 'apps/api/prisma/*.db*' \
+  --path-glob '.backup_*' \
+  --path-glob 'Captura de tela*' \
+  --path-glob '*.bak' \
+  --path-glob '*.old' \
+  --path-glob '*.backup'
+```
+
+**Estatísticas:**
+- 141 commits processados em 0.44s; repack completo em 1.62s.
+- Tamanho do `.git`: **14M → 3.4M** (redução ~76%).
+- `size-pack`: 10.63 MiB → 3.10 MiB.
+- Objetos in-pack: 3391 → 3524 (sobe pouco — filter-repo cria objetos novos pro histórico reescrito; o ganho de tamanho vem da remoção dos blobs grandes).
+
+**Caminhos confirmados como ausentes do histórico (`git log --all --full-history -- <path>` retorna vazio):**
+- `CREDENCIAIS_ADMIN.md`
+- `apps/api/prisma/dev.db` (+ variantes `*.db*`)
+- `.backup_20251029_203853` (+ qualquer `.backup_*`)
+- `*Captura de tela*`
+- Qualquer `*.bak`, `*.old`, `*.backup` (SER-21 já tinha removido do estado atual; agora também do histórico)
+
+**Decisões de escopo registradas:**
+- **Tags:** as 3 tags `sprint-1-complete`, `sprint-2-session-1-complete`, `sprint-2-session-2-complete` foram recriadas apontando para os SHAs novos equivalentes (mesmo merge de PR, novo objeto).
+- **SHAs antigos:** mantidos como **referência histórica** em todos os documentos prévios. `git show <SHA-antigo>` não funciona mais, mas as mensagens de commit (que filter-repo preserva) continuam pesquisáveis via `git log --grep`.
+
+**Mapeamento de SHAs (antes → depois):**
+
+| Referência | SHA antigo | SHA novo |
+|---|---|---|
+| `sprint-1-complete` (PR #1 merge) | `16969d12a82a382686f667484a749424f3ea47a7` | `a59f91c78ce4fe332ad762a4787638850c141218` |
+| `sprint-2-session-1-complete` (PR #2 merge) | `3586cd3741b12e52b587069c91e23fe582749745` | `20cb76ea0553803681911dcb2449c375eb6eee8a` |
+| `sprint-2-session-2-complete` (PR #6 merge) | `60aa8d2312e37e3fb979af64410a20e7bba42401` | `65453aee8e3716099652f3058c126a127d678e3a` |
+| PR #3 merge (seed-prod-guard) | `f341273` | `d23972c` |
+| PR #4 merge (runbook-prod-bootstrap) | `4efa542` | `a1214be` |
+| PR #5 merge (seed-pipeline-one-shot) | `8163d1d` | `01a6685` |
+
+**Backup íntegro pré-operação:** `C:\Users\lucas\projetos\MktPlace-P2P-backup-pre-crit08` (sócios cientes, validado antes da execução).
+
+**Validações pós-operação:**
+- `git status`: working tree clean, estrutura do projeto intacta.
+- `npx prisma validate` + `generate`: OK.
+- `twoFactor.crit07.spec.ts`: 6/6 ✅ (CRIT-07 não regrediu).
+- `seed-pipeline.spec.ts`: 4/4 ✅ (TECH-DEBT-DEV01 não regrediu).
+- Force push de `main` e das 3 tags confirmado via `git ls-remote origin`.
+
+**Status de re-clone:** Nícolas precisa apagar o clone local e re-clonar — qualquer branch local dele ficará órfã. Coordenação rastreada em **TECH-DEBT-OP03** abaixo.
 
 ### Arquivos afetados
 - `CREDENCIAIS_ADMIN.md` (raiz)
@@ -3773,11 +3829,12 @@ Distintas dos erros de TS e falhas de teste acima — estas são ações que pre
 |----|--------|------|------------------|
 | **TECH-DEBT-OP01** | Invalidar backup codes 2FA pré-CRIT-06 em produção | 🔵 **[ADIAR PRE-PROD]** | Backup codes salvos no banco ANTES de `bea7f20` foram gerados com `Math.random()` (xorshift128+ — previsível a partir de poucas amostras). O bug está fechado no código, mas as **hashes antigas seguem válidas** no banco até serem usadas ou regeneradas. Em prod, isto é uma janela de bypass de 2FA até zerarmos. **Pré-requisitos:** (1) feature de regeneração de backup codes visível e testada na UI; (2) email transacional pronto comunicando os usuários. **Comando:** `cd apps/api && DATABASE_URL=<prod> npx tsx scripts/invalidate-2fa-backup-codes.ts` (dry-run) → `--apply`. **Smoke test do script:** ✅ executado em 2026-05-15 contra Postgres dev (9/9 verificações PASS — userA `enabled+codes` detectado/zerado, userB `disabled+codes` intocado). **Quando rodar:** logo antes do primeiro deploy a prod com usuários reais. Não fazer antes — usuários de dev/staging usariam backup codes gerados pelo novo CSPRNG normalmente. |
 | **TECH-DEBT-OP02** | Provisionamento de master/admin em produção | 🔵 **[ADIAR PRE-PROD]** | **Decisão registrada:** NÃO usar `prisma/seed.ts` em produção (guard `NODE_ENV=production` em commits `17fea25` + `0e4f5eb` — PR #3 mergeado). Provisionamento real exige runbook operacional dedicado. **Runbook documentado em [`docs/runbook-prod-bootstrap.md`](docs/runbook-prod-bootstrap.md)** (2026-05-15) com plano completo: gerar senhas via `openssl rand`, criar **DOIS masters independentes** (um por sócio — anti-SPOF), excluir defaults `master@mktplace.com`/`admin@mktplace.com` na MESMA transação atômica, flags `forcePasswordReset` + `force2FASetup` forçam setup completo no primeiro login, 2FA obrigatório antes de qualquer permissão master ativa. **Código ainda não implementado** — depende de SER-15 e SER-28 saírem do `[ADIAR PRE-STAGING]` para entrar em sprint que adicione: campos de schema (`forcePasswordReset`, `force2FASetup`), middleware de redirect, endpoints `/auth/setup-password` e `/auth/setup-2fa`, telas frontend, e `scripts/bootstrap-prod.ts` (especificação completa no próprio runbook). **Plano de teste:** 3-4 ensaios em dev local → 1 dry-run em staging → execução real em prod. **Quando rodar:** uma única vez, ao provisionar prod pela primeira vez, com ambos os sócios presentes em videochamada. |
+| **TECH-DEBT-OP03** | Coordenar re-clone com Nícolas pós-CRIT-08 | 🚨 **[FAZER AGORA]** — Pendente coordenação | A reescrita do histórico em CRIT-08 (Sprint 2 sessão 3) renomeou TODOS os SHAs do repositório. Quem tem clone local feito antes de 2026-05-16 está com histórico divergente — `git pull` resulta em merge confuso ou rejeita. **Ação:** Nícolas precisa (1) confirmar que não tem branch local com trabalho não-pushado; (2) apagar a pasta local do clone; (3) `git clone https://github.com/Noletu/MktPlace-P2P` de novo. Qualquer branch local que ele tivesse fica órfã (commits referenciam SHAs antigos inexistentes). Confirmação de re-clone OK = task fechada. **Quando:** o quanto antes — qualquer push de Nícolas sobre o clone antigo vai falhar de qualquer jeito. |
 
 ---
 
 **Fim do documento.**
 
-Última edição: 16/05/2026 (v1.8 — CRIT-07 fechado: TOTP replay protection via `twoFactorLastUsedStep` + verifyDelta + updateMany atômico anti-race; Sprint 2 sessão 2)
+Última edição: 16/05/2026 (v1.9 — CRIT-08 fechado: git filter-repo reescreveu histórico removendo credenciais/dev.db/screenshots/backups; tags recriadas; TECH-DEBT-OP03 cataloga re-clone do Nícolas; Sprint 2 sessão 3)
 Auditor: Claude (claude.ai/web)
 Próxima revisão sugerida: após Sprint 2 ou em 30 dias, o que vier primeiro.
