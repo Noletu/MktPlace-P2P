@@ -93,7 +93,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | CRIT-07 | TOTP replay protection | meio dia | ✅ `38219ab` + `e9fcea3` |
 | CRIT-08 | Limpar git de credenciais e dev.db | meio dia | ✅ Sprint 2 sessão 3 (git filter-repo + force-push 2026-05-16) |
 | CRIT-09 | Kill switch em simulatePaymentReceived | 15min | ✅ `c5187e6` |
-| CRIT-12 | Memzero da master seed após uso | meio dia |
+| CRIT-12 | Memzero da master seed após uso | meio dia | ✅ Sprint 2 sessão 4 (v1.10) |
 | SER-14 | COOKIE_SECRET separado do JWT_SECRET | 15min |
 | SER-21 | Remover arquivos .bak/.old/.backup | 15min | ✅ `62c8b55` |
 | MED-32 | Adicionar updatedAt onde falta (junto com CRIT-01) | 1h |
@@ -2050,10 +2050,11 @@ export class KeyRotationService {
 **Severidade:** 🔴 Crítica
 **Fase:** 🚨 **[FAZER AGORA]** — meio dia; estabelece padrão de "callers zeram buffer" enquanto callers são poucos
 **Categoria:** Memória / Cripto
-**Status:** ⬜ Aberto
+**Status:** ✅ Fechado — Sprint 2 sessão 4 (v1.10)
 **Depende de:** —
 **Bloqueia:** —
 **Esforço estimado:** meio dia
+**Commits:** ver "Fechamento" abaixo
 
 ### Arquivo afetado
 - `apps/api/src/services/hd-wallet/master-seed.service.ts:115-148` (`getMasterSeed`)
@@ -2168,11 +2169,11 @@ Idem para `deriveEthereum`, `deriveSolana`.
 
 ### Critério de aceitação
 
-- [ ] `clearCache` zera o conteúdo do buffer
-- [ ] Timer ativo agendado em cada cache populate
-- [ ] Callers (`derivation.service.ts`) zeram o buffer recebido em `finally`
-- [ ] Teste verifica que após `clearCache`, conteúdo do buffer é todo zero
-- [ ] Teste verifica que `getMasterSeed` chamado 2x retorna buffers distintos (cópia defensiva)
+- [x] `clearCache` zera o conteúdo do buffer
+- [x] Timer ativo agendado em cada cache populate
+- [x] Callers (`derivation.service.ts`) zeram o buffer recebido em `finally`
+- [x] Teste verifica que após `clearCache`, conteúdo do buffer é todo zero
+- [x] Teste verifica que `getMasterSeed` chamado 2x retorna buffers distintos (cópia defensiva)
 
 ### Testes
 
@@ -2195,6 +2196,27 @@ describe('CRIT-12: zeragem de memória da master seed', () => {
   });
 });
 ```
+
+### Fechamento (Sprint 2 — sessão 4)
+
+**Implementação aplicada em `fix/crit-12-master-seed-memzero`:**
+
+**Padrões estabelecidos:**
+
+1. **`clearCache()` (privado):** zera o buffer com `fill(0)` ANTES de soltar a referência (`= null`), depois cancela o timer. Evita dados sensíveis no heap até o GC, em core dumps, swap e `/proc/<pid>/maps`.
+
+2. **Cópia defensiva como contrato público:** `getMasterSeed()` sempre retorna `Buffer.from(cachedMasterSeed)`. Cache interno nunca sai do service. Buffer intermediário de `decryptSeed` é zerado com `seed.fill(0)` antes do retorno.
+
+3. **Timer ativo com `.unref()`:** `setTimeout(() => this.clearCache(), CACHE_TTL).unref()` agendado a cada cache populate. Zera proativamente sem precisar de nova chamada a `getMasterSeed`. `.unref()` evita que o timer bloqueie o shutdown do processo.
+
+4. **Callers zeram em `finally`:** todos os callers em `derivation.service.ts` envolvem o uso do seed em `try { ... } finally { masterSeed.fill(0); }`.
+
+**Arquivos tocados:**
+- `apps/api/src/services/hd-wallet/master-seed.service.ts` — `clearCache()`, `refreshIfExpired()`, `getMasterSeed()` refatorados; `expiryTimer` adicionado
+- `apps/api/src/services/hd-wallet/derivation.service.ts` — `deriveBitcoin`, `deriveEthereum`, `deriveSolana` com try/finally
+- `apps/api/src/services/hd-wallet/__tests__/master-seed.crit12.spec.ts` — criado (5 testes: 5/5 ✅)
+
+**Testes pós-fix:** 49/49 verde (44 suites pré-existentes + 5 novos CRIT-12).
 
 ---
 
@@ -3835,6 +3857,6 @@ Distintas dos erros de TS e falhas de teste acima — estas são ações que pre
 
 **Fim do documento.**
 
-Última edição: 16/05/2026 (v1.9 — CRIT-08 fechado: git filter-repo reescreveu histórico removendo credenciais/dev.db/screenshots/backups; tags recriadas; TECH-DEBT-OP03 cataloga re-clone do Nícolas; Sprint 2 sessão 3)
+Última edição: 17/05/2026 (v1.10 — CRIT-12 fechado: memzero da master seed, cópia defensiva, timer ativo com .unref(), callers com try/finally; Sprint 2 sessão 4)
 Auditor: Claude (claude.ai/web)
 Próxima revisão sugerida: após Sprint 2 ou em 30 dias, o que vier primeiro.
