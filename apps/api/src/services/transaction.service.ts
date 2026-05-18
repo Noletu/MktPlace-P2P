@@ -16,65 +16,70 @@ export class TransactionService {
    * Submeter comprovante de pagamento
    */
   async submitProof(input: SubmitProofInput): Promise<Transaction> {
-    const transaction = await prisma.transaction.findUnique({
-      where: { id: input.transactionId },
-      include: { order: true },
-    });
-
-    if (!transaction) {
-      throw new Error('Transação não encontrada');
-    }
-
-    if (transaction.payerId !== input.userId) {
-      throw new Error('Você não tem permissão para enviar comprovante desta transação');
-    }
-
-    if (transaction.status !== TransactionStatus.PENDING) {
-      throw new Error('Esta transação não está aguardando comprovante');
-    }
-
-    // Prazo de 24h para admin validar o comprovante
     const validationDeadline = new Date();
     validationDeadline.setHours(validationDeadline.getHours() + 24);
 
-    // Atualizar transação + pedido atomicamente
-    const [updatedTransaction] = await prisma.$transaction([
-      prisma.transaction.update({
-        where: { id: input.transactionId },
+    // CRIT-05: claim atômico — read+validate+write em transação única elimina TOCTOU.
+    // updateMany com WHERE status=PENDING + payerId garante que apenas um caller
+    // simultâneo transita para VALIDATING; os demais recebem count=0.
+    const txRecord = await prisma.$transaction(async (tx) => {
+      const claimResult = await tx.transaction.updateMany({
+        where: {
+          id: input.transactionId,
+          status: TransactionStatus.PENDING,
+          payerId: input.userId,
+        },
         data: {
           comprovanteData: input.comprovanteData,
           comprovanteUrl: input.comprovanteUrl,
           status: TransactionStatus.VALIDATING,
           validationDeadline,
         },
-      }),
-      prisma.order.update({
-        where: { id: transaction.orderId },
+      });
+
+      if (claimResult.count === 0) {
+        const existing = await tx.transaction.findUnique({
+          where: { id: input.transactionId },
+          select: { status: true, payerId: true },
+        });
+        if (!existing) throw new Error('Transação não encontrada');
+        if (existing.payerId !== input.userId) throw new Error('Você não tem permissão para enviar comprovante desta transação');
+        throw new Error('Esta transação não está aguardando comprovante');
+      }
+
+      const updated = await tx.transaction.findUnique({
+        where: { id: input.transactionId },
+        include: { order: true },
+      });
+
+      await tx.order.update({
+        where: { id: updated!.orderId },
         data: { status: OrderStatus.PAYMENT_SENT },
-      }),
-    ]);
+      });
+
+      return updated!;
+    });
 
     // Enviar notificação + email para o vendedor
     setImmediate(async () => {
       try {
         await notificationService.notifyPaymentSent(
-          transaction.orderId,
-          transaction.order.userId, // seller
-          transaction.payerId // buyer
+          txRecord.orderId,
+          txRecord.order.userId, // seller
+          txRecord.payerId // buyer
         );
 
-        // Email para o vendedor
         const [sellerUser, buyerUser] = await Promise.all([
-          prisma.user.findUnique({ where: { id: transaction.order.userId }, select: { email: true, name: true } }),
-          prisma.user.findUnique({ where: { id: transaction.payerId }, select: { email: true, name: true } }),
+          prisma.user.findUnique({ where: { id: txRecord.order.userId }, select: { email: true, name: true } }),
+          prisma.user.findUnique({ where: { id: txRecord.payerId }, select: { email: true, name: true } }),
         ]);
         if (sellerUser?.email) {
-          emailService.sendIfAllowed(transaction.order.userId, 'PAYMENTS', () =>
+          emailService.sendIfAllowed(txRecord.order.userId, 'PAYMENTS', () =>
             emailService.sendPaymentSentEmail(sellerUser.email, {
               name: sellerUser.name || 'Usuário',
-              crypto: transaction.order.cryptoType,
-              cryptoAmount: transaction.order.cryptoAmount.toString(),
-              brlAmount: transaction.order.brlAmount.toString(),
+              crypto: txRecord.order.cryptoType,
+              cryptoAmount: txRecord.order.cryptoAmount.toString(),
+              brlAmount: txRecord.order.brlAmount.toString(),
               buyerName: buyerUser?.name || 'Comprador',
             })
           ).catch(() => {});
@@ -84,7 +89,7 @@ export class TransactionService {
       }
     });
 
-    return updatedTransaction;
+    return txRecord as unknown as Transaction;
   }
 
   /**
