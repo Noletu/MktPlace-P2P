@@ -19,9 +19,10 @@ export class MasterSeedService {
   private static IV_LENGTH = 12; // 96 bits para GCM
   private static AUTH_TAG_LENGTH = 16; // 128 bits
 
-  // SECURITY: Memory protection - cache com TTL
+  // SECURITY: Memory protection - cache com TTL + timer ativo
   private static cachedMasterSeed: Buffer | null = null;
   private static cacheExpiry: number | null = null;
+  private static expiryTimer: NodeJS.Timeout | null = null;
   private static readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutos
 
   /**
@@ -125,25 +126,23 @@ export class MasterSeedService {
   }
 
   /**
-   * Recupera e descriptografa o master seed
+   * Recupera e descriptografa o master seed.
    *
-   * SECURITY: Implementa cache com TTL de 5 minutos para evitar
-   * manter o seed descriptografado em memória indefinidamente.
+   * SECURITY: Cache com TTL de 5 minutos + timer ativo que zera o buffer
+   * proativamente, sem esperar pela próxima chamada.
    *
-   * @returns Seed buffer (64 bytes)
+   * Retorna CÓPIA defensiva — caller é responsável por zerar após uso:
+   *   const seed = MasterSeedService.getMasterSeed();
+   *   try { ... usar seed ... } finally { seed.fill(0); }
+   *
+   * @returns Cópia do seed buffer (64 bytes) — zere após uso
    */
   static getMasterSeed(): Buffer {
-    // Verifica se cache expirou
-    if (this.cachedMasterSeed && this.cacheExpiry && Date.now() > this.cacheExpiry) {
-      // Limpa cache expirado
-      this.cachedMasterSeed = null;
-      this.cacheExpiry = null;
-      console.log('[SECURITY] Master seed cache expired, will be decrypted on next access');
-    }
+    this.refreshIfExpired();
 
-    // Retorna cache se ainda válido
+    // Cache hit: retorna cópia defensiva para o caller
     if (this.cachedMasterSeed) {
-      return this.cachedMasterSeed;
+      return Buffer.from(this.cachedMasterSeed);
     }
 
     const encryptedSeed = process.env.MASTER_SEED_ENCRYPTED;
@@ -158,13 +157,40 @@ export class MasterSeedService {
     // Descriptografa seed
     const seed = this.decryptSeed(encryptedSeed);
 
-    // Armazena em cache com TTL
-    this.cachedMasterSeed = seed;
+    // Guarda cópia no cache (não o buffer original)
+    this.cachedMasterSeed = Buffer.from(seed);
     this.cacheExpiry = Date.now() + this.CACHE_TTL;
+
+    // Timer ativo: zera cache proativamente no TTL, sem bloquear shutdown
+    if (this.expiryTimer) clearTimeout(this.expiryTimer);
+    this.expiryTimer = setTimeout(() => this.clearCache(), this.CACHE_TTL).unref();
 
     console.log('[SECURITY] Master seed decrypted and cached for 5 minutes');
 
-    return seed;
+    // Zera buffer intermediário e devolve cópia do cache
+    seed.fill(0);
+    return Buffer.from(this.cachedMasterSeed);
+  }
+
+  private static refreshIfExpired(): void {
+    if (this.cacheExpiry !== null && Date.now() > this.cacheExpiry) {
+      this.clearCache();
+      console.log('[SECURITY] Master seed cache expired, will be decrypted on next access');
+    }
+  }
+
+  // Zera o conteúdo sensível ANTES de soltar a referência (evita dados
+  // no heap até GC, core dumps, swap e /proc/<pid>/maps).
+  private static clearCache(): void {
+    if (this.cachedMasterSeed) {
+      this.cachedMasterSeed.fill(0);
+      this.cachedMasterSeed = null;
+    }
+    this.cacheExpiry = null;
+    if (this.expiryTimer) {
+      clearTimeout(this.expiryTimer);
+      this.expiryTimer = null;
+    }
   }
 
   /**

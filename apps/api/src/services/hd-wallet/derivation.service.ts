@@ -162,33 +162,37 @@ export class DerivationService {
     derivationPath: string;
   } {
     const masterSeed = MasterSeedService.getMasterSeed();
-    const root = bip32.fromSeed(masterSeed);
-    const child = root.derivePath(path);
+    try {
+      const root = bip32.fromSeed(masterSeed);
+      const child = root.derivePath(path);
 
-    if (!child.privateKey) {
-      throw new Error('Failed to derive Bitcoin private key');
+      if (!child.privateKey) {
+        throw new Error('Failed to derive Bitcoin private key');
+      }
+
+      // Gerar endereço Segwit (bech32 - bc1...)
+      const {address} = bitcoin.payments.p2wpkh({
+        pubkey: child.publicKey,
+        network: bitcoin.networks.bitcoin,
+      });
+
+      if (!address) {
+        throw new Error('Failed to generate Bitcoin address');
+      }
+
+      // Garantir conversão correta para hex
+      const privateKeyHex = Buffer.isBuffer(child.privateKey)
+        ? child.privateKey.toString('hex')
+        : Buffer.from(child.privateKey).toString('hex');
+
+      return {
+        address,
+        privateKey: privateKeyHex,
+        derivationPath: path,
+      };
+    } finally {
+      masterSeed.fill(0);
     }
-
-    // Gerar endereço Segwit (bech32 - bc1...)
-    const {address} = bitcoin.payments.p2wpkh({
-      pubkey: child.publicKey,
-      network: bitcoin.networks.bitcoin,
-    });
-
-    if (!address) {
-      throw new Error('Failed to generate Bitcoin address');
-    }
-
-    // Garantir conversão correta para hex
-    const privateKeyHex = Buffer.isBuffer(child.privateKey)
-      ? child.privateKey.toString('hex')
-      : Buffer.from(child.privateKey).toString('hex');
-
-    return {
-      address,
-      privateKey: privateKeyHex,
-      derivationPath: path,
-    };
   }
 
   /**
@@ -200,27 +204,31 @@ export class DerivationService {
     derivationPath: string;
   } {
     const masterSeed = MasterSeedService.getMasterSeed();
-    const root = bip32.fromSeed(masterSeed);
-    const child = root.derivePath(path);
+    try {
+      const root = bip32.fromSeed(masterSeed);
+      const child = root.derivePath(path);
 
-    if (!child.privateKey) {
-      throw new Error('Failed to derive Ethereum private key');
+      if (!child.privateKey) {
+        throw new Error('Failed to derive Ethereum private key');
+      }
+
+      // Criar wallet Ethereum
+      const wallet = EthereumWallet.fromPrivateKey(child.privateKey);
+      const address = wallet.getAddressString();
+      const privateKeyWithPrefix = wallet.getPrivateKeyString();
+      // Remove '0x' e garante formato hex válido
+      const privateKey = privateKeyWithPrefix.startsWith('0x')
+        ? privateKeyWithPrefix.slice(2)
+        : privateKeyWithPrefix;
+
+      return {
+        address,
+        privateKey,
+        derivationPath: path,
+      };
+    } finally {
+      masterSeed.fill(0);
     }
-
-    // Criar wallet Ethereum
-    const wallet = EthereumWallet.fromPrivateKey(child.privateKey);
-    const address = wallet.getAddressString();
-    const privateKeyWithPrefix = wallet.getPrivateKeyString();
-    // Remove '0x' e garante formato hex válido
-    const privateKey = privateKeyWithPrefix.startsWith('0x')
-      ? privateKeyWithPrefix.slice(2)
-      : privateKeyWithPrefix;
-
-    return {
-      address,
-      privateKey,
-      derivationPath: path,
-    };
   }
 
   /**
@@ -232,23 +240,25 @@ export class DerivationService {
     derivationPath: string;
   } {
     const masterSeed = MasterSeedService.getMasterSeed();
-
-    /// Solana usa Ed25519, não secp256k1
-      // A biblioteca ed25519-hd-key EXIGE path completo: m/44'/501'/0'/0'/0'
-      // NÃO processar o path - a biblioteca valida e processa internamente
+    try {
+      // Solana usa Ed25519, não secp256k1.
+      // ed25519-hd-key exige path completo — valida e processa internamente.
       const derivedSeed = deriveEd25519Path(path, masterSeed.toString('hex')).key;
 
-    // Criar keypair Solana (precisa de 32 bytes)
-    const keypair = SolanaKeypair.fromSeed(Uint8Array.from(derivedSeed));
+      // Criar keypair Solana (precisa de 32 bytes)
+      const keypair = SolanaKeypair.fromSeed(Uint8Array.from(derivedSeed));
 
-    const address = keypair.publicKey.toBase58();
-    const privateKey = bs58.encode(keypair.secretKey);
+      const address = keypair.publicKey.toBase58();
+      const privateKey = bs58.encode(keypair.secretKey);
 
-    return {
-      address,
-      privateKey,
-      derivationPath: path,
-    };
+      return {
+        address,
+        privateKey,
+        derivationPath: path,
+      };
+    } finally {
+      masterSeed.fill(0);
+    }
   }
 
   /**
