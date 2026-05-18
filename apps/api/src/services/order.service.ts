@@ -1530,9 +1530,14 @@ export class OrderService {
         },
       });
 
-      await tx.transaction.deleteMany({
+      // O claim acima garantiu que existe transação com orderId+payerId (via relation filter).
+      // count=0 aqui é bug — indica falha de consistência interna.
+      const deleteResult = await tx.transaction.deleteMany({
         where: { orderId, payerId },
       });
+      if (deleteResult.count === 0) {
+        throw new Error('Falha ao deletar transação do pagador — inconsistência interna detectada');
+      }
     });
 
     console.log(`🔄 Pedido ${orderId} voltou ao marketplace após cancelamento do pagador`);
@@ -1723,7 +1728,11 @@ export class OrderService {
         },
       });
 
-      await tx.transaction.deleteMany({ where: { orderId } });
+      // count=0 é válido: BUY orders podem ser canceladas antes de a transação ser criada.
+      const deletedTxCount = await tx.transaction.deleteMany({ where: { orderId } });
+      if (deletedTxCount.count > 0) {
+        console.log(`🗑️  [BUY ORDER] ${deletedTxCount.count} transação(ões) deletada(s) ao cancelar ${orderId}`);
+      }
     });
 
     // Desbloquear colateral do provedor DEPOIS da transaction (DB já atualizado)
