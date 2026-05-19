@@ -1295,9 +1295,19 @@ describe('CRIT-05: claim atômico em submitProof', () => {
 - `apps/api/src/services/__tests__/order.crit05.spec.ts` — criado (15 testes: 3 funções × 5 cenários)
 - `apps/api/jest.config.js` — `diagnostics: { warnOnly: true }` para não bloquear compilação por erros TS pré-existentes
 
-**Commits:** `a39f2de` (fix transactions) · `48c5aba` (fix orders) · `4b56020` (tests + jest config)
+**Commits:** `a39f2de` (fix transactions) · `48c5aba` (fix orders) · `4b56020` (tests + jest config) · `30a9e26` (valida count em deleteMany) · `1af04ae` (audit v1.13)
 
 **Testes pós-fix:** 47/47 verde (27 pré-existentes + 20 novos CRIT-05), `--runInBand`, Postgres dev.
+
+**Nota de revisão — `isolationLevel` omitido intencionalmente:**
+
+O esboço de correção acima incluía `isolationLevel: Serializable`. A implementação final **não o usa**, e isso é correto. A diferença de cenário:
+
+- **CRIT-04 (wallet)** usa `Serializable` porque o padrão é `SELECT saldo → calcular → UPDATE saldo`. A leitura e a escrita são operações SQL separadas; sem `Serializable`, duas transações leem o mesmo saldo stale e ambas debitam → saldo negativo.
+
+- **CRIT-05 (cancel/submitProof)** usa `UPDATE … WHERE status = X` como claim. No PostgreSQL, qualquer `UPDATE` adquire **exclusive row lock** antes de avaliar o `WHERE`. Dois callers concorrentes serializam no lock do row: o segundo avalia `WHERE status = X` depois do commit do primeiro e encontra o status já alterado → `count = 0`. Esta garantia existe em `READ COMMITTED` (default); `Serializable` não acrescenta corretude e introduziria `P2034` sob contenção sem o `withSerializableRetry` correspondente (presente em CRIT-04, ausente aqui) — deixando as funções de cancelamento mais frágeis sem benefício.
+
+**Regra derivada para futuras implementações:** usar `Serializable` quando o padrão for read-then-write em valor computado (saldo, contador). Usar `READ COMMITTED` com claim via `updateMany WHERE` quando a lógica de negócio se reduz a "transite este estado se ainda estiver em X".
 
 ---
 
