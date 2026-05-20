@@ -1283,10 +1283,15 @@ export class OrderService {
       reputationAfter = result.newReputation;
     }
 
-    // Transaction atômica: cancelar pedido + registrar histórico
+    // CRIT-05: claim atômico — updateMany com WHERE de estado + userId garante que
+    // apenas um cancelamento simultâneo avança; concorrentes recebem count=0.
     await prisma.$transaction(async (tx) => {
-      await tx.order.update({
-        where: { id: orderId },
+      const claimResult = await tx.order.updateMany({
+        where: {
+          id: orderId,
+          status: { in: [OrderStatus.PENDING, OrderStatus.IN_NEGOTIATION, OrderStatus.MATCHED] },
+          userId,
+        },
         data: {
           status: OrderStatus.CANCELLED,
           cancelledAt: new Date(),
@@ -1295,6 +1300,16 @@ export class OrderService {
           cancellationNote: note,
         },
       });
+
+      if (claimResult.count === 0) {
+        const existing = await tx.order.findUnique({
+          where: { id: orderId },
+          select: { status: true, userId: true },
+        });
+        if (!existing) throw new Error('Pedido não encontrado');
+        if (existing.userId !== userId) throw new Error('Você não tem permissão para cancelar este pedido');
+        throw new Error('Este pedido não pode ser cancelado no status atual');
+      }
 
       await tx.cancellationHistory.create({
         data: {
@@ -1471,10 +1486,15 @@ export class OrderService {
       reputationAfter = result.newReputation;
     }
 
-    // Transaction atômica: voltar pedido + histórico + deletar transaction
+    // CRIT-05: claim atômico — updateMany com WHERE status=MATCHED + relação payer
+    // garante que apenas um cancelamento simultâneo avança; concorrentes recebem count=0.
     await prisma.$transaction(async (tx) => {
-      await tx.order.update({
-        where: { id: orderId },
+      const claimResult = await tx.order.updateMany({
+        where: {
+          id: orderId,
+          status: OrderStatus.MATCHED,
+          transactions: { some: { payerId } },
+        },
         data: {
           status: OrderStatus.PENDING,
           cancelledBy: payerId,
@@ -1483,6 +1503,16 @@ export class OrderService {
           timeoutAt: this.calculateTimeoutAt(order.customExpirationHours ?? undefined, order.manualCancelOnly ?? undefined),
         },
       });
+
+      if (claimResult.count === 0) {
+        const existing = await tx.order.findUnique({
+          where: { id: orderId },
+          select: { status: true },
+        });
+        if (!existing) throw new Error('Pedido não encontrado');
+        if (existing.status !== OrderStatus.MATCHED) throw new Error('Este pedido não pode ser cancelado no status atual');
+        throw new Error('Você não tem permissão para cancelar este pedido');
+      }
 
       await tx.cancellationHistory.create({
         data: {
@@ -1500,9 +1530,14 @@ export class OrderService {
         },
       });
 
-      await tx.transaction.delete({
-        where: { id: transaction.id },
+      // O claim acima garantiu que existe transação com orderId+payerId (via relation filter).
+      // count=0 aqui é bug — indica falha de consistência interna.
+      const deleteResult = await tx.transaction.deleteMany({
+        where: { orderId, payerId },
       });
+      if (deleteResult.count === 0) {
+        throw new Error('Falha ao deletar transação do pagador — inconsistência interna detectada');
+      }
     });
 
     console.log(`🔄 Pedido ${orderId} voltou ao marketplace após cancelamento do pagador`);
@@ -1638,10 +1673,16 @@ export class OrderService {
     const collateralAmount = order.collateralLockedAmount;
     const hadCollateralLocked = order.collateralLocked && collateralAmount && providerWalletId;
 
-    // Transaction atômica: voltar pedido + histórico + deletar transaction
+    // CRIT-05: claim atômico — updateMany com WHERE status=MATCHED + orderType=BUY +
+    // providerId garante que apenas um cancelamento simultâneo avança.
     await prisma.$transaction(async (tx) => {
-      await tx.order.update({
-        where: { id: orderId },
+      const claimResult = await tx.order.updateMany({
+        where: {
+          id: orderId,
+          status: OrderStatus.MATCHED,
+          orderType: OrderType.BUY,
+          providerId,
+        },
         data: {
           status: OrderStatus.PENDING,
           cancelledBy: providerId,
@@ -1660,6 +1701,17 @@ export class OrderService {
         },
       });
 
+      if (claimResult.count === 0) {
+        const existing = await tx.order.findUnique({
+          where: { id: orderId },
+          select: { status: true, orderType: true, providerId: true },
+        });
+        if (!existing) throw new Error('Pedido não encontrado');
+        if (existing.orderType !== OrderType.BUY) throw new Error('Este metodo e apenas para ordens de compra (BUY)');
+        if (existing.providerId !== providerId) throw new Error('Você não tem permissão para cancelar este pedido (não é o provedor)');
+        throw new Error('Este pedido não pode ser cancelado no status atual');
+      }
+
       await tx.cancellationHistory.create({
         data: {
           userId: providerId,
@@ -1676,10 +1728,10 @@ export class OrderService {
         },
       });
 
-      if (transactions && transactions.length > 0) {
-        await tx.transaction.delete({
-          where: { id: transactions[0].id },
-        });
+      // count=0 é válido: BUY orders podem ser canceladas antes de a transação ser criada.
+      const deletedTxCount = await tx.transaction.deleteMany({ where: { orderId } });
+      if (deletedTxCount.count > 0) {
+        console.log(`🗑️  [BUY ORDER] ${deletedTxCount.count} transação(ões) deletada(s) ao cancelar ${orderId}`);
       }
     });
 
