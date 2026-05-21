@@ -11,6 +11,9 @@
 -- A única operação legítima é a leitura (para derivar o endereço).
 
 -- 1. Criar sequence (começa em 1; account 0 reservado para plataforma)
+-- DROP IF EXISTS: migrate reset dropa tabelas mas não sequences; garantimos estado limpo.
+-- Em produção (primeiro deploy em DB virgem) o DROP é no-op.
+DROP SEQUENCE IF EXISTS "user_hd_account_seq";
 CREATE SEQUENCE "user_hd_account_seq"
   START WITH 1
   INCREMENT BY 1

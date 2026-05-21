@@ -38,6 +38,11 @@ export class DerivationService {
     SOL: 501,
   };
 
+  // BIP32 hardened derivation aceita índices apenas até 2^31 - 1.
+  // A Postgres SEQUENCE não tem esse limite, então validamos aqui.
+  // Capacidade teórica: ~2.1 bilhões de usuários antes de esgotar o espaço.
+  private static readonly BIP32_HARDENED_MAX = 0x80000000n;
+
   /**
    * Deriva carteira da PLATAFORMA (Account 0 = carteira da empresa).
    *
@@ -112,6 +117,14 @@ export class DerivationService {
     privateKey: string;
     derivationPath: string;
   } {
+    if (hdAccountIndex >= DerivationService.BIP32_HARDENED_MAX) {
+      throw new RangeError(
+        `hdAccountIndex ${hdAccountIndex} exceeds BIP32 hardened derivation limit ` +
+        `(max: ${DerivationService.BIP32_HARDENED_MAX - 1n}). ` +
+        'The user_hd_account_seq sequence has exhausted the BIP32 hardened index space.',
+      );
+    }
+
     const coinType = this.getCoinType(cryptoType, network);
 
     // .toString() explícito: evita mistura de bigint com number em aritmética
@@ -286,6 +299,13 @@ export class DerivationService {
     privateKey: string;
     derivationPath: string;
   } {
+    if (hdAccountIndex >= DerivationService.BIP32_HARDENED_MAX) {
+      throw new RangeError(
+        `hdAccountIndex ${hdAccountIndex} exceeds BIP32 hardened derivation limit ` +
+        `(max: ${DerivationService.BIP32_HARDENED_MAX - 1n}).`,
+      );
+    }
+
     const coinType = this.getCoinType(cryptoType, network);
     const derivationPath = `m/44'/${coinType}'/${hdAccountIndex.toString()}'/0/${addressIndex}`;
 
