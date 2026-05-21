@@ -628,9 +628,15 @@ export class DisputeService {
             });
 
             if (!buyerWallet) {
-              // Criar carteira para o comprador
+              // CRIT-02: buscar hdAccountIndex persistido antes de derivar
+              const buyerUser = await prisma.user.findUnique({
+                where: { id: buyerId },
+                select: { hdAccountIndex: true },
+              });
+              if (!buyerUser) throw new Error(`Buyer user not found: ${buyerId}`);
+
               const { address, privateKey, derivationPath } = DerivationService.deriveUserWallet(
-                buyerId,
+                buyerUser.hdAccountIndex,
                 order.cryptoType,
                 order.cryptoNetwork
               );

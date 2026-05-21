@@ -210,9 +210,15 @@ export class TransactionService {
         if (!buyerWallet) {
           console.log(`📝 Criando carteira para comprador ${buyerId}...`);
 
-          // Derivar nova carteira para o comprador
+          // CRIT-02: buscar hdAccountIndex persistido dentro da mesma tx (leitura consistente)
+          const buyerUser = await tx.user.findUnique({
+            where: { id: buyerId! },
+            select: { hdAccountIndex: true },
+          });
+          if (!buyerUser) throw new Error(`Buyer user not found: ${buyerId}`);
+
           const { address, privateKey, derivationPath } = DerivationService.deriveUserWallet(
-            buyerId,
+            buyerUser.hdAccountIndex,
             completedOrder.cryptoType,
             completedOrder.cryptoNetwork
           );
