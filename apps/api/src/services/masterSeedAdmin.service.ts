@@ -376,8 +376,9 @@ MASTER_SEED_ENCRYPTION_KEY=${newEncryptionKey}
       (MasterSeedService as any).cachedMasterSeed = null;
       (MasterSeedService as any).cacheExpiry = null;
 
-      // Testar derivação com platform wallet (determinística, sem depender de DB)
-      const testWallet = DerivationService.derivePlatformWallet('BTC', 'BITCOIN');
+      // Smoke test: índice 999999n é descartável — não corresponde a nenhuma wallet real.
+      // Objetivo: confirmar que o seed decripta e deriva corretamente; endereço não importa.
+      const testWallet = DerivationService.deriveUserWallet(999999n, 'BTC', 'BITCOIN');
       console.log(`[MASTER SEED] Test derivation successful: ${testWallet.address}`);
 
       // Audit log
