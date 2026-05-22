@@ -436,12 +436,13 @@ model Fee {
 }
 
 // ============================================
-// PLATFORM WALLETS - Carteiras dos Sócios (MASTER/ADMIN)
+// PLATFORM WALLETS - Carteiras da PLATAFORMA (empresa)
 // ============================================
 
-// Carteiras HD da plataforma derivadas da master seed (Account 0)
-// Usadas para: 1) Receber fees das transações, 2) Depósitos dos sócios (cold → hot)
-// Compartilhadas entre MASTER e ADMIN (ambos têm acesso)
+// Carteiras HD da plataforma derivadas da master seed (Account 0).
+// Pertencem à empresa, não a nenhum usuário específico.
+// Acesso controlado por permissão RBAC (finance.*) — custódia é ortogonal a papel.
+// Usadas para: 1) Receber fees das transações, 2) Depósitos cold → hot wallet
 model PlatformWallet {
   id String @id @default(cuid())
 
@@ -451,7 +452,9 @@ model PlatformWallet {
   // Endereço derivado da master seed (Account 0 = Platform)
   address        String // Endereço público derivado (mesmo endereço para USDT/USDC na mesma rede)
   derivationPath String // Ex: m/84'/0'/0'/0/0 (Account 0 = Platform)
-  accountIndex   Int    @default(0) // Sempre 0 para platform wallets
+  accountIndex   Int    @default(0) // Sempre 0 para platform wallets (account 0 reservado)
+  // Nota: Int aqui vs BigInt em User.hdAccountIndex — inócuo (account sempre 0),
+  // mas a inconsistência deve ser unificada se a lógica de derivação for generalizada.
 
   // SECURITY: Private key criptografada com AES-256-GCM
   encryptedPrivateKey String // Private key criptografada
