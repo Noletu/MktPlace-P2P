@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
-import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
+import { signSocketTicket } from '../utils/jwt';
 import { authService } from '../services/auth.service';
 import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema } from '@mktplace/shared';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from '../services/auditLog.service';
@@ -565,12 +564,7 @@ export class AuthController {
   async socketTicket(req: Request, res: Response): Promise<void> {
     try {
       const user = req.user!;
-      const jti = crypto.randomUUID();
-      const ticket = jwt.sign(
-        { userId: user.userId, email: user.email, role: user.role, jti },
-        process.env.JWT_SECRET!,
-        { expiresIn: '60s' }
-      );
+      const ticket = signSocketTicket({ userId: user.userId, email: user.email, role: user.role });
       res.status(200).json({ success: true, ticket });
     } catch (error: any) {
       res.status(500).json({ success: false, error: 'Erro ao gerar socket ticket' });
