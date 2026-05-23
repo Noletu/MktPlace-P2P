@@ -74,6 +74,23 @@ async function cleanupExpiredRevokedTokens() {
 
 dotenv.config();
 
+// SECURITY (SER-14): COOKIE_SECRET obrigatório e separado do JWT_SECRET.
+// Sem fallback intencional: usar o mesmo secret para cookies e JWTs permite
+// que um atacante com acesso a um dos segredos comprometa o outro.
+const COOKIE_SECRET_MIN_LENGTH = 32;
+if (!process.env.COOKIE_SECRET) {
+  throw new Error(
+    'SECURITY CRITICAL: COOKIE_SECRET must be set in environment variables. ' +
+    'Generate with: openssl rand -hex 32'
+  );
+}
+if (process.env.COOKIE_SECRET.length < COOKIE_SECRET_MIN_LENGTH) {
+  throw new Error(
+    `SECURITY CRITICAL: COOKIE_SECRET must be at least ${COOKIE_SECRET_MIN_LENGTH} characters. ` +
+    `Current length: ${process.env.COOKIE_SECRET.length}. Generate with: openssl rand -hex 32`
+  );
+}
+
 // Inicializar serviços HD Wallet
 try {
   MasterSeedService.initialize();
@@ -163,8 +180,8 @@ app.use(cors({
 // SECURITY: Rate limiting global
 app.use('/api/', apiLimiter);
 
-// SECURITY: Cookie parser para HttpOnly cookies
-app.use(cookieParser(process.env.COOKIE_SECRET || process.env.JWT_SECRET));
+// SECURITY: Cookie parser para HttpOnly cookies (SER-14: sem fallback para JWT_SECRET)
+app.use(cookieParser(process.env.COOKIE_SECRET));
 
 // SECURITY: Limitar tamanho de payload (prevenir DoS)
 app.use(express.json({ limit: '15mb' })); // Max 15MB para uploads de imagens (base64 tem ~33% overhead)
