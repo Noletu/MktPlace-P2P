@@ -1,7 +1,7 @@
 import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { io as Client, Socket as ClientSocket } from 'socket.io-client';
-import jwt from 'jsonwebtoken';
+import { signSocketTicket } from '../../utils/jwt';
 import { NotificationSocketServer } from '../notification.socket';
 
 describe('NotificationSocketServer - Integration Tests', () => {
@@ -49,10 +49,7 @@ describe('NotificationSocketServer - Integration Tests', () => {
 
   describe('Autenticação', () => {
     it('deve aceitar conexão com token JWT válido', (done) => {
-      const token = jwt.sign(
-        { userId: 'user-1', email: 'test@test.com' },
-        process.env.JWT_SECRET || 'test-secret'
-      );
+      const token = signSocketTicket({ userId: 'user-1', email: 'test@test.com', role: 'USER' });
 
       clientSocket = Client(`http://localhost:${port}`, {
         path: '/socket.io/',
@@ -105,10 +102,7 @@ describe('NotificationSocketServer - Integration Tests', () => {
     let token: string;
 
     beforeEach(() => {
-      token = jwt.sign(
-        { userId: 'user-1', email: 'test@test.com' },
-        process.env.JWT_SECRET || 'test-secret'
-      );
+      token = signSocketTicket({ userId: 'user-1', email: 'test@test.com', role: 'USER' });
     });
 
     it('deve receber evento notification:connected ao conectar', (done) => {
@@ -230,15 +224,8 @@ describe('NotificationSocketServer - Integration Tests', () => {
 
   describe('Isolamento de Usuários', () => {
     it('usuário não deve receber notificações de outros usuários', (done) => {
-      const token1 = jwt.sign(
-        { userId: 'user-1', email: 'user1@test.com' },
-        process.env.JWT_SECRET || 'test-secret'
-      );
-
-      const token2 = jwt.sign(
-        { userId: 'user-2', email: 'user2@test.com' },
-        process.env.JWT_SECRET || 'test-secret'
-      );
+      const token1 = signSocketTicket({ userId: 'user-1', email: 'user1@test.com', role: 'USER' });
+      const token2 = signSocketTicket({ userId: 'user-2', email: 'user2@test.com', role: 'USER' });
 
       const client1 = Client(`http://localhost:${port}`, {
         path: '/socket.io/',
@@ -290,10 +277,7 @@ describe('NotificationSocketServer - Integration Tests', () => {
 
   describe('Gerenciamento de Conexões', () => {
     it('deve rastrear usuários conectados', (done) => {
-      const token = jwt.sign(
-        { userId: 'user-1', email: 'test@test.com' },
-        process.env.JWT_SECRET || 'test-secret'
-      );
+      const token = signSocketTicket({ userId: 'user-1', email: 'test@test.com', role: 'USER' });
 
       clientSocket = Client(`http://localhost:${port}`, {
         path: '/socket.io/',
@@ -307,10 +291,7 @@ describe('NotificationSocketServer - Integration Tests', () => {
     });
 
     it('deve remover usuário da lista ao desconectar', (done) => {
-      const token = jwt.sign(
-        { userId: 'user-1', email: 'test@test.com' },
-        process.env.JWT_SECRET || 'test-secret'
-      );
+      const token = signSocketTicket({ userId: 'user-1', email: 'test@test.com', role: 'USER' });
 
       clientSocket = Client(`http://localhost:${port}`, {
         path: '/socket.io/',
@@ -330,10 +311,7 @@ describe('NotificationSocketServer - Integration Tests', () => {
     });
 
     it('deve retornar contagem de usuários conectados', (done) => {
-      const token = jwt.sign(
-        { userId: 'user-1', email: 'test@test.com' },
-        process.env.JWT_SECRET || 'test-secret'
-      );
+      const token = signSocketTicket({ userId: 'user-1', email: 'test@test.com', role: 'USER' });
 
       clientSocket = Client(`http://localhost:${port}`, {
         path: '/socket.io/',
