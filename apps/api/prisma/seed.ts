@@ -67,6 +67,10 @@ async function main() {
 
     const hashedMasterPassword = await bcrypt.hash(masterPassword, 12);
 
+    // CRIT-02: hdAccountIndex é alocado automaticamente via DEFAULT nextval('user_hd_account_seq').
+    // Não passar o campo — o Postgres atribui o próximo valor da sequence.
+    // Masters são usuários normais neste aspecto: cada um recebe sua própria carteira
+    // imutável. Acesso à carteira da plataforma (account 0) é via permissão RBAC, não posse.
     const master = await prisma.user.create({
       data: {
         email: masterEmail,
@@ -109,6 +113,7 @@ async function main() {
 
     const hashedPassword = await bcrypt.hash(adminPassword, 12);
 
+    // CRIT-02: hdAccountIndex alocado automaticamente (ver comentário acima no create do master).
     const admin = await prisma.user.create({
       data: {
         email: adminEmail,

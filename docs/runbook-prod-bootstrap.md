@@ -68,6 +68,7 @@ Antes de começar, confirmar **todos** os itens. Se algum estiver pendente, para
 - [ ] Banco Postgres gerenciado configurado (RDS, Cloud SQL, Supabase, etc.)
 - [ ] KMS configurado para master seed (CRIT-10) — verificado em ambiente real
 - [ ] Migration `init_postgres_decimal_fields` aplicada (`npx prisma migrate deploy`)
+- [ ] Migration `add_hd_account_index` aplicada (`npx prisma migrate deploy`) — cria `user_hd_account_seq` e coluna `User.hdAccountIndex`
 - [ ] RBAC seed executado em prod (`npx tsx prisma/seeds/rbac-seed.ts`) — neste momento o guard `NODE_ENV=production` AINDA NÃO bloqueia o RBAC seed se ele for promovido a "migration controlada"; por enquanto, este passo é executado uma vez antes de ativarmos o guard em prod. Veja TECH-DEBT-DEV01.
 - [ ] App rodando mas **isolado** — firewall / IP whitelist / VPN. Nenhum usuário público consegue acessar.
 - [ ] Ferramentas instaladas em ambos os PCs pessoais — veja [Apêndice A](#apêndice-a--instalação-de-ferramentas-necessárias). **Faça isto pelo menos uma semana antes do dia D**, especialmente o acesso SSH (Apêndice A.3).
@@ -994,6 +995,11 @@ async function main() {
 
   // 6. Transação atômica
   await prisma.$transaction(async (tx) => {
+    // CRIT-02: hdAccountIndex é alocado automaticamente pelo Postgres via
+    // DEFAULT nextval('user_hd_account_seq'). NÃO passar o campo explicitamente.
+    // Masters/sócios são usuários normais neste aspecto — cada um recebe sua
+    // carteira pessoal imutável (hdAccountIndex alocado na ordem de criação).
+    // Acesso à carteira da plataforma (account 0) é via permissão RBAC, não posse.
     const u1 = await tx.user.create({
       data: {
         email: inputs.email1,

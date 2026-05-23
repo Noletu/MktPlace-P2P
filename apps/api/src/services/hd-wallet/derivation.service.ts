@@ -23,7 +23,8 @@ const bip32 = BIP32Factory(ecc);
  * - Ethereum: 60'
  * - Solana: 501'
  *
- * Account: derivado do userId (hash)
+ * Account: User.hdAccountIndex persistido via Postgres SEQUENCE (CRIT-02)
+ *           Platform: account 0 (reservado); Usuários: 1, 2, 3…
  * Change: 0 (receive)
  * Address Index: 0 (primeira carteira)
  */
@@ -37,15 +38,21 @@ export class DerivationService {
     SOL: 501,
   };
 
+  // BIP32 hardened derivation aceita índices apenas até 2^31 - 1.
+  // A Postgres SEQUENCE não tem esse limite, então validamos aqui.
+  // Capacidade teórica: ~2.1 bilhões de usuários antes de esgotar o espaço.
+  private static readonly BIP32_HARDENED_MAX = 0x80000000n;
+
   /**
-   * NOVO: Deriva carteira da PLATAFORMA (Account 0 = Sócios MASTER/ADMIN)
+   * Deriva carteira da PLATAFORMA (Account 0 = carteira da empresa).
    *
-   * Estas carteiras são usadas para:
+   * Account 0 é reservado para a plataforma — NÃO pertence a nenhum usuário
+   * individual. O acesso a esta carteira é controlado por permissão RBAC,
+   * não por posse. Custódia é ORTOGONAL a papel.
+   *
+   * Usada para:
    * 1. Receber fees das transações
-   * 2. Depósitos dos sócios (cold wallet → hot wallet)
-   *
-   * Account 0 é RESERVADO para platform wallets.
-   * User wallets SEMPRE terão Account > 0.
+   * 2. Depósitos da empresa (cold wallet → hot wallet)
    *
    * @param cryptoType BTC, USDC, USDT
    * @param network BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA
@@ -86,18 +93,23 @@ export class DerivationService {
   }
 
   /**
-   * Deriva uma carteira HD para um USUÁRIO
+   * Deriva uma carteira HD para um USUÁRIO.
    *
-   * IMPORTANTE: User wallets NUNCA usam Account 0 (reservado para platform).
-   * Account index é sempre >= 1.
+   * CRIT-02: recebe hdAccountIndex do registro User (persistido via Postgres SEQUENCE).
+   * NÃO calcula o índice internamente — a função é pura (sem dependência de DB).
+   * O caller é responsável por buscar User.hdAccountIndex antes de chamar.
    *
-   * @param userId ID do usuário
+   * Account 0 é reservado para a plataforma; hdAccountIndex >= 1 para usuários.
+   * Custódia (hdAccountIndex) é ORTOGONAL a papel (roleId/legacyRole):
+   * mudar o role de um usuário NUNCA afeta o endereço derivado.
+   *
+   * @param hdAccountIndex User.hdAccountIndex persistido (BigInt, vindo do DB)
    * @param cryptoType BTC, USDC, USDT
    * @param network BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA
    * @returns {address, privateKey, derivationPath}
    */
   static deriveUserWallet(
-    userId: string,
+    hdAccountIndex: bigint,
     cryptoType: string,
     network: string
   ): {
@@ -105,20 +117,22 @@ export class DerivationService {
     privateKey: string;
     derivationPath: string;
   } {
-    // Determinar coin type
+    if (hdAccountIndex >= DerivationService.BIP32_HARDENED_MAX) {
+      throw new RangeError(
+        `hdAccountIndex ${hdAccountIndex} exceeds BIP32 hardened derivation limit ` +
+        `(max: ${DerivationService.BIP32_HARDENED_MAX - 1n}). ` +
+        'The user_hd_account_seq sequence has exhausted the BIP32 hardened index space.',
+      );
+    }
+
     const coinType = this.getCoinType(cryptoType, network);
 
-    // Gerar account index a partir do userId (determinístico)
-    // IMPORTANTE: Account sempre >= 1 (0 é reservado para platform)
-    const account = this.userIdToAccountIndex(userId);
+    // .toString() explícito: evita mistura de bigint com number em aritmética
+    const derivationPath = `m/44'/${coinType}'/${hdAccountIndex.toString()}'/0'/0'`;
 
-    // Usar hardened derivation em todos os níveis (mais seguro)
-   const derivationPath = `m/44'/${coinType}'/${account}'/0'/0'`;
+    console.log(`[DERIVATION] Deriving user wallet (account=${hdAccountIndex}): ${network} - ${cryptoType}`);
+    console.log(`[DERIVATION] Path: ${derivationPath}`);
 
-    console.log(`[DERIVATION] Deriving user wallet for ${userId}: ${network} - ${cryptoType}`);
-    console.log(`[DERIVATION] Account: ${account}, Path: ${derivationPath}`);
-
-    // Derivar carteira conforme blockchain
     switch (network) {
       case 'BITCOIN':
         return this.deriveBitcoin(derivationPath);
@@ -134,23 +148,6 @@ export class DerivationService {
       default:
         throw new Error(`Unsupported network: ${network}`);
     }
-  }
-
-  /**
-   * DEPRECATED: Use derivePlatformWallet() ou deriveUserWallet()
-   * Mantido para retrocompatibilidade
-   */
-  static deriveWallet(
-    userId: string,
-    cryptoType: string,
-    network: string
-  ): {
-    address: string;
-    privateKey: string;
-    derivationPath: string;
-  } {
-    console.warn('[DEPRECATION] deriveWallet() is deprecated. Use deriveUserWallet() instead.');
-    return this.deriveUserWallet(userId, cryptoType, network);
   }
 
   /**
@@ -283,39 +280,17 @@ export class DerivationService {
   }
 
   /**
-   * Converte userId para account index (determinístico)
+   * Deriva próximo endereço para usuário (multi-address support).
    *
-   * Garante que o mesmo userId sempre gera o mesmo account.
+   * CRIT-02: mesmo contrato de deriveUserWallet — recebe hdAccountIndex do DB.
    *
-   * IMPORTANTE: NUNCA retorna 0 (reservado para platform wallets).
-   * Account sempre >= 1 para user wallets.
-   */
-  private static userIdToAccountIndex(userId: string): number {
-    // Hash do userId para gerar número determinístico
-    const crypto = require('crypto');
-    const hash = crypto.createHash('sha256').update(userId).digest();
-
-    // Usar primeiros 4 bytes como número (0 a 4,294,967,295)
-    const account = hash.readUInt32BE(0);
-
-    // Limitar a 2^31 - 1 para BIP32 (hardened derivation)
-    const limitedAccount = account % 0x80000000;
-
-    // IMPORTANTE: Garantir que account >= 1 (0 é reservado para platform)
-    // Se for 0, usar 1 (extremamente raro, mas seguro)
-    return limitedAccount === 0 ? 1 : limitedAccount;
-  }
-
-  /**
-   * Deriva próximo endereço para usuário (multi-address support)
-   *
-   * @param userId ID do usuário
+   * @param hdAccountIndex User.hdAccountIndex persistido (BigInt, vindo do DB)
    * @param cryptoType BTC, USDC, USDT
    * @param network Rede blockchain
    * @param addressIndex Índice do endereço (0 = primeiro, 1 = segundo, etc)
    */
   static deriveNextAddress(
-    userId: string,
+    hdAccountIndex: bigint,
     cryptoType: string,
     network: string,
     addressIndex: number
@@ -324,11 +299,15 @@ export class DerivationService {
     privateKey: string;
     derivationPath: string;
   } {
-    const coinType = this.getCoinType(cryptoType, network);
-    const account = this.userIdToAccountIndex(userId);
+    if (hdAccountIndex >= DerivationService.BIP32_HARDENED_MAX) {
+      throw new RangeError(
+        `hdAccountIndex ${hdAccountIndex} exceeds BIP32 hardened derivation limit ` +
+        `(max: ${DerivationService.BIP32_HARDENED_MAX - 1n}).`,
+      );
+    }
 
-    // BIP44 path com address_index customizado
-    const derivationPath = `m/44'/${coinType}'/${account}'/0/${addressIndex}`;
+    const coinType = this.getCoinType(cryptoType, network);
+    const derivationPath = `m/44'/${coinType}'/${hdAccountIndex.toString()}'/0/${addressIndex}`;
 
     switch (network) {
       case 'BITCOIN':
@@ -345,32 +324,35 @@ export class DerivationService {
   }
 
   /**
-   * Valida se derivation está funcionando
+   * Valida se derivation está funcionando.
+   * Usa account 1n como índice de teste (account 0 é da plataforma).
    */
   static validateDerivation(): boolean {
     try {
-      // Testar derivação para cada rede
-      const testUserId = 'test-user-123';
+      const TEST_ACCOUNT_INDEX = 1n;
 
-      console.log('   Testing Bitcoin derivation...');
-      const btc = this.deriveWallet(testUserId, 'BTC', 'BITCOIN');
-      console.log('   ✅ Bitcoin OK:', btc.address.slice(0, 10) + '...');
+      console.log('   Testing Bitcoin derivation (platform)...');
+      const btcPlatform = this.derivePlatformWallet('BTC', 'BITCOIN');
+      console.log('   ✅ Bitcoin platform OK:', btcPlatform.address.slice(0, 10) + '...');
 
-      console.log('   Testing Ethereum derivation...');
-      const eth = this.deriveWallet(testUserId, 'USDC', 'ETHEREUM');
+      console.log('   Testing Bitcoin derivation (user account=1)...');
+      const btcUser = this.deriveUserWallet(TEST_ACCOUNT_INDEX, 'BTC', 'BITCOIN');
+      console.log('   ✅ Bitcoin user OK:', btcUser.address.slice(0, 10) + '...');
+
+      console.log('   Testing Ethereum derivation (user account=1)...');
+      const eth = this.deriveUserWallet(TEST_ACCOUNT_INDEX, 'USDC', 'ETHEREUM');
       console.log('   ✅ Ethereum OK:', eth.address.slice(0, 10) + '...');
 
-      console.log('   Testing Solana derivation...');
       try {
-        const sol = this.deriveWallet(testUserId, 'USDC', 'SOLANA');
+        console.log('   Testing Solana derivation (user account=1)...');
+        const sol = this.deriveUserWallet(TEST_ACCOUNT_INDEX, 'USDC', 'SOLANA');
         console.log('   ✅ Solana OK:', sol.address.slice(0, 10) + '...');
       } catch (solError) {
         console.warn('   ⚠️  Solana derivation skipped:', (solError as Error).message);
-        console.warn('   (Solana support can be added later)');
       }
 
       console.log('');
-      console.log('✅ Core derivation test passed (Bitcoin + Ethereum)');
+      console.log('✅ Core derivation test passed (platform + user, Bitcoin + Ethereum)');
       return true;
     } catch (error) {
       console.error('❌ Derivation test failed:', (error as Error).message);

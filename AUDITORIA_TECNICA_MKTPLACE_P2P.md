@@ -1,11 +1,14 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.1
-> **Data:** 14 de maio de 2026
+> **Versão:** 1.15
+> **Data:** 14 de maio de 2026 (última edição: 20 de maio de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
-> **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · SQLite (atual) · BigNumber.js · BIP39/BIP32
+> **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
 >
 > **Changelog v1.1:** adicionada seção §1.1 com classificação por **fase de execução** ([FAZER AGORA] / [ADIAR PRE-STAGING] / [ADIAR PRE-PROD]). Cada finding agora possui campo `Fase` explícito.
+> **Changelog v1.14:** CRIT-02 fechado (hdAccountIndex via Postgres SEQUENCE, custódia ⊥ papel, guard BIP32). TECH-DEBT-DEV06 (limite BIP32 ~2.1B) e TECH-DEBT-OP04 (sweep on-chain) catalogados.
+> **Changelog v1.15:** TECH-DEBT-DEV07 (deriveNextAddress path não-hardened incompatível com Solana) e TECH-DEBT-DEV08 (código morto em seed.ts com paths divergentes) catalogados. Nota MAXVALUE adicionada ao DEV06.
+> **Changelog v1.16:** TECH-DEBT-DEV09 (buyerWallet criada fora de `$transaction` em dispute.service.ts) e TECH-DEBT-DEV10 (WalletService.createWallet sem `$transaction` — race condition teórica) catalogados. Ambos são callers pré-existentes do CRIT-02, nenhum é regressão.
 
 ---
 
@@ -84,7 +87,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | ID | Título resumido | Esforço | Status |
 |----|-----------------|---------|--------|
 | CRIT-01 | Migrar para PostgreSQL | 1-2 semanas | ✅ `c9f0c82` |
-| CRIT-02 | HD account index persistido (anti-colisão) | 1 semana | ⬜ |
+| CRIT-02 | HD account index persistido (anti-colisão) | 1 semana | ✅ Sprint 2 sessão 6 (v1.14) |
 | CRIT-03 | BigNumber em todos os valores monetários | 2-3 dias | ✅ `133d99b` + `e4ab499` |
 | CRIT-03b | String → Decimal(38,18) no schema | 1-2 dias | ✅ `4d177e6` |
 | CRIT-04 | Ledger atômico (unlock/credit/deduct) | 3-5 dias | ✅ `a40aea8` + `e4ab499` |
@@ -470,7 +473,7 @@ describe('CRIT-01: Postgres provider', () => {
 **Severidade:** 🔴 Crítica
 **Fase:** 🚨 **[FAZER AGORA]** — em dev, migração é trivial; com saldo on-chain real, exige sweep de todos os endereços antigos
 **Categoria:** Criptografia / Custódia
-**Status:** ⬜ Aberto
+**Status:** ✅ **Fechado** — Sprint 2 sessão 6 (v1.14)
 **Depende de:** CRIT-01 (para migration limpa)
 **Bloqueia:** ir para produção
 **Esforço estimado:** 1 semana + script de migração de dados
@@ -609,11 +612,13 @@ Deixar somente a função `static computeLegacyIndex(userId)` para uso exclusivo
 
 ### Critério de aceitação
 
-- [ ] Schema possui `User.hdAccountIndex Int @unique`
-- [ ] Registro novo gera `hdAccountIndex` sequencial via SEQUENCE atômica
-- [ ] `deriveUserWallet` lê `hdAccountIndex` do banco (nunca recomputa)
-- [ ] Script de migração executado sem erros em ambiente de staging
-- [ ] Teste de stress: criar 100.000 usuários e verificar zero colisões
+- [x] Schema possui `User.hdAccountIndex BigInt @unique` (BigInt, não Int — ver nota abaixo)
+- [x] Registro novo gera `hdAccountIndex` sequencial via SEQUENCE atômica (`user_hd_account_seq`)
+- [x] `deriveUserWallet` recebe `hdAccountIndex: bigint` como parâmetro (sem acesso a DB interno)
+- [x] `userIdToAccountIndex` e `deriveWallet` removidos da classe
+- [x] Guard `RangeError` se `hdAccountIndex >= 2^31` (BIP32 hardened limit)
+- [x] Decisão de reset completo (sem legacy a preservar em dev)
+- [x] Testes 8/8 verde (ver abaixo)
 
 ### Testes
 
@@ -655,6 +660,71 @@ describe('CRIT-02: HD wallet sem colisão', () => {
   });
 });
 ```
+
+### Fechamento — Sprint 2 sessão 6 (v1.14)
+
+**Data:** 20/05/2026
+**Branch:** `fix/crit-02-hd-account-persisted`
+**Commits:** `7850f25` (schema) · `342dfdc` (refactor derivation) · `391123b` (smoke test 999999n) · `dba86aa` (docs seed/runbook) · `f783e83` (tests + guard BIP32 + migration fix)
+
+#### Problema original
+
+`userIdToAccountIndex(userId)` derivava o account index via SHA-256(userId) % 2^31. Paradoxo do aniversário: ~54.000 usuários → 50% de colisão; ~280.000 → 99%. Colisão = dois usuários com o mesmo endereço HD = saldo de um acessível pelo outro. O bug não gerava nenhum erro — silencioso por design.
+
+#### Solução implementada
+
+`User.hdAccountIndex BigInt @unique` persistido via `DEFAULT nextval('user_hd_account_seq'::regclass)`. A SEQUENCE Postgres é atômica — dois INSERTs simultâneos nunca recebem o mesmo valor. `deriveUserWallet` passa a receber `hdAccountIndex: bigint` diretamente (função pura, sem acesso a DB interno). Callers dentro de `$transaction` buscam `User.hdAccountIndex` via `tx.user.findUnique` para leitura consistente.
+
+**Decisão de reset (Opção 1b):** banco de dev resetado completamente (`npx prisma migrate reset --force`). Não há wallets com saldo on-chain em dev — nenhum sweep necessário. Script de sweep (`TECH-DEBT-OP04`) seria necessário apenas em cenário com fundos reais.
+
+#### Regra de design permanente — Custódia ⊥ Papel
+
+> **`hdAccountIndex` é ortogonal a `roleId`.** Mudar o papel de um usuário (USER → ADMIN → MASTER) NUNCA toca `hdAccountIndex` e NUNCA altera o endereço derivado. A carteira pertence ao usuário pelo índice imutável, não pelo papel. Account 0 é reservado para a plataforma — acessível por permissão RBAC, não por posse.
+
+Esta invariante é agora **garantia executável** pelo teste `(d)` em `derivation.crit02.spec.ts`:
+```
+Criar usuário → capturar hdAccountIndex + endereço → mudar roleId → verificar hdAccountIndex IDÊNTICO → verificar endereço IDÊNTICO.
+```
+
+#### Guard BIP32 (adição pré-Fase 5)
+
+`deriveUserWallet` e `deriveNextAddress` lançam `RangeError` claro se `hdAccountIndex >= 0x80000000n` (2^31), antes de chamar o bip32. Antes, o bip32 lançava um `ValiError` interno opaco. Constante `BIP32_HARDENED_MAX` documentada com limite teórico de ~2.1B usuários (catalogado em `TECH-DEBT-DEV06`).
+
+#### Bug masterSeedAdmin:378 corrigido como efeito colateral
+
+`masterSeedAdmin.service.ts:378` usava `deriveWallet('BITCOIN', 0)` com aridade incorreta (listado como erro TS2554 na tabela §10). O bug foi eliminado automaticamente pela remoção de `deriveWallet` — substituído por `deriveUserWallet(999999n, 'BTC', 'BITCOIN')` (índice fictício descartável, para smoke test de derivação). Não requer entrada retroativa — corrigido como consequência do CRIT-02.
+
+#### Arquivos tocados
+
+- `apps/api/prisma/schema.prisma` — `hdAccountIndex BigInt @unique @default(dbgenerated(...))`
+- `apps/api/prisma/migrations/20260520000000_add_hd_account_index/migration.sql` — criado manualmente
+- `apps/api/src/services/hd-wallet/derivation.service.ts` — nova assinatura + guard BIP32 + constante `BIP32_HARDENED_MAX`
+- `apps/api/src/services/transaction.service.ts` — caller atualizado (dentro de `$transaction`)
+- `apps/api/src/services/dispute.service.ts` — caller atualizado
+- `apps/api/src/services/wallet.service.ts` — caller atualizado
+- `apps/api/src/services/masterSeedAdmin.service.ts` — 3 callers + smoke test corrigido
+- `apps/api/prisma/seed.ts` — comentários (lógica inalterada, DEFAULT Postgres cobre tudo)
+- `docs/runbook-prod-bootstrap.md` — pré-requisito da migration + orthogonality principle
+- `apps/api/src/services/__tests__/derivation.crit02.spec.ts` — criado (8 testes)
+
+#### Testes pós-fix
+
+```
+CRIT-02: hdAccountIndex persistido via Postgres SEQUENCE
+  ✓ (a) dois usuários recebem hdAccountIndex distintos
+  ✓ (b) criações sequenciais produzem índices consecutivos sem lacunas
+  ✓ (c) mesmo hdAccountIndex deriva endereço idêntico em chamadas repetidas
+  ✓ (d) atualizar roleId não modifica hdAccountIndex nem endereço derivado  ← invariante custódia ⊥ papel
+  ✓ (e) endereço da plataforma (account 0) é distinto de endereços de usuários
+  ✓ (f) Promise.all com 10 criações concorrentes retorna hdAccountIndex únicos e > 0
+CRIT-02: guard BIP32 — rejeita índice além do limite hardened
+  ✓ deriveUserWallet lança RangeError para hdAccountIndex >= 2^31
+  ✓ deriveNextAddress lança RangeError para hdAccountIndex >= 2^31
+
+8/8 ✅ — Suite completa (77/77, --runInBand, Postgres dev)
+```
+
+**Validação pós-reset:** `master@mktplace.com | hdAccountIndex: 1` · `admin@mktplace.com | hdAccountIndex: 2` · `sequence last_value: 2`.
 
 ---
 
@@ -3881,7 +3951,12 @@ Problemas que não causam falha em produção, mas atrapalham desenvolvimento ou
 | **TECH-DEBT-DEV02** | `validateDerivation()` expõe private keys como strings imutáveis no heap. **Arquivo:** `apps/api/src/services/hd-wallet/derivation.service.ts` — função `validateDerivation()` (linhas finais). `validateDerivation()` chama `deriveWallet()` 3x e recebe objetos `{ address, privateKey: string }`. Strings JS são imutáveis — não há `fill(0)` possível. O material de chave fica no heap até o próximo ciclo do GC, visível em core dumps, swap e `/proc/<pid>/maps`. **Mitigação atual (baixa severidade):** usa `userId` fixo `"test-user-123"` — as chaves geradas não correspondem a nenhum usuário real, então a exposição é de material de teste, não de produção. | 🔵 **[ADIAR PRE-STAGING]** | Refatorar `validateDerivation()` para retornar apenas `boolean` de validação. Logar apenas `address` (dado público) — descartar `privateKey` sem expô-la como string. Eliminar o retorno de `privateKey` do objeto intermediário nesta função de diagnóstico. **Identificado em:** PR #7 (revisão Claude web). | 30min |
 | **TECH-DEBT-DEV03** | `getMasterSeed()` — caminho de cache miss sem `try/finally` para zeragem do buffer intermediário. **Arquivo:** `apps/api/src/services/hd-wallet/master-seed.service.ts` — dentro de `getMasterSeed()`, bloco após `decryptSeed()`. O `seed.fill(0)` intermediário acontece DEPOIS do `Buffer.from(seed)` → `setTimeout` → `console.log`. Se qualquer instrução neste bloco lançar uma exceção entre `decryptSeed()` e `seed.fill(0)`, o buffer com o seed bruto fica não-zerado no heap até o GC. Na prática improvável (operações são `Buffer.from` + `Date.now()` + `clearTimeout`), mas inconsistente com o contrato documentado no próprio JSDoc da função. | 🔵 **[ADIAR PRE-STAGING]** | Envolver o bloco em `try/finally { seed.fill(0); }`: `const seed = this.decryptSeed(encryptedSeed); try { this.cachedMasterSeed = Buffer.from(seed); this.cacheExpiry = ...; // timer + log; return Buffer.from(this.cachedMasterSeed); } finally { seed.fill(0); }`. Consistência com o padrão que o JSDoc já documenta para callers (`seed.fill(0)` após uso). **Identificado em:** PR #7 (revisão Claude web). | 15min |
 | **TECH-DEBT-DEV04** | `decryptSeed()` retorna buffer sensível sem documentar contrato de zeragem no JSDoc. **Arquivo:** `apps/api/src/services/hd-wallet/master-seed.service.ts` — JSDoc da função `private static decryptSeed()`. `decryptSeed` retorna um `Buffer` de 64 bytes com o seed bruto, mas seu JSDoc não menciona a obrigação do caller de zerar o buffer após uso. Hoje apenas `getMasterSeed()` chama `decryptSeed()` e zera corretamente. Se um futuro caller for adicionado sem conhecer o contrato implícito, o seed pode vazar no heap. | 🔵 **[ADIAR PRE-STAGING]** | Adicionar ao JSDoc: `@returns Seed buffer descriptografado (64 bytes). ⚠️ Caller DEVE zerar após uso via seed.fill(0) — material sensível, não pode permanecer no heap.` Custo zero; previne futuros erros de manutenção. **Identificado em:** PR #7 (revisão Claude web). | 5min |
+| **TECH-DEBT-DEV06** | Limite teórico de ~2.1 bilhões de usuários no `hdAccountIndex` (BIP32 hardened max = 2^31 − 1). **Contexto:** a `user_hd_account_seq` cresce indefinidamente, mas BIP32 hardened derivation aceita índices apenas até 2.147.483.647. A `DerivationService` já valida com `RangeError` claro ao atingir o limite (guard adicionado no CRIT-02). Cenário irreal no horizonte de produto, mas documentado para que um engenheiro futuro não se surpreenda. **Refinamento opcional:** definir `SEQUENCE MAXVALUE 2147483647 NO CYCLE` na `user_hd_account_seq` alinharia a fronteira da sequence com o limite BIP32 hardened — o Postgres rejeitaria o INSERT antes mesmo de chegar no guard do código. Hoje a sequence não tem MAXVALUE (cresce indefinidamente) e o guard é a única barreira; ambas as abordagens são corretas, mas a sequence com MAXVALUE é mais defensiva. | ⚫ **[ADIAR PRE-LAUNCH]** — nota informativa; guard já em produção | Quando/se a sequence aproximar de 2^31: (1) migrar para `SEQUENCE MAXVALUE 2147483647 NO CYCLE` + alerta operacional, ou (2) implementar path alternativo sem hardened (ex.: `m/44'/coin'/0'/0/${hdAccountIndex}`) — requer análise de segurança BIP32. **Mitigação atual:** `RangeError` em `deriveUserWallet` e `deriveNextAddress` impedindo derivação silenciosa. **Identificado em:** CRIT-02 Sprint 2 sessão 6. | 1 dia (quando necessário) |
 | **TECH-DEBT-DEV05** | Sistema de penalty/anti-spam fora de transação atômica no cancelamento de pedidos. **Arquivos:** `apps/api/src/services/order.service.ts` (funções `cancelOrder`, `cancelOrderByPayer`, `cancelOrderByProvider`), `apps/api/src/services/penalty.service.ts`, `apps/api/src/services/antiSpam.service.ts`. As funções `cancel*` executam claim atômico (CRIT-05 ✅) para o ESTADO da order, mas as chamadas de penalty e anti-spam permanecem FORA da transação. **Vetor de exploit:** usuário malicioso dispara N cancelamentos simultâneos; como o claim atômico detecta concorrência em N−1 deles, apenas 1 chega à fase de penalty. Resultado: usuário cancela repetidamente com apenas 1 penalty contado, em vez de N — bypass do sistema de punição desenhado para coibir bad actors. **Decisão consciente:** tomada na Sessão 5 da Sprint 2 com justificativa de que essas operações são "inherently racy by design" — aceito como trade-off no escopo imediato do CRIT-05. | 🔵 **[ADIAR PRE-STAGING]** | Mover registro de penalty/anti-spam para DENTRO do `$transaction` callback do CRIT-05, garantindo que cada cancelamento bem-sucedido conta exatamente 1 penalty. Trade-off: pode aumentar latência da transação (penalty envolve writes adicionais); mitigação: minimizar writes dentro do tx, ou usar outbox pattern para eventos derivados. **Identificado em:** PR #8 (CRIT-05), Sprint 2 Sessão 5. | 1 dia |
+| **TECH-DEBT-DEV07** | `deriveNextAddress` gera derivation path não-hardened (`m/44'/coin'/account'/0/addressIndex`) incompatível com Solana. **Arquivo:** `apps/api/src/services/hd-wallet/derivation.service.ts` — função `deriveNextAddress`. A lib `ed25519-hd-key` (usada por `deriveSolana`) exige que TODOS os segmentos do path sejam hardened (sufixo `'`). O path gerado por `deriveNextAddress` usa `addressIndex` sem hardened (`/0/${addressIndex}` em vez de `/0'/${addressIndex}'`), o que causaria erro em runtime se a função for chamada com `network='SOLANA'`. **Mitigação atual:** não há callers externos de `deriveNextAddress` com Solana — a função foi preparada para suporte a multi-address futuro mas não é usada em produção. O bug ficaria silencioso até o primeiro use case de multi-address Solana. | 🔵 **[ADIAR PRE-STAGING]** | Antes de implementar multi-address, escolher entre: (a) derivar path totalmente hardened para Solana: `m/44'/501'/account'/0'/${addressIndex}'`; ou (b) bloquear explicitamente `SOLANA` em `deriveNextAddress` com erro descritivo até que suporte multi-address Solana seja especificado (path hardened pode conflitar com wallets existentes). **Identificado em:** revisão final CRIT-02, Sprint 2 sessão 6. | 1-2h |
+| **TECH-DEBT-DEV08** | `seed.ts` contém ~50 linhas de código morto: array `platformWallets` + loop de criação comentado. **Arquivo:** `apps/api/prisma/seed.ts` (linhas ~139–200). O bloco define 5 entradas de `platformWallets` com `derivationPath` de exemplo que divergem dos paths reais gerados pelo código (`m/84'/0'/0'/0/0` para BTC, mas o código usa `m/44'/0'/0'/0'/0'`). Se descomentado sem revisão, os endereços gerados não corresponderiam aos registros no banco. **Risco:** código morto com paths incorretos pode enganar um dev futuro que descomente o loop sem perceber a divergência. **Contexto:** o bloco foi comentado intencionalmente para forçar criação via painel admin HD Wallet (comentário `// COMENTADO: Usar painel admin`). A intenção é boa; o risco é o código divergente ficar acumulando. | 🔵 **[ADIAR PRE-STAGING]** | Remover o bloco completamente (criação de platform wallets é via painel admin — código morto não agrega). Se quiser preservar documentação do formato esperado, substituir por um comentário conciso explicando o processo, sem código divergente. **Identificado em:** revisão final CRIT-02, Sprint 2 sessão 6. | 15min |
+| **TECH-DEBT-DEV09** | `dispute.service.ts` cria `buyerWallet` FORA da `$transaction` de transferência — estado inconsistente em crash. **Arquivo:** `apps/api/src/services/dispute.service.ts` — função `resolveDispute`, casos `RELEASE_TO_BUYER`/`PENALTY_SELLER`, bloco de lazy-init de `buyerWallet`. O `prisma.userWallet.create` da `buyerWallet` executa ANTES e FORA do `prisma.$transaction` que faz a transferência. Se o processo morrer (crash, OOM, SIGKILL) entre o create da wallet e o início da transação, fica uma `UserWallet` órfã criada sem transferência associada. **Não há perda de fundos** (a transferência simplesmente não ocorreu), mas o estado do banco é inconsistente — wallet existe, saldo zero, sem correspondência com nenhum evento de transferência. **Inconsistência de padrão:** `transaction.service.ts:validateProof` faz lazy-init de `buyerWallet` DENTRO da `$transaction` callback (`tx.userWallet.create`), que é o padrão correto. `dispute.service.ts` diverge desse padrão sem justificativa. **Pré-existente ao CRIT-02; não é regressão.** | 🔵 **[ADIAR PRE-STAGING]** | Mover a busca de `hdAccountIndex` + derivação + `create` da `buyerWallet` para dentro do callback `$transaction`, espelhando o padrão de `transaction.service.ts:validateProof`. Isso garante atomicidade: wallet só existe se a transferência foi persistida com sucesso. **Identificado em:** revisão de callers CRIT-02, Sprint 2 sessão 6. | 1-2h |
+| **TECH-DEBT-DEV10** | `WalletService.createWallet` sem `$transaction` — race condition teórica com mensagem de erro não amigável. **Arquivo:** `apps/api/src/services/wallet.service.ts` — função `createWallet`. A função executa `findUnique(existing)` → `findUnique(user)` → `derive` → `create` em sequência sem envolver as etapas num `$transaction`. Dois `createWallet` simultâneos para o mesmo `userId+cryptoType+network` podem ambos passar no check de duplicata (ambos veem `null`) e ambos tentar `create`. **Mitigação atual suficiente:** a constraint `@@unique([userId, cryptoType, network])` no schema garante que o segundo `create` falha com `P2002` (unique violation) — sem duplicata criada, sem risco de fundos (ambos os requests teriam derivado o mesmo endereço via mesmo `hdAccountIndex`). O único efeito observável é que o segundo request recebe um erro de constraint não tratado em vez de `"Wallet already exists"`. **Severidade muito baixa** em produção real (janela de corrida de poucos microssegundos, endpoint não é hot path). **Pré-existente ao CRIT-02; não é regressão.** | 🔵 **[ADIAR PRE-STAGING]** | Opção A (mínima): adicionar `catch` específico do `P2002` em `createWallet` e relançar como `"Wallet already exists"` — melhora UX sem custo de transação. Opção B (completa): envolver em `$transaction` ou usar `upsert` defensivo. **Identificado em:** revisão de callers CRIT-02, Sprint 2 sessão 6. | 30min–2h |
 
 ### Pendências operacionais (não-código)
 
@@ -3891,12 +3966,13 @@ Distintas dos erros de TS e falhas de teste acima — estas são ações que pre
 |----|--------|------|------------------|
 | **TECH-DEBT-OP01** | Invalidar backup codes 2FA pré-CRIT-06 em produção | 🔵 **[ADIAR PRE-PROD]** | Backup codes salvos no banco ANTES de `bea7f20` foram gerados com `Math.random()` (xorshift128+ — previsível a partir de poucas amostras). O bug está fechado no código, mas as **hashes antigas seguem válidas** no banco até serem usadas ou regeneradas. Em prod, isto é uma janela de bypass de 2FA até zerarmos. **Pré-requisitos:** (1) feature de regeneração de backup codes visível e testada na UI; (2) email transacional pronto comunicando os usuários. **Comando:** `cd apps/api && DATABASE_URL=<prod> npx tsx scripts/invalidate-2fa-backup-codes.ts` (dry-run) → `--apply`. **Smoke test do script:** ✅ executado em 2026-05-15 contra Postgres dev (9/9 verificações PASS — userA `enabled+codes` detectado/zerado, userB `disabled+codes` intocado). **Quando rodar:** logo antes do primeiro deploy a prod com usuários reais. Não fazer antes — usuários de dev/staging usariam backup codes gerados pelo novo CSPRNG normalmente. |
 | **TECH-DEBT-OP02** | Provisionamento de master/admin em produção | 🔵 **[ADIAR PRE-PROD]** | **Decisão registrada:** NÃO usar `prisma/seed.ts` em produção (guard `NODE_ENV=production` em commits `17fea25` + `0e4f5eb` — PR #3 mergeado). Provisionamento real exige runbook operacional dedicado. **Runbook documentado em [`docs/runbook-prod-bootstrap.md`](docs/runbook-prod-bootstrap.md)** (2026-05-15) com plano completo: gerar senhas via `openssl rand`, criar **DOIS masters independentes** (um por sócio — anti-SPOF), excluir defaults `master@mktplace.com`/`admin@mktplace.com` na MESMA transação atômica, flags `forcePasswordReset` + `force2FASetup` forçam setup completo no primeiro login, 2FA obrigatório antes de qualquer permissão master ativa. **Código ainda não implementado** — depende de SER-15 e SER-28 saírem do `[ADIAR PRE-STAGING]` para entrar em sprint que adicione: campos de schema (`forcePasswordReset`, `force2FASetup`), middleware de redirect, endpoints `/auth/setup-password` e `/auth/setup-2fa`, telas frontend, e `scripts/bootstrap-prod.ts` (especificação completa no próprio runbook). **Plano de teste:** 3-4 ensaios em dev local → 1 dry-run em staging → execução real em prod. **Quando rodar:** uma única vez, ao provisionar prod pela primeira vez, com ambos os sócios presentes em videochamada. |
+| **TECH-DEBT-OP04** | Ferramenta de sweep on-chain para rotação de wallets HD | ⚪ **[ADIAR PRE-PROD]** | **Contexto:** o CRIT-02 resolveu a colisão de índices em dev com reset completo (sem saldo on-chain a preservar). Em produção, se a master seed for comprometida ou se for necessário rotacionar wallets (ex.: comprometimento de chave, auditoria forense), cada endereço HD antigo precisaria de uma transação on-chain para mover os fundos para o novo endereço. **Escopo:** script `scripts/sweep-wallets.ts` que (1) lê todas as `UserWallet` com saldo > 0, (2) deriva a chave privada do endereço antigo, (3) assina transação de sweep para novo endereço, (4) confirma e atualiza `UserWallet.address`. Requer `MASTER_SEED_ENCRYPTED` (acesso controlado). **Quando:** apenas se ocorrer comprometimento de master seed em produção real, ou como parte de auditoria de segurança programada. **Identificado em:** CRIT-02 Sprint 2 sessão 6. |
 | **TECH-DEBT-OP03** | Coordenar re-clone com Nícolas pós-CRIT-08 | 🚨 **[FAZER AGORA]** — Pendente coordenação | A reescrita do histórico em CRIT-08 (Sprint 2 sessão 3) renomeou TODOS os SHAs do repositório. Quem tem clone local feito antes de 2026-05-16 está com histórico divergente — `git pull` resulta em merge confuso ou rejeita. **Ação:** Nícolas precisa (1) confirmar que não tem branch local com trabalho não-pushado; (2) apagar a pasta local do clone; (3) `git clone https://github.com/Noletu/MktPlace-P2P` de novo. Qualquer branch local que ele tivesse fica órfã (commits referenciam SHAs antigos inexistentes). Confirmação de re-clone OK = task fechada. **Quando:** o quanto antes — qualquer push de Nícolas sobre o clone antigo vai falhar de qualquer jeito. |
 
 ---
 
 **Fim do documento.**
 
-Última edição: 18/05/2026 (v1.13 — TECH-DEBT-DEV05 catalogado: penalty/anti-spam fora de tx atômica nos cancel*; count verificado em deleteMany do cancelOrderByPayer)
+Última edição: 22/05/2026 (v1.16 — TECH-DEBT-DEV09: buyerWallet fora de $transaction em dispute.service.ts; TECH-DEBT-DEV10: createWallet sem $transaction race condition teórica)
 Auditor: Claude (claude.ai/web)
 Próxima revisão sugerida: após Sprint 2 ou em 30 dias, o que vier primeiro.

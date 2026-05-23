@@ -102,9 +102,15 @@ export class WalletService {
       );
     }
 
-    // Derivar carteira HD
+    // CRIT-02: buscar hdAccountIndex persistido para derivação determinística
+    const userRecord = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { hdAccountIndex: true },
+    });
+    if (!userRecord) throw new Error(`User not found: ${userId}`);
+
     const {address, privateKey, derivationPath} =
-      DerivationService.deriveWallet(userId, cryptoType, network);
+      DerivationService.deriveUserWallet(userRecord.hdAccountIndex, cryptoType, network);
 
     // Criptografar private key
     const encryptedPrivateKey = KeyManagementService.encryptPrivateKey(

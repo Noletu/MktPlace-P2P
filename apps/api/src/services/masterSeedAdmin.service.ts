@@ -182,8 +182,9 @@ export class MasterSeedAdminService {
 
     try {
       for (const network of networks) {
-        const { address, privateKey } = DerivationService.deriveWallet(
-          'test-user-id',
+        // CRIT-02: usar índice fixo de teste (1n = primeiro usuário da sequence)
+        const { address, privateKey } = DerivationService.deriveUserWallet(
+          1n,
           network === 'BITCOIN' ? 'BTC' : 'USDT',
           network
         );
@@ -211,10 +212,11 @@ export class MasterSeedAdminService {
    * Testa se mnemonic corresponde a carteiras existentes
    */
   private async testDerivationAgainstExistingWallets(mnemonic: string) {
-    // Busca algumas carteiras existentes
+    // CRIT-02: buscar hdAccountIndex junto com as carteiras para derivação correta
     const existingWallets = await prisma.userWallet.findMany({
       take: 10,
       orderBy: { createdAt: 'asc' },
+      include: { user: { select: { hdAccountIndex: true } } },
     });
 
     if (existingWallets.length === 0) {
@@ -229,9 +231,9 @@ export class MasterSeedAdminService {
 
     try {
       for (const wallet of existingWallets) {
-        // Deriva carteira com mesmo userId
-        const { address } = DerivationService.deriveWallet(
-          wallet.userId,
+        // CRIT-02: usar hdAccountIndex persistido (não userId) para derivação
+        const { address } = DerivationService.deriveUserWallet(
+          wallet.user.hdAccountIndex,
           wallet.cryptoType,
           wallet.network
         );
@@ -374,8 +376,9 @@ MASTER_SEED_ENCRYPTION_KEY=${newEncryptionKey}
       (MasterSeedService as any).cachedMasterSeed = null;
       (MasterSeedService as any).cacheExpiry = null;
 
-      // Testar derivação
-      const testWallet = DerivationService.deriveWallet('BITCOIN', 0);
+      // Smoke test: índice 999999n é descartável — não corresponde a nenhuma wallet real.
+      // Objetivo: confirmar que o seed decripta e deriva corretamente; endereço não importa.
+      const testWallet = DerivationService.deriveUserWallet(999999n, 'BTC', 'BITCOIN');
       console.log(`[MASTER SEED] Test derivation successful: ${testWallet.address}`);
 
       // Audit log
