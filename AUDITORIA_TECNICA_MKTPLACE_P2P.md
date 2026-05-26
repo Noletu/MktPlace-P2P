@@ -10,6 +10,7 @@
 > **Changelog v1.15:** TECH-DEBT-DEV07 (deriveNextAddress path não-hardened incompatível com Solana) e TECH-DEBT-DEV08 (código morto em seed.ts com paths divergentes) catalogados. Nota MAXVALUE adicionada ao DEV06.
 > **Changelog v1.16:** TECH-DEBT-DEV09 (buyerWallet criada fora de `$transaction` em dispute.service.ts) e TECH-DEBT-DEV10 (WalletService.createWallet sem `$transaction` — race condition teórica) catalogados. Ambos são callers pré-existentes do CRIT-02, nenhum é regressão.
 > **Changelog v1.17:** SER-14 fechado (COOKIE_SECRET sem fallback, validação de startup). SER-13 parcial fechado (secrets separados, HS256 explícito, issuer/audience, socket ticket isolado, env.ts bootstrap — pendente TTL 15min pre-staging). SER-29 novo: serialização BigInt quebra endpoints que retornam User completo (pré-existente CRIT-02/CRIT-07, não regressão Sessão 1). TD-T27 causa raiz corrigida (io.of is not a function, não TS2345). TD-T28 novo: ausência de testes de integração de /auth/me. Validação end-to-end da Sessão 1 registrada como evidência.
+> **Changelog v1.18:** Revisão de código do PR `fix/auth-hardening-jwt-cookie`. SER-17 atualizado: parcialmente mitigado por guard de ambiente em produção (`!== 'production'` já bloqueia req sem origin em prod). SER-20 atualizado: confirmado ativo, refreshToken no body é o vetor mais crítico, neutraliza ganhos do SER-13 enquanto aberto. SER-30 novo: refresh não reseta `userRole` cookie (severidade indeterminada — a investigar). TD-T27 expandido: dois problemas (construtor errado + namespace errado), esforço maior que estimado. TD-T28 expandido: 4 notas adicionais (setup.ts fragility, alg:none, expiração, secret dependency). TD-ENV01 novo: scripts utilitários com dotenv próprio (risco latente de regressão). TECH-DEBT-DEV11 novo: fallback cookie morto em sockets. TECH-DEBT-DEV12 novo: uniformizar fail-fast de env (opcional).
 
 ---
 
@@ -112,7 +113,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | MED-33 | Migrar para `Json`/`jsonb` (junto com CRIT-01) | Validação Zod robusta dos JSONs → PRE-STAGING |
 | MED-34 | FKs explícitas no schema (junto com CRIT-01) | `ON DELETE` policies finas → PRE-STAGING |
 
-#### 🔵 ADIAR PRE-STAGING (17)
+#### 🔵 ADIAR PRE-STAGING (21)
 
 > **Trigger:** quando for subir o primeiro ambiente com Postgres real, Redis, domínio próprio e auth funcional fora do localhost.
 
@@ -122,7 +123,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | CRIT-11 | Depende de CRIT-10 |
 | SER-13 (resto) | TTL curto atrapalha debug enquanto frontend de auth está mudando |
 | SER-15 | Em dev, credenciais fixas facilitam debug (desde que fora do git, vide CRIT-08) |
-| SER-17 | CORS sem origin é útil em curl/Postman durante dev |
+| SER-17 | CORS sem origin é útil em curl/Postman durante dev (guard de prod já correto) |
 | SER-18 | Refator de Argon2id implica re-encriptar wallets → coordenar com KMS migration |
 | SER-19 | Junto com refator de chaves (SER-18) |
 | SER-20 | Frontend de auth ainda em iteração — mexer agora dá merge conflict |
@@ -133,10 +134,15 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | SER-26 | Em dev usa-se boleto fake mesmo |
 | SER-27 | Em dev usa-se CPF fake mesmo |
 | SER-28 | Mesma razão de SER-24 |
+| SER-29 | Não é perda de dados; 500 de serialização deve ser corrigido antes de usuários reais |
+| SER-30 | Investigar impacto real antes de classifcar e corrigir |
 | MED-31 (resto) | Refator completo só faz sentido quando log aggregation estiver configurado |
 | MED-36 | Em dev `unsafe-inline` ajuda no debug visual |
 | MED-37 | Documentação melhor quando frontend de RBAC estabilizar |
 | MED-38 | Quando upload de comprovante for usado de fato |
+| TD-ENV01 | Risco latente (nenhum bug ativo) — higiene preventiva antes de subir staging |
+| TECH-DEBT-DEV11 | Fallback sem efeito, mas decisão de remover/ajustar pertence ao ciclo de estabilização de auth |
+| TECH-DEBT-DEV12 | Melhoria de manutenibilidade; não urgente |
 
 #### ⚪ ADIAR PRE-PROD (5)
 
@@ -2657,6 +2663,7 @@ router.post('/proof', upload.single('comprovante'), proofController);
 **Severidade:** 🟠 Sério
 **Fase:** 🔵 **[ADIAR PRE-STAGING]** — CORS sem origin é útil para curl/Postman durante dev; ajustar antes de subir staging
 **Categoria:** CORS
+**Status:** 🟡 **Parcialmente mitigado** — guard `!== 'production'` já bloqueia req sem origin em produção (confirmado na revisão de código do PR, v1.18). Risco residual em containers onde `NODE_ENV` não está definido.
 **Esforço estimado:** 15min
 
 ### Arquivo afetado
@@ -2669,9 +2676,21 @@ if (!origin && process.env.NODE_ENV !== 'production') {
 }
 ```
 
-### Problema
+### Análise de mitigação parcial (v1.18)
 
-Se `NODE_ENV` não estiver setado explicitamente (default em alguns containers), `process.env.NODE_ENV !== 'production'` é `true`, e CORS aceita request sem origin (curl, Postman, e ataques server-side).
+O fluxo CORS em `index.ts` é:
+1. `if (!origin && process.env.NODE_ENV !== 'production') → callback(null, true)` — aceita sem origin APENAS fora de produção
+2. `if (!origin || !ALLOWED_ORIGINS.includes(origin)) → callback(new Error('Not allowed by CORS'))` — bloqueia sem origin se condição 1 não pegou
+
+Em produção (`NODE_ENV === 'production'`): requisições sem origin passam pela condição 1 sem match e são bloqueadas na condição 2. **Comportamento em produção está correto.**
+
+**Risco residual:** em containers onde `NODE_ENV` não está definido (nem `development` nem `production`), `!== 'production'` é `true` → aceita requests sem origin. Ambientes de staging mal-configurados são vetores.
+
+**Risco em dev:** intencional — permite curl/Postman durante desenvolvimento. Não é um bug.
+
+### Problema original (continua válido como defesa)
+
+O guard `!== 'production'` é menos defensivo que `=== 'development'`. A correção proposta é boa prática mesmo sem bug imediato em produção.
 
 ### Correção
 ```typescript
@@ -2683,11 +2702,12 @@ if (!origin) {
 }
 ```
 
-Note: `isDev` exige **explicitamente** `=== 'development'`. Em produção, mesmo `NODE_ENV` ausente, rejeita.
+Note: `isDev` exige **explicitamente** `=== 'development'`. Qualquer outro valor de `NODE_ENV` (incluindo ausente) → rejeita.
 
 ### Critério de aceitação
-- [ ] Default seguro: sem origin → rejeitado
-- [ ] Apenas `NODE_ENV === 'development'` permite
+- [ ] Default seguro: sem origin → rejeitado (qualquer NODE_ENV não-development)
+- [ ] Apenas `NODE_ENV === 'development'` permite request sem origin
+- [ ] Testado com NODE_ENV=undefined, NODE_ENV=staging, NODE_ENV=production
 
 ---
 
@@ -2864,6 +2884,16 @@ Frontend: ajustar `fetch` para `credentials: 'include'` e não esperar tokens na
 - [ ] Frontend funciona com cookies HttpOnly
 - [ ] `localStorage` não contém tokens
 - [ ] Endpoint `/auth/me` retorna user data
+
+### Confirmação de revisão (v1.18)
+
+**Confirmado ativo** na revisão do PR `fix/auth-hardening-jwt-cookie`: `auth.controller.ts` — `login()` e `register()` retornam `accessToken` E `refreshToken` no corpo JSON além dos cookies HttpOnly. Comentário no código admite: *"para desenvolvimento/compatibilidade"*.
+
+**Priorização ao fechar:**
+1. **`refreshToken` no body** é o vetor mais perigoso — refresh tokens têm vida longa (30d). Remover primeiro.
+2. **`accessToken` no body** — vida mais curta (7d hoje; 15min pós-SER-13 PRE-STAGING). Remover junto ou em seguida.
+
+**Relação com SER-13:** enquanto SER-20 estiver aberto, parte do ganho de isolamento de secrets e audiences do SER-13 fica neutralizada na prática — tokens expostos no body JSON são acessíveis a XSS independente da proteção de cookie HttpOnly.
 
 ---
 
@@ -4031,6 +4061,72 @@ A ausência de um teste de integração para `GET /auth/me` permitiu que este bu
 
 ---
 
+## SER-30 — Refresh token não reseta cookie `userRole` (role desatualizado até relogar)
+
+**Severidade:** 🟠 Sério (CONDICIONAL — depende de impacto real; ver teste de classificação abaixo)
+**Fase:** 🔵 **[ADIAR PRE-STAGING]** — investigar e classificar antes de subir staging
+**Categoria:** Auth / RBAC
+**Status:** ⬛ **A INVESTIGAR** — severidade indeterminada; requer teste antes de classificar definitivamente
+**Identificado em:** Revisão de código do PR `fix/auth-hardening-jwt-cookie` (v1.18)
+**Pré-existente:** sim — não relacionado a nenhuma mudança da Sessão 1
+
+### Arquivo afetado
+- `apps/api/src/controllers/auth.controller.ts` — função `refresh()`
+
+### Problema
+
+`login()` chama `setUserRoleCookie(res, role)` após autenticar o usuário. `refresh()` gera novos tokens (`accessToken`, `refreshToken`) e os seta em cookies, mas **não** chama `setUserRoleCookie` — o cookie `userRole` permanece com o valor do último login, mesmo que o role do usuário tenha mudado no banco.
+
+**Cenário concreto:** um usuário com role USER é promovido para ADMIN. Antes de relogar, ele renova o token via refresh. O cookie `userRole` continua com `USER`. O novo `accessToken` carrega o role correto (o auth middleware busca sempre do DB), mas o cookie `userRole` fica desatualizado.
+
+### Classificação de impacto — a investigar
+
+**Cenário A (sério — SER confirma):** o middleware do Next.js usa `userRole` cookie para **decisão de acesso** a rotas admin (`/admin/*`). Um admin rebaixado a USER manteria acesso visual às páginas admin até que o cookie expire ou relogar. Pior: um USER promovido a ADMIN não conseguiria acessar admin sem relogar.
+
+**Cenário B (cosmético — rebaixar para MED):** o backend valida role server-side em cada request via RBAC (auth middleware busca role do DB a cada chamada). O cookie `userRole` é usado apenas para **UI condicional** (mostrar/ocultar menus, redirecionar no cliente). O acesso real é sempre controlado pelo backend.
+
+**Hipótese inicial:** provavelmente Cenário B — o auth middleware em `auth.middleware.ts` busca o role atualizado do DB em cada request, não confia no JWT. Mas requer confirmação antes de classificar.
+
+### Teste para classificar
+
+```bash
+# 1. Fazer login como USER
+# 2. Verificar cookie userRole = 'USER'
+# 3. Promover para ADMIN via painel admin
+# 4. Forçar refresh de token (POST /auth/refresh) SEM relogar
+# 5. Verificar que cookie userRole ainda = 'USER'
+# 6. Tentar acessar /admin/users no frontend
+# 7. Observar:
+#    - Se Next.js middleware redireciona → Cenário A (sério)
+#    - Se a página carrega (backend aceita) → Cenário B (cosmético)
+```
+
+### Correção (quando classificado como Cenário A)
+
+```typescript
+// apps/api/src/controllers/auth.controller.ts — dentro de refresh()
+// Após gerar os novos tokens e antes de retornar:
+const updatedUser = await prisma.user.findUnique({
+  where: { id: decoded.userId },
+  select: {
+    role: { select: { slug: true } },
+    legacyRole: true,
+  },
+});
+const roleToUse = updatedUser?.role?.slug?.toUpperCase() || updatedUser?.legacyRole;
+if (roleToUse) setUserRoleCookie(res, roleToUse);
+```
+
+Se Cenário B: marcar como MED, corrigir por higiene antes de go-live (mesmo que cosmético, UI incorreta confunde usuário).
+
+### Critério de aceitação
+- [ ] Teste de classificação executado (fluxo: login → change role → refresh → testar acesso sem relogar)
+- [ ] Severidade confirmada (Cenário A ou B)
+- [ ] Se Cenário A: `refresh()` inclui `setUserRoleCookie` com role atual do DB; teste de regressão criado
+- [ ] Se Cenário B: finding rebaixado para MED com nota explicativa
+
+---
+
 ## TECH-DEBT — Erros TypeScript pré-existentes catalogados (Sprint 1)
 
 Durante o fechamento da Sprint 1, `npx tsc --noEmit` reporta **25 erros pré-existentes**, todos comprovadamente anteriores às mudanças de CRIT-01/03/03b/04. Catalogados aqui para serem absorvidos por sprints futuras.
@@ -4070,8 +4166,8 @@ Distintas dos erros de TS acima — estas são suites que **compilam** mas falha
 | ID | Suite | Detalhe | Causa-raiz | Sprint destino |
 |----|-------|---------|------------|----------------|
 | TD-T26 | `services/__tests__/notification.service.test.ts` | **5 testes falham** em 2 grupos: `createNotification › deve criar uma notificação com sucesso`, `createNotification › deve usar prioridade NORMAL como padrão`, `createNotification › deve lançar erro ao falhar ao criar notificação`, `getUserNotifications › deve buscar notificações do usuário com filtros`, `getUserNotifications › deve usar valores padrão quando filtros não fornecidos`. Mensagem comum: `TypeError: Cannot read properties of undefined (reading 'findUnique')`. | `src/__tests__/setup.ts` mocka apenas `prisma.notification.*` (create, findUnique, findMany, count, update, updateMany, delete, deleteMany). O `NotificationService` evoluiu e passou a tocar outros models (provavelmente `user`, `userNotificationPreference` ou similar) que não estão no mock global — chamada retorna `undefined.findUnique`. Solução: ampliar `setup.ts` ou mockar localmente no `describe`. | Sprint 3 (test-infra hygiene) |
-| TD-T27 | `socket/__tests__/notification.socket.test.ts` | Suite inteira não roda (`Test suite failed to run`). 0 testes executados. | **Causa raiz corrigida (Sessão 1):** erro #25 da tabela TS (`TS2345`) era secundário — o erro real em runtime é `TypeError: io.of is not a function` no `beforeAll`. O teste faz `new NotificationSocketServer(httpServer)` passando um `http.Server` Node.js onde o construtor espera `SocketIOServer` (que tem `.of()`). A Sessão 1 migrou o arquivo para usar `signSocketTicket` no lugar de `jwt.sign(JWT_SECRET)`, mas o bug estrutural do `beforeAll` permanece. Solução: criar `SocketIOServer` real no `beforeAll` e passá-lo a `NotificationSocketServer`. | Sprint 3 |
-| TD-T28 | `controllers/__tests__/auth.me.spec.ts` (a criar) | `GET /auth/me` retorna 500 (BigInt serialization) — detectado apenas na validação manual da Sessão 1. Nenhum teste automatizado cobre este endpoint. | A ausência de testes de integração para `/auth/me` permitiu que o bug do BigInt (SER-29, introduzido com CRIT-02 e CRIT-07) passasse despercebido. Criar teste de integração que: (1) faz login, (2) chama `GET /auth/me` com o cookie, (3) espera 200 com campo `email` correto. Este teste também serviria de rede de segurança para detectar regressões futuras no endpoint de perfil. | Sprint 3 (junto com SER-29) |
+| TD-T27 | `socket/__tests__/notification.socket.test.ts` | Suite inteira não roda (`Test suite failed to run`). 0 testes executados. | **Dois problemas estruturais identificados na revisão v1.18:** **(a) Construtor errado:** o `beforeAll` faz `new NotificationSocketServer(httpServer)` passando `http.Server` Node.js, mas o construtor espera `SocketIOServer` (instância socket.io que expõe `.of()`). Causa `TypeError: io.of is not a function` que derruba a suite inteira antes de qualquer teste rodar. **(b) Namespace errado:** mesmo corrigindo (a) e instanciando um `SocketIOServer` real, o cliente de teste conecta em `/socket.io/` (namespace raiz padrão do socket.io-client), mas a produção registra os handlers em `io.of('/notifications')`. O teste passaria o `beforeAll`, mas testaria uma arquitetura inexistente — conectaria ao namespace errado e eventos nunca chegariam. **Solução completa:** (1) criar `SocketIOServer` real no `beforeAll` + httpServer de teste Node.js; (2) passar a instância SocketIOServer ao construtor; (3) cliente conectar explicitamente ao namespace `/notifications` (`io('http://localhost:PORT/notifications', ...)`). A Sessão 1 migrou o arquivo para `signSocketTicket`/`verifySocketTicket`, mas os bugs estruturais permanecem. **Esforço maior que o estimado originalmente (~30min):** os testes atuais de socket, mesmo se "passassem" após corrigir apenas (a), testariam arquitetura inexistente — a validação manual da Fase 4 é hoje a única cobertura real de socket. | Sprint 3 |
+| TD-T28 | `controllers/__tests__/auth.me.spec.ts` (a criar) | `GET /auth/me` retorna 500 (BigInt serialization) — detectado apenas na validação manual da Sessão 1. Nenhum teste automatizado cobre este endpoint. | A ausência de testes de integração para `/auth/me` permitiu que o bug do BigInt (SER-29, introduzido com CRIT-02 e CRIT-07) passasse despercebido. Criar teste de integração que: (1) faz login, (2) chama `GET /auth/me` com o cookie, (3) espera 200 com campo `email` correto. **Notas adicionais identificadas na revisão v1.18:** **(a) Fragilidade de setup.ts:** `src/__tests__/setup.ts` define `JWT_ACCESS_SECRET`/`JWT_REFRESH_SECRET` no top-level antes dos `jest.mock()`. Funciona hoje porque `setup.ts` roda antes dos testes importarem `jwt.ts`, mas é a mesma classe de risco que o bug de ordem do dotenv. Ao criar testes de auth, garantir que os secrets estejam definidos antes de qualquer import que valide env no top-level. **(b) alg:none não coberto:** `jwt.spec.ts` teste 9 cobre que HS512 ≠ HS256, mas nenhum teste cobre o vetor clássico de alg:none (alg confusion). O código bloqueia corretamente (`algorithms: ['HS256']` em todos os `verify`), mas falta teste explícito provando. Adicionar caso ao expandir cobertura de auth. **(c) Expiração não coberta:** nenhum teste exercita a rejeição de token expirado. Socket ticket tem TTL 60s — candidato natural para teste de expiração com clock fake (`jest.useFakeTimers`). **(d) Dependência de secret bloqueado:** ao criar novos testes de auth, notar que `src/__tests__/setup.ts` precisou trocar `'test-secret'` por `'a1'.repeat(32)` (64 chars) porque `'test-'` é prefixo bloqueado pelo `assertNotUnsafe` de `jwt.ts`. Documentar este contrato nos comentários do setup. | Sprint 3 (junto com SER-29) |
 
 **Notas operacionais:**
 - Nenhum dos 25 erros de TS bloqueia execução em runtime de produção (TypeScript não roda no banco). São travas estáticas que precisam ser endereçadas antes do "go live".
@@ -4097,6 +4193,9 @@ Problemas que não causam falha em produção, mas atrapalham desenvolvimento ou
 | **TECH-DEBT-DEV08** | `seed.ts` contém ~50 linhas de código morto: array `platformWallets` + loop de criação comentado. **Arquivo:** `apps/api/prisma/seed.ts` (linhas ~139–200). O bloco define 5 entradas de `platformWallets` com `derivationPath` de exemplo que divergem dos paths reais gerados pelo código (`m/84'/0'/0'/0/0` para BTC, mas o código usa `m/44'/0'/0'/0'/0'`). Se descomentado sem revisão, os endereços gerados não corresponderiam aos registros no banco. **Risco:** código morto com paths incorretos pode enganar um dev futuro que descomente o loop sem perceber a divergência. **Contexto:** o bloco foi comentado intencionalmente para forçar criação via painel admin HD Wallet (comentário `// COMENTADO: Usar painel admin`). A intenção é boa; o risco é o código divergente ficar acumulando. | 🔵 **[ADIAR PRE-STAGING]** | Remover o bloco completamente (criação de platform wallets é via painel admin — código morto não agrega). Se quiser preservar documentação do formato esperado, substituir por um comentário conciso explicando o processo, sem código divergente. **Identificado em:** revisão final CRIT-02, Sprint 2 sessão 6. | 15min |
 | **TECH-DEBT-DEV09** | `dispute.service.ts` cria `buyerWallet` FORA da `$transaction` de transferência — estado inconsistente em crash. **Arquivo:** `apps/api/src/services/dispute.service.ts` — função `resolveDispute`, casos `RELEASE_TO_BUYER`/`PENALTY_SELLER`, bloco de lazy-init de `buyerWallet`. O `prisma.userWallet.create` da `buyerWallet` executa ANTES e FORA do `prisma.$transaction` que faz a transferência. Se o processo morrer (crash, OOM, SIGKILL) entre o create da wallet e o início da transação, fica uma `UserWallet` órfã criada sem transferência associada. **Não há perda de fundos** (a transferência simplesmente não ocorreu), mas o estado do banco é inconsistente — wallet existe, saldo zero, sem correspondência com nenhum evento de transferência. **Inconsistência de padrão:** `transaction.service.ts:validateProof` faz lazy-init de `buyerWallet` DENTRO da `$transaction` callback (`tx.userWallet.create`), que é o padrão correto. `dispute.service.ts` diverge desse padrão sem justificativa. **Pré-existente ao CRIT-02; não é regressão.** | 🔵 **[ADIAR PRE-STAGING]** | Mover a busca de `hdAccountIndex` + derivação + `create` da `buyerWallet` para dentro do callback `$transaction`, espelhando o padrão de `transaction.service.ts:validateProof`. Isso garante atomicidade: wallet só existe se a transferência foi persistida com sucesso. **Identificado em:** revisão de callers CRIT-02, Sprint 2 sessão 6. | 1-2h |
 | **TECH-DEBT-DEV10** | `WalletService.createWallet` sem `$transaction` — race condition teórica com mensagem de erro não amigável. **Arquivo:** `apps/api/src/services/wallet.service.ts` — função `createWallet`. A função executa `findUnique(existing)` → `findUnique(user)` → `derive` → `create` em sequência sem envolver as etapas num `$transaction`. Dois `createWallet` simultâneos para o mesmo `userId+cryptoType+network` podem ambos passar no check de duplicata (ambos veem `null`) e ambos tentar `create`. **Mitigação atual suficiente:** a constraint `@@unique([userId, cryptoType, network])` no schema garante que o segundo `create` falha com `P2002` (unique violation) — sem duplicata criada, sem risco de fundos (ambos os requests teriam derivado o mesmo endereço via mesmo `hdAccountIndex`). O único efeito observável é que o segundo request recebe um erro de constraint não tratado em vez de `"Wallet already exists"`. **Severidade muito baixa** em produção real (janela de corrida de poucos microssegundos, endpoint não é hot path). **Pré-existente ao CRIT-02; não é regressão.** | 🔵 **[ADIAR PRE-STAGING]** | Opção A (mínima): adicionar `catch` específico do `P2002` em `createWallet` e relançar como `"Wallet already exists"` — melhora UX sem custo de transação. Opção B (completa): envolver em `$transaction` ou usar `upsert` defensivo. **Identificado em:** revisão de callers CRIT-02, Sprint 2 sessão 6. | 30min–2h |
+| **TD-ENV01** | Scripts utilitários com `dotenv.config()` próprio — risco latente de regressão de ordem de carregamento. **Arquivos:** `src/scripts/initial-sweep-all.ts`, `src/scripts/migrate-platform-wallet-encryption.ts`. Ambos chamam `dotenv.config()` dentro do próprio corpo em vez de usar `import './config/env'` como primeira linha (padrão estabelecido no `index.ts` pelo fix SER-13, commit `d5f71f8`). **Não há bug ativo** (confirmado na revisão): nenhum dos dois importa `jwt.ts` — o único módulo que valida `process.env` no top-level. `KeyManagementService` importado pelo `migrate-platform` valida `WALLET_ENCRYPTION_KEY` dentro de `initialize()` (no momento de uso), não no import. **Risco latente:** se qualquer um dos scripts passar a importar `jwt.ts` ou outro módulo com validação de env no top-level, o bug de ordem reaparece silenciosamente — `dotenv.config()` rodaria depois da validação. **Identificado em:** revisão de código do PR `fix/auth-hardening-jwt-cookie` (v1.18). | 🔵 **[ADIAR PRE-STAGING]** | Padronizar todos os entry points (incluindo scripts) para usar `import './config/env'` como primeira linha. Alternativa: converter para `require('../config/env')` no topo se os scripts usam CommonJS. **Relacionado a:** TECH-DEBT-DEV12 (uniformizar bootstrap de env em todo o projeto). | 15min |
+| **TECH-DEBT-DEV11** | Fallback de cookie `accessToken` em sockets é código morto após migração para `verifySocketTicket`. **Arquivos:** `src/socket/chat.socket.ts`, `src/socket/notification.socket.ts`. Após a introdução de `verifySocketTicket` (audience `mktplace:socket`) na Sessão 1, o fallback que lê o cookie `accessToken` (audience `mktplace.liberdade.users`) nunca passa a verificação — `verifySocketTicket` rejeita com audience errada. O fluxo principal (conexão via `auth.token` com socket ticket de 60s) funciona corretamente — provado na Fase 4 (v1.17). O fallback era funcional ANTES da Sessão 1, quando sockets usavam `JWT_SECRET` sem validação de audience. **Nenhum caminho de auth está quebrado.** Decisão pendente: (a) remover o fallback → exige socket ticket sempre; ou (b) ajustar para verificar access token com `verifyToken` (audience HTTP) como alternativa legítima ao ticket. **Severidade baixa** — código sem efeito, sem impacto em runtime. **Identificado em:** revisão de código do PR `fix/auth-hardening-jwt-cookie` (v1.18). | 🔵 **[ADIAR PRE-STAGING]** | Decidir intenção: opção (a) remover fallback de cookie — simplifica, exige socket ticket sempre (recomendado para segurança); opção (b) adicionar `verifyToken` para o fallback com audience HTTP — mantém duplo caminho de conexão. Implementar após decisão de produto. **Relacionado a:** SER-13 (isolamento de audience). | 30min–1h |
+| **TECH-DEBT-DEV12** | Validação de env na inicialização está espalhada e inconsistente — dificulta diagnóstico de ambientes mal-configurados. **Arquivos:** `src/utils/jwt.ts` (throw no top-level — exibe stack trace cru do Node), `src/index.ts` (try/catch + `logger.error` + `process.exit(1)` para HD Wallet; `throw new Error(...)` direto para COOKIE_SECRET). Todos os guards impedem a API de subir mal-configurada (objetivo correto), mas o tratamento difere: mensagem de erro, stack trace exposto, e mecanismo de saída variam por módulo. Um operador que configura mal uma variável pode ver a mensagem de erro de um módulo mas não entender que outra variável está também ausente. **Não afeta comportamento em runtime quando configurado corretamente.** Observação arquitetural relacionada: `index.ts` concentra responsabilidade demais (~30 rotas + workers + bootstrap de serviços num único arquivo). **Identificado em:** revisão de código do PR `fix/auth-hardening-jwt-cookie` (v1.18). | 🔵 **[ADIAR PRE-STAGING]** | Centralizar guards de env em `config/env.ts`: validar todas as variáveis obrigatórias (JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, COOKIE_SECRET, WALLET_ENCRYPTION_KEY, etc.) num único local, com saída uniforme (`logger.error` + `process.exit(1)`). Mover `throw new Error(...)` do top-level de `jwt.ts` para dentro de função `validateEnv()` chamada de `env.ts`. Todos os entry points importam apenas `config/env` — um ponto de falha, uma mensagem padronizada. **Relacionado a:** TD-ENV01. | 1–2h |
 
 ### Pendências operacionais (não-código)
 
@@ -4113,6 +4212,6 @@ Distintas dos erros de TS e falhas de teste acima — estas são ações que pre
 
 **Fim do documento.**
 
-Última edição: 26/05/2026 (v1.17 — SER-14 ✅ fechado; SER-13 🔶 parcial fechado (fatia FAZER AGORA); SER-29 novo (BigInt serialization, pré-existente CRIT-02/07); TD-T27 causa raiz corrigida (io.of); TD-T28 novo (ausência de testes /auth/me); nota 5 suites skipped área financeira; validação end-to-end Sessão 1 registrada)
+Última edição: 26/05/2026 (v1.18 — Revisão de código PR fix/auth-hardening-jwt-cookie: SER-17 🟡 parcialmente mitigado (guard prod correto); SER-20 confirmado ativo + nota refreshToken vs SER-13; SER-30 novo (refresh/userRole cookie, a investigar); TD-T27 expandido (dois problemas: construtor + namespace errado); TD-T28 expandido (4 notas: setup.ts fragility, alg:none, expiração, secret bloqueado); TD-ENV01 novo (scripts dotenv risco latente); TECH-DEBT-DEV11 novo (socket fallback morto); TECH-DEBT-DEV12 novo (env fail-fast não uniforme); §1.1 PRE-STAGING atualizado para 21 itens)
 Auditor: Claude (claude.ai/web)
 Próxima revisão sugerida: após Sprint 2 ou em 30 dias, o que vier primeiro.
