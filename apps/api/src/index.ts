@@ -1,9 +1,9 @@
+import './config/env'; // SECURITY (SER-13): deve ser o primeiro import — carrega dotenv antes de jwt.ts validar process.env
 import express, { Express, Request, Response, NextFunction } from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
-import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';
 import priceRoutes from './routes/price.routes';
 import walletRoutes from './routes/wallet.routes';
@@ -71,8 +71,6 @@ async function cleanupExpiredRevokedTokens() {
     await prismaCleanup.$disconnect();
   }
 }
-
-dotenv.config();
 
 // SECURITY (SER-14): COOKIE_SECRET obrigatório e separado do JWT_SECRET.
 // Sem fallback intencional: usar o mesmo secret para cookies e JWTs permite
