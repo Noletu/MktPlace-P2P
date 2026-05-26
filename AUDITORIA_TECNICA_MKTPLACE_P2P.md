@@ -9,6 +9,7 @@
 > **Changelog v1.14:** CRIT-02 fechado (hdAccountIndex via Postgres SEQUENCE, custódia ⊥ papel, guard BIP32). TECH-DEBT-DEV06 (limite BIP32 ~2.1B) e TECH-DEBT-OP04 (sweep on-chain) catalogados.
 > **Changelog v1.15:** TECH-DEBT-DEV07 (deriveNextAddress path não-hardened incompatível com Solana) e TECH-DEBT-DEV08 (código morto em seed.ts com paths divergentes) catalogados. Nota MAXVALUE adicionada ao DEV06.
 > **Changelog v1.16:** TECH-DEBT-DEV09 (buyerWallet criada fora de `$transaction` em dispute.service.ts) e TECH-DEBT-DEV10 (WalletService.createWallet sem `$transaction` — race condition teórica) catalogados. Ambos são callers pré-existentes do CRIT-02, nenhum é regressão.
+> **Changelog v1.17:** SER-14 fechado (COOKIE_SECRET sem fallback, validação de startup). SER-13 parcial fechado (secrets separados, HS256 explícito, issuer/audience, socket ticket isolado, env.ts bootstrap — pendente TTL 15min pre-staging). SER-29 novo: serialização BigInt quebra endpoints que retornam User completo (pré-existente CRIT-02/CRIT-07, não regressão Sessão 1). TD-T27 causa raiz corrigida (io.of is not a function, não TS2345). TD-T28 novo: ausência de testes de integração de /auth/me. Validação end-to-end da Sessão 1 registrada como evidência.
 
 ---
 
@@ -97,7 +98,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | CRIT-08 | Limpar git de credenciais e dev.db | meio dia | ✅ Sprint 2 sessão 3 (git filter-repo + force-push 2026-05-16) |
 | CRIT-09 | Kill switch em simulatePaymentReceived | 15min | ✅ `c5187e6` |
 | CRIT-12 | Memzero da master seed após uso | meio dia | ✅ Sprint 2 sessão 4 (v1.10) |
-| SER-14 | COOKIE_SECRET separado do JWT_SECRET | 15min |
+| SER-14 | COOKIE_SECRET separado do JWT_SECRET | 15min | ✅ `5388350` (Sessão 1) |
 | SER-21 | Remover arquivos .bak/.old/.backup | 15min | ✅ `62c8b55` |
 | MED-32 | Adicionar updatedAt onde falta (junto com CRIT-01) | 1h |
 | MED-39 | Remover customDailyLimitStr zumbi (junto com CRIT-01) | 1h |
@@ -106,7 +107,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 
 | ID | Fazer agora | Adiar para |
 |----|-------------|------------|
-| SER-13 | Algoritmo explícito em sign/verify + secrets separados (`JWT_ACCESS_SECRET` ≠ `JWT_REFRESH_SECRET`) — ~1h | TTL curto (15min) → PRE-STAGING (depende de refresh flow do frontend) |
+| SER-13 | Algoritmo explícito em sign/verify + secrets separados (`JWT_ACCESS_SECRET` ≠ `JWT_REFRESH_SECRET`) — ~1h | 🔶 **Parcial** — fatia "FAZER AGORA" fechada (commits `8e956f4`, `e2a53c0`, `d5f71f8`). Pendente [PRE-STAGING]: TTL curto (15min). |
 | MED-31 | Substituir apenas `console.log` que vaza dado sensível (vide `auth.middleware.ts:51` que logga email) — ~1h | Refator completo para winston → PRE-STAGING |
 | MED-33 | Migrar para `Json`/`jsonb` (junto com CRIT-01) | Validação Zod robusta dos JSONs → PRE-STAGING |
 | MED-34 | FKs explícitas no schema (junto com CRIT-01) | `ON DELETE` policies finas → PRE-STAGING |
@@ -2335,7 +2336,7 @@ describe('CRIT-12: zeragem de memória da master seed', () => {
 **Severidade:** 🟠 Sério
 **Fase:** 🟡 **[FAZER AGORA — PARCIAL]** — fazer agora: secrets separados (`JWT_ACCESS_SECRET` ≠ `JWT_REFRESH_SECRET`), algoritmo explícito, audience, issuer (~1h). Adiar para 🔵 **[PRE-STAGING]**: TTL curto (15min) — atrapalha debug enquanto frontend de auth está mudando
 **Categoria:** Auth
-**Status:** ⬜ Aberto
+**Status:** 🔶 **Parcial** — fatia "FAZER AGORA" fechada na Sessão 1 (v1.17). Pendente [PRE-STAGING]: TTL curto (15min).
 **Esforço estimado:** 1 dia
 
 ### Arquivo afetado
@@ -2438,11 +2439,47 @@ Como o secret muda, todos os tokens emitidos invalidam. Soluções:
 - **Opção B:** Período de overlap (aceitar ambos secrets por 24h)
 
 ### Critério de aceitação
-- [ ] Secrets separados validados na inicialização
-- [ ] Access TTL ≤ 30min
-- [ ] Algoritmo explícito em sign/verify
-- [ ] `audience` e `issuer` validados
-- [ ] Refresh flow testado end-to-end
+- [x] Secrets separados validados na inicialização
+- [ ] Access TTL ≤ 30min ← **[PENDENTE PRE-STAGING]**
+- [x] Algoritmo explícito em sign/verify (`HS256`)
+- [x] `audience` e `issuer` validados (`mktplace.liberdade.users` para HTTP, `mktplace:socket` para WebSocket)
+- [x] Refresh flow testado end-to-end
+- [x] Socket ticket isolado por audience — access token rejeitado pelo WebSocket
+
+### Fechamento parcial — Sessão 1 (v1.17)
+
+**Data:** 26/05/2026
+**Branch:** `fix/auth-hardening-jwt-cookie`
+**Commits:** `8e956f4` (jwt.ts reescrito: dual-secret, HS256, issuer, audiences; auth.controller, chat.socket, notification.socket migrados) · `e2a53c0` (11 testes: isolamento audience, round-trip, contrato, startup guards) · `d5f71f8` (fix bootstrap: env.ts carregado antes de imports que validam process.env)
+
+#### O que foi feito
+
+- `JWT_ACCESS_SECRET` e `JWT_REFRESH_SECRET` separados — startup lança se iguais, ausentes ou < 32 chars (dev) / 64 chars (prod)
+- `algorithm: 'HS256'` explícito em todos os `sign`; `algorithms: ['HS256']` em todos os `verify`
+- `issuer: 'mktplace.liberdade'` e duas audiences:
+  - HTTP: `mktplace.liberdade.users` (access + refresh tokens)
+  - WebSocket: `mktplace:socket` (socket ticket — 60s TTL)
+- `signSocketTicket` / `verifySocketTicket` introduzidos — socket não aceita access token (audiences diferentes)
+- `auth.controller.ts`, `chat.socket.ts`, `notification.socket.ts` migrados para as novas funções
+- `JWT_SECRET` legado removido de todos os callers de produção
+- `config/env.ts` criado — `dotenv.config()` agora é o PRIMEIRO import de `index.ts`, evitando race entre carregamento de `.env` e validação top-level de `jwt.ts`
+- `.env.example` atualizado; `.env` de dev com 128-char secrets gerados
+
+#### Validação end-to-end (Fase 4)
+
+| Passo | Resultado | Detalhe |
+|-------|-----------|---------|
+| `POST /auth/login` | ✅ PASS | 200, cookies HttpOnly setados, payload: `aud=mktplace.liberdade.users`, `iss=mktplace.liberdade`, `jti` presente |
+| Auth middleware (`GET /auth/notification-preferences`) | ✅ PASS | 200 — token aceito, `verifyToken` com audience HTTP funcionando |
+| `POST /auth/refresh` | ✅ PASS | 200, novos tokens rotacionados — `JWT_REFRESH_SECRET` separado funciona end-to-end |
+| `GET /auth/socket-ticket` | ✅ PASS | Ticket com `aud=mktplace:socket` retornado |
+| WebSocket `/notifications` com socket ticket | ✅ PASS | Conexão estabelecida |
+| WebSocket `/chat` com socket ticket | ✅ PASS | Conexão estabelecida |
+| WebSocket `/notifications` com access token (negativo) | ✅ PASS | Rejeitado: `Authentication failed` — isolamento de audience funcionando em produção |
+
+#### O que falta (PRE-STAGING)
+
+- **TTL de 15min para access token** — hoje permanece em 7d. Muda assim que o frontend de auth estiver estável (evita logout abrupto durante dev).
 
 ---
 
@@ -2451,6 +2488,7 @@ Como o secret muda, todos os tokens emitidos invalidam. Soluções:
 **Severidade:** 🟠 Sério
 **Fase:** 🚨 **[FAZER AGORA]** — 15 minutos; aproveitar a mesma sessão do SER-13 parcial
 **Categoria:** Auth / Cookies
+**Status:** ✅ **Fechado** — Sessão 1, commit `5388350`
 **Esforço estimado:** 15min
 
 ### Arquivo afetado
@@ -2470,8 +2508,17 @@ app.use(cookieParser(process.env.COOKIE_SECRET));
 ```
 
 ### Critério de aceitação
-- [ ] Sem fallback para JWT
-- [ ] Validação explícita do COOKIE_SECRET na inicialização
+- [x] Sem fallback para JWT
+- [x] Validação explícita do COOKIE_SECRET na inicialização
+
+### Fechamento — Sessão 1
+
+**Commit:** `5388350`
+**Arquivo:** `apps/api/src/index.ts`
+
+- Bloco de validação adicionado antes de `cookieParser`: lança se `COOKIE_SECRET` ausente ou `< 32` chars (sem silêncio, sem fallback)
+- `cookieParser(process.env.COOKIE_SECRET)` — sem `|| process.env.JWT_SECRET`
+- `.env.example` atualizado com `COOKIE_SECRET=GERAR_SEU_COOKIE_SECRET_AQUI`
 
 ---
 
@@ -3893,6 +3940,97 @@ Antes de aceitar qualquer cripto real, **todos** os itens abaixo devem estar ver
 
 ---
 
+## SER-29 — Serialização de BigInt quebra endpoints que retornam User completo
+
+**Severidade:** 🟠 Sério
+**Fase:** 🔵 **[ADIAR PRE-STAGING]** — não é perda de dados nem furo de auth; é 500 de serialização em endpoint principal. Deve ser resolvido antes de usuários reais.
+**Categoria:** Auth / API
+**Status:** ⬜ Aberto
+**Identificado em:** Sessão 1 — Fase 4 (validação manual de `/auth/me`)
+**Relaciona-se a:** CRIT-02 (`hdAccountIndex BigInt` introduzido em `7850f25`), CRIT-07 (`twoFactorLastUsedStep BigInt?` introduzido em `b01e0fa`). **Não é regressão da Sessão 1** — git diff `2d6266e..HEAD -- apps/api/src/services/auth.service.ts` retorna vazio; `auth.controller.ts` só teve `socketTicket` tocado.
+
+### Arquivos afetados
+- `apps/api/src/services/auth.service.ts` — `getUserById` (linha ~202)
+- `apps/api/src/controllers/auth.controller.ts` — `me` (linha ~164)
+- Potencialmente outros endpoints que fazem `res.json(user)` sem `include` explícito
+
+### Problema
+
+`User.hdAccountIndex` é `BigInt @unique` (CRIT-02). `User.twoFactorLastUsedStep` é `BigInt?` (CRIT-07). Ambos foram introduzidos antes da Sessão 1 e necessários para corretude do sistema.
+
+`getUserById` usa `include: { role: ... }` — Prisma retorna **todos** os campos escalares do User, incluindo os dois BigInt. `res.json(user)` chama internamente `JSON.stringify`, que lança:
+
+```
+TypeError: Do not know how to serialize a BigInt
+```
+
+O erro é capturado pelo `catch` do `me()` handler → resposta 500 `"Erro ao buscar usuário"`. O auth em si está correto (o auth middleware aceitou o token e chamou `next()`; o 500 ocorre depois).
+
+**Evidência de diagnóstico (Sessão 1):**
+```bash
+node -e "JSON.stringify({ hdAccountIndex: BigInt(42) })"
+# TypeError: Do not know how to serialize a BigInt
+```
+
+**Por que `GET /auth/notification-preferences` funciona e `GET /auth/me` não:**
+`getNotificationPreferences` usa `select: { notificationPreferences: true }` — apenas 1 campo não-BigInt. `getUserById` usa `include: { role: ... }` — todos os scalars.
+
+### Auditoria de alcance (fazer antes de fechar)
+
+Antes de implementar qualquer correção, mapear **todos** os endpoints que podem tocar objetos User completos:
+
+```bash
+# Buscar callers de getUserById e retornos de user direto
+grep -rn "getUserById\|res\.json.*user\b" apps/api/src/ --include="*.ts"
+```
+
+Esperado: `/auth/me`, possivelmente endpoints admin que retornam dados de usuário com `include`.
+
+### Correção (decidir abordagem)
+
+**Opção A — Serializer global de BigInt no Express (defesa global):**
+```typescript
+// apps/api/src/index.ts — antes do app.use(express.json())
+// Monkey-patch JSON.stringify para converter BigInt → string
+const originalStringify = JSON.stringify;
+(JSON as any).stringify = (value: any, replacer?: any, space?: any) =>
+  originalStringify(value, (key, val) =>
+    typeof val === 'bigint' ? val.toString() : (replacer ? replacer(key, val) : val), space);
+```
+Ou via `express.response.json` override. Cobre todos os endpoints automaticamente.
+
+**Opção B — `select` explícito omitindo BigInt em `getUserById` (controle fino):**
+```typescript
+const user = await prisma.user.findUnique({
+  where: { id: userId },
+  select: {
+    id: true, email: true, name: true, legacyRole: true,
+    // hdAccountIndex: false — OMITIDO intencionalmente (BigInt, não serializable sem conversão)
+    // twoFactorLastUsedStep: false — OMITIDO (BigInt)
+    twoFactorEnabled: true, accountFrozen: true, frozenReason: true,
+    frozenAt: true, frozenUntil: true, createdAt: true, updatedAt: true,
+    role: { select: { slug: true, name: true, level: true } },
+  },
+});
+```
+
+**Opção C — DTO/sanitize de User antes de responder:**
+Criar `sanitizeUserForResponse(user: PrismaUser): SafeUser` que converte BigInt → string/number antes de serializar.
+
+**Recomendação:** Opção A como defesa global (zero risco de esquecer um endpoint) **+** Opção C para controle fino de quais campos chegam ao cliente.
+
+### Critério de aceitação
+- [ ] `GET /auth/me` retorna 200 com dados corretos (não 500)
+- [ ] `hdAccountIndex` e `twoFactorLastUsedStep` não aparecem na resposta ao cliente (são internos)
+- [ ] Auditoria de alcance realizada — todos os endpoints afetados identificados e corrigidos
+- [ ] Teste de integração: `GET /auth/me` com usuário real retorna 200 (TD-T28 resolvido)
+- [ ] Nenhuma regressão em endpoints que retornam dados de User parcial
+
+### Nota relacionada — TD-T28
+A ausência de um teste de integração para `GET /auth/me` permitiu que este bug existisse desde o CRIT-02 sem ser detectado. Fechar este finding implica também criar o teste (ver TD-T28 na seção de tech debts).
+
+---
+
 ## TECH-DEBT — Erros TypeScript pré-existentes catalogados (Sprint 1)
 
 Durante o fechamento da Sprint 1, `npx tsc --noEmit` reporta **25 erros pré-existentes**, todos comprovadamente anteriores às mudanças de CRIT-01/03/03b/04. Catalogados aqui para serem absorvidos por sprints futuras.
@@ -3932,7 +4070,8 @@ Distintas dos erros de TS acima — estas são suites que **compilam** mas falha
 | ID | Suite | Detalhe | Causa-raiz | Sprint destino |
 |----|-------|---------|------------|----------------|
 | TD-T26 | `services/__tests__/notification.service.test.ts` | **5 testes falham** em 2 grupos: `createNotification › deve criar uma notificação com sucesso`, `createNotification › deve usar prioridade NORMAL como padrão`, `createNotification › deve lançar erro ao falhar ao criar notificação`, `getUserNotifications › deve buscar notificações do usuário com filtros`, `getUserNotifications › deve usar valores padrão quando filtros não fornecidos`. Mensagem comum: `TypeError: Cannot read properties of undefined (reading 'findUnique')`. | `src/__tests__/setup.ts` mocka apenas `prisma.notification.*` (create, findUnique, findMany, count, update, updateMany, delete, deleteMany). O `NotificationService` evoluiu e passou a tocar outros models (provavelmente `user`, `userNotificationPreference` ou similar) que não estão no mock global — chamada retorna `undefined.findUnique`. Solução: ampliar `setup.ts` ou mockar localmente no `describe`. | Sprint 3 (test-infra hygiene) |
-| TD-T27 | `socket/__tests__/notification.socket.test.ts` | Suite inteira não roda (`Test suite failed to run`). 0 testes executados. | Mesma raiz do erro #25 da tabela acima — falha de compilação do TypeScript impede o Jest de carregar o arquivo. Resolver o `TS2345` reabilita os testes; pode haver falhas latentes ainda assim. | Sprint 3 (depende de #25) |
+| TD-T27 | `socket/__tests__/notification.socket.test.ts` | Suite inteira não roda (`Test suite failed to run`). 0 testes executados. | **Causa raiz corrigida (Sessão 1):** erro #25 da tabela TS (`TS2345`) era secundário — o erro real em runtime é `TypeError: io.of is not a function` no `beforeAll`. O teste faz `new NotificationSocketServer(httpServer)` passando um `http.Server` Node.js onde o construtor espera `SocketIOServer` (que tem `.of()`). A Sessão 1 migrou o arquivo para usar `signSocketTicket` no lugar de `jwt.sign(JWT_SECRET)`, mas o bug estrutural do `beforeAll` permanece. Solução: criar `SocketIOServer` real no `beforeAll` e passá-lo a `NotificationSocketServer`. | Sprint 3 |
+| TD-T28 | `controllers/__tests__/auth.me.spec.ts` (a criar) | `GET /auth/me` retorna 500 (BigInt serialization) — detectado apenas na validação manual da Sessão 1. Nenhum teste automatizado cobre este endpoint. | A ausência de testes de integração para `/auth/me` permitiu que o bug do BigInt (SER-29, introduzido com CRIT-02 e CRIT-07) passasse despercebido. Criar teste de integração que: (1) faz login, (2) chama `GET /auth/me` com o cookie, (3) espera 200 com campo `email` correto. Este teste também serviria de rede de segurança para detectar regressões futuras no endpoint de perfil. | Sprint 3 (junto com SER-29) |
 
 **Notas operacionais:**
 - Nenhum dos 25 erros de TS bloqueia execução em runtime de produção (TypeScript não roda no banco). São travas estáticas que precisam ser endereçadas antes do "go live".
@@ -3940,6 +4079,7 @@ Distintas dos erros de TS acima — estas são suites que **compilam** mas falha
 - Cluster `admin.middleware.ts + admin.service.ts:537` (erros 7-9, 11) reflete migração incompleta de `legacyRole: string` para tabela `Role` relacional. Bloqueador da Sprint 2 de identidade.
 - Cluster `exchange-rate.service.ts` (erros 14-18), `socket.test.ts` (erro 25 + TD-T27), e `notification.service.test.ts` (TD-T26) são higiene de tipos / test-infra sem impacto financeiro — Sprint 3.
 - Todas as falhas TD-T26/TD-T27 foram confirmadas pré-Sprint-1 via `git stash` da branch atual + rerun.
+- **5 suites skipped na área financeira** (identificado na Sessão 1, baseline `2d6266e`): `wallet.crit04.spec.ts`, `derivation.crit02.spec.ts`, `transaction.crit05.spec.ts`, `order.crit05.spec.ts`, `seed-pipeline.spec.ts` — todas usam `describe.skip` ou são puladas quando `DATABASE_URL` não é PostgreSQL acessível. Em CI/CD local, estas suites não executam, criando uma lacuna de coverage nas áreas de ledger e derivação HD. Ação requerida antes de PRE-STAGING: configurar um banco PostgreSQL de teste no pipeline de CI para que estas suites rodem automaticamente.
 
 ### Pendências de developer-experience (DX)
 
@@ -3973,6 +4113,6 @@ Distintas dos erros de TS e falhas de teste acima — estas são ações que pre
 
 **Fim do documento.**
 
-Última edição: 22/05/2026 (v1.16 — TECH-DEBT-DEV09: buyerWallet fora de $transaction em dispute.service.ts; TECH-DEBT-DEV10: createWallet sem $transaction race condition teórica)
+Última edição: 26/05/2026 (v1.17 — SER-14 ✅ fechado; SER-13 🔶 parcial fechado (fatia FAZER AGORA); SER-29 novo (BigInt serialization, pré-existente CRIT-02/07); TD-T27 causa raiz corrigida (io.of); TD-T28 novo (ausência de testes /auth/me); nota 5 suites skipped área financeira; validação end-to-end Sessão 1 registrada)
 Auditor: Claude (claude.ai/web)
 Próxima revisão sugerida: após Sprint 2 ou em 30 dias, o que vier primeiro.
