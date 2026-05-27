@@ -2,7 +2,9 @@
 import { PrismaClient } from '@prisma/client';
 
 // Configurar variáveis de ambiente para testes
-process.env.JWT_SECRET = 'test-secret';
+// SECURITY (SER-13): dois secrets distintos, 64 chars cada, sem prefixos bloqueados
+process.env.JWT_ACCESS_SECRET = 'a1'.repeat(32);  // 64 chars
+process.env.JWT_REFRESH_SECRET = 'b2'.repeat(32); // 64 chars, diferente do ACCESS
 process.env.NODE_ENV = 'test';
 
 // Mock do Prisma Client

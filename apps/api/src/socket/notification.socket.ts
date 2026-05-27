@@ -1,5 +1,5 @@
 import { Server as SocketIOServer, Socket, Namespace } from 'socket.io';
-import jwt from 'jsonwebtoken';
+import { verifySocketTicket } from '../utils/jwt';
 import { logger } from '../utils/logger';
 
 interface AuthenticatedSocket extends Socket {
@@ -56,11 +56,8 @@ export class NotificationSocketServer {
           throw new Error('Authentication token required');
         }
 
-        // Verificar token JWT
-        const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
-          userId: string;
-          email: string;
-        };
+        // SECURITY (SER-13): verifica audience mktplace:socket — token HTTP é rejeitado
+        const decoded = verifySocketTicket(token);
 
         socket.userId = decoded.userId;
         socket.userEmail = decoded.email;
