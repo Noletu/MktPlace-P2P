@@ -1,7 +1,7 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.15
-> **Data:** 14 de maio de 2026 (última edição: 20 de maio de 2026)
+> **Versão:** 1.19
+> **Data:** 14 de maio de 2026 (última edição: 28 de maio de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
 > **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
 >
@@ -11,6 +11,7 @@
 > **Changelog v1.16:** TECH-DEBT-DEV09 (buyerWallet criada fora de `$transaction` em dispute.service.ts) e TECH-DEBT-DEV10 (WalletService.createWallet sem `$transaction` — race condition teórica) catalogados. Ambos são callers pré-existentes do CRIT-02, nenhum é regressão.
 > **Changelog v1.17:** SER-14 fechado (COOKIE_SECRET sem fallback, validação de startup). SER-13 parcial fechado (secrets separados, HS256 explícito, issuer/audience, socket ticket isolado, env.ts bootstrap — pendente TTL 15min pre-staging). SER-29 novo: serialização BigInt quebra endpoints que retornam User completo (pré-existente CRIT-02/CRIT-07, não regressão Sessão 1). TD-T27 causa raiz corrigida (io.of is not a function, não TS2345). TD-T28 novo: ausência de testes de integração de /auth/me. Validação end-to-end da Sessão 1 registrada como evidência.
 > **Changelog v1.18:** Revisão de código do PR `fix/auth-hardening-jwt-cookie`. SER-17 atualizado: parcialmente mitigado por guard de ambiente em produção (`!== 'production'` já bloqueia req sem origin em prod). SER-20 atualizado: confirmado ativo, refreshToken no body é o vetor mais crítico, neutraliza ganhos do SER-13 enquanto aberto. SER-30 novo: refresh não reseta `userRole` cookie (severidade indeterminada — a investigar). TD-T27 expandido: dois problemas (construtor errado + namespace errado), esforço maior que estimado. TD-T28 expandido: 4 notas adicionais (setup.ts fragility, alg:none, expiração, secret dependency). TD-ENV01 novo: scripts utilitários com dotenv próprio (risco latente de regressão). TECH-DEBT-DEV11 novo: fallback cookie morto em sockets. TECH-DEBT-DEV12 novo: uniformizar fail-fast de env (opcional).
+> **Changelog v1.19:** MED-32 fechado: `updatedAt @updatedAt` adicionado a 4 models com estado mutável (`Withdrawal`, `Notification`, `ChatMessage`, `ChatArchive`); models append-only sem `updatedAt` são corretos por design. MED-39 fechado: `customDailyLimitStr` (zombie H-8) eliminado; `customDailyLimit Float?` convertido para `Decimal? @db.Decimal(20, 2)`; 8 call sites em admin.service.ts e limit.service.ts atualizados com `.toNumber()` (bugs de aritmética `Decimal - number = NaN` e serialização corrigidos). TD-SCHEMA01 novo (🔴 SÉRIA / PRE-STAGING bloqueante): Prisma gera `DROP SEQUENCE user_hd_account_seq` em toda migration que toca User — mitigação imediata (comentário no schema, edição manual da migration); solução duradoura é migrar para `GENERATED AS IDENTITY` em sessão dedicada. §1.1 PRE-STAGING atualizado para 22 itens.
 
 ---
 
@@ -101,8 +102,8 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | CRIT-12 | Memzero da master seed após uso | meio dia | ✅ Sprint 2 sessão 4 (v1.10) |
 | SER-14 | COOKIE_SECRET separado do JWT_SECRET | 15min | ✅ `5388350` (Sessão 1) |
 | SER-21 | Remover arquivos .bak/.old/.backup | 15min | ✅ `62c8b55` |
-| MED-32 | Adicionar updatedAt onde falta (junto com CRIT-01) | 1h |
-| MED-39 | Remover customDailyLimitStr zumbi (junto com CRIT-01) | 1h |
+| MED-32 | Adicionar updatedAt onde falta (junto com CRIT-01) | 1h | ✅ Sprint 3 sessão 2 (v1.19) |
+| MED-39 | Remover customDailyLimitStr zumbi (junto com CRIT-01) | 1h | ✅ Sprint 3 sessão 2 (v1.19) |
 
 #### 🟡 FAZER AGORA — PARCIAL (2)
 
@@ -113,7 +114,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | MED-33 | Migrar para `Json`/`jsonb` (junto com CRIT-01) | Validação Zod robusta dos JSONs → PRE-STAGING |
 | MED-34 | FKs explícitas no schema (junto com CRIT-01) | `ON DELETE` policies finas → PRE-STAGING |
 
-#### 🔵 ADIAR PRE-STAGING (21)
+#### 🔵 ADIAR PRE-STAGING (22)
 
 > **Trigger:** quando for subir o primeiro ambiente com Postgres real, Redis, domínio próprio e auth funcional fora do localhost.
 
@@ -143,6 +144,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | TD-ENV01 | Risco latente (nenhum bug ativo) — higiene preventiva antes de subir staging |
 | TECH-DEBT-DEV11 | Fallback sem efeito, mas decisão de remover/ajustar pertence ao ciclo de estabilização de auth |
 | TECH-DEBT-DEV12 | Melhoria de manutenibilidade; não urgente |
+| TD-SCHEMA01 | 🔴 **SÉRIA** — toda migration futura no User gera DROP SEQUENCE; revisão manual obrigatória até resolver |
 
 #### ⚪ ADIAR PRE-PROD (5)
 
@@ -3419,6 +3421,7 @@ Refator automatizado com codemod (jscodeshift). Configurar log levels:
 
 **Severidade:** 🟡 Médio
 **Fase:** 🚨 **[FAZER AGORA]** — aproveitar a mesma migration de CRIT-01 (PostgreSQL); evita migration extra depois
+**Status:** ✅ **Fechado** (Sprint 3 sessão 2 — v1.19)
 **Esforço estimado:** 1h
 
 ### Problema
@@ -3437,9 +3440,16 @@ model UserWallet {
 Auditar todos os models e adicionar onde faltar.
 
 ### Critério de aceitação
-- [ ] Todos os models têm `createdAt` + `updatedAt`
-- [ ] Migration aplicada
-- [ ] Backfill de `updatedAt` para registros existentes (usar `createdAt`)
+- [x] Models com estado mutável auditados — 4 encontrados sem `updatedAt`: `Withdrawal`, `Notification`, `ChatMessage`, `ChatArchive`
+- [x] `updatedAt DateTime @updatedAt` adicionado aos 4 models no schema.prisma
+- [x] Migration gerada (`20260528013101_schema_leftovers_med32_med39`) — aplicação pendente (ver FASE 4 do protocolo)
+- [x] Tabelas confirmadas vazias (Withdrawal: 0, Notification: 0, ChatMessage: 0, ChatArchive: 0) — NOT NULL sem DEFAULT seguro em dev
+
+### Fechamento (Sprint 3 sessão 2)
+
+Models **append-only** (`WalletTransaction`, `Fee`, `AuditLog`, `AdminAction`, `CancellationHistory`, `DisputeMessage`, `TicketMessage`, `BroadcastLog`, `PriceQuote`, `ExchangeRate`, `PlatformWalletMovement`) deliberadamente sem `updatedAt` — correto por design. Apenas models com estado mutável real receberam o campo.
+
+Nota: critério original pedia "todos os models têm `createdAt` + `updatedAt`" — escopo refinado para "models com estado mutável" pois audit logs imutáveis não devem ter `updatedAt`.
 
 ---
 
@@ -3647,31 +3657,41 @@ router.post('/proof', upload.single('comprovante'), async (req, res) => {
 
 **Severidade:** 🟡 Médio
 **Fase:** 🚨 **[FAZER AGORA]** — agrupar com CRIT-01 (migração para Postgres) e CRIT-03 (BigNumber). Resolver junto evita migration extra
+**Status:** ✅ **Fechado** (Sprint 3 sessão 2 — v1.19)
 **Esforço estimado:** 1h
 
 ### Arquivo afetado
 - `apps/api/prisma/schema.prisma:28-29`
 
-### Código atual
+### Código original (dual-write zombie do H-8)
 ```prisma
 customDailyLimit    Float?    // DEPRECATED: usar customDailyLimitStr (Float causa arredondamentos)
 customDailyLimitStr String?   // MIGRATION (H-8): substitui customDailyLimit com precisão correta
 ```
 
-### Correção
-
-Após migrar para Postgres (CRIT-01):
+### Correção aplicada
 ```prisma
-customDailyLimit Decimal? @db.Decimal(20, 2)
-// remover customDailyLimitStr
+customDailyLimit Decimal? @db.Decimal(20, 2) // Limite diário personalizado (null = usar fórmula de reputação)
 ```
 
-Migration: copiar `customDailyLimitStr` → `customDailyLimit`, depois dropar a coluna string.
-
 ### Critério de aceitação
-- [ ] `customDailyLimitStr` removido
-- [ ] Apenas `customDailyLimit Decimal?` no schema
-- [ ] Backfill testado
+- [x] `customDailyLimitStr` removido do schema.prisma
+- [x] `customDailyLimit` convertido de `Float?` para `Decimal? @db.Decimal(20, 2)`
+- [x] Migration gerada (`20260528013101_schema_leftovers_med32_med39`) com `DROP COLUMN customDailyLimitStr` + `ALTER COLUMN customDailyLimit SET DATA TYPE DECIMAL(20,2)`
+- [x] Todos os call sites atualizados com `.toNumber()` antes de aritmética/JSON (admin.service.ts ×5, limit.service.ts ×3)
+- [x] Dual-write eliminado: `admin.service.ts` não escreve mais em `customDailyLimitStr`
+- [x] `tsc --noEmit` sem regressão (25 erros pré-existentes preservados; 0 novos)
+- [x] Jest sem regressão (59 passing, 18 failing, 40 skipped — baseline mantido)
+
+### Fechamento (Sprint 3 sessão 2)
+
+**Bugs críticos corrigidos no processo:**
+- `CS-5b` / `CS-6b` (`limit.service.ts`): `Decimal - number` produz `NaN` silencioso em `Math.max(0, dailyLimit - dailyUsed)`. Corrigido via `.toNumber()` antes da aritmética.
+- `CS-1b` / `CS-2e` (`admin.service.ts`): serialização de `Decimal.toJSON()` retornava string, não number — quebrava contrato JSON da API. Corrigido via `.toNumber()` antes do retorno.
+
+**Decisão preservada:** Zod schema em `admin.controller.ts` permanece `z.number()` — o contrato HTTP aceita `number`, a conversão para `Decimal` é interna ao Prisma.
+
+**Backfill:** não necessário — `customDailyLimitStr` estava vazio em todos os registros dev (campo adicionado pelo H-8 mas nunca populado em dados reais).
 
 ---
 
@@ -4196,6 +4216,7 @@ Problemas que não causam falha em produção, mas atrapalham desenvolvimento ou
 | **TD-ENV01** | Scripts utilitários com `dotenv.config()` próprio — risco latente de regressão de ordem de carregamento. **Arquivos:** `src/scripts/initial-sweep-all.ts`, `src/scripts/migrate-platform-wallet-encryption.ts`. Ambos chamam `dotenv.config()` dentro do próprio corpo em vez de usar `import './config/env'` como primeira linha (padrão estabelecido no `index.ts` pelo fix SER-13, commit `d5f71f8`). **Não há bug ativo** (confirmado na revisão): nenhum dos dois importa `jwt.ts` — o único módulo que valida `process.env` no top-level. `KeyManagementService` importado pelo `migrate-platform` valida `WALLET_ENCRYPTION_KEY` dentro de `initialize()` (no momento de uso), não no import. **Risco latente:** se qualquer um dos scripts passar a importar `jwt.ts` ou outro módulo com validação de env no top-level, o bug de ordem reaparece silenciosamente — `dotenv.config()` rodaria depois da validação. **Identificado em:** revisão de código do PR `fix/auth-hardening-jwt-cookie` (v1.18). | 🔵 **[ADIAR PRE-STAGING]** | Padronizar todos os entry points (incluindo scripts) para usar `import './config/env'` como primeira linha. Alternativa: converter para `require('../config/env')` no topo se os scripts usam CommonJS. **Relacionado a:** TECH-DEBT-DEV12 (uniformizar bootstrap de env em todo o projeto). | 15min |
 | **TECH-DEBT-DEV11** | Fallback de cookie `accessToken` em sockets é código morto após migração para `verifySocketTicket`. **Arquivos:** `src/socket/chat.socket.ts`, `src/socket/notification.socket.ts`. Após a introdução de `verifySocketTicket` (audience `mktplace:socket`) na Sessão 1, o fallback que lê o cookie `accessToken` (audience `mktplace.liberdade.users`) nunca passa a verificação — `verifySocketTicket` rejeita com audience errada. O fluxo principal (conexão via `auth.token` com socket ticket de 60s) funciona corretamente — provado na Fase 4 (v1.17). O fallback era funcional ANTES da Sessão 1, quando sockets usavam `JWT_SECRET` sem validação de audience. **Nenhum caminho de auth está quebrado.** Decisão pendente: (a) remover o fallback → exige socket ticket sempre; ou (b) ajustar para verificar access token com `verifyToken` (audience HTTP) como alternativa legítima ao ticket. **Severidade baixa** — código sem efeito, sem impacto em runtime. **Identificado em:** revisão de código do PR `fix/auth-hardening-jwt-cookie` (v1.18). | 🔵 **[ADIAR PRE-STAGING]** | Decidir intenção: opção (a) remover fallback de cookie — simplifica, exige socket ticket sempre (recomendado para segurança); opção (b) adicionar `verifyToken` para o fallback com audience HTTP — mantém duplo caminho de conexão. Implementar após decisão de produto. **Relacionado a:** SER-13 (isolamento de audience). | 30min–1h |
 | **TECH-DEBT-DEV12** | Validação de env na inicialização está espalhada e inconsistente — dificulta diagnóstico de ambientes mal-configurados. **Arquivos:** `src/utils/jwt.ts` (throw no top-level — exibe stack trace cru do Node), `src/index.ts` (try/catch + `logger.error` + `process.exit(1)` para HD Wallet; `throw new Error(...)` direto para COOKIE_SECRET). Todos os guards impedem a API de subir mal-configurada (objetivo correto), mas o tratamento difere: mensagem de erro, stack trace exposto, e mecanismo de saída variam por módulo. Um operador que configura mal uma variável pode ver a mensagem de erro de um módulo mas não entender que outra variável está também ausente. **Não afeta comportamento em runtime quando configurado corretamente.** Observação arquitetural relacionada: `index.ts` concentra responsabilidade demais (~30 rotas + workers + bootstrap de serviços num único arquivo). **Identificado em:** revisão de código do PR `fix/auth-hardening-jwt-cookie` (v1.18). | 🔵 **[ADIAR PRE-STAGING]** | Centralizar guards de env em `config/env.ts`: validar todas as variáveis obrigatórias (JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, COOKIE_SECRET, WALLET_ENCRYPTION_KEY, etc.) num único local, com saída uniforme (`logger.error` + `process.exit(1)`). Mover `throw new Error(...)` do top-level de `jwt.ts` para dentro de função `validateEnv()` chamada de `env.ts`. Todos os entry points importam apenas `config/env` — um ponto de falha, uma mensagem padronizada. **Relacionado a:** TD-ENV01. | 1–2h |
+| **TD-SCHEMA01** | Sequence `user_hd_account_seq` criada via raw SQL — Prisma gera `DROP SEQUENCE` em toda migration que toque o model `User`. **Causa raiz:** migration `20260520000000_add_hd_account_index` usou `CREATE SEQUENCE` diretamente em SQL bruto (não via DDL do Prisma). O schema.prisma declara `@default(dbgenerated("nextval('user_hd_account_seq'::regclass)"))`. O diff engine do Prisma compara seu state interno (coluna com DEFAULT de migration anterior) com o schema atual (`dbgenerated` = externo) e interpreta: "preciso dropar o DEFAULT e, como criei essa sequence, também devo dropá-la." Não distingue sequences criadas por ele de sequences criadas externamente. **Risco:** 🔴 SÉRIA — qualquer migration futura no model `User` que NÃO remova manualmente as 3 linhas (`SET DEFAULT → DROP DEFAULT → DROP SEQUENCE`) destrói o CRIT-02 (novas contas falham com erro de DEFAULT ausente). **Mitigação atual:** comentário de aviso adicionado em `schema.prisma` acima do campo `hdAccountIndex` (Sprint 3 sessão 2). Migration `20260528013101` editada manualmente para remover as 3 linhas antes de ser aplicada. **Solução duradoura:** migrar para `GENERATED ALWAYS AS IDENTITY` (Postgres ≥ 10) + `@default(autoincrement())` no schema — o Prisma entende IDENTITY nativamente e não gera DROP SEQUENCE. **Requer sessão dedicada:** (1) preservar valor atual da sequence para evitar colisão de índices, (2) validar todos os callers do CRIT-02 com novo default, (3) plano de rollback. **Identificado em:** Sprint 3 sessão 2 — diagnóstico FASE 4 migration. **Consequência operacional:** o banco fica em estado de DRIFT PERMANENTE em relação ao schema do Prisma até esta dívida ser resolvida. Qualquer execução de `prisma migrate dev` vai oferecer gerar uma migration nova que tenta "corrigir" o drift incluindo o mesmo DROP SEQUENCE problemático. NÃO aceitar essa migration sem editar manualmente. `prisma migrate deploy` (usado em staging/produção) não é afetado — ele só aplica migrations existentes. O drift importa apenas em desenvolvimento, onde `prisma migrate dev` é usado. | 🔵 **[ADIAR PRE-STAGING]** — 🔴 **BLOQUEANTE**: não subir pra staging com este padrão; o operador que aplicar migration sem edição manual destrói o CRIT-02 sem aviso no log | Sessão dedicada: (1) ler valor atual da sequence com `SELECT last_value FROM user_hd_account_seq`; (2) alterar schema para `@default(autoincrement())`; (3) gerar migration e verificar que Postgres usa `GENERATED ALWAYS AS IDENTITY (START WITH <último+1>)`; (4) rodar em banco dev, validar que novo registro recebe índice correto e sequence antiga foi eliminada corretamente. **Relacionado a:** CRIT-02. | 2–4h |
 
 ### Pendências operacionais (não-código)
 
@@ -4212,6 +4233,6 @@ Distintas dos erros de TS e falhas de teste acima — estas são ações que pre
 
 **Fim do documento.**
 
-Última edição: 26/05/2026 (v1.18 — Revisão de código PR fix/auth-hardening-jwt-cookie: SER-17 🟡 parcialmente mitigado (guard prod correto); SER-20 confirmado ativo + nota refreshToken vs SER-13; SER-30 novo (refresh/userRole cookie, a investigar); TD-T27 expandido (dois problemas: construtor + namespace errado); TD-T28 expandido (4 notas: setup.ts fragility, alg:none, expiração, secret bloqueado); TD-ENV01 novo (scripts dotenv risco latente); TECH-DEBT-DEV11 novo (socket fallback morto); TECH-DEBT-DEV12 novo (env fail-fast não uniforme); §1.1 PRE-STAGING atualizado para 21 itens)
+Última edição: 28/05/2026 (v1.19 — Sprint 3 sessão 2: MED-32 ✅ fechado (updatedAt adicionado a 4 models mutáveis: Withdrawal, Notification, ChatMessage, ChatArchive); MED-39 ✅ fechado (customDailyLimitStr eliminado, customDailyLimit Float→Decimal(20,2), 8 call sites atualizados, bugs NaN e serialização corrigidos); TD-SCHEMA01 novo SÉRIA PRE-STAGING bloqueante (DROP SEQUENCE recorrente em migrations do User, mitigação comentário+edição manual, solução duradoura GENERATED AS IDENTITY em sessão dedicada); §1.1 PRE-STAGING atualizado para 22 itens)
 Auditor: Claude (claude.ai/web)
 Próxima revisão sugerida: após Sprint 2 ou em 30 dias, o que vier primeiro.

@@ -28,17 +28,13 @@ class LimitService {
   async getDailyLimit(userId: string): Promise<number> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { reputationScore: true, customDailyLimit: true, customDailyLimitStr: true }
+      select: { reputationScore: true, customDailyLimit: true }
     });
 
     if (!user) return 1000;
 
-    // MIGRATION (H-8): Preferir customDailyLimitStr (preciso) sobre customDailyLimit (Float)
-    if (user.customDailyLimitStr !== null && user.customDailyLimitStr !== undefined) {
-      return toBN(user.customDailyLimitStr).toNumber();
-    }
-    if (user.customDailyLimit !== null && user.customDailyLimit !== undefined) {
-      return user.customDailyLimit;
+    if (user.customDailyLimit != null) {
+      return user.customDailyLimit.toNumber();
     }
 
     return this.calculateFormulaLimit(user.reputationScore);
@@ -140,16 +136,15 @@ class LimitService {
   }> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { reputationScore: true, customDailyLimit: true, customDailyLimitStr: true }
+      select: { reputationScore: true, customDailyLimit: true }
     });
 
     const reputationScore = user?.reputationScore || 0;
-    // MIGRATION (H-8): Preferir customDailyLimitStr se disponível
-    const isCustomLimit = (user?.customDailyLimitStr != null) || (user?.customDailyLimit != null);
-    const customValue = user?.customDailyLimitStr != null
-      ? toBN(user.customDailyLimitStr).toNumber()
-      : user?.customDailyLimit ?? null;
-    const dailyLimit = isCustomLimit && customValue !== null
+    const isCustomLimit = user?.customDailyLimit != null;
+    const customValue = user?.customDailyLimit != null
+      ? user.customDailyLimit.toNumber()
+      : null;
+    const dailyLimit = isCustomLimit && customValue != null
       ? customValue
       : this.calculateFormulaLimit(reputationScore);
     const dailyUsed = await this.getDailyVolume(userId);
@@ -183,19 +178,17 @@ class LimitService {
       select: {
         reputationScore: true,
         customDailyLimit: true,
-        customDailyLimitStr: true,
         customLimitNote: true,
       }
     });
 
     const reputationScore = user?.reputationScore || 0;
     const formulaLimit = this.calculateFormulaLimit(reputationScore);
-    // MIGRATION (H-8): Preferir customDailyLimitStr se disponível
-    const isCustomLimit = (user?.customDailyLimitStr != null) || (user?.customDailyLimit != null);
-    const customValue = user?.customDailyLimitStr != null
-      ? toBN(user.customDailyLimitStr).toNumber()
-      : user?.customDailyLimit ?? null;
-    const dailyLimit = isCustomLimit && customValue !== null ? customValue : formulaLimit;
+    const isCustomLimit = user?.customDailyLimit != null;
+    const customValue = user?.customDailyLimit != null
+      ? user.customDailyLimit.toNumber()
+      : null;
+    const dailyLimit = isCustomLimit && customValue != null ? customValue : formulaLimit;
     const dailyUsed = await this.getDailyVolume(userId);
     const remaining = Math.max(0, dailyLimit - dailyUsed);
 
