@@ -24,11 +24,10 @@ model User {
   successfulTransactions Int @default(0)
 
   // Custom daily limit (admin override)
-  customDailyLimit    Float?    // DEPRECATED: usar customDailyLimitStr (Float causa arredondamentos)
-  customDailyLimitStr String?   // MIGRATION (H-8): substitui customDailyLimit com precisão correta
-  customLimitSetBy    String?   // ID do admin que definiu
-  customLimitSetAt    DateTime? // Quando foi definido
-  customLimitNote     String?   // Nota do admin (motivo)
+  customDailyLimit Decimal?  @db.Decimal(20, 2) // Limite diário personalizado (null = usar fórmula de reputação)
+  customLimitSetBy String? // ID do admin que definiu
+  customLimitSetAt DateTime? // Quando foi definido
+  customLimitNote  String? // Nota do admin (motivo)
 
   // Cancellation tracking
   totalCancellations  Int       @default(0) // Total histórico de cancelamentos
@@ -50,14 +49,23 @@ model User {
   // Account 0 reservado para carteira da plataforma; usuários começam em 1.
   // @default(dbgenerated) instrui Prisma a não incluir no UserCreateInput —
   // o valor vem do DEFAULT nextval('user_hd_account_seq') aplicado pelo Postgres.
+  //
+  // ⚠️ ATENÇÃO MIGRATIONS: a sequence user_hd_account_seq foi criada via raw SQL
+  // na migration 20260520000000_add_hd_account_index, não pelo DDL do Prisma.
+  // Toda migration que toque este model vai gerar:
+  //   ALTER COLUMN "hdAccountIndex" SET DEFAULT nextval(...),
+  //   ALTER COLUMN "hdAccountIndex" DROP DEFAULT;
+  //   DROP SEQUENCE "user_hd_account_seq";
+  // REMOVER essas 3 linhas manualmente antes de aplicar qualquer nova migration no User.
+  // Solução duradoura: migrar para GENERATED AS IDENTITY (ver TD-SCHEMA01 na AUDITORIA).
   hdAccountIndex BigInt @unique @default(dbgenerated("nextval('user_hd_account_seq'::regclass)"))
 
   // SECURITY: 2FA
-  twoFactorEnabled       Boolean @default(false)
-  twoFactorSecret        String?
-  twoFactorTempSecret    String? // Secret temporário durante setup
-  twoFactorBackupCodes   String? // JSON array de códigos hasheados
-  twoFactorLastUsedStep  BigInt? // CRIT-07: último timestep TOTP aceito (Unix epoch / 30). Anti-replay: token cujo step seja <= este valor é rejeitado.
+  twoFactorEnabled      Boolean @default(false)
+  twoFactorSecret       String?
+  twoFactorTempSecret   String? // Secret temporário durante setup
+  twoFactorBackupCodes  String? // JSON array de códigos hasheados
+  twoFactorLastUsedStep BigInt? // CRIT-07: último timestep TOTP aceito (Unix epoch / 30). Anti-replay: token cujo step seja <= este valor é rejeitado.
 
   // PASSWORD RESET
   passwordResetToken   String?
@@ -77,14 +85,14 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relações atualizadas para HD Wallet
-  userWallets           UserWallet[]
-  orders                Order[]
-  transactions          Transaction[]          @relation("payer")
-  reviews               Review[]               @relation("reviewer")
-  reviewsReceived       Review[]               @relation("reviewed")
-  refreshTokens         RefreshToken[]
-  adminActions          AdminAction[]
-  walletTransactions    WalletTransaction[]
+  userWallets        UserWallet[]
+  orders             Order[]
+  transactions       Transaction[]       @relation("payer")
+  reviews            Review[]            @relation("reviewer")
+  reviewsReceived    Review[]            @relation("reviewed")
+  refreshTokens      RefreshToken[]
+  adminActions       AdminAction[]
+  walletTransactions WalletTransaction[]
 
   // Disputas
   disputesCreated  Dispute[]        @relation("DisputeCreator")
@@ -92,9 +100,9 @@ model User {
   disputeMessages  DisputeMessage[] @relation("DisputeMessageAuthor")
 
   // Tickets de Suporte
-  ticketsCreated  SupportTicket[]  @relation("TicketCreator")
-  ticketsResolved SupportTicket[]  @relation("TicketResolver")
-  ticketMessages  TicketMessage[]  @relation("TicketMessageAuthor")
+  ticketsCreated  SupportTicket[] @relation("TicketCreator")
+  ticketsResolved SupportTicket[] @relation("TicketResolver")
+  ticketMessages  TicketMessage[] @relation("TicketMessageAuthor")
 
   // Notificações
   notifications Notification[] @relation("notifications")
@@ -154,12 +162,12 @@ model UserWallet {
 
   // Sincronização blockchain
   lastSyncedAt    DateTime? // Última vez que saldo foi sincronizado
-  lastBlockHeight Int?      // Último bloco verificado
+  lastBlockHeight Int? // Último bloco verificado
 
   // Omnibus / Sweep (Hot Wallet Architecture)
   onChainSnapshot    Decimal   @default(0) @db.Decimal(38, 18) // Último saldo on-chain conhecido (separado do ledger)
-  lastSweptAt        DateTime?                                  // Quando fundos foram varridos para hot wallet
-  sweepStatus        String    @default("NONE")                // NONE | PENDING | GAS_FUNDING | SWEEPING | COMPLETED | FAILED
+  lastSweptAt        DateTime? // Quando fundos foram varridos para hot wallet
+  sweepStatus        String    @default("NONE") // NONE | PENDING | GAS_FUNDING | SWEEPING | COMPLETED | FAILED
   pendingSweepAmount Decimal   @default(0) @db.Decimal(38, 18) // Valor aguardando sweep
 
   // Estado
@@ -218,9 +226,9 @@ model WalletTransaction {
   confirmations Int? // Número de confirmações
 
   // ADMIN CONTROLS: Operações administrativas
-  adminUserId  String? // ID do admin que executou (para operações admin)
-  adminReason  String? // Motivo da operação administrativa
-  relatedTxId  String? // Link para transação relacionada (debit/credit pair)
+  adminUserId String? // ID do admin que executou (para operações admin)
+  adminReason String? // Motivo da operação administrativa
+  relatedTxId String? // Link para transação relacionada (debit/credit pair)
 
   // Metadados
   description String? // Descrição legível
@@ -238,7 +246,7 @@ model WalletTransaction {
 
 // Saques de carteira
 model Withdrawal {
-  id       String @id @default(cuid())
+  id       String     @id @default(cuid())
   walletId String
   wallet   UserWallet @relation(fields: [walletId], references: [id])
 
@@ -254,15 +262,16 @@ model Withdrawal {
   platformFee Decimal? @db.Decimal(38, 18) // Taxa da plataforma
 
   // Admin review (para saques que requerem aprovação)
-  reviewedBy String?   // ID do admin que revisou
-  reviewNote String?   // Nota do admin
+  reviewedBy String? // ID do admin que revisou
+  reviewNote String? // Nota do admin
   reviewedAt DateTime? // Quando foi revisado
 
   // Retry tracking
-  retryCount Int    @default(0) // Quantas vezes tentou processar
+  retryCount Int     @default(0) // Quantas vezes tentou processar
   lastError  String? // Último erro de processamento
 
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   processedAt DateTime?
   completedAt DateTime?
 
@@ -302,11 +311,11 @@ model Order {
   totalFee    Decimal @db.Decimal(38, 18)
 
   // Coupon discount tracking
-  appliedCouponId        String?  // ID do cupom aplicado
-  appliedCouponCode      String?  // Código do cupom (denormalizado para histórico)
-  appliedCouponDiscount  Int?     // Percentual aplicado (snapshot)
-  originalPlatformFee    Decimal? @db.Decimal(38, 18) // Taxa original antes do desconto
-  discountAmount         Decimal? @db.Decimal(38, 18) // Valor economizado
+  appliedCouponId       String? // ID do cupom aplicado
+  appliedCouponCode     String? // Código do cupom (denormalizado para histórico)
+  appliedCouponDiscount Int? // Percentual aplicado (snapshot)
+  originalPlatformFee   Decimal? @db.Decimal(38, 18) // Taxa original antes do desconto
+  discountAmount        Decimal? @db.Decimal(38, 18) // Valor economizado
 
   // Order specific data (JSON string)
   orderData String
@@ -315,15 +324,15 @@ model Order {
   walletId               String? // ID da carteira HD usada para colateral
   wallet                 UserWallet? @relation("WalletCollateral", fields: [walletId], references: [id])
   collateralSource       String? // Fonte do colateral: HD_WALLET, EXTERNAL_DEPOSIT (legacy)
-  collateralConfirmed    Boolean  @default(false) // Se o colateral foi confirmado
-  collateralLocked       Boolean  @default(false) // Se o colateral está bloqueado
-  collateralLockedAmount Decimal? @db.Decimal(38, 18) // Valor bloqueado
+  collateralConfirmed    Boolean     @default(false) // Se o colateral foi confirmado
+  collateralLocked       Boolean     @default(false) // Se o colateral está bloqueado
+  collateralLockedAmount Decimal?    @db.Decimal(38, 18) // Valor bloqueado
   collateralUnlockedAt   DateTime? // Quando foi desbloqueado
 
   // Just-in-time deposit (híbrido)
-  awaitingDeposit       Boolean @default(false) // Se está aguardando depósito inicial
-  depositDeadline       DateTime? // Prazo para depositar
-  depositConfirmedAt    DateTime? // Quando depósito foi confirmado
+  awaitingDeposit    Boolean   @default(false) // Se está aguardando depósito inicial
+  depositDeadline    DateTime? // Prazo para depositar
+  depositConfirmedAt DateTime? // Quando depósito foi confirmado
 
   // Timeout handling
   timeoutAt      DateTime?
@@ -335,11 +344,11 @@ model Order {
 
   // Refund system
   refundStatus        String    @default("NOT_REQUIRED") // NOT_REQUIRED, PENDING_USER_CHOICE, PROCESSING, COMPLETED, FAILED
-  refundMethod        String?  // BLOCKCHAIN, INTERNAL_CREDIT
-  refundTxHash        String?  // Hash da transação de devolução
-  refundAmount        Decimal? @db.Decimal(38, 18) // Valor devolvido (após taxas)
-  refundNetworkFee    Decimal? @db.Decimal(38, 18) // Taxa de rede cobrada
-  refundProcessingFee Decimal? @db.Decimal(38, 18) // Taxa de processamento (margem)
+  refundMethod        String? // BLOCKCHAIN, INTERNAL_CREDIT
+  refundTxHash        String? // Hash da transação de devolução
+  refundAmount        Decimal?  @db.Decimal(38, 18) // Valor devolvido (após taxas)
+  refundNetworkFee    Decimal?  @db.Decimal(38, 18) // Taxa de rede cobrada
+  refundProcessingFee Decimal?  @db.Decimal(38, 18) // Taxa de processamento (margem)
   refundedAt          DateTime?
   cancelReason        String? // AUTO_EXPIRED_BOLETO, AUTO_EXPIRED_PIX, USER_CANCELLED
 
@@ -349,9 +358,9 @@ model Order {
   cryptoTransferredTo String? // userId do comprador que recebeu a cripto
 
   // Cancellation details
-  cancelledBy         String? // userId de quem cancelou
-  cancellationReason  String? // Motivo categorizado (USER_CHANGED_MIND, FOUND_BETTER_PRICE, etc)
-  cancellationNote    String? // Observação adicional do usuário
+  cancelledBy        String? // userId de quem cancelou
+  cancellationReason String? // Motivo categorizado (USER_CHANGED_MIND, FOUND_BETTER_PRICE, etc)
+  cancellationNote   String? // Observação adicional do usuário
 
   // Negotiation system
   negotiatingUserId    String? // Quem está negociando agora (reserva por 10min)
@@ -371,12 +380,12 @@ model Order {
   completedAt DateTime?
   cancelledAt DateTime?
 
-  transactions           Transaction[]
-  disputes               Dispute[]
-  reviews                Review[]
-  chat                   Chat?
-  walletTransactions     WalletTransaction[] @relation("WalletTransactionOrder")
-  cancellationHistory    CancellationHistory[]
+  transactions        Transaction[]
+  disputes            Dispute[]
+  reviews             Review[]
+  chat                Chat?
+  walletTransactions  WalletTransaction[]   @relation("WalletTransactionOrder")
+  cancellationHistory CancellationHistory[]
 
   @@index([userId])
   @@index([status])
@@ -405,9 +414,9 @@ model Transaction {
   comprovanteData String?
 
   // Validation
-  validationScore   Int?
-  validatedBy       String?
-  validatedAt       DateTime?
+  validationScore    Int?
+  validatedBy        String?
+  validatedAt        DateTime?
   validationDeadline DateTime? // Auto-rejeita se admin não validar até esta data
 
   // Dispute
@@ -501,23 +510,23 @@ model PlatformTransfer {
   platformWalletId String
   platformWallet   PlatformWallet @relation(fields: [platformWalletId], references: [id])
 
-  toAddress   String   // Endereço destino (cold wallet, etc)
-  amount      Decimal  @db.Decimal(38, 18) // Valor enviado
-  networkFee  Decimal? @db.Decimal(38, 18) // Fee de rede paga
-  txHash      String?  // Hash da transação on-chain
-  status      String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  toAddress  String // Endereço destino (cold wallet, etc)
+  amount     Decimal  @db.Decimal(38, 18) // Valor enviado
+  networkFee Decimal? @db.Decimal(38, 18) // Fee de rede paga
+  txHash     String? // Hash da transação on-chain
+  status     String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
 
   // Quem solicitou
-  requestedBy String   // Admin/Master userId
-  approvedBy  String?  // Outro admin que aprovou (se dual-approval)
-  note        String?  // Nota opcional
+  requestedBy String // Admin/Master userId
+  approvedBy  String? // Outro admin que aprovou (se dual-approval)
+  note        String? // Nota opcional
 
   // Erro/retry
-  lastError   String?
-  retryCount  Int      @default(0)
+  lastError  String?
+  retryCount Int     @default(0)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   completedAt DateTime?
 
   @@index([platformWalletId])
@@ -548,11 +557,11 @@ model PlatformWalletMovement {
   balanceAfter  Decimal @db.Decimal(38, 18)
 
   // Referências opcionais (para rastreabilidade)
-  orderId    String? // ID do order (para fees)
-  txHash     String? // Hash on-chain (para sweeps, withdrawals, transfers)
-  toAddress  String? // Endereço destino (para saídas)
+  orderId     String? // ID do order (para fees)
+  txHash      String? // Hash on-chain (para sweeps, withdrawals, transfers)
+  toAddress   String? // Endereço destino (para saídas)
   fromAddress String? // Endereço origem (para entradas)
-  userId     String? // Usuário relacionado (para sweeps, withdrawals)
+  userId      String? // Usuário relacionado (para sweeps, withdrawals)
 
   // Descrição legível
   description String
@@ -575,39 +584,39 @@ model PlatformWalletMovement {
 
 // Registra cada operação de sweep (user wallet → hot wallet)
 model SweepTransaction {
-  id                 String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Carteira de origem (usuário)
-  userWalletId       String
-  userWallet         UserWallet @relation(fields: [userWalletId], references: [id])
+  userWalletId String
+  userWallet   UserWallet @relation(fields: [userWalletId], references: [id])
 
   // Carteira destino (hot wallet da plataforma)
-  platformWalletId   String
-  platformWallet     PlatformWallet @relation(fields: [platformWalletId], references: [id])
+  platformWalletId String
+  platformWallet   PlatformWallet @relation(fields: [platformWalletId], references: [id])
 
   // Tipo de ativo
-  cryptoType         String   // BTC, USDT, USDC
-  network            String   // BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA
+  cryptoType String // BTC, USDT, USDC
+  network    String // BITCOIN, ETHEREUM, BASE, ARBITRUM, SOLANA
 
   // Valor varrido
-  amount             Decimal @db.Decimal(38, 18)
+  amount Decimal @db.Decimal(38, 18)
 
   // Gas funding (para tokens ERC-20/SPL que precisam de moeda nativa para gas)
-  gasFundingTxHash   String?
-  gasFundingAmount   Decimal? @db.Decimal(38, 18)
-  gasFundingStatus   String?  // PENDING | CONFIRMED | FAILED
+  gasFundingTxHash String?
+  gasFundingAmount Decimal? @db.Decimal(38, 18)
+  gasFundingStatus String? // PENDING | CONFIRMED | FAILED
 
   // Transação de sweep principal
-  sweepTxHash        String?  @unique
-  status             String   @default("PENDING") // PENDING | GAS_FUNDING | GAS_CONFIRMED | SWEEPING | COMPLETED | FAILED
+  sweepTxHash String? @unique
+  status      String  @default("PENDING") // PENDING | GAS_FUNDING | GAS_CONFIRMED | SWEEPING | COMPLETED | FAILED
 
   // Erro e retry
-  lastError          String?
-  retryCount         Int      @default(0)
+  lastError  String?
+  retryCount Int     @default(0)
 
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  completedAt        DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
 
   @@index([userWalletId])
   @@index([platformWalletId])
@@ -864,7 +873,7 @@ model SupportTicket {
 
   // Resolução
   resolvedBy String?
-  resolver   User?   @relation("TicketResolver", fields: [resolvedBy], references: [id])
+  resolver   User?     @relation("TicketResolver", fields: [resolvedBy], references: [id])
   resolution String?
   resolvedAt DateTime?
   closedAt   DateTime?
@@ -938,6 +947,7 @@ model Notification {
   readAt DateTime?
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
   @@index([type])
@@ -960,9 +970,9 @@ model BroadcastLog {
   message String
 
   // Configuração
-  priority        String @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
-  deliveryChannel String @default("NOTIFICATION") // NOTIFICATION, EMAIL, BOTH
-  targetMode      String @default("ALL") // ALL, SELECTED
+  priority        String  @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  deliveryChannel String  @default("NOTIFICATION") // NOTIFICATION, EMAIL, BOTH
+  targetMode      String  @default("ALL") // ALL, SELECTED
   actionUrl       String?
   actionLabel     String?
 
@@ -1029,11 +1039,11 @@ model ChatMessage {
   message String? // Mensagens antigas (sem criptografia)
 
   // Criptografia end-to-end
-  encryptedContent       String? // Criptografado para o DESTINATÁRIO (chave pública do recipient)
-  encryptedForSender     String? // Criptografado para o REMETENTE (chave pública do sender)
-  isEncrypted            Boolean @default(false) // Flag de controle
-  iv                     String? // IV para encryptedContent (destinatário)
-  ivForSender            String? // IV para encryptedForSender (remetente)
+  encryptedContent   String? // Criptografado para o DESTINATÁRIO (chave pública do recipient)
+  encryptedForSender String? // Criptografado para o REMETENTE (chave pública do sender)
+  isEncrypted        Boolean @default(false) // Flag de controle
+  iv                 String? // IV para encryptedContent (destinatário)
+  ivForSender        String? // IV para encryptedForSender (remetente)
 
   // Anexos (URLs de imagens)
   attachments    String? // JSON array de URLs (retrocompatibilidade)
@@ -1048,6 +1058,7 @@ model ChatMessage {
   type String @default("TEXT") // TEXT, IMAGE, SYSTEM
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([chatId])
   @@index([senderId])
@@ -1077,10 +1088,11 @@ model ChatArchive {
   expiresAt DateTime // archivedAt + 1 ano
 
   // Se já foi limpo
-  isDeleted Boolean @default(false)
+  isDeleted Boolean   @default(false)
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([originalChatId])
   @@index([reason])
@@ -1135,7 +1147,7 @@ model CancellationHistory {
   reputationAfter  Int? // Reputação após a penalidade
 
   // Contexto do cancelamento
-  orderStatus String  // Status do pedido no momento do cancelamento
+  orderStatus String // Status do pedido no momento do cancelamento
   orderValue  Decimal @db.Decimal(38, 18) // Valor do pedido (para análise)
 
   createdAt DateTime @default(now())
@@ -1156,8 +1168,8 @@ model Role {
   id String @id @default(cuid())
 
   // Identificação
-  name        String @unique // Ex: "Analista Financeiro", "Moderador"
-  slug        String @unique // Ex: "analista_financeiro", "moderador" (URL-friendly)
+  name        String  @unique // Ex: "Analista Financeiro", "Moderador"
+  slug        String  @unique // Ex: "analista_financeiro", "moderador" (URL-friendly)
   description String? // Descrição do que esse role faz
 
   // UI
@@ -1194,7 +1206,7 @@ model Permission {
   displayName String // Nome legível: "Visualizar Usuários", "Editar Pedidos"
 
   // Categoria para agrupar permissões na UI
-  category    String // users, orders, disputes, finance, kyc, reports, system
+  category String // users, orders, disputes, finance, kyc, reports, system
 
   // Descrição detalhada do que a permissão permite
   description String?
@@ -1219,8 +1231,8 @@ model RolePermission {
   id String @id @default(cuid())
 
   // Foreign keys
-  roleId       String
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  roleId String
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   permissionId String
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
@@ -1249,8 +1261,8 @@ model WorkerState {
   isEnabled Boolean @default(false)
 
   // Lifecycle timestamps
-  lastStartedAt  DateTime?
-  lastStoppedAt  DateTime?
+  lastStartedAt DateTime?
+  lastStoppedAt DateTime?
 
   // Standard timestamps
   createdAt DateTime @default(now())
@@ -1269,8 +1281,8 @@ model WorkerState {
 model ExchangeRate {
   id String @id @default(cuid())
 
-  rate         Decimal @db.Decimal(38, 18) // Taxa USD/BRL
-  source       String  // awesomeapi, banco_central, coingecko_brz, etc
+  rate         Decimal  @db.Decimal(38, 18) // Taxa USD/BRL
+  source       String // awesomeapi, banco_central, coingecko_brz, etc
   responseTime Int // Tempo de resposta em ms
   timestamp    DateTime @default(now())
 
@@ -1295,7 +1307,7 @@ model Coupon {
   discountPercentage Int // Percentual de desconto aplicado SOMENTE à platform fee
 
   // Limites de uso
-  maxUsesPerUser Int      // Quantas vezes cada usuário pode usar
+  maxUsesPerUser Int // Quantas vezes cada usuário pode usar
   expiresAt      DateTime? // Data de expiração (null = sem expiração)
 
   // Visibilidade
@@ -1328,15 +1340,15 @@ model UserCoupon {
   id String @id @default(cuid())
 
   // Relacionamentos
-  userId   String
-  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   couponId String
   coupon   Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
 
   // Status
   isActive  Boolean @default(false) // Se este cupom está ativo para o usuário
-  timesUsed Int     @default(0)     // Quantas vezes o usuário usou este cupom
+  timesUsed Int     @default(0) // Quantas vezes o usuário usou este cupom
 
   // Timestamps
   activatedAt   DateTime? // Quando foi ativado
@@ -1385,9 +1397,9 @@ model PendingApproval {
   // Emergency Override (Cenário A)
   overrideRequestedAt   DateTime?
   overrideExecuteAfter  DateTime? // requestedAt + 30min
-  overrideJustification String?   // mínimo 50 chars
+  overrideJustification String? // mínimo 50 chars
   overrideCancelToken   String?   @unique // crypto.randomBytes(32).toString('hex')
-  overrideCancelledBy   String?   // userId ou "EMAIL_TOKEN"
+  overrideCancelledBy   String? // userId ou "EMAIL_TOKEN"
   overrideCancelledAt   DateTime?
 
   // Delegação usada (se aprovado por delegado — Cenário B)
@@ -1431,10 +1443,10 @@ model MasterDelegation {
   expiresAt DateTime // máximo startsAt + 30 dias
 
   // Revogação
-  isRevoked   Boolean   @default(false)
-  revokedById String?
-  revokedBy   User?     @relation("DelegationRevoker", fields: [revokedById], references: [id])
-  revokedAt   DateTime?
+  isRevoked    Boolean   @default(false)
+  revokedById  String?
+  revokedBy    User?     @relation("DelegationRevoker", fields: [revokedById], references: [id])
+  revokedAt    DateTime?
   revokeReason String?
 
   // Estatísticas de uso

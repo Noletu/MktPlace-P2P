@@ -323,7 +323,6 @@ export class AdminService {
         frozenAt: true,
         frozenUntil: true,
         customDailyLimit: true,
-        customDailyLimitStr: true,
         twoFactorEnabled: true,
         // RBAC: Incluir role relation
         role: {
@@ -338,14 +337,11 @@ export class AdminService {
     // RBAC: Mapear para retornar role como string (compatibilidade frontend)
     return users.map(user => {
       const userRole = user.role?.slug?.toUpperCase() || user.legacyRole;
-      const { role: roleObject, legacyRole, customDailyLimit, customDailyLimitStr, ...rest } = user;
+      const { role: roleObject, legacyRole, customDailyLimit, ...rest } = user;
 
-      // Calcular limite real: preferir String (preciso) sobre Float (deprecado)
       const formulaLimit = 1000 + (user.reputationScore * 100);
-      const effectiveCustom = customDailyLimitStr != null
-        ? toBN(customDailyLimitStr).toNumber()
-        : customDailyLimit ?? null;
-      const dailyLimit = effectiveCustom !== null ? effectiveCustom : formulaLimit;
+      const effectiveCustom = customDailyLimit != null ? customDailyLimit.toNumber() : null;
+      const dailyLimit = effectiveCustom != null ? effectiveCustom : formulaLimit;
 
       return {
         ...rest,
@@ -566,16 +562,16 @@ export class AdminService {
   ) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { customDailyLimit: true, customDailyLimitStr: true, reputationScore: true },
+      select: { customDailyLimit: true, reputationScore: true },
     });
 
     if (!user) {
       throw new Error('Usuário não encontrado');
     }
 
-    const effectivePrevious = user.customDailyLimitStr != null
-      ? toBN(user.customDailyLimitStr).toNumber()
-      : user.customDailyLimit ?? null;
+    const effectivePrevious = user.customDailyLimit != null
+      ? user.customDailyLimit.toNumber()
+      : null;
     const previousLimit = effectivePrevious !== null
       ? effectivePrevious
       : 1000 + (user.reputationScore * 100);
@@ -583,8 +579,7 @@ export class AdminService {
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: {
-        customDailyLimit: data.customDailyLimit, // DEPRECATED: manter até remoção da coluna Float
-        customDailyLimitStr: data.customDailyLimit !== null ? String(data.customDailyLimit) : null,
+        customDailyLimit: data.customDailyLimit,
         customLimitSetBy: data.customDailyLimit !== null ? data.adminId : null,
         customLimitSetAt: data.customDailyLimit !== null ? new Date() : null,
         customLimitNote: data.customDailyLimit !== null ? data.note : null,
@@ -1351,15 +1346,15 @@ export class AdminService {
         totalTransactions: user.totalTransactions,
         successfulTransactions: user.successfulTransactions,
         dailyLimit: (() => {
-          const effective = user.customDailyLimitStr != null
-            ? toBN(user.customDailyLimitStr).toNumber()
-            : user.customDailyLimit ?? null;
-          return effective !== null ? effective : 1000 + (user.reputationScore * 100);
+          const effectiveNum = user.customDailyLimit != null
+            ? user.customDailyLimit.toNumber()
+            : null;
+          return effectiveNum != null ? effectiveNum : 1000 + (user.reputationScore * 100);
         })(),
         formulaLimit: 1000 + (user.reputationScore * 100),
-        customDailyLimit: user.customDailyLimitStr != null
-          ? toBN(user.customDailyLimitStr).toNumber()
-          : user.customDailyLimit ?? undefined,
+        customDailyLimit: user.customDailyLimit != null
+          ? user.customDailyLimit.toNumber()
+          : undefined,
         customLimitNote: user.customLimitNote ?? undefined,
         customLimitSetAt: user.customLimitSetAt ?? undefined,
         twoFactorEnabled: user.twoFactorEnabled,
