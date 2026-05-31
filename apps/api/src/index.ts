@@ -154,8 +154,12 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Permitir requisições sem origin (ex: Postman, curl)
-    if (!origin && process.env.NODE_ENV !== 'production') {
+    // Permitir requisições sem origin (ex: Postman, curl) somente quando
+    // CORS_ALLOW_NO_ORIGIN=true. Default fail-secure: em qualquer ambiente
+    // que não setar a flag explicitamente, sem origin é rejeitado —
+    // inclusive ambientes com NODE_ENV undefined (containers).
+    const allowNoOrigin = process.env.CORS_ALLOW_NO_ORIGIN === 'true';
+    if (!origin && allowNoOrigin) {
       return callback(null, true);
     }
 
@@ -163,6 +167,8 @@ app.use(cors({
       logger.warn('[SECURITY] CORS blocked unauthorized origin', {
         origin,
         allowed: ALLOWED_ORIGINS,
+        nodeEnv: process.env.NODE_ENV,
+        allowNoOriginFlag: allowNoOrigin,
       });
       return callback(new Error('Not allowed by CORS'), false);
     }
