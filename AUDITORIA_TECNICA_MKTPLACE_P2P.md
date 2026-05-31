@@ -109,6 +109,8 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 
 #### 🟡 FAZER AGORA — PARCIAL (2)
 
+> **Nota de v1.21:** o sufixo `(2)` no header desta seção possivelmente conta apenas SER-13 e MED-31 (genuinamente parciais — fatia feita, fatia adiada). Findings MED-33 e MED-34 estão/estavam listados nesta seção como "bloqueados por CRIT-01", categoria distinta da parcialidade. Convenção a ser uniformizada em sessão futura.
+
 | ID | Fazer agora | Adiar para |
 |----|-------------|------------|
 | SER-13 | Algoritmo explícito em sign/verify + secrets separados (`JWT_ACCESS_SECRET` ≠ `JWT_REFRESH_SECRET`) — ~1h | 🔶 **Parcial** — fatia "FAZER AGORA" fechada (commits `8e956f4`, `e2a53c0`, `d5f71f8`). Pendente [PRE-STAGING]: TTL curto (15min). |
