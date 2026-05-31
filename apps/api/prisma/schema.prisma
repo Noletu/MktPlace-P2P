@@ -82,15 +82,21 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Self-relations: admin operations on other users
+  customLimitSetter User?  @relation("CustomLimitSetter", fields: [customLimitSetBy], references: [id])
+  customLimitSetFor User[] @relation("CustomLimitSetter")
+  frozenByAdmin     User?  @relation("UserFreezer", fields: [frozenBy], references: [id])
+  frozenUsers       User[] @relation("UserFreezer")
+
   // Relações atualizadas para HD Wallet
   userWallets        UserWallet[]
-  orders             Order[]
+  orders             Order[]             @relation("OrderOwner")
   transactions       Transaction[]       @relation("payer")
   reviews            Review[]            @relation("reviewer")
   reviewsReceived    Review[]            @relation("reviewed")
   refreshTokens      RefreshToken[]
   adminActions       AdminAction[]
-  walletTransactions WalletTransaction[]
+  walletTransactions WalletTransaction[] @relation("WalletTransactionOwner")
 
   // Disputas
   disputesCreated  Dispute[]        @relation("DisputeCreator")
@@ -125,6 +131,23 @@ model User {
   delegationsGranted        MasterDelegation[] @relation("DelegationGrantor")
   delegationsReceived       MasterDelegation[] @relation("DelegationGrantee")
   delegationsRevoked        MasterDelegation[] @relation("DelegationRevoker")
+
+  // Inverse relations: operations performed by or involving this user
+  ordersAsNegotiatingUser    Order[]                  @relation("OrderNegotiatingUser")
+  ordersAsProvider           Order[]                  @relation("OrderProvider")
+  ordersAsCanceller          Order[]                  @relation("OrderCanceller")
+  ordersAsCryptoRecipient    Order[]                  @relation("OrderCryptoRecipient")
+  walletTransactionsAsAdmin  WalletTransaction[]      @relation("WalletTransactionAdmin")
+  withdrawalsReviewed        Withdrawal[]             @relation("WithdrawalReviewer")
+  platformTransfersRequested PlatformTransfer[]       @relation("PlatformTransferRequester")
+  platformTransfersApproved  PlatformTransfer[]       @relation("PlatformTransferApprover")
+  platformMovementsAsUser    PlatformWalletMovement[] @relation("PlatformMovementUser")
+  broadcastLogsAdmin         BroadcastLog[]           @relation("BroadcastLogAdmin")
+  transactionsValidated      Transaction[]            @relation("TransactionValidator")
+  couponsCreated             Coupon[]                 @relation("CouponCreator")
+  auditLogs                  AuditLog[]               @relation("AuditLogUser")
+  chatArchivesManaged        ChatArchive[]            @relation("ChatArchiveAdmin")
+  rolePermissionsGranted     RolePermission[]         @relation("RolePermissionGrantor")
 }
 
 // ============================================
@@ -179,10 +202,11 @@ model UserWallet {
   updatedAt DateTime @updatedAt
 
   // Relações
-  ordersAsCollateral Order[]             @relation("WalletCollateral")
-  transactions       WalletTransaction[]
-  withdrawals        Withdrawal[]
-  sweepTransactions  SweepTransaction[]
+  ordersAsCollateral     Order[]             @relation("WalletCollateral")
+  ordersAsProviderWallet Order[]             @relation("OrderProviderWallet")
+  transactions           WalletTransaction[]
+  withdrawals            Withdrawal[]
+  sweepTransactions      SweepTransaction[]
 
   @@unique([userId, cryptoType, network])
   @@index([userId])
@@ -200,7 +224,7 @@ model WalletTransaction {
   wallet   UserWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation("WalletTransactionOwner", fields: [userId], references: [id], onDelete: Cascade)
 
   // Pedido relacionado (opcional)
   orderId String?
@@ -224,9 +248,12 @@ model WalletTransaction {
   confirmations Int? // Número de confirmações
 
   // ADMIN CONTROLS: Operações administrativas
-  adminUserId String? // ID do admin que executou (para operações admin)
-  adminReason String? // Motivo da operação administrativa
-  relatedTxId String? // Link para transação relacionada (debit/credit pair)
+  adminUserId         String? // ID do admin que executou (para operações admin)
+  adminUser           User?               @relation("WalletTransactionAdmin", fields: [adminUserId], references: [id])
+  adminReason         String? // Motivo da operação administrativa
+  relatedTxId         String? // Link para transação relacionada (debit/credit pair)
+  relatedTx           WalletTransaction?  @relation("RelatedTransaction", fields: [relatedTxId], references: [id])
+  relatedTransactions WalletTransaction[] @relation("RelatedTransaction")
 
   // Metadados
   description String? // Descrição legível
@@ -261,6 +288,7 @@ model Withdrawal {
 
   // Admin review (para saques que requerem aprovação)
   reviewedBy String? // ID do admin que revisou
+  reviewer   User?     @relation("WithdrawalReviewer", fields: [reviewedBy], references: [id])
   reviewNote String? // Nota do admin
   reviewedAt DateTime? // Quando foi revisado
 
@@ -285,7 +313,7 @@ model Withdrawal {
 model Order {
   id     String @id @default(cuid())
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation("OrderOwner", fields: [userId], references: [id])
 
   // Order Type - BUY (user wants to buy crypto) or SELL (user wants to sell crypto)
   orderType String @default("SELL")
@@ -310,6 +338,7 @@ model Order {
 
   // Coupon discount tracking
   appliedCouponId       String? // ID do cupom aplicado
+  appliedCoupon         Coupon?  @relation("OrderCoupon", fields: [appliedCouponId], references: [id])
   appliedCouponCode     String? // Código do cupom (denormalizado para histórico)
   appliedCouponDiscount Int? // Percentual aplicado (snapshot)
   originalPlatformFee   Decimal? @db.Decimal(38, 18) // Taxa original antes do desconto
@@ -354,19 +383,24 @@ model Order {
   cryptoTransferred   Boolean   @default(false) // Se a cripto foi transferida para o comprador
   cryptoTransferredAt DateTime? // Quando foi transferida
   cryptoTransferredTo String? // userId do comprador que recebeu a cripto
+  cryptoRecipient     User?     @relation("OrderCryptoRecipient", fields: [cryptoTransferredTo], references: [id])
 
   // Cancellation details
   cancelledBy        String? // userId de quem cancelou
+  canceller          User?   @relation("OrderCanceller", fields: [cancelledBy], references: [id])
   cancellationReason String? // Motivo categorizado (USER_CHANGED_MIND, FOUND_BETTER_PRICE, etc)
   cancellationNote   String? // Observação adicional do usuário
 
   // Negotiation system
   negotiatingUserId    String? // Quem está negociando agora (reserva por 10min)
+  negotiatingUser      User?     @relation("OrderNegotiatingUser", fields: [negotiatingUserId], references: [id])
   negotiationStartedAt DateTime? // Quando negociação iniciou
 
   // BUY ORDER SYSTEM - Provider (liquidity provider) tracking
   providerId       String? // userId do provedor que aceitou ordem BUY
+  provider         User?       @relation("OrderProvider", fields: [providerId], references: [id])
   providerWalletId String? // walletId do provedor (para colateral em ordens BUY)
+  providerWallet   UserWallet? @relation("OrderProviderWallet", fields: [providerWalletId], references: [id])
 
   // Presence system (por pedido)
   ownerOnline         Boolean  @default(false) // Toggle manual do vendedor
@@ -382,8 +416,9 @@ model Order {
   disputes            Dispute[]
   reviews             Review[]
   chat                Chat?
-  walletTransactions  WalletTransaction[]   @relation("WalletTransactionOrder")
+  walletTransactions  WalletTransaction[]      @relation("WalletTransactionOrder")
   cancellationHistory CancellationHistory[]
+  platformMovements   PlatformWalletMovement[] @relation("PlatformMovementOrder")
 
   @@index([userId])
   @@index([status])
@@ -414,6 +449,7 @@ model Transaction {
   // Validation
   validationScore    Int?
   validatedBy        String?
+  validator          User?     @relation("TransactionValidator", fields: [validatedBy], references: [id])
   validatedAt        DateTime?
   validationDeadline DateTime? // Auto-rejeita se admin não validar até esta data
 
@@ -516,7 +552,9 @@ model PlatformTransfer {
 
   // Quem solicitou
   requestedBy String // Admin/Master userId
+  requester   User    @relation("PlatformTransferRequester", fields: [requestedBy], references: [id])
   approvedBy  String? // Outro admin que aprovou (se dual-approval)
+  approver    User?   @relation("PlatformTransferApprover", fields: [approvedBy], references: [id])
   note        String? // Nota opcional
 
   // Erro/retry
@@ -556,10 +594,12 @@ model PlatformWalletMovement {
 
   // Referências opcionais (para rastreabilidade)
   orderId     String? // ID do order (para fees)
+  order       Order?  @relation("PlatformMovementOrder", fields: [orderId], references: [id])
   txHash      String? // Hash on-chain (para sweeps, withdrawals, transfers)
   toAddress   String? // Endereço destino (para saídas)
   fromAddress String? // Endereço origem (para entradas)
   userId      String? // Usuário relacionado (para sweeps, withdrawals)
+  user        User?   @relation("PlatformMovementUser", fields: [userId], references: [id])
 
   // Descrição legível
   description String
@@ -717,6 +757,7 @@ model AuditLog {
 
   // Quem fez a ação
   userId String? // Pode ser null para ações do sistema
+  user   User?   @relation("AuditLogUser", fields: [userId], references: [id], onDelete: SetNull)
   email  String? // Email do usuário (denormalizado para histórico)
   role   String? // Role do usuário no momento da ação
   name   String? // Nome do usuário no momento da ação
@@ -960,7 +1001,8 @@ model BroadcastLog {
   id String @id @default(cuid())
 
   // Admin que enviou
-  adminId    String
+  adminId    String?
+  admin      User?   @relation("BroadcastLogAdmin", fields: [adminId], references: [id])
   adminEmail String
 
   // Conteúdo
@@ -1079,8 +1121,9 @@ model ChatArchive {
   messagesSnapshot String // JSON array de todas as mensagens no momento do arquivamento
 
   // Metadados do arquivamento
-  archivedBy String? // userId do admin que arquivou (null se automático)
-  archivedAt DateTime @default(now())
+  archivedBy      String? // userId do admin que arquivou (null se automático)
+  archivedByAdmin User?    @relation("ChatArchiveAdmin", fields: [archivedBy], references: [id], onDelete: SetNull)
+  archivedAt      DateTime @default(now())
 
   // Política de retenção (1 ano)
   expiresAt DateTime // archivedAt + 1 ano
@@ -1236,8 +1279,9 @@ model RolePermission {
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   // Metadados
-  grantedBy String? // ID do MASTER que concedeu essa permissão
-  grantedAt DateTime @default(now())
+  grantedBy     String? // ID do MASTER que concedeu essa permissão
+  grantedByUser User?    @relation("RolePermissionGrantor", fields: [grantedBy], references: [id], onDelete: SetNull)
+  grantedAt     DateTime @default(now())
 
   @@unique([roleId, permissionId]) // Um role não pode ter a mesma permissão duplicada
   @@index([roleId])
@@ -1320,11 +1364,13 @@ model Coupon {
   // Metadados
   description String? // Descrição opcional do cupom
   createdBy   String? // ID do admin que criou
+  creator     User?    @relation("CouponCreator", fields: [createdBy], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relações
-  userCoupons UserCoupon[]
+  userCoupons   UserCoupon[]
+  ordersApplied Order[]      @relation("OrderCoupon")
 
   @@index([code])
   @@index([isActive])
