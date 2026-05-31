@@ -1,6 +1,6 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.21
+> **Versão:** 1.22
 > **Data:** 14 de maio de 2026 (última edição: 31 de maio de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
 > **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
@@ -14,6 +14,7 @@
 > **Changelog v1.19:** MED-32 fechado: `updatedAt @updatedAt` adicionado a 4 models com estado mutável (`Withdrawal`, `Notification`, `ChatMessage`, `ChatArchive`); models append-only sem `updatedAt` são corretos por design. MED-39 fechado: `customDailyLimitStr` (zombie H-8) eliminado; `customDailyLimit Float?` convertido para `Decimal? @db.Decimal(20, 2)`; 8 call sites em admin.service.ts e limit.service.ts atualizados com `.toNumber()` (bugs de aritmética `Decimal - number = NaN` e serialização corrigidos). TD-SCHEMA01 novo (🔴 SÉRIA / PRE-STAGING bloqueante): Prisma gera `DROP SEQUENCE user_hd_account_seq` em toda migration que toca User — mitigação imediata (comentário no schema, edição manual da migration); solução duradoura é migrar para `GENERATED AS IDENTITY` em sessão dedicada. §1.1 PRE-STAGING atualizado para 22 itens.
 > **Changelog v1.20:** TD-SCHEMA01 resolvido (Sprint 3 sessão 3): o sintoma observado (DROP SEQUENCE recorrente em migrations futuras do User) foi eliminado pela mudança de `@default(dbgenerated("nextval(...)"))` para `@default(autoincrement())` no schema.prisma — sem migration estrutural necessária. Verificação empírica confirmou: o diff engine do Prisma normaliza ambas as representações para o mesmo conceito interno. CRIT-02 testado end-to-end: novo usuário recebeu `hdAccountIndex=33` (next correto da sequence), endereços BIP32 distintos confirmados. Rollback plan versionado em `docs/rollback-plans/td-schema01.md`. §1.1 PRE-STAGING atualizado para 21 itens.
 > **Changelog v1.21:** MED-34 fechado (Sprint 3 sessão 4): **21 `@relation` explícitos** adicionados ao schema, cobrindo todas as FKs denormalizadas (User self-relations, Order, WalletTransaction, Withdrawal, Transaction, PlatformTransfer, PlatformWalletMovement, AuditLog, BroadcastLog, ChatArchive, RolePermission, Coupon). Policies `ON DELETE` definidas caso-a-caso: **20 `SetNull`** + **1 `Restrict`** (`PlatformTransfer.requestedBy` — bloqueia deletar o sócio que solicitou uma transferência de plataforma, preservando rastreabilidade financeira; demais campos de auditoria usam `SetNull` para preservar o registro histórico mesmo se o usuário referenciado for removido). **2 renomeações** de `@relation` para desambiguar relations múltiplas User→Model (`OrderOwner` em `Order.user`, `WalletTransactionOwner` em `WalletTransaction.user`). **1 conversão NOT NULL → nullable** (`BroadcastLog.adminId String → String?`) exigida pelo `SetNull`. **Decisão YAGNI sobre indexes:** os 11 índices em colunas FK que o fluxo normal sugeriria **não** foram adicionados — custo de escrita/disco garantido vs. benefício hipotético (nenhuma query atual filtra por esses campos, verificado no código); `CREATE INDEX CONCURRENTLY` é trivial quando uma query real exigir. Migration `20260531144306_med34_explicit_fks` aplicada e verificada via `information_schema` (21 FKs, delete_rule confirmado). Re-check de integridade pré-aplicação: **0 orphans** nos 21 campos. Drift check pós-aplicação: **0** (TD-SCHEMA01 segue resolvido, FKs novas não introduziram drift). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING atualizado para 20 itens.
+> **Changelog v1.22:** SER-17 fechado (Sprint 3 sessão 5): guard `process.env.NODE_ENV !== 'production'` substituído por flag explícita `process.env.CORS_ALLOW_NO_ORIGIN === 'true'` no CORS de `index.ts`. **Default fail-secure:** qualquer ambiente que não setar a flag (inclusive `NODE_ENV` undefined em containers) rejeita requisições sem header `Origin`, fechando o risco residual. Log de rejeição enriquecido com `nodeEnv` e `allowNoOriginFlag`. `.env.example` documenta a flag (default `false`). Validação manual 5/5: `flag false` + sem origin → bloqueado; `flag true` + sem origin → permitido; flag não abre origins inválidas. Dois findings catalogados durante a sessão: **SER-31** (`socket.server.ts` usa padrão `NODE_ENV` para CORS — inconsistência arquitetural com o HTTP; severidade baixa) e **SER-32** (CORS rejeitado propaga HTTP 500 via `callback(new Error(...))` em vez de 403 — semântico, pré-existente; severidade baixa). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING: SER-17 sai (−1), SER-31 + SER-32 entram (+2) → 22 itens.
 
 ---
 
@@ -81,7 +82,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 |------|------------------|------------------------|
 | 🚨 FAZER AGORA | 14 findings | ~3-4 semanas (1-2 devs) |
 | 🟡 FAZER AGORA — PARCIAL | 2 findings | incluído acima |
-| 🔵 ADIAR PRE-STAGING | 21 findings | ~2-3 semanas |
+| 🔵 ADIAR PRE-STAGING | 22 findings | ~2-3 semanas |
 | ⚪ ADIAR PRE-PROD | 5 findings | ~1-2 semanas |
 | ⚫ ADIAR PRE-LAUNCH | 2 findings | sob demanda |
 
@@ -119,9 +120,11 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 
 > **MED-34 — ✅ Fechado (v1.21, Sprint 3 sessão 4):** 21 `@relation` explícitos (20 `SetNull` + 1 `Restrict`), 2 renomeações de relation, `BroadcastLog.adminId` → nullable. Policies `ON DELETE` (a fatia que estava adiada para PRE-STAGING) também resolvidas nesta sessão. Indexes não adicionados (YAGNI). Ver §MED-34 e Changelog v1.21.
 
-#### 🔵 ADIAR PRE-STAGING (21)
+#### 🔵 ADIAR PRE-STAGING (22)
 
 > **Trigger:** quando for subir o primeiro ambiente com Postgres real, Redis, domínio próprio e auth funcional fora do localhost.
+>
+> **Nota de v1.22:** SER-17 fechado (sai desta lista); SER-31 e SER-32 catalogados (entram). Saldo líquido 21 − 1 + 2 = **22**. Contagem cobre findings CRIT/SER/MED; os 3 itens TD-/TECH-DEBT abaixo permanecem fora da contagem por convenção.
 
 | ID | Por que adiar agora |
 |----|---------------------|
@@ -129,7 +132,6 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | CRIT-11 | Depende de CRIT-10 |
 | SER-13 (resto) | TTL curto atrapalha debug enquanto frontend de auth está mudando |
 | SER-15 | Em dev, credenciais fixas facilitam debug (desde que fora do git, vide CRIT-08) |
-| SER-17 | CORS sem origin é útil em curl/Postman durante dev (guard de prod já correto) |
 | SER-18 | Refator de Argon2id implica re-encriptar wallets → coordenar com KMS migration |
 | SER-19 | Junto com refator de chaves (SER-18) |
 | SER-20 | Frontend de auth ainda em iteração — mexer agora dá merge conflict |
@@ -142,6 +144,8 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | SER-28 | Mesma razão de SER-24 |
 | SER-29 | Não é perda de dados; 500 de serialização deve ser corrigido antes de usuários reais |
 | SER-30 | Investigar impacto real antes de classifcar e corrigir |
+| SER-31 | Inconsistência arquitetural (socket CORS via NODE_ENV); alinhar à flag em sessão dedicada |
+| SER-32 | Semântica HTTP (500 em rejeição CORS); ajuste trivial, sem urgência funcional |
 | MED-31 (resto) | Refator completo só faz sentido quando log aggregation estiver configurado |
 | MED-36 | Em dev `unsafe-inline` ajuda no debug visual |
 | MED-37 | Documentação melhor quando frontend de RBAC estabilizar |
@@ -2669,7 +2673,7 @@ router.post('/proof', upload.single('comprovante'), proofController);
 **Severidade:** 🟠 Sério
 **Fase:** 🔵 **[ADIAR PRE-STAGING]** — CORS sem origin é útil para curl/Postman durante dev; ajustar antes de subir staging
 **Categoria:** CORS
-**Status:** 🟡 **Parcialmente mitigado** — guard `!== 'production'` já bloqueia req sem origin em produção (confirmado na revisão de código do PR, v1.18). Risco residual em containers onde `NODE_ENV` não está definido.
+**Status:** ✅ **Fechado (v1.22, Sprint 3 sessão 5).** Guard `NODE_ENV !== 'production'` substituído por flag explícita `CORS_ALLOW_NO_ORIGIN === 'true'` (default fail-secure — fecha o risco residual de `NODE_ENV` undefined em containers). Ver "Resolução aplicada" abaixo.
 **Esforço estimado:** 15min
 
 ### Arquivo afetado
@@ -2681,6 +2685,25 @@ if (!origin && process.env.NODE_ENV !== 'production') {
   return callback(null, true);
 }
 ```
+
+### Resolução aplicada (v1.22, Sprint 3 sessão 5)
+
+Guard baseado em `NODE_ENV` substituído por flag de ambiente explícita (`apps/api/src/index.ts`):
+
+```typescript
+const allowNoOrigin = process.env.CORS_ALLOW_NO_ORIGIN === 'true';
+if (!origin && allowNoOrigin) {
+  return callback(null, true);
+}
+```
+
+**Por que fail-secure é superior ao guard anterior:** `NODE_ENV !== 'production'` libera requisições sem origin em *qualquer* ambiente que não seja exatamente `'production'` — incluindo containers onde `NODE_ENV` está undefined (caso comum em imagens mal configuradas). A flag explícita inverte o default: sem `CORS_ALLOW_NO_ORIGIN=true`, sem-origin é rejeitado, independente do `NODE_ENV`.
+
+Log de rejeição enriquecido com `nodeEnv` e `allowNoOriginFlag` para diagnóstico. `.env.example` documenta a flag (default `false`; dev local usa `true` para Postman/curl).
+
+**Validação manual (5/5):** `flag false` + sem origin → bloqueado; `flag false` + origin válido → 200 com ACAO; `flag false` + origin inválido → bloqueado; `flag true` + sem origin → permitido (200, sem log de bloqueio); `flag true` + origin inválido → bloqueado (flag não abre origins inválidas). Comportamento de bloqueio observado como HTTP 500 (ver SER-32) — semântica pré-existente, não regressão; resultado de segurança correto.
+
+**Findings catalogados na sessão:** SER-31 (CORS do socket ainda usa `NODE_ENV`) e SER-32 (rejeição CORS propaga 500 em vez de 403).
 
 ### Análise de mitigação parcial (v1.18)
 
@@ -4184,6 +4207,78 @@ Se Cenário B: marcar como MED, corrigir por higiene antes de go-live (mesmo que
 - [ ] Severidade confirmada (Cenário A ou B)
 - [ ] Se Cenário A: `refresh()` inclui `setUserRoleCookie` com role atual do DB; teste de regressão criado
 - [ ] Se Cenário B: finding rebaixado para MED com nota explicativa
+
+---
+
+## SER-31 — `socket.server.ts` usa padrão `NODE_ENV` para CORS
+
+**Severidade:** 🟡 Baixa (inconsistência arquitetural, não vulnerabilidade ativa)
+**Fase:** 🔵 **[ADIAR PRE-STAGING]**
+**Categoria:** CORS
+**Status:** ⬜ Aberto
+**Identificado em:** Sprint 3 sessão 5 (durante resolução do SER-17)
+**Pré-existente:** sim
+
+### Arquivo afetado
+- `apps/api/src/socket/socket.server.ts:17-26`
+
+### Problema
+
+Após o SER-17, o CORS HTTP usa flag explícita (`CORS_ALLOW_NO_ORIGIN`), mas o CORS do Socket.IO continua derivando a whitelist de `NODE_ENV`:
+
+```typescript
+cors: {
+  origin:
+    process.env.NODE_ENV === 'production'
+      ? process.env.ALLOWED_ORIGINS?.split(',')
+      : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  credentials: true,
+},
+```
+
+### Risco
+
+Inconsistência arquitetural com o HTTP CORS. **Risco prático: baixo** — o socket não tem branch "sem origin"; com `NODE_ENV` undefined ele cai no ramo não-produção (localhost-only), comportamento conservador (não abre geral). Não há bypass; apenas divergência de padrão entre as duas camadas.
+
+### Recomendação
+Alinhar o socket ao mesmo padrão de flag explícita do HTTP, em sessão dedicada (regra "uma sessão, um finding" da Sprint 3).
+
+### Critério de aceitação
+- [ ] Socket CORS usa configuração consistente com o HTTP (flag explícita ou whitelist compartilhada)
+
+---
+
+## SER-32 — CORS rejeitado propaga como 500 em vez de 403
+
+**Severidade:** 🟡 Baixa (semântica HTTP, não funcional)
+**Fase:** 🔵 **[ADIAR PRE-STAGING]**
+**Categoria:** CORS
+**Status:** ⬜ Aberto
+**Identificado em:** Sprint 3 sessão 5 (validação manual do SER-17)
+**Pré-existente:** sim — anterior ao SER-17
+
+### Arquivo afetado
+- `apps/api/src/index.ts:173` (chamada `callback(new Error('Not allowed by CORS'), false)`)
+
+### Problema
+
+Quando a origin é rejeitada (origin não autorizado, ou sem origin com a flag em `false`), a callback do `cors` é chamada com um `Error`. O pacote `cors` propaga isso via `next(err)` → error handler do Express → **HTTP 500**, em vez de um **403 Forbidden** semanticamente correto.
+
+Confirmado na validação manual do SER-17: testes A1/A3/B2 retornaram 500 com log `Unhandled error: "Not allowed by CORS"`.
+
+### Risco
+
+Semântico, não funcional. Browser e curl interpretam ambos (403/500) como "request bloqueado" — a proteção CORS funciona. Mas:
+- Logs poluídos com "Unhandled error" classificado como erro de servidor (5xx) quando é, na verdade, rejeição esperada (4xx).
+- Métricas de erro 5xx infladas por rejeições CORS legítimas.
+
+### Recomendação
+
+Trocar `callback(new Error('Not allowed by CORS'), false)` por `callback(null, false)` — o pacote `cors` trata isso como rejeição implícita (resposta segue sem os headers `Access-Control-Allow-*`), sem gerar 500. Avaliar se algum consumidor depende do 500 antes de mudar.
+
+### Critério de aceitação
+- [ ] Rejeição CORS não gera mais 5xx (ou retorna 403 explícito)
+- [ ] Logs de rejeição não aparecem como "Unhandled error"
 
 ---
 
