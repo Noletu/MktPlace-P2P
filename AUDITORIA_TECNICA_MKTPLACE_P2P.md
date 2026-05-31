@@ -1,7 +1,7 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.20
-> **Data:** 14 de maio de 2026 (última edição: 30 de maio de 2026)
+> **Versão:** 1.21
+> **Data:** 14 de maio de 2026 (última edição: 31 de maio de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
 > **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
 >
@@ -13,6 +13,7 @@
 > **Changelog v1.18:** Revisão de código do PR `fix/auth-hardening-jwt-cookie`. SER-17 atualizado: parcialmente mitigado por guard de ambiente em produção (`!== 'production'` já bloqueia req sem origin em prod). SER-20 atualizado: confirmado ativo, refreshToken no body é o vetor mais crítico, neutraliza ganhos do SER-13 enquanto aberto. SER-30 novo: refresh não reseta `userRole` cookie (severidade indeterminada — a investigar). TD-T27 expandido: dois problemas (construtor errado + namespace errado), esforço maior que estimado. TD-T28 expandido: 4 notas adicionais (setup.ts fragility, alg:none, expiração, secret dependency). TD-ENV01 novo: scripts utilitários com dotenv próprio (risco latente de regressão). TECH-DEBT-DEV11 novo: fallback cookie morto em sockets. TECH-DEBT-DEV12 novo: uniformizar fail-fast de env (opcional).
 > **Changelog v1.19:** MED-32 fechado: `updatedAt @updatedAt` adicionado a 4 models com estado mutável (`Withdrawal`, `Notification`, `ChatMessage`, `ChatArchive`); models append-only sem `updatedAt` são corretos por design. MED-39 fechado: `customDailyLimitStr` (zombie H-8) eliminado; `customDailyLimit Float?` convertido para `Decimal? @db.Decimal(20, 2)`; 8 call sites em admin.service.ts e limit.service.ts atualizados com `.toNumber()` (bugs de aritmética `Decimal - number = NaN` e serialização corrigidos). TD-SCHEMA01 novo (🔴 SÉRIA / PRE-STAGING bloqueante): Prisma gera `DROP SEQUENCE user_hd_account_seq` em toda migration que toca User — mitigação imediata (comentário no schema, edição manual da migration); solução duradoura é migrar para `GENERATED AS IDENTITY` em sessão dedicada. §1.1 PRE-STAGING atualizado para 22 itens.
 > **Changelog v1.20:** TD-SCHEMA01 resolvido (Sprint 3 sessão 3): o sintoma observado (DROP SEQUENCE recorrente em migrations futuras do User) foi eliminado pela mudança de `@default(dbgenerated("nextval(...)"))` para `@default(autoincrement())` no schema.prisma — sem migration estrutural necessária. Verificação empírica confirmou: o diff engine do Prisma normaliza ambas as representações para o mesmo conceito interno. CRIT-02 testado end-to-end: novo usuário recebeu `hdAccountIndex=33` (next correto da sequence), endereços BIP32 distintos confirmados. Rollback plan versionado em `docs/rollback-plans/td-schema01.md`. §1.1 PRE-STAGING atualizado para 21 itens.
+> **Changelog v1.21:** MED-34 fechado (Sprint 3 sessão 4): **21 `@relation` explícitos** adicionados ao schema, cobrindo todas as FKs denormalizadas (User self-relations, Order, WalletTransaction, Withdrawal, Transaction, PlatformTransfer, PlatformWalletMovement, AuditLog, BroadcastLog, ChatArchive, RolePermission, Coupon). Policies `ON DELETE` definidas caso-a-caso: **20 `SetNull`** + **1 `Restrict`** (`PlatformTransfer.requestedBy` — bloqueia deletar o sócio que solicitou uma transferência de plataforma, preservando rastreabilidade financeira; demais campos de auditoria usam `SetNull` para preservar o registro histórico mesmo se o usuário referenciado for removido). **2 renomeações** de `@relation` para desambiguar relations múltiplas User→Model (`OrderOwner` em `Order.user`, `WalletTransactionOwner` em `WalletTransaction.user`). **1 conversão NOT NULL → nullable** (`BroadcastLog.adminId String → String?`) exigida pelo `SetNull`. **Decisão YAGNI sobre indexes:** os 11 índices em colunas FK que o fluxo normal sugeriria **não** foram adicionados — custo de escrita/disco garantido vs. benefício hipotético (nenhuma query atual filtra por esses campos, verificado no código); `CREATE INDEX CONCURRENTLY` é trivial quando uma query real exigir. Migration `20260531144306_med34_explicit_fks` aplicada e verificada via `information_schema` (21 FKs, delete_rule confirmado). Re-check de integridade pré-aplicação: **0 orphans** nos 21 campos. Drift check pós-aplicação: **0** (TD-SCHEMA01 segue resolvido, FKs novas não introduziram drift). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING atualizado para 20 itens.
 
 ---
 
@@ -113,9 +114,10 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | SER-13 | Algoritmo explícito em sign/verify + secrets separados (`JWT_ACCESS_SECRET` ≠ `JWT_REFRESH_SECRET`) — ~1h | 🔶 **Parcial** — fatia "FAZER AGORA" fechada (commits `8e956f4`, `e2a53c0`, `d5f71f8`). Pendente [PRE-STAGING]: TTL curto (15min). |
 | MED-31 | Substituir apenas `console.log` que vaza dado sensível (vide `auth.middleware.ts:51` que logga email) — ~1h | Refator completo para winston → PRE-STAGING |
 | MED-33 | Migrar para `Json`/`jsonb` (junto com CRIT-01) | Validação Zod robusta dos JSONs → PRE-STAGING |
-| MED-34 | FKs explícitas no schema (junto com CRIT-01) | `ON DELETE` policies finas → PRE-STAGING |
 
-#### 🔵 ADIAR PRE-STAGING (21)
+> **MED-34 — ✅ Fechado (v1.21, Sprint 3 sessão 4):** 21 `@relation` explícitos (20 `SetNull` + 1 `Restrict`), 2 renomeações de relation, `BroadcastLog.adminId` → nullable. Policies `ON DELETE` (a fatia que estava adiada para PRE-STAGING) também resolvidas nesta sessão. Indexes não adicionados (YAGNI). Ver §MED-34 e Changelog v1.21.
+
+#### 🔵 ADIAR PRE-STAGING (20)
 
 > **Trigger:** quando for subir o primeiro ambiente com Postgres real, Redis, domínio próprio e auth funcional fora do localhost.
 
@@ -3493,6 +3495,7 @@ await prisma.order.create({
 **Severidade:** 🟡 Médio
 **Fase:** 🟡 **[FAZER AGORA — PARCIAL]** — agora (junto com CRIT-01): adicionar FKs explícitas. Adiar para 🔵 **[PRE-STAGING]**: refinar policies `ON DELETE` por relacionamento
 **Esforço estimado:** meio dia
+**Status:** ✅ **Fechado (v1.21, Sprint 3 sessão 4).** Ambas as fatias (FKs explícitas + policies `ON DELETE`) resolvidas na mesma sessão.
 
 ### Exemplos
 - `Order.cancelledBy String?` — sem FK para User
@@ -3502,17 +3505,52 @@ await prisma.order.create({
 ### Correção
 ```prisma
 model Order {
-  cancelledById String?
-  cancelledBy   User?   @relation("CancelledOrders", fields: [cancelledById], references: [id], onDelete: SetNull)
+  cancelledBy String?
+  canceller   User?   @relation("OrderCanceller", fields: [cancelledBy], references: [id], onDelete: SetNull)
 
-  providerId    String?
-  provider      User?   @relation("ProvidedOrders", fields: [providerId], references: [id], onDelete: SetNull)
+  providerId  String?
+  provider    User?   @relation("OrderProvider", fields: [providerId], references: [id], onDelete: SetNull)
 }
 ```
 
+### Resolução aplicada
+**21 `@relation` explícitos** adicionados, cobrindo todas as FKs denormalizadas em 13 models:
+
+| Model.campo | Alvo | `onDelete` |
+|---|---|---|
+| `User.customLimitSetBy` | User (self) | SetNull |
+| `User.frozenBy` | User (self) | SetNull |
+| `WalletTransaction.adminUserId` | User | SetNull |
+| `WalletTransaction.relatedTxId` | WalletTransaction (self) | SetNull |
+| `Withdrawal.reviewedBy` | User | SetNull |
+| `Order.appliedCouponId` | Coupon | SetNull |
+| `Order.cryptoTransferredTo` | User | SetNull |
+| `Order.cancelledBy` | User | SetNull |
+| `Order.negotiatingUserId` | User | SetNull |
+| `Order.providerId` | User | SetNull |
+| `Order.providerWalletId` | UserWallet | SetNull |
+| `Transaction.validatedBy` | User | SetNull |
+| `PlatformTransfer.requestedBy` | User | **Restrict** |
+| `PlatformTransfer.approvedBy` | User | SetNull |
+| `PlatformWalletMovement.orderId` | Order | SetNull |
+| `PlatformWalletMovement.userId` | User | SetNull |
+| `AuditLog.userId` | User | SetNull |
+| `BroadcastLog.adminId` | User | SetNull |
+| `ChatArchive.archivedBy` | User | SetNull |
+| `RolePermission.grantedBy` | User | SetNull |
+| `Coupon.createdBy` | User | SetNull |
+
+**Decisões registradas:**
+- **`PlatformTransfer.requestedBy` = `Restrict`** (único): bloquear a deleção de um sócio que solicitou transferência de fundos da plataforma — o registro de quem moveu dinheiro corporativo não pode perder o vínculo. Todos os demais campos (auditoria/histórico) usam `SetNull` para preservar o registro mesmo se o usuário for removido.
+- **2 renomeações** de `@relation` (`OrderOwner`, `WalletTransactionOwner`) para desambiguar as múltiplas relations User→Order e User→WalletTransaction. Renomear o nome lógico não altera a constraint física já existente — por isso são 21 FKs novas no SQL, não 23.
+- **`BroadcastLog.adminId` convertido `String → String?`** (único `DROP NOT NULL`) para viabilizar `SetNull`.
+- **Indexes NÃO adicionados (YAGNI):** os 11 índices em colunas FK que o fluxo sugeriria foram conscientemente removidos — nenhuma query atual filtra por esses campos (verificado no código); custo de escrita é garantido, benefício hipotético. `CREATE INDEX CONCURRENTLY` quando uma query real precisar.
+
+Migration `20260531144306_med34_explicit_fks` (21 `ADD CONSTRAINT` + 1 `DROP NOT NULL`) aplicada. Re-check de integridade pré-aplicação: 0 orphans. Verificação pós via `information_schema`: 21/21 FKs, 20 SET NULL + 1 RESTRICT. Drift pós: 0.
+
 ### Critério de aceitação
-- [ ] FKs explícitas
-- [ ] `ON DELETE` policy definida (`SET NULL` ou `RESTRICT` conforme caso)
+- [x] FKs explícitas
+- [x] `ON DELETE` policy definida (`SET NULL` ou `RESTRICT` conforme caso)
 
 ---
 
