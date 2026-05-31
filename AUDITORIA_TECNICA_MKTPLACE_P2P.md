@@ -81,7 +81,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 |------|------------------|------------------------|
 | 🚨 FAZER AGORA | 14 findings | ~3-4 semanas (1-2 devs) |
 | 🟡 FAZER AGORA — PARCIAL | 2 findings | incluído acima |
-| 🔵 ADIAR PRE-STAGING | 17 findings | ~2-3 semanas |
+| 🔵 ADIAR PRE-STAGING | 21 findings | ~2-3 semanas |
 | ⚪ ADIAR PRE-PROD | 5 findings | ~1-2 semanas |
 | ⚫ ADIAR PRE-LAUNCH | 2 findings | sob demanda |
 
@@ -119,7 +119,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 
 > **MED-34 — ✅ Fechado (v1.21, Sprint 3 sessão 4):** 21 `@relation` explícitos (20 `SetNull` + 1 `Restrict`), 2 renomeações de relation, `BroadcastLog.adminId` → nullable. Policies `ON DELETE` (a fatia que estava adiada para PRE-STAGING) também resolvidas nesta sessão. Indexes não adicionados (YAGNI). Ver §MED-34 e Changelog v1.21.
 
-#### 🔵 ADIAR PRE-STAGING (20)
+#### 🔵 ADIAR PRE-STAGING (21)
 
 > **Trigger:** quando for subir o primeiro ambiente com Postgres real, Redis, domínio próprio e auth funcional fora do localhost.
 
