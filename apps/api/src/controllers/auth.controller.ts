@@ -43,14 +43,23 @@ export class AuthController {
       setRefreshTokenCookie(res, result.refreshToken);
       setUserRoleCookie(res, result.user.role || 'USER'); // Lido pelo Next.js middleware
 
+      // SECURITY (SER-23/SER-34): tokens emitidos APENAS via cookies
+      // HttpOnly. Body não contém tokens — evita exposição a XSS via
+      // localStorage do frontend.
+      // SER-37: devolver user "slim" (mesmo shape do finalizeLogin/complete-login).
+      // result.user vem do register com include:{role} e contém hdAccountIndex
+      // (BigInt) — serializá-lo direto quebra o res.json ("serialize a BigInt").
+      // result.user.role já é string uppercased (slug.toUpperCase() || legacyRole).
+      const slimUser = {
+        id: result.user.id,
+        email: result.user.email,
+        name: result.user.name,
+        role: result.user.role,
+      };
+
       res.status(201).json({
         success: true,
-        data: {
-          user: result.user,
-          // Tokens enviados via cookies E no JSON (para desenvolvimento/compatibilidade)
-          accessToken: result.token,
-          refreshToken: result.refreshToken,
-        },
+        data: { user: slimUser },
         message: 'Usuário registrado com sucesso',
       });
     } catch (error: any) {
@@ -370,9 +379,37 @@ export class AuthController {
         return;
       }
 
+      // SECURITY (SER-23/SER-29): retornar user "slim". getUserById faz
+      // `...userWithoutPassword`, o que arrasta campos BigInt (hdAccountIndex,
+      // twoFactorLastUsedStep) que quebram res.json ("Do not know how to
+      // serialize a BigInt") — causa raiz do 500 que bloqueava o /auth/me — e
+      // expõe segredos (twoFactorSecret, twoFactorBackupCodes) ao frontend.
+      // Allowlist apenas com os campos que o frontend consome de /auth/me.
+      // NOTA: getUserById já achata `role` para string e calcula `level`/`has2FA`;
+      // por isso usamos user.role direto (não user.role?.slug).
+      const slimUser = {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        cpf: user.cpf,
+        phone: user.phone,
+        role: user.role,
+        level: user.level,
+        has2FA: user.has2FA,
+        twoFactorEnabled: user.twoFactorEnabled,
+        reputationScore: user.reputationScore,
+        totalTransactions: user.totalTransactions,
+        successfulTransactions: user.successfulTransactions,
+        accountFrozen: user.accountFrozen,
+        frozenReason: user.frozenReason,
+        frozenAt: user.frozenAt,
+        frozenUntil: user.frozenUntil,
+        createdAt: user.createdAt,
+      };
+
       res.status(200).json({
         success: true,
-        data: user,
+        data: slimUser,
       });
     } catch (error: any) {
       console.error('Get me error:', error);
