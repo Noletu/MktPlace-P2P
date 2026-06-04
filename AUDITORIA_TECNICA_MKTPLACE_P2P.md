@@ -1,7 +1,7 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.22
-> **Data:** 14 de maio de 2026 (última edição: 31 de maio de 2026)
+> **Versão:** 1.23
+> **Data:** 14 de maio de 2026 (última edição: 4 de junho de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
 > **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
 >
@@ -15,6 +15,7 @@
 > **Changelog v1.20:** TD-SCHEMA01 resolvido (Sprint 3 sessão 3): o sintoma observado (DROP SEQUENCE recorrente em migrations futuras do User) foi eliminado pela mudança de `@default(dbgenerated("nextval(...)"))` para `@default(autoincrement())` no schema.prisma — sem migration estrutural necessária. Verificação empírica confirmou: o diff engine do Prisma normaliza ambas as representações para o mesmo conceito interno. CRIT-02 testado end-to-end: novo usuário recebeu `hdAccountIndex=33` (next correto da sequence), endereços BIP32 distintos confirmados. Rollback plan versionado em `docs/rollback-plans/td-schema01.md`. §1.1 PRE-STAGING atualizado para 21 itens.
 > **Changelog v1.21:** MED-34 fechado (Sprint 3 sessão 4): **21 `@relation` explícitos** adicionados ao schema, cobrindo todas as FKs denormalizadas (User self-relations, Order, WalletTransaction, Withdrawal, Transaction, PlatformTransfer, PlatformWalletMovement, AuditLog, BroadcastLog, ChatArchive, RolePermission, Coupon). Policies `ON DELETE` definidas caso-a-caso: **20 `SetNull`** + **1 `Restrict`** (`PlatformTransfer.requestedBy` — bloqueia deletar o sócio que solicitou uma transferência de plataforma, preservando rastreabilidade financeira; demais campos de auditoria usam `SetNull` para preservar o registro histórico mesmo se o usuário referenciado for removido). **2 renomeações** de `@relation` para desambiguar relations múltiplas User→Model (`OrderOwner` em `Order.user`, `WalletTransactionOwner` em `WalletTransaction.user`). **1 conversão NOT NULL → nullable** (`BroadcastLog.adminId String → String?`) exigida pelo `SetNull`. **Decisão YAGNI sobre indexes:** os 11 índices em colunas FK que o fluxo normal sugeriria **não** foram adicionados — custo de escrita/disco garantido vs. benefício hipotético (nenhuma query atual filtra por esses campos, verificado no código); `CREATE INDEX CONCURRENTLY` é trivial quando uma query real exigir. Migration `20260531144306_med34_explicit_fks` aplicada e verificada via `information_schema` (21 FKs, delete_rule confirmado). Re-check de integridade pré-aplicação: **0 orphans** nos 21 campos. Drift check pós-aplicação: **0** (TD-SCHEMA01 segue resolvido, FKs novas não introduziram drift). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING atualizado para 20 itens.
 > **Changelog v1.22:** SER-17 fechado (Sprint 3 sessão 5): guard `process.env.NODE_ENV !== 'production'` substituído por flag explícita `process.env.CORS_ALLOW_NO_ORIGIN === 'true'` no CORS de `index.ts`. **Default fail-secure:** qualquer ambiente que não setar a flag (inclusive `NODE_ENV` undefined em containers) rejeita requisições sem header `Origin`, fechando o risco residual. Log de rejeição enriquecido com `nodeEnv` e `allowNoOriginFlag`. `.env.example` documenta a flag (default `false`). Validação manual 5/5: `flag false` + sem origin → bloqueado; `flag true` + sem origin → permitido; flag não abre origins inválidas. Dois findings catalogados durante a sessão: **SER-31** (`socket.server.ts` usa padrão `NODE_ENV` para CORS — inconsistência arquitetural com o HTTP; severidade baixa) e **SER-32** (CORS rejeitado propaga HTTP 500 via `callback(new Error(...))` em vez de 403 — semântico, pré-existente; severidade baixa). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING: SER-17 sai (−1), SER-31 + SER-32 entram (+2) → 22 itens.
+> **Changelog v1.23:** SER-23 fechado (Sprint 3 sessão 6): login refatorado em 2 passos — `POST /auth/login` uniformiza a resposta (`nextStep: COMPLETE_LOGIN` + cookie HttpOnly `pendingLoginToken`) sem vazar status de 2FA nem permitir enumeração; `POST /auth/complete-login` valida o token intermediário (model `PendingLogin`, TTL 120s, single-use, 3 tentativas) e decide 2FA. Defesa de timing (Achado C) via `TIMING_DUMMY_HASH` bcrypt cost-12. **SER-29 fechado:** `/auth/me` retornava 500 (serialização de BigInt) — agora retorna user slim (allowlist de 17 campos consumidos pelo frontend). **SER-34 fechado:** tokens emitidos apenas via cookies HttpOnly (removidos do body de `/register` e `/complete-login` e do `localStorage` do frontend). **SER-37 fechado** (catalogado+resolvido na sessão): mesmo bug de BigInt no `/register` travava cadastro via app. **Catalogados:** SER-33 (accountFrozen permite login — verificar bloqueio de operações sensíveis), SER-35 (8 leitores de `localStorage('user')` → fonte central), SER-36 (tela de 2FA sem input de backup code), SER-38 (bcrypt cost inconsistente 10 vs 12). Higiene de IDs: §2.1 `SER-37`→`SER-31, SER-32` (typo) e placeholder de magic-bytes na §SER-16 sem ID até catalogar formalmente. Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING: 22 − 2 (SER-23, SER-29) + 4 (SER-33/35/36/38) = **24** itens.
 
 ---
 
@@ -82,7 +83,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 |------|------------------|------------------------|
 | 🚨 FAZER AGORA | 14 findings | ~3-4 semanas (1-2 devs) |
 | 🟡 FAZER AGORA — PARCIAL | 2 findings | incluído acima |
-| 🔵 ADIAR PRE-STAGING | 22 findings | ~2-3 semanas |
+| 🔵 ADIAR PRE-STAGING | 24 findings | ~2-3 semanas |
 | ⚪ ADIAR PRE-PROD | 5 findings | ~1-2 semanas |
 | ⚫ ADIAR PRE-LAUNCH | 2 findings | sob demanda |
 
@@ -120,11 +121,13 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 
 > **MED-34 — ✅ Fechado (v1.21, Sprint 3 sessão 4):** 21 `@relation` explícitos (20 `SetNull` + 1 `Restrict`), 2 renomeações de relation, `BroadcastLog.adminId` → nullable. Policies `ON DELETE` (a fatia que estava adiada para PRE-STAGING) também resolvidas nesta sessão. Indexes não adicionados (YAGNI). Ver §MED-34 e Changelog v1.21.
 
-#### 🔵 ADIAR PRE-STAGING (22)
+#### 🔵 ADIAR PRE-STAGING (24)
 
 > **Trigger:** quando for subir o primeiro ambiente com Postgres real, Redis, domínio próprio e auth funcional fora do localhost.
 >
 > **Nota de v1.22:** SER-17 fechado (sai desta lista); SER-31 e SER-32 catalogados (entram). Saldo líquido 21 − 1 + 2 = **22**. Contagem cobre findings CRIT/SER/MED; os 3 itens TD-/TECH-DEBT abaixo permanecem fora da contagem por convenção.
+>
+> **Nota de v1.23 (Sprint 3 sessão 6):** SER-23 e SER-29 fechados (saem desta lista, −2); SER-33, SER-35, SER-36 e SER-38 catalogados (entram, +4). SER-34 e SER-37 foram catalogados **e** fechados na mesma sessão — nunca entraram nesta lista, então não alteram a contagem. Saldo líquido 22 − 2 + 4 = **24**.
 
 | ID | Por que adiar agora |
 |----|---------------------|
@@ -136,16 +139,18 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | SER-19 | Junto com refator de chaves (SER-18) |
 | SER-20 | Frontend de auth ainda em iteração — mexer agora dá merge conflict |
 | SER-22 | Sem usuários reais, account lockout só atrapalha (você se tranca da própria conta de teste) |
-| SER-23 | Mesma razão de SER-22 |
 | SER-24 | Workers ainda em iteração; require2FA prematuro atrapalha |
 | SER-25 | Adiciona dependência de Redis. `setImmediate` é suficiente em dev |
 | SER-26 | Em dev usa-se boleto fake mesmo |
 | SER-27 | Em dev usa-se CPF fake mesmo |
 | SER-28 | Mesma razão de SER-24 |
-| SER-29 | Não é perda de dados; 500 de serialização deve ser corrigido antes de usuários reais |
 | SER-30 | Investigar impacto real antes de classifcar e corrigir |
 | SER-31 | Inconsistência arquitetural (socket CORS via NODE_ENV); alinhar à flag em sessão dedicada |
 | SER-32 | Semântica HTTP (500 em rejeição CORS); ajuste trivial, sem urgência funcional |
+| SER-33 | accountFrozen permite login por design; falta verificar empiricamente que conta congelada não executa operações sensíveis (orders, withdrawals) |
+| SER-35 | 8 leitores de `localStorage.getItem('user')`; migrar para fonte central (AuthContext / `useCurrentUser` via `/auth/me`) após estabilizar o fluxo de auth |
+| SER-36 | Tela de 2FA do login sem input de backup code (backend já aceita via `z.union`); adicionar toggle quando a UX de 2FA for revisada |
+| SER-38 | bcrypt cost inconsistente (`SALT_ROUNDS=10` vs seed cost-12); padronizar cost-12 + rehash transparente no login em sessão dedicada |
 | MED-31 (resto) | Refator completo só faz sentido quando log aggregation estiver configurado |
 | MED-36 | Em dev `unsafe-inline` ajuda no debug visual |
 | MED-37 | Documentação melhor quando frontend de RBAC estabilizar |
@@ -210,7 +215,7 @@ Findings disponíveis: 🚨 [FAZER AGORA] não fechados + 🔵 [ADIAR PRE-STAGIN
 | Ledger interno (lock/unlock/credit/deduct) | 100% | CRIT-03, CRIT-04, CRIT-05 |
 | Order service (create, match, cancel) | ~70% | CRIT-05, SER-22 |
 | Transaction service (proof submit/validate) | ~70% | CRIT-05 |
-| Middlewares (auth, rate limit, CORS) | 100% | SER-16, SER-17, SER-37 |
+| Middlewares (auth, rate limit, CORS) | 100% | SER-16, SER-17, SER-31, SER-32 |
 | Rotas e controllers (sample) | ~40% | SER-26, SER-27, SER-28 |
 | Bootstrap (`src/index.ts`) | 100% | SER-14, SER-16, MED-40 |
 | Segurança de repositório (gitignore, secrets) | 100% | CRIT-08, MED-29 |
@@ -2658,7 +2663,7 @@ const upload = multer({
 router.post('/proof', upload.single('comprovante'), proofController);
 ```
 
-⚠️ Cruza com SER-38 (validar magic bytes do arquivo, não só mime type).
+⚠️ Cruza com um finding futuro de validação de upload (validar magic bytes do arquivo, não só mime type) — a catalogar quando o upload for endereçado em sessão dedicada.
 
 ### Critério de aceitação
 - [ ] Limite global de JSON ≤ 1MB
@@ -3052,6 +3057,7 @@ async login(input: LoginInput): Promise<AuthResponse> {
 **Severidade:** 🟠 Sério
 **Fase:** 🔵 **[ADIAR PRE-STAGING]** — mesma razão de SER-22 + complica testes de auth durante desenvolvimento
 **Categoria:** Information leak
+**Status:** ✅ **Fechado (v1.23, Sprint 3 sessão 6).** Login refatorado em 2 passos: `POST /auth/login` uniformiza a resposta para qualquer credencial válida (`nextStep: COMPLETE_LOGIN` + cookie HttpOnly `pendingLoginToken`), sem vazar status de 2FA nem permitir enumeração; `POST /auth/complete-login` valida o token intermediário (`PendingLogin`, TTL 120s, single-use, 3 tentativas) e decide 2FA. Defesa de timing (Achado C) via `TIMING_DUMMY_HASH` bcrypt cost-12. Validado por HTTP (10/10) e browser (4/4).
 **Esforço estimado:** meio dia
 
 ### Problema
@@ -4058,7 +4064,7 @@ Antes de aceitar qualquer cripto real, **todos** os itens abaixo devem estar ver
 **Severidade:** 🟠 Sério
 **Fase:** 🔵 **[ADIAR PRE-STAGING]** — não é perda de dados nem furo de auth; é 500 de serialização em endpoint principal. Deve ser resolvido antes de usuários reais.
 **Categoria:** Auth / API
-**Status:** ⬜ Aberto
+**Status:** ✅ **Fechado (v1.23, Sprint 3 sessão 6).** `/auth/me` e `/register` retornam user slim (allowlist explícita), eliminando a serialização de `hdAccountIndex`/`twoFactorLastUsedStep` (BigInt) — causa raiz do 500 que bloqueava o `/auth/me`. (A fatia do `/register` foi catalogada à parte como SER-37.)
 **Identificado em:** Sessão 1 — Fase 4 (validação manual de `/auth/me`)
 **Relaciona-se a:** CRIT-02 (`hdAccountIndex BigInt` introduzido em `7850f25`), CRIT-07 (`twoFactorLastUsedStep BigInt?` introduzido em `b01e0fa`). **Não é regressão da Sessão 1** — git diff `2d6266e..HEAD -- apps/api/src/services/auth.service.ts` retorna vazio; `auth.controller.ts` só teve `socketTicket` tocado.
 
@@ -4279,6 +4285,110 @@ Trocar `callback(new Error('Not allowed by CORS'), false)` por `callback(null, f
 ### Critério de aceitação
 - [ ] Rejeição CORS não gera mais 5xx (ou retorna 403 explícito)
 - [ ] Logs de rejeição não aparecem como "Unhandled error"
+
+---
+
+## SER-33 — `accountFrozen` permite login normalmente
+
+**Severidade:** 🟡 A confirmar (verificação empírica pendente)
+**Fase:** 🔵 **[ADIAR PRE-STAGING]**
+**Categoria:** Auth / Account control
+**Status:** ⬜ Catalogado (Sprint 3 sessão 6)
+**Por design:** Lucas confirmou que o usuário congelado precisa conseguir logar para ver a mensagem clara de bloqueio (e poder apelar via disputa).
+
+### Problema / verificação pendente
+Uma conta com `accountFrozen=true` autentica normalmente. O comportamento é intencional (UX de bloqueio), mas falta **verificar empiricamente** que a conta congelada, apesar de logar, está de fato impedida de executar operações sensíveis (criar/aceitar orders, withdrawals, etc.). O `authMiddleware` já tem guard que bloqueia métodos de escrita para contas congeladas (`user.accountFrozen` em `auth.middleware.ts`), mas isso precisa de confirmação ponta-a-ponta em sessão dedicada.
+
+### Critério de aceitação
+- [ ] Conta congelada loga, mas POST/PUT/PATCH/DELETE sensíveis retornam 403
+- [ ] Severidade reclassificada após a verificação
+
+---
+
+## SER-34 — Tokens devolvidos no body das respostas de auth
+
+**Severidade:** 🟠 Sério
+**Fase:** Catalogado e fechado na mesma sessão (Sprint 3 sessão 6)
+**Categoria:** Auth / superfície XSS
+**Status:** ✅ **Fechado (v1.23, Sprint 3 sessão 6).**
+**Relaciona-se a:** SER-20 (tokens duplicados cookie + body).
+
+### Problema
+`/register` e `/login` devolviam `accessToken`/`refreshToken` no corpo JSON além dos cookies HttpOnly, e o frontend (`LoginForm`, `RegisterForm`) gravava esses tokens em `localStorage` — superfície de roubo via XSS que anula o ganho dos cookies HttpOnly.
+
+### Resolução aplicada
+- Backend para de incluir tokens no body de `/register` e `/complete-login`; tokens vivem **apenas** em cookies HttpOnly.
+- Frontend deixa de gravar `accessToken`/`refreshToken` em `localStorage` (mantém só o objeto `user` não sensível como cache leve).
+
+---
+
+## SER-35 — Leitores de `localStorage('user')` espalhados (sem fonte central)
+
+**Severidade:** 🟢 Baixa (tech debt + UX de console)
+**Fase:** 🔵 **[ADIAR PRE-STAGING]**
+**Categoria:** Frontend / Arquitetura
+**Status:** ⬜ Catalogado (Sprint 3 sessão 6)
+
+### Problema
+8 componentes leem `localStorage.getItem('user')` (chat, reviews, orders, modais admin). Após o SER-34 os tokens não vivem mais em `localStorage`, mas o objeto `user` continua. Falta uma fonte central (AuthContext ou hook `useCurrentUser` com SWR sobre `/auth/me`) e remover os `setItem('user')` dos forms. Resolve naturalmente o tech debt do `AppHeader`, que chama `/auth/me` em rotas públicas (register, login) e loga 401s esperados no console — não é regressão.
+
+### Critério de aceitação
+- [ ] Fonte única de `currentUser` no frontend
+- [ ] `setItem('user')` removido dos forms
+- [ ] `AppHeader` não dispara `/auth/me` quando não autenticado
+
+---
+
+## SER-36 — Tela de 2FA do login não aceita backup code
+
+**Severidade:** 🟢 Baixa (UX / Funcional)
+**Fase:** 🔵 **[ADIAR PRE-STAGING]**
+**Categoria:** Frontend / 2FA
+**Status:** ⬜ Catalogado (Sprint 3 sessão 6)
+
+### Problema
+O `completeLoginSchema` (backend) aceita TOTP de 6 dígitos **ou** backup code (`z.union`), mas o input de 2FA do `LoginForm` sanitiza para 6 dígitos numéricos (`replace(/\D/g, '').slice(0, 6)`), impedindo digitar um backup code (formato `XXXX-XXXX-XX`). Usuário que perdeu o autenticador não consegue usar o backup code na tela de login.
+
+### Critério de aceitação
+- [ ] Toggle "Usar código de backup" na tela de 2FA
+- [ ] Backup code aceito sem a sanitização de 6 dígitos
+
+---
+
+## SER-37 — Serialização de BigInt quebra `/register` (user completo)
+
+**Severidade:** 🟡 Média
+**Fase:** Descoberto e fechado na mesma sessão (Sprint 3 sessão 6)
+**Categoria:** Auth / API
+**Status:** ✅ **Fechado (v1.23, Sprint 3 sessão 6).**
+**Relaciona-se a:** SER-29 (mesma causa raiz: `hdAccountIndex BigInt` arrastado por `include`).
+
+### Problema
+Mesmo padrão do SER-29, no `/register`: a resposta serializava o `user` completo (com `hdAccountIndex` BigInt) → `400 "Do not know how to serialize a BigInt"`. Os cookies eram setados, mas a resposta falhava — usuários cadastrados via app travavam logo após o registro. Pré-existente (descoberto ao validar a Fase 7 do SER-23), não regressão.
+
+### Resolução aplicada
+`/register` retorna user slim (`id`, `email`, `name`, `role`) — mesmo padrão do `finalizeLogin`/`complete-login`.
+
+---
+
+## SER-38 — Inconsistência de bcrypt cost (10 vs 12)
+
+**Severidade:** 🟡 Média (defesa de timing real para contas comuns)
+**Fase:** 🔵 **[ADIAR PRE-STAGING]**
+**Categoria:** Auth / Cripto
+**Status:** ⬜ Catalogado (Sprint 3 sessão 6)
+**Relaciona-se a:** SER-23 (Achado C — defesa de timing do login).
+
+### Problema
+`SALT_ROUNDS=10` em `utils/bcrypt.ts`, mas as senhas seed (master, admin) usam cost-12. O `TIMING_DUMMY_HASH` foi alinhado a cost-12 para proteger as contas mais visadas (seed/admin), mas contas cost-10 (criadas via app) ficam com leak residual de timing entre "email inexistente" (compara contra o dummy cost-12) e "senha errada" (compara contra hash cost-10).
+
+### Recomendação
+Padronizar `SALT_ROUNDS=12` + rehash transparente no login bem-sucedido (migra senhas cost-10 existentes ao logar). Em sessão dedicada.
+
+### Critério de aceitação
+- [ ] `SALT_ROUNDS=12`
+- [ ] Rehash transparente de senhas cost-10 no login
+- [ ] Gap de timing entre os dois caminhos < 15% para qualquer conta
 
 ---
 

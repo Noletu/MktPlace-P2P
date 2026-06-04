@@ -148,6 +148,29 @@ model User {
   auditLogs                  AuditLog[]               @relation("AuditLogUser")
   chatArchivesManaged        ChatArchive[]            @relation("ChatArchiveAdmin")
   rolePermissionsGranted     RolePermission[]         @relation("RolePermissionGrantor")
+  pendingLogins              PendingLogin[]           @relation("PendingLoginUser")
+}
+
+// SECURITY (SER-23): Estado de login em andamento após verificação
+// de senha bem-sucedida, aguardando segundo fator (2FA) ou
+// finalização. Vida curta (120s), uso único.
+//
+// O token em si NÃO é guardado aqui — só seu hash SHA-256.
+// O token cleartext vive apenas no cookie HttpOnly do cliente.
+// Isso garante que mesmo um dump do banco não compromete sessões
+// de login em andamento.
+model PendingLogin {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation("PendingLoginUser", fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash         String    @unique // SHA-256 do intermediate token
+  attemptsRemaining Int       @default(3) // tentativas de código 2FA antes de invalidar
+  expiresAt         DateTime // createdAt + 120s
+  usedAt            DateTime? // single-use; se != null, não pode mais ser consumido
+  createdAt         DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // ============================================

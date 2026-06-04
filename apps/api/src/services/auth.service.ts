@@ -7,6 +7,14 @@ import { twoFactorService } from './twoFactor.service';
 
 const prisma = new PrismaClient();
 
+// SECURITY (SER-23 Achado C): hash dummy para equalizar timing
+// entre "email não existe" e "email existe + senha errada".
+// Gerado com bcrypt cost 12 (alinhado com as contas mais visadas
+// do sistema — seed e admin). ATENÇÃO: senhas cost-10 (novas via
+// app) ainda têm leak residual de timing — ver SER-38 para fix
+// definitivo.
+const TIMING_DUMMY_HASH = '$2a$12$nxdTFDgQB8OJN773LSlbSe5tVLFGXdozBi6mu07/THohvuO3VGify';
+
 export interface RegisterInput {
   email: string;
   password: string;
@@ -16,7 +24,6 @@ export interface RegisterInput {
 export interface LoginInput {
   email: string;
   password: string;
-  twoFactorToken?: string;
 }
 
 export interface AuthResponse {
@@ -85,76 +92,79 @@ export class AuthService {
     };
   }
 
-  async login(input: LoginInput): Promise<AuthResponse> {
-    // Buscar usuário com role RBAC
+  /**
+   * SECURITY (SER-23): Passo 1 do login — valida APENAS a credencial
+   * (email + senha) e devolve o id do usuário e se ele tem 2FA habilitado.
+   * NÃO gera tokens nem verifica o segundo fator (isso acontece no
+   * complete-login). Retorna null para qualquer credencial inválida,
+   * sem distinguir "email não existe" de "senha errada".
+   */
+  async verifyCredentials(
+    input: LoginInput
+  ): Promise<{ userId: string; twoFactorEnabled: boolean } | null> {
     const user = await prisma.user.findUnique({
       where: { email: input.email },
-      // SECURITY: Incluir campos de bloqueio para validação
       select: {
         id: true,
-        email: true,
         password: true,
-        name: true,
         twoFactorEnabled: true,
-        twoFactorSecret: true,
-        accountFrozen: true,
-        frozenReason: true,
-        frozenUntil: true,
-        legacyRole: true,
-        role: {
-          select: {
-            slug: true,
-            name: true,
-          }
-        }
-      }
+      },
     });
 
     if (!user) {
-      throw new Error('Credenciais inválidas');
+      // SECURITY (SER-23 Achado C): rodar bcrypt mesmo sem usuário para
+      // equalizar o tempo de resposta com o caso "email existe + senha errada".
+      // O resultado é descartado — só importa o custo computacional.
+      await comparePassword(input.password, TIMING_DUMMY_HASH);
+      return null;
     }
 
-    // Verificar senha
     const isPasswordValid = await comparePassword(input.password, user.password);
 
     if (!isPasswordValid) {
-      throw new Error('Credenciais inválidas');
+      return null;
     }
 
-    // SECURITY: Verificar 2FA se habilitado
-    if (user.twoFactorEnabled) {
-      if (!input.twoFactorToken) {
-        throw new Error('2FA_REQUIRED');
-      }
+    return { userId: user.id, twoFactorEnabled: user.twoFactorEnabled };
+  }
 
-      const is2FAValid = await twoFactorService.verifyToken(user.id, input.twoFactorToken);
-
-      if (!is2FAValid) {
-        throw new Error('Token 2FA inválido');
-      }
-    }
-
-    // RBAC: Determinar role para JWT (usar slug do RBAC ou legacyRole)
-    const userRole = user.role?.slug?.toUpperCase() || user.legacyRole;
-
-    // SECURITY: Gerar access token e refresh token
-    const token = generateToken({
-      userId: user.id,
-      email: user.email,
-      role: userRole,
+  /**
+   * SECURITY (SER-23): Passo 2 do login — emite os tokens definitivos para um
+   * usuário cuja senha já foi validada (passo 1) e cujo 2FA, se habilitado, já
+   * foi verificado pelo controller. NÃO seta cookies (o controller faz isso) e
+   * NÃO valida 2FA. Reintroduz a geração de token/refresh do antigo login().
+   */
+  async finalizeLogin(userId: string): Promise<{
+    user: { id: string; email: string; name: string | null; role: string };
+    accessToken: string;
+    refreshToken: string;
+  }> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        legacyRole: true,
+        role: { select: { slug: true } },
+      },
     });
 
+    if (!user) {
+      // Usuário deletado entre o passo 1 e o passo 2 (extremamente raro).
+      throw new Error('User not found');
+    }
+
+    // RBAC: role em UPPERCASE para casar com o cookie userRole / middleware
+    // do frontend, que compara contra 'ADMIN'/'MASTER'.
+    const role = user.role?.slug?.toUpperCase() || user.legacyRole || 'USER';
+
+    const accessToken = generateToken({ userId: user.id, email: user.email, role });
     const refreshToken = await refreshTokenService.createRefreshToken(user.id);
 
-    // Remover senha do retorno e adicionar role como string para compatibilidade frontend
-    const { password, role: roleObject, ...userWithoutPassword } = user;
-
     return {
-      user: {
-        ...userWithoutPassword,
-        role: userRole, // Role como string (MASTER, ADMIN, etc)
-      } as any,
-      token,
+      user: { id: user.id, email: user.email, name: user.name, role },
+      accessToken,
       refreshToken,
     };
   }

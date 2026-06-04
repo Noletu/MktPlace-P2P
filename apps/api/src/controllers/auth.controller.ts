@@ -1,13 +1,15 @@
 import { Request, Response } from 'express';
 import { signSocketTicket } from '../utils/jwt';
 import { authService } from '../services/auth.service';
-import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema } from '@mktplace/shared';
+import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema, completeLoginSchema } from '@mktplace/shared';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from '../services/auditLog.service';
 import { emailService } from '../services/email.service';
-import { securityLogger } from '../utils/logger';
+import { logger, securityLogger } from '../utils/logger';
 import { setAccessTokenCookie, setRefreshTokenCookie, clearAuthCookies, setUserRoleCookie, extractToken } from '../utils/cookies';
 import { prisma } from '../utils/prisma';
 import { notifPrefsService } from '../services/notificationPreferences.service';
+import { pendingLoginService } from '../services/pendingLogin.service';
+import { twoFactorService } from '../services/twoFactor.service';
 
 export class AuthController {
   async register(req: Request, res: Response): Promise<void> {
@@ -41,14 +43,23 @@ export class AuthController {
       setRefreshTokenCookie(res, result.refreshToken);
       setUserRoleCookie(res, result.user.role || 'USER'); // Lido pelo Next.js middleware
 
+      // SECURITY (SER-23/SER-34): tokens emitidos APENAS via cookies
+      // HttpOnly. Body não contém tokens — evita exposição a XSS via
+      // localStorage do frontend.
+      // SER-37: devolver user "slim" (mesmo shape do finalizeLogin/complete-login).
+      // result.user vem do register com include:{role} e contém hdAccountIndex
+      // (BigInt) — serializá-lo direto quebra o res.json ("serialize a BigInt").
+      // result.user.role já é string uppercased (slug.toUpperCase() || legacyRole).
+      const slimUser = {
+        id: result.user.id,
+        email: result.user.email,
+        name: result.user.name,
+        role: result.user.role,
+      };
+
       res.status(201).json({
         success: true,
-        data: {
-          user: result.user,
-          // Tokens enviados via cookies E no JSON (para desenvolvimento/compatibilidade)
-          accessToken: result.token,
-          refreshToken: result.refreshToken,
-        },
+        data: { user: slimUser },
         message: 'Usuário registrado com sucesso',
       });
     } catch (error: any) {
@@ -83,67 +94,74 @@ export class AuthController {
     }
   }
 
+  // SECURITY (SER-23): Passo 1 do login. Resposta UNIFORME para qualquer
+  // credencial válida (com ou sem 2FA): 200 { nextStep: 'COMPLETE_LOGIN' } +
+  // cookie HttpOnly pendingLoginToken. Credencial inválida → 401 genérico.
+  // Tokens de acesso só são emitidos no /auth/complete-login (passo 2).
   async login(req: Request, res: Response): Promise<void> {
     try {
-      // Validar input
+      // Validar input (apenas email + password; 2FA foi para o complete-login)
       const validatedData = loginSchema.parse(req.body);
 
-      // Fazer login
-      const result = await authService.login(validatedData);
+      // Passo 1: validar credencial (inclui defesa de timing para email inexistente)
+      const credentials = await authService.verifyCredentials(validatedData);
 
-      // SECURITY: Audit log - login bem-sucedido
-      auditLogService.logFromRequest(
-        req,
-        AUDIT_ACTIONS.LOGIN,
-        AUDIT_RESOURCES.USER,
-        result.user.id,
-        { email: validatedData.email }
-      );
+      if (!credentials) {
+        // SECURITY (SER-23): resposta uniforme — não distinguir
+        // "email não existe" de "senha errada".
+        securityLogger.login('unknown', false, req.ip, { email: validatedData.email });
 
-      securityLogger.login(result.user.id, true, req.ip);
+        auditLogService.logFromRequest(
+          req,
+          AUDIT_ACTIONS.LOGIN_FAILED,
+          AUDIT_RESOURCES.USER,
+          undefined,
+          { email: validatedData.email }, // não indica se o email existe
+          false,
+          'Credenciais inválidas'
+        );
 
-      // SECURITY: Enviar tokens via HttpOnly cookies (XSS protection)
-      setAccessTokenCookie(res, result.token);
-      setRefreshTokenCookie(res, result.refreshToken);
-      setUserRoleCookie(res, result.user.role || 'USER'); // Lido pelo Next.js middleware
-
-      res.status(200).json({
-        success: true,
-        data: {
-          user: result.user,
-          // Tokens enviados via cookies E no JSON (para desenvolvimento/compatibilidade)
-          accessToken: result.token,
-          refreshToken: result.refreshToken,
-        },
-        message: 'Login realizado com sucesso',
-      });
-    } catch (error: any) {
-      // SECURITY: Tratamento especial para 2FA requerido
-      if (error.message === '2FA_REQUIRED') {
-        res.status(200).json({
+        res.status(401).json({
           success: false,
-          requiresTwoFactor: true,
-          message: 'Código 2FA necessário',
+          error: 'Credenciais inválidas',
         });
         return;
       }
 
-      // SECURITY: Log login falho
-      securityLogger.login('unknown', false, req.ip, {
-        email: req.body.email,
-        error: error.message
+      // Senha correta — criar PendingLogin (sempre, independente de 2FA)
+      const { token } = await pendingLoginService.createPendingLogin(credentials.userId);
+
+      // SECURITY (SER-23): intermediate token em cookie HttpOnly assinado,
+      // restrito às rotas de auth, com TTL de 120s.
+      res.cookie('pendingLoginToken', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        // SECURITY: 'lax' (não 'strict' como o padrão do projeto)
+        // — cookie de uso único (120s) que pode ser navegado a partir
+        // de links externos (ex: email "Logar pra confirmar"). 'strict'
+        // quebraria esse fluxo.
+        sameSite: 'lax',
+        maxAge: 120 * 1000, // 120s em ms
+        signed: true, // assinado com COOKIE_SECRET
+        path: '/api/v1/auth', // restringe o cookie às rotas de auth
       });
 
+      // Audit: passo 1 concluído. has2FA indica se o segundo fator será
+      // exigido no complete-login (registrado no servidor, não vazado ao client).
       auditLogService.logFromRequest(
         req,
-        AUDIT_ACTIONS.LOGIN,
+        AUDIT_ACTIONS.LOGIN_PENDING,
         AUDIT_RESOURCES.USER,
-        undefined,
-        { email: req.body.email },
-        false,
-        error.message
+        credentials.userId,
+        { has2FA: credentials.twoFactorEnabled }
       );
 
+      // SECURITY (SER-23): resposta idêntica com ou sem 2FA habilitado.
+      res.status(200).json({
+        success: true,
+        data: { nextStep: 'COMPLETE_LOGIN' },
+      });
+    } catch (error: any) {
       if (error.name === 'ZodError') {
         res.status(400).json({
           success: false,
@@ -153,10 +171,189 @@ export class AuthController {
         return;
       }
 
-      // SECURITY: Mensagem genérica para não vazar informações
+      // SECURITY: erro inesperado (ex: DB indisponível) — distinto de
+      // credencial inválida. Logar como ERROR com stack para ops/dev,
+      // mas responder o MESMO 401 genérico para não vazar o canal.
+      logger.error('[AUTH] Unexpected login error', {
+        email: req.body?.email,
+        error: error.message,
+        stack: error.stack,
+      });
+
       res.status(401).json({
         success: false,
-        error: 'Email ou senha inválidos',
+        error: 'Credenciais inválidas',
+      });
+    }
+  }
+
+  // SECURITY (SER-23): Passo 2 do login. Recebe o intermediate token via
+  // cookie HttpOnly assinado (emitido no passo 1) e, opcionalmente, o código
+  // 2FA. Só quem possui o cookie (logo, passou pela senha) chega aqui.
+  async completeLogin(req: Request, res: Response): Promise<void> {
+    try {
+      // 1. Ler o cookie HttpOnly assinado
+      const pendingLoginToken = req.signedCookies?.pendingLoginToken;
+      if (!pendingLoginToken) {
+        res.status(401).json({
+          success: false,
+          error: 'Sessão de login inválida ou expirada',
+        });
+        return;
+      }
+
+      // 2. Validar o pendingLogin (inexistente / expirado / usado / sem tentativas)
+      const pendingLogin = await pendingLoginService.validatePendingLogin(pendingLoginToken);
+      if (!pendingLogin) {
+        res.clearCookie('pendingLoginToken', { path: '/api/v1/auth' });
+        res.status(401).json({
+          success: false,
+          error: 'Sessão de login inválida ou expirada',
+        });
+        return;
+      }
+
+      // 3. Carregar o estado de 2FA do usuário (inclui secret p/ checar consistência)
+      const user = await prisma.user.findUnique({
+        where: { id: pendingLogin.userId },
+        select: { twoFactorEnabled: true, twoFactorSecret: true },
+      });
+
+      if (!user) {
+        // Usuário deletado entre o passo 1 e o passo 2. Invalidar e falhar.
+        await pendingLoginService.consumePendingLogin(pendingLogin.id);
+        res.clearCookie('pendingLoginToken', { path: '/api/v1/auth' });
+        res.status(401).json({
+          success: false,
+          error: 'Sessão de login inválida ou expirada',
+        });
+        return;
+      }
+
+      if (user.twoFactorEnabled && !user.twoFactorSecret) {
+        // Estado corrompido: 2FA habilitado mas sem secret. Não dá pra validar.
+        // NÃO decrementar tentativas (usuário não fez nada errado) e NÃO
+        // consumir o pendingLogin (deixar expirar naturalmente). Logar como
+        // ERROR para ops/dev; resposta genérica para o cliente.
+        logger.error('[AUTH] User has twoFactorEnabled=true but twoFactorSecret=null', {
+          userId: pendingLogin.userId,
+        });
+        res.status(401).json({
+          success: false,
+          error: 'Sessão de login inválida ou expirada',
+        });
+        return;
+      }
+
+      // 4. Validar input (twoFactorToken opcional; TOTP ou backup quando presente)
+      const { twoFactorToken } = completeLoginSchema.parse(req.body);
+
+      // 5. Caso A: usuário SEM 2FA → finalizar direto
+      if (!user.twoFactorEnabled) {
+        await pendingLoginService.consumePendingLogin(pendingLogin.id);
+        res.clearCookie('pendingLoginToken', { path: '/api/v1/auth' });
+
+        const result = await authService.finalizeLogin(pendingLogin.userId);
+        setAccessTokenCookie(res, result.accessToken);
+        setRefreshTokenCookie(res, result.refreshToken);
+        setUserRoleCookie(res, result.user.role);
+
+        await auditLogService.log({
+          userId: pendingLogin.userId,
+          action: AUDIT_ACTIONS.LOGIN,
+          resource: AUDIT_RESOURCES.USER,
+          success: true,
+          ipAddress: req.ip,
+          metadata: { has2FA: false },
+        });
+
+        res.status(200).json({ success: true, data: { user: result.user } });
+        return;
+      }
+
+      // 6. Caso B: usuário COM 2FA, código ainda não fornecido
+      if (!twoFactorToken) {
+        res.status(200).json({
+          success: true,
+          data: {
+            requires2FA: true,
+            attemptsRemaining: pendingLogin.attemptsRemaining,
+          },
+        });
+        return;
+      }
+
+      // 7. Caso C: usuário COM 2FA, código fornecido — validar.
+      // twoFactorService.verifyToken(userId, token) já trata anti-replay
+      // (CRIT-07) e backup codes internamente; retorna boolean.
+      const totpValid = await twoFactorService.verifyToken(pendingLogin.userId, twoFactorToken);
+
+      if (!totpValid) {
+        // Código errado — decrementar tentativas (single-use NÃO disparado aqui)
+        const remaining = await pendingLoginService.decrementAttempts(pendingLogin.id);
+
+        await auditLogService.log({
+          userId: pendingLogin.userId,
+          action: AUDIT_ACTIONS.LOGIN_FAILED,
+          resource: AUDIT_RESOURCES.USER,
+          success: false,
+          ipAddress: req.ip,
+          metadata: { reason: 'invalid_2fa', attemptsRemaining: remaining },
+        });
+
+        if (remaining === 0) {
+          // Esgotou — limpar cookie, forçar refazer o login
+          res.clearCookie('pendingLoginToken', { path: '/api/v1/auth' });
+          res.status(401).json({
+            success: false,
+            error: 'Tentativas esgotadas. Faça login novamente.',
+          });
+          return;
+        }
+
+        // Ainda há tentativas — manter cookie, devolver attemptsRemaining
+        res.status(401).json({
+          success: false,
+          error: 'Código 2FA inválido',
+          attemptsRemaining: remaining,
+        });
+        return;
+      }
+
+      // 8. Código 2FA correto → consumir pendingLogin e finalizar.
+      // (O anti-replay/twoFactorLastUsedStep já foi atualizado dentro do
+      // verifyToken — NÃO atualizar aqui.)
+      await pendingLoginService.consumePendingLogin(pendingLogin.id);
+      res.clearCookie('pendingLoginToken', { path: '/api/v1/auth' });
+
+      const result = await authService.finalizeLogin(pendingLogin.userId);
+      setAccessTokenCookie(res, result.accessToken);
+      setRefreshTokenCookie(res, result.refreshToken);
+      setUserRoleCookie(res, result.user.role);
+
+      await auditLogService.log({
+        userId: pendingLogin.userId,
+        action: AUDIT_ACTIONS.LOGIN,
+        resource: AUDIT_RESOURCES.USER,
+        success: true,
+        ipAddress: req.ip,
+        metadata: { has2FA: true },
+      });
+
+      res.status(200).json({ success: true, data: { user: result.user } });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        res.status(400).json({ success: false, error: 'Dados inválidos', details: error.errors });
+        return;
+      }
+
+      logger.error('[AUTH] Unexpected complete-login error', {
+        error: error.message,
+        stack: error.stack,
+      });
+      res.status(401).json({
+        success: false,
+        error: 'Sessão de login inválida ou expirada',
       });
     }
   }
@@ -182,9 +379,37 @@ export class AuthController {
         return;
       }
 
+      // SECURITY (SER-23/SER-29): retornar user "slim". getUserById faz
+      // `...userWithoutPassword`, o que arrasta campos BigInt (hdAccountIndex,
+      // twoFactorLastUsedStep) que quebram res.json ("Do not know how to
+      // serialize a BigInt") — causa raiz do 500 que bloqueava o /auth/me — e
+      // expõe segredos (twoFactorSecret, twoFactorBackupCodes) ao frontend.
+      // Allowlist apenas com os campos que o frontend consome de /auth/me.
+      // NOTA: getUserById já achata `role` para string e calcula `level`/`has2FA`;
+      // por isso usamos user.role direto (não user.role?.slug).
+      const slimUser = {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        cpf: user.cpf,
+        phone: user.phone,
+        role: user.role,
+        level: user.level,
+        has2FA: user.has2FA,
+        twoFactorEnabled: user.twoFactorEnabled,
+        reputationScore: user.reputationScore,
+        totalTransactions: user.totalTransactions,
+        successfulTransactions: user.successfulTransactions,
+        accountFrozen: user.accountFrozen,
+        frozenReason: user.frozenReason,
+        frozenAt: user.frozenAt,
+        frozenUntil: user.frozenUntil,
+        createdAt: user.createdAt,
+      };
+
       res.status(200).json({
         success: true,
-        data: user,
+        data: slimUser,
       });
     } catch (error: any) {
       console.error('Get me error:', error);
