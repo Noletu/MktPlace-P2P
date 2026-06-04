@@ -223,7 +223,9 @@ export const auditLogService = new AuditLogService();
 // SECURITY: Constantes para ações auditadas
 export const AUDIT_ACTIONS = {
   // Auth
-  LOGIN: 'LOGIN',
+  LOGIN: 'LOGIN', // SER-23: login definitivo (emitido no complete-login)
+  LOGIN_PENDING: 'LOGIN_PENDING', // SER-23: senha validada (passo 1), aguardando finalização
+  LOGIN_FAILED: 'LOGIN_FAILED', // SER-23: credencial inválida (não distingue email/senha)
   LOGOUT: 'LOGOUT',
   REGISTER: 'REGISTER',
   REFRESH_TOKEN: 'REFRESH_TOKEN',

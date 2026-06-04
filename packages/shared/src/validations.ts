@@ -51,14 +51,34 @@ export const strongPasswordSchema = z
 // Auth schemas
 export const loginSchema = z.object({
   email: z.string().email('Email inválido'),
-  password: z.string().min(8, 'Senha deve ter no mínimo 8 caracteres'),
-  twoFactorToken: z.string().optional(), // SECURITY: Token 2FA opcional (quando habilitado)
+  // SECURITY (SER-23): no login apenas validamos a credencial — a política
+  // de tamanho é aplicada no registro. min(1) evita vazar a política aqui e
+  // faz uma senha curta cair no 401 uniforme, não num 400 distinto.
+  password: z.string().min(1, 'Senha obrigatória'),
+  // SECURITY (SER-23): twoFactorToken removido do /auth/login — o código
+  // 2FA agora vai para /auth/complete-login (passo 2).
 });
 
 export const registerSchema = z.object({
   email: z.string().email('Email inválido'),
   password: strongPasswordSchema, // SECURITY: Usar política de senha forte
   name: z.string().optional(),
+});
+
+// SECURITY (SER-23): body do /auth/complete-login (passo 2). O código 2FA é
+// opcional — ausente na primeira chamada (servidor responde requires2FA),
+// presente na segunda. Aceita DOIS formatos (twoFactorService.verifyToken
+// decide qual usar internamente — TOTP primeiro, depois backup code):
+//   - TOTP: 6 dígitos.
+//   - Backup code: 10 chars hex (formato exibido XXXX-XXXX-XX, hífens
+//     opcionais — bate com normalizeBackupCode do twoFactor.service).
+export const completeLoginSchema = z.object({
+  twoFactorToken: z
+    .union([
+      z.string().regex(/^\d{6}$/), // TOTP (6 dígitos)
+      z.string().regex(/^[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{2}$/), // backup code
+    ])
+    .optional(),
 });
 
 // Password reset schemas

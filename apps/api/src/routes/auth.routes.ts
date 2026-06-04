@@ -21,6 +21,19 @@ router.post('/register', registerLimiter, requiredRecaptchaMiddleware, (req, res
 router.post('/login', authLimiter, optionalRecaptchaMiddleware, (req, res) => authController.login(req, res));
 
 /**
+ * @route   POST /api/v1/auth/complete-login
+ * @desc    Finalizar login (passo 2): valida intermediate token + 2FA opcional
+ * @access  Public (requer cookie pendingLoginToken do passo 1)
+ */
+// SECURITY (SER-23): authLimiter previne brute-force do código 2FA.
+// Sem isso, atacante com posse do pendingLoginToken poderia tentar
+// milhões de códigos limitado apenas pelo attemptsRemaining=3 (que
+// pode ser contornado refazendo o passo 1).
+router.post('/complete-login', authLimiter, (req, res) =>
+  authController.completeLogin(req, res)
+);
+
+/**
  * @route   POST /api/v1/auth/refresh
  * @desc    Renovar access token com refresh token
  * @access  Public
