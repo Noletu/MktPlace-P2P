@@ -98,13 +98,9 @@ export default function RegisterForm() {
         throw new Error(data.error || 'Erro ao registrar');
       }
 
-      // Salvar token e usuário
-      if (data.data.accessToken) {
-        localStorage.setItem('accessToken', data.data.accessToken);
-      }
-      if (data.data.refreshToken) {
-        localStorage.setItem('refreshToken', data.data.refreshToken);
-      }
+      // SECURITY (SER-34): tokens NÃO são gravados em localStorage — vivem só
+      // em cookies HttpOnly setados pelo backend. O objeto `user` (não sensível:
+      // id/role) é mantido como cache leve consumido por chat/reviews/orders/admin.
       localStorage.setItem('user', JSON.stringify(data.data.user));
 
       // Mostrar mensagem de sucesso
