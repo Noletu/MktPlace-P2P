@@ -134,6 +134,88 @@ class EmailService {
     }
   }
 
+  /**
+   * SECURITY (SER-22): notifica o usuário de que a conta foi temporariamente
+   * bloqueada por excesso de tentativas de login (defesa anti-brute-force).
+   * É um e-mail de segurança crítico — enviado SEMPRE, ignorando as
+   * preferências de notificação. Acento âmbar (alerta sem alarme).
+   * Timestamps em horário de Brasília (America/Sao_Paulo, PT-BR).
+   */
+  async sendAccountLockoutEmail(
+    to: string,
+    name: string,
+    lockoutInfo: { lockedUntil: Date; durationMin: number },
+  ): Promise<void> {
+    const transporter = await this.getTransporter();
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const forgotPasswordUrl = `${frontendUrl}/forgot-password`;
+
+    const nowStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const unlockStr = lockoutInfo.lockedUntil.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #b45309; text-align: center;">🔒 Atividade suspeita detectada na sua conta</h2>
+        <p style="color: #374151; font-size: 16px;">Olá, <strong>${name}</strong>,</p>
+        <p style="color: #374151; font-size: 16px;">
+          Detectamos várias tentativas de login mal-sucedidas na sua conta.
+          Por segurança, bloqueamos temporariamente o acesso por
+          <strong>${lockoutInfo.durationMin} minutos</strong>.
+        </p>
+        <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 4px; margin: 20px 0;">
+          <p style="margin: 0; color: #92400e; font-size: 15px; font-weight: bold;">O que fazer agora:</p>
+          <ul style="color: #92400e; font-size: 14px; line-height: 1.8; margin: 8px 0 0;">
+            <li>Se foi <strong>você</strong> tentando logar, aguarde o tempo do bloqueio expirar e tente novamente. Se esqueceu sua senha, use a opção "Esqueci minha senha".</li>
+            <li>Se <strong>NÃO foi você</strong>, alguém pode estar tentando acessar sua conta. Recomendamos trocar sua senha imediatamente após o desbloqueio.</li>
+          </ul>
+        </div>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${forgotPasswordUrl}"
+             style="background-color: #2563eb; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: bold; display: inline-block;">
+            Esqueci minha senha
+          </a>
+        </div>
+        <p style="color: #6b7280; font-size: 14px; margin: 0;">
+          <strong>Horário do bloqueio:</strong> ${nowStr}<br/>
+          <strong>Desbloqueio automático em:</strong> ${unlockStr}
+        </p>
+        <p style="color: #6b7280; font-size: 12px; margin-top: 30px; text-align: center;">
+          — Equipe MktPlace-P2P
+        </p>
+      </div>
+    `;
+
+    const text = [
+      'Atividade suspeita detectada na sua conta',
+      '',
+      `Olá, ${name},`,
+      '',
+      `Detectamos várias tentativas de login mal-sucedidas na sua conta. Por segurança, bloqueamos temporariamente o acesso por ${lockoutInfo.durationMin} minutos.`,
+      '',
+      'O que fazer agora:',
+      '- Se foi você tentando logar, aguarde o tempo do bloqueio expirar e tente novamente. Se esqueceu sua senha, use a opção "Esqueci minha senha": ' + forgotPasswordUrl,
+      '- Se NÃO foi você, alguém pode estar tentando acessar sua conta. Recomendamos trocar sua senha imediatamente após o desbloqueio.',
+      '',
+      `Horário do bloqueio: ${nowStr}`,
+      `Desbloqueio automático em: ${unlockStr}`,
+      '',
+      '— Equipe MktPlace-P2P',
+    ].join('\n');
+
+    const info = await transporter.sendMail({
+      from: process.env.SMTP_FROM || '"MktPlace" <noreply@mktplace.com>',
+      to,
+      subject: 'Atividade suspeita detectada na sua conta',
+      text,
+      html,
+    });
+
+    const previewUrl = nodemailer.getTestMessageUrl(info);
+    if (previewUrl) {
+      console.log('[EMAIL] Account lockout email preview URL:', previewUrl);
+    }
+  }
+
   // ── DUAL-APPROVAL EMAILS ────────────────────────────────────────────────────
 
   async sendNewPendingApprovalEmail(
