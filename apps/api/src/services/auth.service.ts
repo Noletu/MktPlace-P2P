@@ -4,6 +4,10 @@ import { hashPassword, comparePassword } from '../utils/bcrypt';
 import { generateToken } from '../utils/jwt';
 import { refreshTokenService } from './refreshToken.service';
 import { twoFactorService } from './twoFactor.service';
+import { accountLockoutService } from './accountLockout.service';
+import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from './auditLog.service';
+import { emailService } from './email.service';
+import { logger } from '../utils/logger';
 
 const prisma = new PrismaClient();
 
@@ -119,13 +123,85 @@ export class AuthService {
       return null;
     }
 
-    const isPasswordValid = await comparePassword(input.password, user.password);
-
-    if (!isPasswordValid) {
+    // SECURITY (SER-22 Caminho Z): se a conta está em lockout, NÃO rodar bcrypt
+    // real. Roda bcrypt dummy para manter o timing uniforme com os cenários em
+    // que o bcrypt real seria executado (senha correta ou errada). Retorno null
+    // genérico — o caller não distingue lockout de credencial inválida (SER-23).
+    const lockStatus = await accountLockoutService.isLocked(user.id);
+    if (lockStatus.locked) {
+      await comparePassword(input.password, TIMING_DUMMY_HASH);
       return null;
     }
 
+    const isPasswordValid = await comparePassword(input.password, user.password);
+
+    if (!isPasswordValid) {
+      // SECURITY (SER-22): senha errada — incrementar o contador de falhas.
+      // recordFailedLogin pode disparar o lockout se o threshold for atingido.
+      const result = await accountLockoutService.recordFailedLogin(user.id);
+
+      if (result.lockoutTriggered && result.lockedUntil && result.durationMin !== undefined) {
+        // SECURITY (SER-22): lockout disparado — auditar (observabilidade
+        // ops/compliance) e notificar o dono da conta por e-mail. Busca extra
+        // de email/name/contadores (fora do select original por economia);
+        // só roda quando o lockout efetivamente dispara.
+        await this.notifyLockout(user.id, result.lockedUntil, result.durationMin);
+      }
+
+      // Retorno null uniforme, sem expor ao caller falha de senha vs. lockout.
+      return null;
+    }
+
+    // SECURITY (SER-22): senha correta — limpar failedLoginAttempts e
+    // lockedUntil. NÃO reseta lockoutCount (esse só esfria pela janela de 24h
+    // dentro de recordFailedLogin).
+    await accountLockoutService.recordSuccessfulLogin(user.id);
+
     return { userId: user.id, twoFactorEnabled: user.twoFactorEnabled };
+  }
+
+  /**
+   * SECURITY (SER-22): efeitos colaterais de um lockout disparado — audit log
+   * (sempre) + e-mail de aviso ao usuário (best-effort). O audit registra
+   * contadores (lockoutCount, failedLoginAttempts) para análise de padrões de
+   * ataque. O e-mail é envolvido em try/catch: se o SMTP cair, o lockout em si
+   * já funcionou e não pode ser revertido por falha de notificação.
+   */
+  private async notifyLockout(userId: string, lockedUntil: Date, durationMin: number): Promise<void> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, name: true, lockoutCount: true, failedLoginAttempts: true },
+    });
+
+    if (!user) {
+      return;
+    }
+
+    await auditLogService.log({
+      userId,
+      action: AUDIT_ACTIONS.ACCOUNT_LOGIN_LOCKED,
+      resource: AUDIT_RESOURCES.USER,
+      success: true, // o ATO de bloquear teve sucesso — não confundir com login
+      metadata: {
+        durationMin,
+        lockoutCount: user.lockoutCount,
+        failedLoginAttempts: user.failedLoginAttempts,
+        lockedUntil: lockedUntil.toISOString(),
+      },
+    });
+
+    try {
+      await emailService.sendAccountLockoutEmail(user.email, user.name || 'Usuário', {
+        lockedUntil,
+        durationMin,
+      });
+    } catch (emailError) {
+      logger.error('[AUTH] Failed to send account lockout email', {
+        userId,
+        error: (emailError as Error).message,
+      });
+      // NÃO re-throw — lockout funcionou; e-mail é best-effort.
+    }
   }
 
   /**

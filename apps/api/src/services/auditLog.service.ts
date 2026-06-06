@@ -226,6 +226,7 @@ export const AUDIT_ACTIONS = {
   LOGIN: 'LOGIN', // SER-23: login definitivo (emitido no complete-login)
   LOGIN_PENDING: 'LOGIN_PENDING', // SER-23: senha validada (passo 1), aguardando finalização
   LOGIN_FAILED: 'LOGIN_FAILED', // SER-23: credencial inválida (não distingue email/senha)
+  ACCOUNT_LOGIN_LOCKED: 'ACCOUNT_LOGIN_LOCKED', // SER-22: lockout automático por brute-force (conta + senha; distinto de accountFrozen que é manual/admin)
   LOGOUT: 'LOGOUT',
   REGISTER: 'REGISTER',
   REFRESH_TOKEN: 'REFRESH_TOKEN',

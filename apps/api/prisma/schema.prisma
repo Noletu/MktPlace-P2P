@@ -65,6 +65,14 @@ model User {
   twoFactorBackupCodes  String? // JSON array de códigos hasheados
   twoFactorLastUsedStep BigInt? // CRIT-07: último timestep TOTP aceito (Unix epoch / 30). Anti-replay: token cujo step seja <= este valor é rejeitado.
 
+  // SECURITY (SER-22): Account lockout automático (defesa anti-brute-force).
+  // CONCEITUALMENTE DISTINTO de accountFrozen (que é manual/admin/compliance).
+  // Lockout bloqueia o LOGIN; accountFrozen permite login mas bloqueia operações.
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  lockoutCount        Int       @default(0)
+  lastFailedLoginAt   DateTime?
+
   // PASSWORD RESET
   passwordResetToken   String?
   passwordResetExpires DateTime?
