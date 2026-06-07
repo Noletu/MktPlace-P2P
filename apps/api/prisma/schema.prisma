@@ -73,6 +73,16 @@ model User {
   lockoutCount        Int       @default(0)
   lastFailedLoginAt   DateTime?
 
+  // SECURITY (SER-39): Lockout automático por falhas de 2FA
+  // (paralelo ao SER-22 que cobre falhas de senha). Vetores
+  // ortogonais: senha errada NÃO incrementa este contador e
+  // vice-versa. Atacante de 2FA já provou senha — escopo
+  // diferente, defesa diferente.
+  failed2FAAttempts     Int       @default(0)
+  twoFactorLockedUntil  DateTime?
+  twoFactorLockoutCount Int       @default(0)
+  last2FAFailAt         DateTime?
+
   // PASSWORD RESET
   passwordResetToken   String?
   passwordResetExpires DateTime?
