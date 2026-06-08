@@ -227,6 +227,7 @@ export const AUDIT_ACTIONS = {
   LOGIN_PENDING: 'LOGIN_PENDING', // SER-23: senha validada (passo 1), aguardando finalização
   LOGIN_FAILED: 'LOGIN_FAILED', // SER-23: credencial inválida (não distingue email/senha)
   ACCOUNT_LOGIN_LOCKED: 'ACCOUNT_LOGIN_LOCKED', // SER-22: lockout automático por brute-force (conta + senha; distinto de accountFrozen que é manual/admin)
+  TWO_FACTOR_LOGIN_LOCKED: 'TWO_FACTOR_LOGIN_LOCKED', // SER-39: lockout por brute-force de código 2FA (atacante já tem senha; vetor distinto do SER-22)
   LOGOUT: 'LOGOUT',
   REGISTER: 'REGISTER',
   REFRESH_TOKEN: 'REFRESH_TOKEN',

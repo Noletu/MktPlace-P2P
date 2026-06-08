@@ -10,6 +10,7 @@ import { prisma } from '../utils/prisma';
 import { notifPrefsService } from '../services/notificationPreferences.service';
 import { pendingLoginService } from '../services/pendingLogin.service';
 import { twoFactorService } from '../services/twoFactor.service';
+import { twoFactorLockoutService } from '../services/twoFactorLockout.service';
 
 export class AuthController {
   async register(req: Request, res: Response): Promise<void> {
@@ -286,9 +287,44 @@ export class AuthController {
       // 7. Caso C: usuário COM 2FA, código fornecido — validar.
       // twoFactorService.verifyToken(userId, token) já trata anti-replay
       // (CRIT-07) e backup codes internamente; retorna boolean.
+
+      // SECURITY (SER-39): antes de verifyToken, checar se a conta está em
+      // lockout por excesso de falhas de 2FA. Caminho análogo ao Caminho Z
+      // do SER-22, mas operando nos campos dedicados de 2FA. Vem ANTES de
+      // verifyToken para não desperdiçar CPU validando código de conta já
+      // bloqueada.
+      const lock2FAStatus = await twoFactorLockoutService.isLockedFor2FA(pendingLogin.userId);
+      if (lock2FAStatus.locked) {
+        // Lockout 2FA ativo. Resposta uniforme com a do esgotamento de
+        // attemptsRemaining=3 do PendingLogin — atacante não distingue
+        // "esgotei o PendingLogin atual" de "minha conta está em lockout
+        // 2FA". O cookie é limpo para forçar refazer o login.
+        res.clearCookie('pendingLoginToken', { path: '/api/v1/auth' });
+        res.status(401).json({
+          success: false,
+          error: 'Tentativas esgotadas. Faça login novamente.',
+        });
+        return;
+      }
+
       const totpValid = await twoFactorService.verifyToken(pendingLogin.userId, twoFactorToken);
 
       if (!totpValid) {
+        // SECURITY (SER-39): incrementar o contador de falhas de 2FA.
+        // recordFailed2FA pode disparar lockout se o threshold (5) for
+        // atingido. SER-39 e PendingLogin attempts são COMPLEMENTARES: o
+        // PendingLogin limita brute-force DENTRO de uma sessão; SER-39 limita
+        // ENTRE sessões.
+        const lockoutResult = await twoFactorLockoutService.recordFailed2FA(pendingLogin.userId);
+
+        if (lockoutResult.lockoutTriggered && lockoutResult.lockedUntil && lockoutResult.durationMin !== undefined) {
+          // SECURITY (SER-39): lockout disparado — auditar (observabilidade
+          // ops/compliance) e notificar o dono da conta por e-mail com tom
+          // mais grave que SER-22 (senha já comprometida — atacante atravessou
+          // a barreira de senha).
+          await this.notifyTwoFactorLockout(pendingLogin.userId, lockoutResult.lockedUntil, lockoutResult.durationMin, req);
+        }
+
         // Código errado — decrementar tentativas (single-use NÃO disparado aqui)
         const remaining = await pendingLoginService.decrementAttempts(pendingLogin.id);
 
@@ -323,6 +359,12 @@ export class AuthController {
       // 8. Código 2FA correto → consumir pendingLogin e finalizar.
       // (O anti-replay/twoFactorLastUsedStep já foi atualizado dentro do
       // verifyToken — NÃO atualizar aqui.)
+
+      // SECURITY (SER-39): resetar os contadores de falha de 2FA após sucesso.
+      // Vem antes do consumePendingLogin para manter simetria com o ramo de
+      // falha (lockout 2FA primeiro, PendingLogin depois).
+      await twoFactorLockoutService.recordSuccessful2FA(pendingLogin.userId);
+
       await pendingLoginService.consumePendingLogin(pendingLogin.id);
       res.clearCookie('pendingLoginToken', { path: '/api/v1/auth' });
 
@@ -355,6 +397,54 @@ export class AuthController {
         success: false,
         error: 'Sessão de login inválida ou expirada',
       });
+    }
+  }
+
+  // SECURITY (SER-39): efeitos colaterais do lockout 2FA — audit log +
+  // e-mail best-effort. Privado no controller (a integração SER-39 vive no
+  // controller; espelha o notifyLockout do auth.service.ts do SER-22). Só é
+  // chamado quando lockoutTriggered === true, então a query extra ao DB tem
+  // custo desprezível.
+  private async notifyTwoFactorLockout(
+    userId: string,
+    lockedUntil: Date,
+    durationMin: number,
+    req: Request
+  ): Promise<void> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, name: true, twoFactorLockoutCount: true, failed2FAAttempts: true },
+    });
+
+    if (!user) {
+      return;
+    }
+
+    await auditLogService.log({
+      userId,
+      action: AUDIT_ACTIONS.TWO_FACTOR_LOGIN_LOCKED,
+      resource: AUDIT_RESOURCES.USER,
+      success: true, // o ATO de bloquear teve sucesso
+      ipAddress: req.ip,
+      metadata: {
+        durationMin,
+        twoFactorLockoutCount: user.twoFactorLockoutCount,
+        failed2FAAttempts: user.failed2FAAttempts,
+        lockedUntil: lockedUntil.toISOString(),
+      },
+    });
+
+    try {
+      await emailService.sendTwoFactorLockoutEmail(user.email, user.name || 'Usuário', {
+        lockedUntil,
+        durationMin,
+      });
+    } catch (emailError) {
+      logger.error('[AUTH] Failed to send 2FA lockout email', {
+        userId,
+        error: (emailError as Error).message,
+      });
+      // NÃO re-throw — lockout funcionou; email é best-effort.
     }
   }
 

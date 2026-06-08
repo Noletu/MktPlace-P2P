@@ -1,7 +1,7 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.24
-> **Data:** 14 de maio de 2026 (última edição: 5 de junho de 2026)
+> **Versão:** 1.25
+> **Data:** 14 de maio de 2026 (última edição: 7 de junho de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
 > **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
 >
@@ -15,6 +15,8 @@
 > **Changelog v1.20:** TD-SCHEMA01 resolvido (Sprint 3 sessão 3): o sintoma observado (DROP SEQUENCE recorrente em migrations futuras do User) foi eliminado pela mudança de `@default(dbgenerated("nextval(...)"))` para `@default(autoincrement())` no schema.prisma — sem migration estrutural necessária. Verificação empírica confirmou: o diff engine do Prisma normaliza ambas as representações para o mesmo conceito interno. CRIT-02 testado end-to-end: novo usuário recebeu `hdAccountIndex=33` (next correto da sequence), endereços BIP32 distintos confirmados. Rollback plan versionado em `docs/rollback-plans/td-schema01.md`. §1.1 PRE-STAGING atualizado para 21 itens.
 > **Changelog v1.21:** MED-34 fechado (Sprint 3 sessão 4): **21 `@relation` explícitos** adicionados ao schema, cobrindo todas as FKs denormalizadas (User self-relations, Order, WalletTransaction, Withdrawal, Transaction, PlatformTransfer, PlatformWalletMovement, AuditLog, BroadcastLog, ChatArchive, RolePermission, Coupon). Policies `ON DELETE` definidas caso-a-caso: **20 `SetNull`** + **1 `Restrict`** (`PlatformTransfer.requestedBy` — bloqueia deletar o sócio que solicitou uma transferência de plataforma, preservando rastreabilidade financeira; demais campos de auditoria usam `SetNull` para preservar o registro histórico mesmo se o usuário referenciado for removido). **2 renomeações** de `@relation` para desambiguar relations múltiplas User→Model (`OrderOwner` em `Order.user`, `WalletTransactionOwner` em `WalletTransaction.user`). **1 conversão NOT NULL → nullable** (`BroadcastLog.adminId String → String?`) exigida pelo `SetNull`. **Decisão YAGNI sobre indexes:** os 11 índices em colunas FK que o fluxo normal sugeriria **não** foram adicionados — custo de escrita/disco garantido vs. benefício hipotético (nenhuma query atual filtra por esses campos, verificado no código); `CREATE INDEX CONCURRENTLY` é trivial quando uma query real exigir. Migration `20260531144306_med34_explicit_fks` aplicada e verificada via `information_schema` (21 FKs, delete_rule confirmado). Re-check de integridade pré-aplicação: **0 orphans** nos 21 campos. Drift check pós-aplicação: **0** (TD-SCHEMA01 segue resolvido, FKs novas não introduziram drift). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING atualizado para 20 itens.
 > **Changelog v1.22:** SER-17 fechado (Sprint 3 sessão 5): guard `process.env.NODE_ENV !== 'production'` substituído por flag explícita `process.env.CORS_ALLOW_NO_ORIGIN === 'true'` no CORS de `index.ts`. **Default fail-secure:** qualquer ambiente que não setar a flag (inclusive `NODE_ENV` undefined em containers) rejeita requisições sem header `Origin`, fechando o risco residual. Log de rejeição enriquecido com `nodeEnv` e `allowNoOriginFlag`. `.env.example` documenta a flag (default `false`). Validação manual 5/5: `flag false` + sem origin → bloqueado; `flag true` + sem origin → permitido; flag não abre origins inválidas. Dois findings catalogados durante a sessão: **SER-31** (`socket.server.ts` usa padrão `NODE_ENV` para CORS — inconsistência arquitetural com o HTTP; severidade baixa) e **SER-32** (CORS rejeitado propaga HTTP 500 via `callback(new Error(...))` em vez de 403 — semântico, pré-existente; severidade baixa). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING: SER-17 sai (−1), SER-31 + SER-32 entram (+2) → 22 itens.
+> **Changelog v1.25:** SER-39 fechado (Sprint 3 sessão 8): **defesa contra brute-force de código 2FA** no `/auth/complete-login`, implementada **paralela** ao SER-22 (vetores ortogonais — campos separados, contadores separados, lockouts separados). 4 campos novos no `User` (`failed2FAAttempts`, `twoFactorLockedUntil`, `twoFactorLockoutCount`, `last2FAFailAt`); **service dedicado** `twoFactorLockoutService` (espelha estruturalmente o `accountLockoutService`, duplicação intencional para isolamento/zero risco no código de senha em produção). **Threshold 5** (mais permissivo que senha=3, por UX de TOTP/backup codes); **backoff exponencial** 5min→30min→2h→24h (cap 4); cooldown 30min, count-reset 24h. **Enforcement no Caso C** do `completeLogin`: `isLockedFor2FA` checa **antes** de `verifyToken` (Caminho Z — não roda verificação de código se a conta está em lockout), `recordFailed2FA` no ramo de código errado (complementar ao `attemptsRemaining` do `PendingLogin`: este limita brute-force **dentro** de uma sessão, SER-39 limita **entre** sessões), `recordSuccessful2FA` reseta no ramo de sucesso. Efeitos colaterais: audit `TWO_FACTOR_LOGIN_LOCKED` (com `ipAddress`, disponível no controller — incremento sobre o `ACCOUNT_LOGIN_LOCKED`, que rodava no service sem `req`) + e-mail **tom grave** (paleta vermelha `#dc2626` consistente com `sendEmergencyOverrideEmail`; texto destaca "sua senha foi inserida corretamente — pode estar comprometida"; CTA "Trocar senha agora" → `/forgot-password`; enviado sempre). **`twoFactorLimiter` adicionado** ao `/complete-login` (defesa em profundidade por IP). **Guard de idempotência aplicado desde o início** (não foi ajuste posterior como no SER-22) e **validado empiricamente** sob concorrência real (HTTP-2FA-12: 5 requests paralelas escalam `lockoutCount` apenas +1, geram apenas 1 audit/email). **Correção da nota da Sessão 7:** o `twoFactorLimiter` **já estava montado** em `twoFactor.routes.ts` (`/enable`, `/disable`, `/regenerate-backup-codes`) — só não estava no `/complete-login`, gap que esta sessão fecha. Validação manual 12/12 (HTTP-2FA-1..12) + 2 e-mails Ethereal conferidos (paleta vermelha distinta do âmbar do SER-22). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING: 24 − 1 (SER-39) = **23** itens.
+>
 > **Changelog v1.24:** SER-22 fechado (Sprint 3 sessão 7): **account lockout automático** por conta (defesa anti-brute-force, complementa o rate-limit por IP). 4 campos novos no `User` (`failedLoginAttempts`, `lockedUntil`, `lockoutCount`, `lastFailedLoginAt`); `accountLockoutService` dedicado (`isLocked`/`recordSuccessfulLogin`/`recordFailedLogin`, atomicidade via `increment` + `updateMany` condicionais para evitar lost-update sob burst concorrente). **Threshold** 3 falhas/30min; **backoff exponencial** 5min→30min→2h→24h (cap em 4); `failedLoginAttempts` esfria em 30min (e zera em login OK), `lockoutCount` esfria em 24h. **Caminho Z:** conta em lockout não roda bcrypt real — roda dummy cost-12 para manter timing uniforme com email inexistente (preserva SER-23); retorno 401 genérico. Efeitos colaterais: audit `ACCOUNT_LOGIN_LOCKED` + e-mail transacional (acento âmbar, CTA "Esqueci minha senha", best-effort). **Ortogonal a `accountFrozen`** (manual/admin/compliance). Validação manual 10/10 (HTTP-L1..L10) + 2 e-mails Ethereal conferidos. **SER-39 catalogado** (brute-force de código 2FA no `/complete-login` contornável recriando o PendingLogin). **SER-38 refinado** (vetor adicional do leak: salto de timing ~95ms→~347ms revela o disparo do lockout em conta cost-10). **TECH-DEBT** nota: `TIMESTAMP(3)` sem `@db.Timestamptz` torna escritas via SQL bruto propensas a skew de TZ (Postgres `now()` local vs Prisma UTC) — app real não afetada (tudo via Prisma). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING: 24 − 1 (SER-22) + 1 (SER-39) = **24** itens.
 > **Changelog v1.23:** SER-23 fechado (Sprint 3 sessão 6): login refatorado em 2 passos — `POST /auth/login` uniformiza a resposta (`nextStep: COMPLETE_LOGIN` + cookie HttpOnly `pendingLoginToken`) sem vazar status de 2FA nem permitir enumeração; `POST /auth/complete-login` valida o token intermediário (model `PendingLogin`, TTL 120s, single-use, 3 tentativas) e decide 2FA. Defesa de timing (Achado C) via `TIMING_DUMMY_HASH` bcrypt cost-12. **SER-29 fechado:** `/auth/me` retornava 500 (serialização de BigInt) — agora retorna user slim (allowlist de 17 campos consumidos pelo frontend). **SER-34 fechado:** tokens emitidos apenas via cookies HttpOnly (removidos do body de `/register` e `/complete-login` e do `localStorage` do frontend). **SER-37 fechado** (catalogado+resolvido na sessão): mesmo bug de BigInt no `/register` travava cadastro via app. **Catalogados:** SER-33 (accountFrozen permite login — verificar bloqueio de operações sensíveis), SER-35 (8 leitores de `localStorage('user')` → fonte central), SER-36 (tela de 2FA sem input de backup code), SER-38 (bcrypt cost inconsistente 10 vs 12). Higiene de IDs: §2.1 `SER-37`→`SER-31, SER-32` (typo) e placeholder de magic-bytes na §SER-16 sem ID até catalogar formalmente. Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING: 22 − 2 (SER-23, SER-29) + 4 (SER-33/35/36/38) = **24** itens.
 
@@ -84,7 +86,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 |------|------------------|------------------------|
 | 🚨 FAZER AGORA | 14 findings | ~3-4 semanas (1-2 devs) |
 | 🟡 FAZER AGORA — PARCIAL | 2 findings | incluído acima |
-| 🔵 ADIAR PRE-STAGING | 24 findings | ~2-3 semanas |
+| 🔵 ADIAR PRE-STAGING | 23 findings | ~2-3 semanas |
 | ⚪ ADIAR PRE-PROD | 5 findings | ~1-2 semanas |
 | ⚫ ADIAR PRE-LAUNCH | 2 findings | sob demanda |
 
@@ -122,7 +124,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 
 > **MED-34 — ✅ Fechado (v1.21, Sprint 3 sessão 4):** 21 `@relation` explícitos (20 `SetNull` + 1 `Restrict`), 2 renomeações de relation, `BroadcastLog.adminId` → nullable. Policies `ON DELETE` (a fatia que estava adiada para PRE-STAGING) também resolvidas nesta sessão. Indexes não adicionados (YAGNI). Ver §MED-34 e Changelog v1.21.
 
-#### 🔵 ADIAR PRE-STAGING (24)
+#### 🔵 ADIAR PRE-STAGING (23)
 
 > **Trigger:** quando for subir o primeiro ambiente com Postgres real, Redis, domínio próprio e auth funcional fora do localhost.
 >
@@ -131,6 +133,8 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 > **Nota de v1.23 (Sprint 3 sessão 6):** SER-23 e SER-29 fechados (saem desta lista, −2); SER-33, SER-35, SER-36 e SER-38 catalogados (entram, +4). SER-34 e SER-37 foram catalogados **e** fechados na mesma sessão — nunca entraram nesta lista, então não alteram a contagem. Saldo líquido 22 − 2 + 4 = **24**.
 >
 > **Nota de v1.24 (Sprint 3 sessão 7):** SER-22 fechado (sai desta lista, −1); SER-39 catalogado (entra, +1). Saldo líquido 24 − 1 + 1 = **24**.
+>
+> **Nota de v1.25 (Sprint 3 sessão 8):** SER-39 fechado (sai desta lista, −1). Nenhum finding novo catalogado. Saldo líquido 24 − 1 = **23**.
 
 | ID | Por que adiar agora |
 |----|---------------------|
@@ -153,7 +157,6 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | SER-35 | 8 leitores de `localStorage.getItem('user')`; migrar para fonte central (AuthContext / `useCurrentUser` via `/auth/me`) após estabilizar o fluxo de auth |
 | SER-36 | Tela de 2FA do login sem input de backup code (backend já aceita via `z.union`); adicionar toggle quando a UX de 2FA for revisada |
 | SER-38 | bcrypt cost inconsistente (`SALT_ROUNDS=10` vs seed/dummy cost-12); padronizar cost-12 + rehash transparente no login em sessão dedicada. **Refinado v1.24:** SER-22 expõe vetor adicional do mesmo leak (salto de timing pós-lockout) |
-| SER-39 | Brute-force de código 2FA no `/auth/complete-login` contornável recriando o `PendingLogin` (novas 3 tentativas por sessão); precisa de contador durável de falhas de 2FA |
 | MED-31 (resto) | Refator completo só faz sentido quando log aggregation estiver configurado |
 | MED-36 | Em dev `unsafe-inline` ajuda no debug visual |
 | MED-37 | Documentação melhor quando frontend de RBAC estabilizar |
@@ -3033,6 +3036,8 @@ lastFailedLoginAt   DateTime?
 - [x] Caminho Z: conta em lockout não incrementa e mantém timing uniforme (a≈b, <2%)
 - [x] E-mail notifica o usuário do bloqueio + audit `ACCOUNT_LOGIN_LOCKED`
 
+> **Nota de v1.25 (Sprint 3 sessão 8):** o guard de idempotência atômico introduzido aqui foi **confirmado empiricamente sob concorrência real** no SER-39, que reusa o mesmo padrão (`increment` atômico + trigger só no `=== THRESHOLD` exato). O teste HTTP-2FA-12 disparou 5 requests paralelas com o mesmo token e verificou que o contador parou em exatamente 5 (não >5), o backoff escalou apenas +1 e apenas 1 audit/e-mail foi gerado — validação que a Sessão 7 (SER-22) não chegou a executar.
+
 ---
 
 ## SER-23 — Login leakeia se 2FA está habilitado
@@ -4387,21 +4392,46 @@ Padronizar `SALT_ROUNDS=12` + rehash transparente no login bem-sucedido (migra s
 **Severidade:** 🟡 Média (atacante já precisa ter a senha correta)
 **Fase:** 🔵 **[ADIAR PRE-STAGING]**
 **Categoria:** Brute force / 2FA
-**Status:** ⬜ Catalogado (Sprint 3 sessão 7)
+**Status:** ✅ **Fechado (v1.25, Sprint 3 sessão 8).** Lockout automático por conta para falhas de **código 2FA**, **paralelo e ortogonal** ao SER-22 (campos, contadores e lockouts separados). Validado por HTTP (12/12, HTTP-2FA-1..12, incluindo teste de concorrência) + 2 e-mails Ethereal conferidos visualmente.
 **Relaciona-se a:** SER-22 (account lockout de senha) · SER-23 (`PendingLogin`).
 
 ### Problema
 O `PendingLogin` limita a **3 tentativas de código 2FA por sessão** (`attemptsRemaining`), invalidando o token ao esgotar. Mas o atacante que já tem a senha correta pode simplesmente **refazer o passo 1** (`POST /auth/login`) e obter um **novo `PendingLogin` com 3 tentativas novas** — repetindo indefinidamente. O lockout do SER-22 só conta falhas de **senha** (`recordFailedLogin` no ramo de senha inválida), não falhas de **código 2FA**, então não cobre esse caminho. Para um TOTP de 6 dígitos o espaço é pequeno o suficiente para que tentativas ilimitadas em lote sejam relevantes.
 
-### Recomendação
-Estender o lockout para falhas de 2FA — opções:
-1. Um contador durável de falhas de 2FA por usuário (análogo aos campos do SER-22), incrementado no ramo `!totpValid` do `completeLogin`, com backoff próprio.
-2. Reusar `recordFailedLogin` (ou um `recordFailed2FA` dedicado) para que falhas de 2FA também alimentem o lockout da conta.
+### Implementação final
+
+Lockout dedicado a 2FA, **paralelo** ao SER-22 (decisão Sessão 8: aceitar ~80% de duplicação estrutural em troca de isolamento e **zero risco** no código de senha já em produção).
+
+#### Schema (`User`, migration `20260607213406_ser39_2fa_lockout`)
+```prisma
+failed2FAAttempts     Int       @default(0)
+twoFactorLockedUntil  DateTime?
+twoFactorLockoutCount Int       @default(0)   // define o backoff
+last2FAFailAt         DateTime?
+```
+
+#### `twoFactorLockoutService` (novo, `services/twoFactorLockout.service.ts`)
+- Espelha estruturalmente o `accountLockoutService`: `isLockedFor2FA` (pure read), `recordSuccessful2FA` (zera `failed2FAAttempts`+`twoFactorLockedUntil`, preserva `twoFactorLockoutCount`), `recordFailed2FA` (4 passos atômicos: reset 24h → reset 30min/lockout-expirado → `increment` atômico → trigger só no `=== THRESHOLD` exato).
+- **Tipos locais** (`TwoFALockStatus`/`Failed2FAResult`) — zero acoplamento com o service de senha.
+- **Guard de idempotência aplicado desde o início** (`> THRESHOLD` retorna sem re-escalar) — diferente do SER-22, onde foi ajuste posterior.
+
+#### Parâmetros
+- **Threshold:** 5 falhas consecutivas (mais permissivo que senha=3 — UX de TOTP/backup codes).
+- **Backoff exponencial** por `twoFactorLockoutCount` (cap em 4): 5min → 30min → 2h → 24h.
+- **Resets:** `failed2FAAttempts` esfria após 30min (ou 2FA OK); `twoFactorLockoutCount` esfria após 24h.
+
+#### Integração (`completeLogin`, Caso C — usuário COM 2FA, código fornecido)
+- **Caminho Z:** `isLockedFor2FA` checa **antes** de `verifyToken` — conta em lockout recebe **401 uniforme** ("Tentativas esgotadas. Faça login novamente.", mesma do esgotamento do `PendingLogin`) e **não** roda verificação de código nem incrementa contador.
+- Ramo `!totpValid` → `recordFailed2FA` (**complementar** ao `attemptsRemaining`: o `PendingLogin` limita brute-force **dentro** de uma sessão, SER-39 **entre** sessões). Disparo → `notifyTwoFactorLockout`: audit `TWO_FACTOR_LOGIN_LOCKED` (com `ipAddress` — disponível no controller) + e-mail **tom grave** (paleta vermelha `#dc2626`, "senha pode estar comprometida", CTA "Trocar senha agora"), best-effort.
+- Ramo de sucesso → `recordSuccessful2FA` reseta os contadores.
+- **`twoFactorLimiter`** adicionado ao `/complete-login` (defesa em profundidade por IP). *Correção da nota da Sessão 7:* o limiter **já estava montado** em `twoFactor.routes.ts` (`/enable`, `/disable`, `/regenerate-backup-codes`) — só faltava no `/complete-login`.
 
 ### Critério de aceitação
-- [ ] Falhas de 2FA acumulam num contador durável por conta (não só por `PendingLogin`)
-- [ ] Recriar o `PendingLogin` não zera o contador de falhas de 2FA
-- [ ] Threshold de 2FA dispara lockout (próprio ou compartilhado com SER-22)
+- [x] Falhas de 2FA acumulam num contador durável por conta (não só por `PendingLogin`) — HTTP-2FA-4/5
+- [x] Recriar o `PendingLogin` não zera o contador de falhas de 2FA — HTTP-2FA-5 (cada falha em sessão nova ainda incrementa `failed2FAAttempts`)
+- [x] Threshold de 2FA dispara lockout (próprio, threshold=5, backoff exponencial) — HTTP-2FA-6 (5min), HTTP-2FA-9 (30min), audit confirma 5/30/120min
+- [x] Caminho Z: conta em lockout barra **antes** de `verifyToken`, sem incrementar — HTTP-2FA-7 (código correto + conta locked → 401, `failed2FAAttempts` inalterado)
+- [x] Guard de idempotência sob concorrência: 5 requests paralelas escalam `lockoutCount` apenas +1 e geram 1 audit/email — HTTP-2FA-12
 
 ### Nota técnica — `TIMESTAMP(3)` sem `@db.Timestamptz` (dívida arquitetural pré-existente)
 Durante o desenvolvimento do harness de testes do SER-22 ficou evidente que escritas de timestamp via **SQL bruto** em colunas `TIMESTAMP(3)` (sem `@db.Timestamptz`) são propensas a bug de timezone: `now()` do Postgres retorna horário **local** (Brasília, UTC-3) enquanto o Prisma opera em **UTC**, gerando um skew de 3h. **A aplicação real NÃO é afetada** — todas as escritas dessas colunas passam pelo Prisma (UTC consistente), comprovado pelo fluxo real do HTTP-L4 (lockout disparou corretamente em 3 falhas sem timestamp manual). Não é finding novo; é evidência empírica da dívida arquitetural pré-existente do projeto (`TIMESTAMP(3)` sem `Timestamptz` em todas as tabelas, inclusive financeiras). Registro para a sessão que eventualmente migrar para `@db.Timestamptz`.
@@ -4494,6 +4524,7 @@ Distintas dos erros de TS e falhas de teste acima — estas são ações que pre
 
 **Fim do documento.**
 
-Última edição: 05/06/2026 (v1.24 — Sprint 3 sessão 7: SER-22 ✅ fechado — account lockout automático por conta com backoff exponencial 5min→30min→2h→24h, service dedicado com atomicidade anti lost-update, Caminho Z preservando timing do SER-23, audit ACCOUNT_LOGIN_LOCKED + e-mail âmbar; ortogonal a accountFrozen; validado HTTP 10/10 + 2 e-mails Ethereal; SER-39 catalogado (brute-force de 2FA contornável recriando PendingLogin); SER-38 refinado empiricamente (salto de timing pós-lockout); nota técnica TIMESTAMP(3) sem Timestamptz; §1.1 PRE-STAGING mantém 24 itens)
+Última edição: 07/06/2026 (v1.25 — Sprint 3 sessão 8: SER-39 ✅ fechado — lockout por brute-force de código 2FA, paralelo e ortogonal ao SER-22; 4 campos novos no User + twoFactorLockoutService dedicado (threshold 5, backoff 5min→30min→2h→24h); enforcement no Caso C do completeLogin com Caminho Z antes de verifyToken; audit TWO_FACTOR_LOGIN_LOCKED com ipAddress + e-mail tom grave (paleta vermelha, "senha pode estar comprometida"); twoFactorLimiter adicionado ao /complete-login; guard de idempotência validado empiricamente sob concorrência (HTTP-2FA-12); correção da nota da Sessão 7 sobre twoFactorLimiter já estar montado nas rotas de gerenciamento de 2FA; validado HTTP 12/12 + 2 e-mails Ethereal; baseline tsc 25/jest 59-18-40; §1.1 PRE-STAGING: 24 − 1 = 23 itens)
+Edição anterior: 05/06/2026 (v1.24 — Sprint 3 sessão 7: SER-22 ✅ fechado — account lockout automático por conta com backoff exponencial 5min→30min→2h→24h, service dedicado com atomicidade anti lost-update, Caminho Z preservando timing do SER-23, audit ACCOUNT_LOGIN_LOCKED + e-mail âmbar; ortogonal a accountFrozen; validado HTTP 10/10 + 2 e-mails Ethereal; SER-39 catalogado (brute-force de 2FA contornável recriando PendingLogin); SER-38 refinado empiricamente (salto de timing pós-lockout); nota técnica TIMESTAMP(3) sem Timestamptz; §1.1 PRE-STAGING mantém 24 itens)
 Auditor: Claude (claude.ai/web)
 Próxima revisão sugerida: após Sprint 2 ou em 30 dias, o que vier primeiro.

@@ -216,6 +216,108 @@ class EmailService {
     }
   }
 
+  // SECURITY (SER-39): e-mail de lockout por brute-force de código 2FA.
+  // Tom MAIS GRAVE que sendAccountLockoutEmail (SER-22): o lockout 2FA
+  // implica que o atacante já passou pela barreira de senha — logo a senha
+  // pode estar comprometida (vazamento/phishing/reuso). Paleta VERMELHA,
+  // consistente com os demais e-mails de alerta do projeto
+  // (sendEmergencyOverrideEmail, sendBroadcastEmail URGENT). Enviado SEMPRE
+  // (ignora notifPrefsService — notificação de segurança crítica).
+  async sendTwoFactorLockoutEmail(
+    to: string,
+    name: string,
+    lockoutInfo: { lockedUntil: Date; durationMin: number },
+  ): Promise<void> {
+    const transporter = await this.getTransporter();
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const forgotPasswordUrl = `${frontendUrl}/forgot-password`;
+
+    const nowStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const unlockStr = lockoutInfo.lockedUntil.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #dc2626; text-align: center;">⚠️ Possível comprometimento de senha</h2>
+        <p style="color: #374151; font-size: 16px;">Olá, <strong>${name}</strong>,</p>
+        <p style="color: #374151; font-size: 16px;">
+          Detectamos várias tentativas de código de autenticação de dois fatores
+          mal-sucedidas na sua conta. <strong>Importante:</strong> sua senha foi
+          inserida corretamente antes dessas tentativas — apenas o código de
+          verificação falhou repetidamente.
+        </p>
+        <p style="color: #374151; font-size: 16px;">
+          Isso pode indicar que sua senha foi comprometida (vazamento de dados,
+          tentativa de phishing, ou reuso de senha em outro serviço). Por
+          segurança, bloqueamos temporariamente o acesso por
+          <strong>${lockoutInfo.durationMin} minutos</strong>.
+        </p>
+        <div style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 16px; border-radius: 4px; margin: 20px 0;">
+          <p style="margin: 0; color: #991b1b; font-size: 15px; font-weight: bold;">Ação recomendada — troque sua senha imediatamente:</p>
+          <ul style="color: #991b1b; font-size: 14px; line-height: 1.8; margin: 8px 0 0;">
+            <li>Mesmo após o desbloqueio expirar, recomendamos fortemente trocar sua senha.</li>
+            <li>Use uma senha forte e única (não reaproveite de outros sites).</li>
+            <li>Verifique se seu app autenticador (Google Authenticator, Authy, etc.) está funcionando normalmente.</li>
+          </ul>
+        </div>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${forgotPasswordUrl}"
+             style="background-color: #dc2626; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: bold; display: inline-block;">
+            Trocar senha agora
+          </a>
+        </div>
+        <p style="color: #6b7280; font-size: 14px; margin: 0;">
+          <strong>Horário do bloqueio:</strong> ${nowStr}<br/>
+          <strong>Desbloqueio automático em:</strong> ${unlockStr}
+        </p>
+        <p style="color: #374151; font-size: 14px; margin-top: 20px;">
+          Se <strong>NÃO foi você</strong> tentando acessar a conta, é especialmente
+          importante trocar a senha — alguém pode estar tentando invadir sua conta
+          com uma senha que já obteve.
+        </p>
+        <p style="color: #6b7280; font-size: 12px; margin-top: 30px; text-align: center;">
+          — Equipe MktPlace-P2P
+        </p>
+      </div>
+    `;
+
+    const text = [
+      'Possível comprometimento de senha',
+      '',
+      `Olá, ${name},`,
+      '',
+      'Detectamos várias tentativas de código de autenticação de dois fatores mal-sucedidas na sua conta. Importante: sua senha foi inserida corretamente antes dessas tentativas — apenas o código de verificação falhou repetidamente.',
+      '',
+      `Isso pode indicar que sua senha foi comprometida (vazamento de dados, tentativa de phishing, ou reuso de senha em outro serviço). Por segurança, bloqueamos temporariamente o acesso por ${lockoutInfo.durationMin} minutos.`,
+      '',
+      'Ação recomendada — troque sua senha imediatamente:',
+      '- Mesmo após o desbloqueio expirar, recomendamos fortemente trocar sua senha.',
+      '- Use uma senha forte e única (não reaproveite de outros sites).',
+      '- Verifique se seu app autenticador (Google Authenticator, Authy, etc.) está funcionando normalmente.',
+      '',
+      `Trocar senha agora: ${forgotPasswordUrl}`,
+      '',
+      `Horário do bloqueio: ${nowStr}`,
+      `Desbloqueio automático em: ${unlockStr}`,
+      '',
+      'Se NÃO foi você tentando acessar a conta, é especialmente importante trocar a senha — alguém pode estar tentando invadir sua conta com uma senha que já obteve.',
+      '',
+      '— Equipe MktPlace-P2P',
+    ].join('\n');
+
+    const info = await transporter.sendMail({
+      from: process.env.SMTP_FROM || '"MktPlace" <noreply@mktplace.com>',
+      to,
+      subject: 'Possível comprometimento de senha — ação recomendada',
+      text,
+      html,
+    });
+
+    const previewUrl = nodemailer.getTestMessageUrl(info);
+    if (previewUrl) {
+      console.log('[EMAIL] 2FA lockout email preview URL:', previewUrl);
+    }
+  }
+
   // ── DUAL-APPROVAL EMAILS ────────────────────────────────────────────────────
 
   async sendNewPendingApprovalEmail(
