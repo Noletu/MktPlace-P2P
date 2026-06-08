@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authController } from '../controllers/auth.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
-import { authLimiter, registerLimiter, forgotPasswordLimiter, checkEmailLimiter } from '../middleware/rateLimiter.middleware';
+import { authLimiter, registerLimiter, forgotPasswordLimiter, checkEmailLimiter, twoFactorLimiter } from '../middleware/rateLimiter.middleware';
 import { optionalRecaptchaMiddleware, requiredRecaptchaMiddleware } from '../middleware/recaptcha.middleware';
 
 const router = Router();
@@ -25,12 +25,19 @@ router.post('/login', authLimiter, optionalRecaptchaMiddleware, (req, res) => au
  * @desc    Finalizar login (passo 2): valida intermediate token + 2FA opcional
  * @access  Public (requer cookie pendingLoginToken do passo 1)
  */
-// SECURITY (SER-23): authLimiter previne brute-force do código 2FA.
-// Sem isso, atacante com posse do pendingLoginToken poderia tentar
-// milhões de códigos limitado apenas pelo attemptsRemaining=3 (que
-// pode ser contornado refazendo o passo 1).
-router.post('/complete-login', authLimiter, (req, res) =>
-  authController.completeLogin(req, res)
+// SECURITY (SER-23 + SER-39): defesa em profundidade contra
+// brute-force do código 2FA:
+// - authLimiter (compartilhado com /login): 5 falhas/15min/IP no
+//   bucket combinado dos dois endpoints
+// - twoFactorLimiter (exclusivo de /complete-login): 5 falhas/15min/IP
+//   só no endpoint de finalização (camada adicional)
+// - SER-39 lockout por conta (no service): defesa contra rotação de IP,
+//   que nenhum limiter por IP cobre
+router.post(
+  '/complete-login',
+  authLimiter,
+  twoFactorLimiter,
+  (req, res) => authController.completeLogin(req, res)
 );
 
 /**

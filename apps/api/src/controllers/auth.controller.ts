@@ -10,6 +10,7 @@ import { prisma } from '../utils/prisma';
 import { notifPrefsService } from '../services/notificationPreferences.service';
 import { pendingLoginService } from '../services/pendingLogin.service';
 import { twoFactorService } from '../services/twoFactor.service';
+import { twoFactorLockoutService } from '../services/twoFactorLockout.service';
 
 export class AuthController {
   async register(req: Request, res: Response): Promise<void> {
@@ -286,9 +287,37 @@ export class AuthController {
       // 7. Caso C: usuário COM 2FA, código fornecido — validar.
       // twoFactorService.verifyToken(userId, token) já trata anti-replay
       // (CRIT-07) e backup codes internamente; retorna boolean.
+
+      // SECURITY (SER-39): antes de verifyToken, checar se a conta está em
+      // lockout por excesso de falhas de 2FA. Caminho análogo ao Caminho Z
+      // do SER-22, mas operando nos campos dedicados de 2FA. Vem ANTES de
+      // verifyToken para não desperdiçar CPU validando código de conta já
+      // bloqueada.
+      const lock2FAStatus = await twoFactorLockoutService.isLockedFor2FA(pendingLogin.userId);
+      if (lock2FAStatus.locked) {
+        // Lockout 2FA ativo. Resposta uniforme com a do esgotamento de
+        // attemptsRemaining=3 do PendingLogin — atacante não distingue
+        // "esgotei o PendingLogin atual" de "minha conta está em lockout
+        // 2FA". O cookie é limpo para forçar refazer o login.
+        res.clearCookie('pendingLoginToken', { path: '/api/v1/auth' });
+        res.status(401).json({
+          success: false,
+          error: 'Tentativas esgotadas. Faça login novamente.',
+        });
+        return;
+      }
+
       const totpValid = await twoFactorService.verifyToken(pendingLogin.userId, twoFactorToken);
 
       if (!totpValid) {
+        // SECURITY (SER-39): incrementar o contador de falhas de 2FA.
+        // recordFailed2FA pode disparar lockout se o threshold (5) for
+        // atingido. Resultado descartado nesta Fase 2; será consumido na
+        // Fase 3 para disparar audit log + email.
+        // SER-39 e PendingLogin attempts são COMPLEMENTARES: o PendingLogin
+        // limita brute-force DENTRO de uma sessão; SER-39 limita ENTRE sessões.
+        await twoFactorLockoutService.recordFailed2FA(pendingLogin.userId);
+
         // Código errado — decrementar tentativas (single-use NÃO disparado aqui)
         const remaining = await pendingLoginService.decrementAttempts(pendingLogin.id);
 
@@ -323,6 +352,12 @@ export class AuthController {
       // 8. Código 2FA correto → consumir pendingLogin e finalizar.
       // (O anti-replay/twoFactorLastUsedStep já foi atualizado dentro do
       // verifyToken — NÃO atualizar aqui.)
+
+      // SECURITY (SER-39): resetar os contadores de falha de 2FA após sucesso.
+      // Vem antes do consumePendingLogin para manter simetria com o ramo de
+      // falha (lockout 2FA primeiro, PendingLogin depois).
+      await twoFactorLockoutService.recordSuccessful2FA(pendingLogin.userId);
+
       await pendingLoginService.consumePendingLogin(pendingLogin.id);
       res.clearCookie('pendingLoginToken', { path: '/api/v1/auth' });
 
