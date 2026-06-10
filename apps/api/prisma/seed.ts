@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
+// SER-38: usa o hashPassword() central (cost-12) como fonte única de cost
+import { hashPassword } from '../src/utils/bcrypt';
 import { seedRBAC } from './seeds/rbac-seed';
 
 const prisma = new PrismaClient();
@@ -49,7 +50,7 @@ async function main() {
   if (existingMaster) {
     console.log('⚠️ Usuário MASTER já existe, atualizando...');
 
-    const hashedMasterPassword = await bcrypt.hash(masterPassword, 12);
+    const hashedMasterPassword = await hashPassword(masterPassword);
 
     await prisma.user.update({
       where: { id: existingMaster.id },
@@ -65,7 +66,7 @@ async function main() {
   } else {
     console.log('📝 Criando usuário MASTER...');
 
-    const hashedMasterPassword = await bcrypt.hash(masterPassword, 12);
+    const hashedMasterPassword = await hashPassword(masterPassword);
 
     // CRIT-02: hdAccountIndex é alocado automaticamente via DEFAULT nextval('user_hd_account_seq').
     // Não passar o campo — o Postgres atribui o próximo valor da sequence.
@@ -96,7 +97,7 @@ async function main() {
   if (existingAdmin) {
     console.log('⚠️ Usuário admin já existe, atualizando role...');
 
-    const hashedPassword = await bcrypt.hash(adminPassword, 12);
+    const hashedPassword = await hashPassword(adminPassword);
 
     await prisma.user.update({
       where: { id: existingAdmin.id },
@@ -111,7 +112,7 @@ async function main() {
   } else {
     console.log('📝 Criando usuário admin...');
 
-    const hashedPassword = await bcrypt.hash(adminPassword, 12);
+    const hashedPassword = await hashPassword(adminPassword);
 
     // CRIT-02: hdAccountIndex alocado automaticamente (ver comentário acima no create do master).
     const admin = await prisma.user.create({
