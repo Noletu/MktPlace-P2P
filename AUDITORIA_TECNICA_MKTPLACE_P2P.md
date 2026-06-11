@@ -1,7 +1,7 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.25
-> **Data:** 14 de maio de 2026 (última edição: 7 de junho de 2026)
+> **Versão:** 1.26
+> **Data:** 14 de maio de 2026 (última edição: 10 de junho de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
 > **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
 >
@@ -15,6 +15,9 @@
 > **Changelog v1.20:** TD-SCHEMA01 resolvido (Sprint 3 sessão 3): o sintoma observado (DROP SEQUENCE recorrente em migrations futuras do User) foi eliminado pela mudança de `@default(dbgenerated("nextval(...)"))` para `@default(autoincrement())` no schema.prisma — sem migration estrutural necessária. Verificação empírica confirmou: o diff engine do Prisma normaliza ambas as representações para o mesmo conceito interno. CRIT-02 testado end-to-end: novo usuário recebeu `hdAccountIndex=33` (next correto da sequence), endereços BIP32 distintos confirmados. Rollback plan versionado em `docs/rollback-plans/td-schema01.md`. §1.1 PRE-STAGING atualizado para 21 itens.
 > **Changelog v1.21:** MED-34 fechado (Sprint 3 sessão 4): **21 `@relation` explícitos** adicionados ao schema, cobrindo todas as FKs denormalizadas (User self-relations, Order, WalletTransaction, Withdrawal, Transaction, PlatformTransfer, PlatformWalletMovement, AuditLog, BroadcastLog, ChatArchive, RolePermission, Coupon). Policies `ON DELETE` definidas caso-a-caso: **20 `SetNull`** + **1 `Restrict`** (`PlatformTransfer.requestedBy` — bloqueia deletar o sócio que solicitou uma transferência de plataforma, preservando rastreabilidade financeira; demais campos de auditoria usam `SetNull` para preservar o registro histórico mesmo se o usuário referenciado for removido). **2 renomeações** de `@relation` para desambiguar relations múltiplas User→Model (`OrderOwner` em `Order.user`, `WalletTransactionOwner` em `WalletTransaction.user`). **1 conversão NOT NULL → nullable** (`BroadcastLog.adminId String → String?`) exigida pelo `SetNull`. **Decisão YAGNI sobre indexes:** os 11 índices em colunas FK que o fluxo normal sugeriria **não** foram adicionados — custo de escrita/disco garantido vs. benefício hipotético (nenhuma query atual filtra por esses campos, verificado no código); `CREATE INDEX CONCURRENTLY` é trivial quando uma query real exigir. Migration `20260531144306_med34_explicit_fks` aplicada e verificada via `information_schema` (21 FKs, delete_rule confirmado). Re-check de integridade pré-aplicação: **0 orphans** nos 21 campos. Drift check pós-aplicação: **0** (TD-SCHEMA01 segue resolvido, FKs novas não introduziram drift). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING atualizado para 20 itens.
 > **Changelog v1.22:** SER-17 fechado (Sprint 3 sessão 5): guard `process.env.NODE_ENV !== 'production'` substituído por flag explícita `process.env.CORS_ALLOW_NO_ORIGIN === 'true'` no CORS de `index.ts`. **Default fail-secure:** qualquer ambiente que não setar a flag (inclusive `NODE_ENV` undefined em containers) rejeita requisições sem header `Origin`, fechando o risco residual. Log de rejeição enriquecido com `nodeEnv` e `allowNoOriginFlag`. `.env.example` documenta a flag (default `false`). Validação manual 5/5: `flag false` + sem origin → bloqueado; `flag true` + sem origin → permitido; flag não abre origins inválidas. Dois findings catalogados durante a sessão: **SER-31** (`socket.server.ts` usa padrão `NODE_ENV` para CORS — inconsistência arquitetural com o HTTP; severidade baixa) e **SER-32** (CORS rejeitado propaga HTTP 500 via `callback(new Error(...))` em vez de 403 — semântico, pré-existente; severidade baixa). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING: SER-17 sai (−1), SER-31 + SER-32 entram (+2) → 22 itens.
+>
+> **Changelog v1.26:** SER-38 fechado (Sprint 3 sessão 9): **bcrypt padronizado em cost-12 + rehash transparente no login**. `SALT_ROUNDS` 10 → 12 e exportado em `utils/bcrypt.ts`; novo helper `needsRehash(hash)`; rehash best-effort no `verifyCredentials` (após a senha ser confirmada correta — sem leak novo; falha de rehash é logada e engolida, nunca quebra um login válido); `seed.ts` unificado para usar `hashPassword()` central; backup codes 2FA passam a cost-12 automaticamente. Validado por 4 testes unitários + 2 de integração (contra Postgres real: cost-10 → cost-12 no primeiro login; cost-12 intacto). Baseline preservado (unit 59 → 63 passed; integração roda isolada com `DATABASE_URL`). **Critério 3 (gap < 15%) documentado com honestidade:** o componente de custo do bcrypt (~3.6× / ~265%) foi eliminado (ambos os caminhos agora cost-12); resíduo de ~95ms de I/O (assimetria de escrita no caminho de lockout) **não** vem do hash e foi spin-off para o **SER-40** (severidade baixa, dentro do jitter de rede fora do localhost). Uma tentativa de equalização por "dummy I/O" foi prototipada e descartada (igualava round-trips, não o custo da escrita). §1.1 PRE-STAGING: 23 − 1 (SER-38) + 1 (SER-40) = **23** itens.
+>
 > **Changelog v1.25:** SER-39 fechado (Sprint 3 sessão 8): **defesa contra brute-force de código 2FA** no `/auth/complete-login`, implementada **paralela** ao SER-22 (vetores ortogonais — campos separados, contadores separados, lockouts separados). 4 campos novos no `User` (`failed2FAAttempts`, `twoFactorLockedUntil`, `twoFactorLockoutCount`, `last2FAFailAt`); **service dedicado** `twoFactorLockoutService` (espelha estruturalmente o `accountLockoutService`, duplicação intencional para isolamento/zero risco no código de senha em produção). **Threshold 5** (mais permissivo que senha=3, por UX de TOTP/backup codes); **backoff exponencial** 5min→30min→2h→24h (cap 4); cooldown 30min, count-reset 24h. **Enforcement no Caso C** do `completeLogin`: `isLockedFor2FA` checa **antes** de `verifyToken` (Caminho Z — não roda verificação de código se a conta está em lockout), `recordFailed2FA` no ramo de código errado (complementar ao `attemptsRemaining` do `PendingLogin`: este limita brute-force **dentro** de uma sessão, SER-39 limita **entre** sessões), `recordSuccessful2FA` reseta no ramo de sucesso. Efeitos colaterais: audit `TWO_FACTOR_LOGIN_LOCKED` (com `ipAddress`, disponível no controller — incremento sobre o `ACCOUNT_LOGIN_LOCKED`, que rodava no service sem `req`) + e-mail **tom grave** (paleta vermelha `#dc2626` consistente com `sendEmergencyOverrideEmail`; texto destaca "sua senha foi inserida corretamente — pode estar comprometida"; CTA "Trocar senha agora" → `/forgot-password`; enviado sempre). **`twoFactorLimiter` adicionado** ao `/complete-login` (defesa em profundidade por IP). **Guard de idempotência aplicado desde o início** (não foi ajuste posterior como no SER-22) e **validado empiricamente** sob concorrência real (HTTP-2FA-12: 5 requests paralelas escalam `lockoutCount` apenas +1, geram apenas 1 audit/email). **Correção da nota da Sessão 7:** o `twoFactorLimiter` **já estava montado** em `twoFactor.routes.ts` (`/enable`, `/disable`, `/regenerate-backup-codes`) — só não estava no `/complete-login`, gap que esta sessão fecha. Validação manual 12/12 (HTTP-2FA-1..12) + 2 e-mails Ethereal conferidos (paleta vermelha distinta do âmbar do SER-22). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING: 24 − 1 (SER-39) = **23** itens.
 >
 > **Changelog v1.24:** SER-22 fechado (Sprint 3 sessão 7): **account lockout automático** por conta (defesa anti-brute-force, complementa o rate-limit por IP). 4 campos novos no `User` (`failedLoginAttempts`, `lockedUntil`, `lockoutCount`, `lastFailedLoginAt`); `accountLockoutService` dedicado (`isLocked`/`recordSuccessfulLogin`/`recordFailedLogin`, atomicidade via `increment` + `updateMany` condicionais para evitar lost-update sob burst concorrente). **Threshold** 3 falhas/30min; **backoff exponencial** 5min→30min→2h→24h (cap em 4); `failedLoginAttempts` esfria em 30min (e zera em login OK), `lockoutCount` esfria em 24h. **Caminho Z:** conta em lockout não roda bcrypt real — roda dummy cost-12 para manter timing uniforme com email inexistente (preserva SER-23); retorno 401 genérico. Efeitos colaterais: audit `ACCOUNT_LOGIN_LOCKED` + e-mail transacional (acento âmbar, CTA "Esqueci minha senha", best-effort). **Ortogonal a `accountFrozen`** (manual/admin/compliance). Validação manual 10/10 (HTTP-L1..L10) + 2 e-mails Ethereal conferidos. **SER-39 catalogado** (brute-force de código 2FA no `/complete-login` contornável recriando o PendingLogin). **SER-38 refinado** (vetor adicional do leak: salto de timing ~95ms→~347ms revela o disparo do lockout em conta cost-10). **TECH-DEBT** nota: `TIMESTAMP(3)` sem `@db.Timestamptz` torna escritas via SQL bruto propensas a skew de TZ (Postgres `now()` local vs Prisma UTC) — app real não afetada (tudo via Prisma). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING: 24 − 1 (SER-22) + 1 (SER-39) = **24** itens.
@@ -135,6 +138,8 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 > **Nota de v1.24 (Sprint 3 sessão 7):** SER-22 fechado (sai desta lista, −1); SER-39 catalogado (entra, +1). Saldo líquido 24 − 1 + 1 = **24**.
 >
 > **Nota de v1.25 (Sprint 3 sessão 8):** SER-39 fechado (sai desta lista, −1). Nenhum finding novo catalogado. Saldo líquido 24 − 1 = **23**.
+>
+> **Nota de v1.26 (Sprint 3 sessão 9):** SER-38 fechado (sai desta lista, −1); SER-40 catalogado (entra, +1). Saldo líquido 23 − 1 + 1 = **23**.
 
 | ID | Por que adiar agora |
 |----|---------------------|
@@ -156,7 +161,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | SER-33 | accountFrozen permite login por design; falta verificar empiricamente que conta congelada não executa operações sensíveis (orders, withdrawals) |
 | SER-35 | 8 leitores de `localStorage.getItem('user')`; migrar para fonte central (AuthContext / `useCurrentUser` via `/auth/me`) após estabilizar o fluxo de auth |
 | SER-36 | Tela de 2FA do login sem input de backup code (backend já aceita via `z.union`); adicionar toggle quando a UX de 2FA for revisada |
-| SER-38 | bcrypt cost inconsistente (`SALT_ROUNDS=10` vs seed/dummy cost-12); padronizar cost-12 + rehash transparente no login em sessão dedicada. **Refinado v1.24:** SER-22 expõe vetor adicional do mesmo leak (salto de timing pós-lockout) |
+| SER-40 | gap de timing residual de I/O no lockout (~95ms): assimetria de escrita entre "email inexistente" e "senha errada em conta real" permite enumeração de conta; equalizar via escrita sentinela ou piso de tempo constante em sessão dedicada. **Spin-off do SER-38** (resíduo após eliminar o gap de custo do bcrypt) |
 | MED-31 (resto) | Refator completo só faz sentido quando log aggregation estiver configurado |
 | MED-36 | Em dev `unsafe-inline` ajuda no debug visual |
 | MED-37 | Documentação melhor quando frontend de RBAC estabilizar |
@@ -4362,9 +4367,9 @@ Mesmo padrão do SER-29, no `/register`: a resposta serializava o `user` complet
 ## SER-38 — Inconsistência de bcrypt cost (10 vs 12)
 
 **Severidade:** 🟡 Média (defesa de timing real para contas comuns)
-**Fase:** 🔵 **[ADIAR PRE-STAGING]**
+**Fase:** ✅ **Resolvido (v1.26)**
 **Categoria:** Auth / Cripto
-**Status:** ⬜ Catalogado (Sprint 3 sessão 6) · 🔬 Refinado empiricamente (Sprint 3 sessão 7)
+**Status:** ⬜ Catalogado (Sprint 3 sessão 6) · 🔬 Refinado empiricamente (Sprint 3 sessão 7) · ✅ **Fechado (v1.26, Sprint 3 sessão 9)**
 **Relaciona-se a:** SER-23 (Achado C — defesa de timing do login) · SER-22 (Caminho Z reusa o `TIMING_DUMMY_HASH`).
 
 ### Problema
@@ -4380,10 +4385,21 @@ O gap (~3.6×) é consistente com a diferença de 2 rounds (≈4× de trabalho).
 ### Recomendação
 Padronizar `SALT_ROUNDS=12` + rehash transparente no login bem-sucedido (migra senhas cost-10 existentes ao logar). Em sessão dedicada. Isso fecha tanto o leak base quanto o vetor do salto pós-lockout (dummy e contas passariam a ter o mesmo custo).
 
+### Resolução (v1.26, Sprint 3 sessão 9)
+Implementado na branch `fix/ser38-bcrypt-cost`:
+- **`utils/bcrypt.ts`:** `SALT_ROUNDS` 10 → 12 e exportado; novo helper `needsRehash(hash)` (`bcrypt.getRounds(hash) < SALT_ROUNDS`).
+- **`auth.service.ts` (`verifyCredentials`):** rehash transparente best-effort — só **depois** de a senha ser confirmada correta (não introduz leak novo); se `needsRehash` for true, regrava o hash em cost-12. Falha de rehash é logada e engolida (`// NÃO re-throw`), para nunca quebrar um login válido.
+- **`prisma/seed.ts`:** unificado para usar o `hashPassword()` central em vez de `bcrypt.hash` direto (elimina a divergência de cost na fonte).
+- **Backup codes 2FA:** passam a cost-12 automaticamente (mesmo `hashPassword`).
+
+**Validação:** 4 testes unitários (`utils/__tests__/bcrypt.spec.ts`) + 2 de integração (`services/__tests__/auth.ser38-rehash.spec.ts`, contra Postgres real) confirmam: senha cost-10 é regravada para cost-12 no primeiro login bem-sucedido; senha já cost-12 fica intacta. Baseline preservado (unit 59 → 63 passed; a integração roda isolada com `DATABASE_URL` setado e dá skip no `npm test` padrão).
+
+**Critério 3 (gap < 15%) — resultado honesto:** o componente dominante do leak medido na sessão 7 (gap de ~3.6× / ~265%, causado pela diferença de cost entre o dummy cost-12 e contas cost-10) foi **eliminado** — ambos os caminhos agora computam cost-12. Porém, medição empírica pós-fix revelou um **resíduo de ~95ms** que **não** vem do bcrypt, e sim da assimetria de I/O: o caminho de conta real faz `isLocked` (1 read) + `recordFailedLogin` (2 updateMany + 1 update que escreve) que o caminho "email inexistente" não faz (~447ms sem conta vs ~538ms conta real = 16,8%). Uma tentativa de equalização por "dummy I/O" foi prototipada e **descartada nesta sessão**: igualava o número de round-trips mas não o custo da escrita real (update com fsync), então o resíduo absoluto permanecia ~95ms — o % só caía por inflar o denominador. Decisão: manter o fix sólido do bcrypt, reverter os dummies frágeis, e registrar o resíduo de I/O como **SER-40** (severidade baixa). O vetor de maior valor (salto de timing pós-lockout do SER-22) fica fechado de qualquer forma, pois dummy e contas passam a ter o mesmo custo de hash.
+
 ### Critério de aceitação
-- [ ] `SALT_ROUNDS=12`
-- [ ] Rehash transparente de senhas cost-10 no login
-- [ ] Gap de timing entre os dois caminhos < 15% para qualquer conta
+- [x] `SALT_ROUNDS=12` ✅ (v1.26)
+- [x] Rehash transparente de senhas cost-10 no login ✅ (v1.26, best-effort após senha correta)
+- [~] Gap de timing entre os dois caminhos < 15% para qualquer conta — **parcial**: o componente de custo do bcrypt (~3.6×) foi eliminado; o resíduo de I/O (~95ms) permanece e foi spin-off para o **SER-40**
 
 ---
 
@@ -4435,6 +4451,36 @@ last2FAFailAt         DateTime?
 
 ### Nota técnica — `TIMESTAMP(3)` sem `@db.Timestamptz` (dívida arquitetural pré-existente)
 Durante o desenvolvimento do harness de testes do SER-22 ficou evidente que escritas de timestamp via **SQL bruto** em colunas `TIMESTAMP(3)` (sem `@db.Timestamptz`) são propensas a bug de timezone: `now()` do Postgres retorna horário **local** (Brasília, UTC-3) enquanto o Prisma opera em **UTC**, gerando um skew de 3h. **A aplicação real NÃO é afetada** — todas as escritas dessas colunas passam pelo Prisma (UTC consistente), comprovado pelo fluxo real do HTTP-L4 (lockout disparou corretamente em 3 falhas sem timestamp manual). Não é finding novo; é evidência empírica da dívida arquitetural pré-existente do projeto (`TIMESTAMP(3)` sem `Timestamptz` em todas as tabelas, inclusive financeiras). Registro para a sessão que eventualmente migrar para `@db.Timestamptz`.
+
+---
+
+## SER-40 — Gap de timing residual de I/O no caminho de lockout (enumeração de conta)
+
+**Severidade:** 🟢 Baixa (resíduo de ~95ms, dentro do jitter de rede em qualquer deploy fora do localhost)
+**Fase:** 🔵 **[ADIAR PRE-STAGING]**
+**Categoria:** Auth / Timing
+**Status:** ⬜ Catalogado (Sprint 3 sessão 9)
+**Relaciona-se a:** SER-38 (spin-off — resíduo após eliminar o gap de custo do bcrypt) · SER-23 (defesa de timing do login) · SER-22 (Caminho Z).
+
+### Problema
+Depois que o SER-38 igualou o custo do bcrypt (ambos os caminhos do `verifyCredentials` agora cost-12), sobra um gap de timing menor que **não** vem do hash, e sim da assimetria de I/O entre os caminhos. O caminho de conta real faz trabalho de banco que o caminho "email inexistente" não faz: `accountLockoutService.isLocked` (1 read) + `recordFailedLogin` (2× `updateMany` + 1× `update` — este **escreve** uma linha). O caminho sem conta retorna mais cedo, sem esse I/O. Resultado: respostas de "senha errada em conta real" ficam ~95ms mais lentas que "email inexistente", permitindo a um atacante distinguir conta existente de inexistente pelo tempo de resposta (account enumeration).
+
+### Confirmação empírica (Sprint 3 sessão 9)
+Medido logo após o fix do SER-38: email inexistente **~447ms** vs conta real / senha errada **~538ms** (gap ~91ms / **16,8%**). O gap é dominado por uma escrita real (`update` com fsync no Postgres), não por leitura — por isso espelhar só as leituras não o fecha.
+
+### Por que severidade baixa
+O valor absoluto (~95ms) está dentro do ruído de latência de rede de qualquer ambiente que não seja localhost; o oráculo é mensurável em bancada mas frágil sob rede real. Além disso, o vetor de maior valor do mesmo leak (o salto de timing pós-lockout do SER-22, ~3.6×) já foi fechado pelo SER-38.
+
+### Recomendação
+Equalizar o I/O entre os caminhos de modo que iguale o **custo real** (não só o número de round-trips), em sessão dedicada. Duas abordagens:
+- **(a) Escrita sentinela:** o caminho sem conta executa um `update` equivalente contra uma linha-sentinela dedicada, para que ambos os caminhos paguem o custo de uma escrita com fsync. Mais preciso, porém acopla ao schema.
+- **(b) Piso de tempo constante:** medir o tempo decorrido e dormir até um teto fixo (ex.: 600ms) em todos os caminhos de falha de login, tornando a resposta independente do trabalho real. Mais simples e robusto, porém adiciona latência fixa.
+
+Nota: uma equalização por "dummy I/O" (reads sentinela espelhando `isLocked`/`recordFailedLogin`) foi prototipada e descartada na sessão 9 — igualava o número de queries mas não o custo da escrita, então o resíduo absoluto permanecia ~95ms.
+
+### Critério de aceitação
+- [ ] Gap entre "email inexistente" e "senha errada em conta real" < 15% **e** < 50ms absolutos, medido em bancada
+- [ ] Equalização cobre também o Caminho Z (lockout)
 
 ---
 
