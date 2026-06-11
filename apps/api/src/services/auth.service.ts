@@ -1,6 +1,6 @@
 import { PrismaClient, User } from '@prisma/client';
 import crypto from 'crypto';
-import { hashPassword, comparePassword } from '../utils/bcrypt';
+import { hashPassword, comparePassword, needsRehash } from '../utils/bcrypt';
 import { generateToken } from '../utils/jwt';
 import { refreshTokenService } from './refreshToken.service';
 import { twoFactorService } from './twoFactor.service';
@@ -156,6 +156,25 @@ export class AuthService {
     // lockedUntil. NÃO reseta lockoutCount (esse só esfria pela janela de 24h
     // dentro de recordFailedLogin).
     await accountLockoutService.recordSuccessfulLogin(user.id);
+
+    // SER-38: rehash transparente. A senha já foi confirmada correta acima; se o
+    // hash armazenado ainda usa cost abaixo do padrão atual, re-hasheia em cost-12
+    // e persiste. Best-effort: uma falha aqui não pode negar um login válido.
+    if (needsRehash(user.password)) {
+      try {
+        const rehashed = await hashPassword(input.password);
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { password: rehashed },
+        });
+      } catch (rehashError) {
+        logger.error('[AUTH] Failed to rehash password (SER-38)', {
+          userId: user.id,
+          error: (rehashError as Error).message,
+        });
+        // NÃO re-throw — rehash é best-effort; o login segue válido.
+      }
+    }
 
     return { userId: user.id, twoFactorEnabled: user.twoFactorEnabled };
   }
