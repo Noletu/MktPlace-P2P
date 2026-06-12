@@ -14,6 +14,40 @@ declare global {
   }
 }
 
+/**
+ * SER-33 — Allowlist de ações permitidas a uma conta CONGELADA (accountFrozen).
+ * Conta congelada só pode VER (GETs), APELAR/se defender em disputa (sem mover
+ * fundos), gerir as PRÓPRIAS notificações e encerrar a sessão (logout). Qualquer
+ * outra mutação — inclusive privilegiada (resolver disputa, broadcasts admin,
+ * freeze/unfreeze etc.) — é bloqueada. Agnóstico a role.
+ * Match sobre o caminho COMPLETO (req.originalUrl sem query) com padrões ANCORADOS
+ * (fail-secure: rota nova nasce bloqueada; sem falso-positivo de substring).
+ */
+const FROZEN_ALLOWED_MUTATIONS: ReadonlyArray<{ method: string; pattern: RegExp }> = [
+  // Apelação / defesa em disputa (comunicação, não move fundos)
+  { method: 'POST', pattern: /^\/api\/v1\/disputes\/?$/ },                  // criar disputa (apelar)
+  { method: 'POST', pattern: /^\/api\/v1\/disputes\/[^/]+\/messages\/?$/ }, // mensagem na disputa
+  { method: 'POST', pattern: /^\/api\/v1\/disputes\/[^/]+\/respond\/?$/ },  // responder disputa
+  // Gerir as próprias notificações
+  { method: 'POST',   pattern: /^\/api\/v1\/notifications\/mark-all-read\/?$/ },
+  { method: 'POST',   pattern: /^\/api\/v1\/notifications\/[^/]+\/read\/?$/ },
+  { method: 'DELETE', pattern: /^\/api\/v1\/notifications\/[^/]+\/?$/ },    // cobre /:id e /delete-all-read
+  // Sessão
+  { method: 'POST', pattern: /^\/api\/v1\/auth\/logout\/?$/ },
+];
+
+/**
+ * GET/HEAD/OPTIONS sempre permitidos (leitura); demais métodos só se casarem o allowlist.
+ */
+export function isFrozenActionAllowed(method: string, path: string): boolean {
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    return true;
+  }
+  return FROZEN_ALLOWED_MUTATIONS.some(
+    (rule) => rule.method === method && rule.pattern.test(path)
+  );
+}
+
 export const authMiddleware = async (
   req: Request,
   res: Response,
@@ -94,7 +128,33 @@ export const authMiddleware = async (
       frozenUntil: user.frozenUntil,      // Data de expiração (null = permanente)
     };
 
-// SECURITY: Verificar se conta está congelada e bloquear ações de escrita    if (user.accountFrozen) {      // Permitir todos os GETs (leitura/visualização)      if (req.method === 'GET') {        return next();      }      // Permitir endpoints de disputa (para apelar da decisão de bloqueio)      if (req.path.includes('/disputes')) {        return next();      }      // Permitir logout e refresh de token      if (req.path.includes('/auth/logout') || req.path.includes('/auth/refresh')) {        return next();      }      // Permitir notificações (marcar como lida, etc)      if (req.path.includes('/notifications')) {        return next();      }      // Bloquear todo o resto (POST/PUT/PATCH/DELETE)      const message = user.frozenUntil        ? `Sua conta está suspensa até ${new Date(user.frozenUntil).toLocaleString('pt-BR')}. Motivo: ${user.frozenReason || 'Não especificado'}. Você pode apelar dessa decisão criando uma disputa.`        : `Sua conta está suspensa. Motivo: ${user.frozenReason || 'Não especificado'}. Você pode apelar dessa decisão criando uma disputa.`;      console.log('🚫 Ação bloqueada para conta congelada:', {        userId: user.id,        method: req.method,        path: req.path,        frozenReason: user.frozenReason,      });      res.status(403).json({        success: false,        error: 'Ação bloqueada',        message,        accountFrozen: true,        frozenReason: user.frozenReason,        frozenUntil: user.frozenUntil,        canAppeal: true,        appealUrl: '/support/ticket/new?appeal=true',      });      return;    }
+    // SER-33: conta congelada — só ações do allowlist (ver/apelar/notificações
+    // próprias/logout). Qualquer outra mutação, inclusive privilegiada, é 403.
+    if (user.accountFrozen) {
+      const requestPath = req.originalUrl.split('?')[0];
+      if (!isFrozenActionAllowed(req.method, requestPath)) {
+        const message = user.frozenUntil
+          ? `Sua conta está suspensa até ${new Date(user.frozenUntil).toLocaleString('pt-BR')}. Motivo: ${user.frozenReason || 'Não especificado'}. Você pode apelar dessa decisão criando uma disputa.`
+          : `Sua conta está suspensa. Motivo: ${user.frozenReason || 'Não especificado'}. Você pode apelar dessa decisão criando uma disputa.`;
+        console.log('🚫 Ação bloqueada para conta congelada:', {
+          userId: user.id,
+          method: req.method,
+          path: requestPath,
+          frozenReason: user.frozenReason,
+        });
+        res.status(403).json({
+          success: false,
+          error: 'Ação bloqueada',
+          message,
+          accountFrozen: true,
+          frozenReason: user.frozenReason,
+          frozenUntil: user.frozenUntil,
+          canAppeal: true,
+          appealUrl: '/support/ticket/new?appeal=true',
+        });
+        return;
+      }
+    }
     next();
   } catch (error) {
     console.log('❌ Token inválido:', error);
