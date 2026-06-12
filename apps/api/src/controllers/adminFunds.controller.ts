@@ -212,7 +212,7 @@ export class AdminFundsController {
       res.status(200).json(result);
     } catch (error) {
       console.error('[AdminFundsController] freezeAccount error:', error);
-      res.status(400).json({
+      res.status((error as any).statusCode || 400).json({
         success: false,
         error: 'Erro ao congelar conta',
         message: (error as Error).message,
