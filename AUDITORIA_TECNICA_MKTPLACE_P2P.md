@@ -1,7 +1,7 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.26
-> **Data:** 14 de maio de 2026 (última edição: 10 de junho de 2026)
+> **Versão:** 1.27
+> **Data:** 14 de maio de 2026 (última edição: 12 de junho de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
 > **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
 >
@@ -15,6 +15,8 @@
 > **Changelog v1.20:** TD-SCHEMA01 resolvido (Sprint 3 sessão 3): o sintoma observado (DROP SEQUENCE recorrente em migrations futuras do User) foi eliminado pela mudança de `@default(dbgenerated("nextval(...)"))` para `@default(autoincrement())` no schema.prisma — sem migration estrutural necessária. Verificação empírica confirmou: o diff engine do Prisma normaliza ambas as representações para o mesmo conceito interno. CRIT-02 testado end-to-end: novo usuário recebeu `hdAccountIndex=33` (next correto da sequence), endereços BIP32 distintos confirmados. Rollback plan versionado em `docs/rollback-plans/td-schema01.md`. §1.1 PRE-STAGING atualizado para 21 itens.
 > **Changelog v1.21:** MED-34 fechado (Sprint 3 sessão 4): **21 `@relation` explícitos** adicionados ao schema, cobrindo todas as FKs denormalizadas (User self-relations, Order, WalletTransaction, Withdrawal, Transaction, PlatformTransfer, PlatformWalletMovement, AuditLog, BroadcastLog, ChatArchive, RolePermission, Coupon). Policies `ON DELETE` definidas caso-a-caso: **20 `SetNull`** + **1 `Restrict`** (`PlatformTransfer.requestedBy` — bloqueia deletar o sócio que solicitou uma transferência de plataforma, preservando rastreabilidade financeira; demais campos de auditoria usam `SetNull` para preservar o registro histórico mesmo se o usuário referenciado for removido). **2 renomeações** de `@relation` para desambiguar relations múltiplas User→Model (`OrderOwner` em `Order.user`, `WalletTransactionOwner` em `WalletTransaction.user`). **1 conversão NOT NULL → nullable** (`BroadcastLog.adminId String → String?`) exigida pelo `SetNull`. **Decisão YAGNI sobre indexes:** os 11 índices em colunas FK que o fluxo normal sugeriria **não** foram adicionados — custo de escrita/disco garantido vs. benefício hipotético (nenhuma query atual filtra por esses campos, verificado no código); `CREATE INDEX CONCURRENTLY` é trivial quando uma query real exigir. Migration `20260531144306_med34_explicit_fks` aplicada e verificada via `information_schema` (21 FKs, delete_rule confirmado). Re-check de integridade pré-aplicação: **0 orphans** nos 21 campos. Drift check pós-aplicação: **0** (TD-SCHEMA01 segue resolvido, FKs novas não introduziram drift). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING atualizado para 20 itens.
 > **Changelog v1.22:** SER-17 fechado (Sprint 3 sessão 5): guard `process.env.NODE_ENV !== 'production'` substituído por flag explícita `process.env.CORS_ALLOW_NO_ORIGIN === 'true'` no CORS de `index.ts`. **Default fail-secure:** qualquer ambiente que não setar a flag (inclusive `NODE_ENV` undefined em containers) rejeita requisições sem header `Origin`, fechando o risco residual. Log de rejeição enriquecido com `nodeEnv` e `allowNoOriginFlag`. `.env.example` documenta a flag (default `false`). Validação manual 5/5: `flag false` + sem origin → bloqueado; `flag true` + sem origin → permitido; flag não abre origins inválidas. Dois findings catalogados durante a sessão: **SER-31** (`socket.server.ts` usa padrão `NODE_ENV` para CORS — inconsistência arquitetural com o HTTP; severidade baixa) e **SER-32** (CORS rejeitado propaga HTTP 500 via `callback(new Error(...))` em vez de 403 — semântico, pré-existente; severidade baixa). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING: SER-17 sai (−1), SER-31 + SER-32 entram (+2) → 22 itens.
+>
+> **Changelog v1.27:** SER-33 fechado (Sprint 3 sessão 10): **gate de conta congelada endurecido**. O allowlist de exceções do `authMiddleware` passou de `req.path.includes(...)` (substring frouxo) para um **allowlist explícito** de `(método, padrão ancorado)` sobre o caminho completo (`req.originalUrl`), **fail-secure** (rota nova nasce bloqueada; some o falso-positivo de substring). Efeito: além de já barrar order/withdraw, agora **bloqueia** `resolveDispute` (movia colateral) e os broadcasts admin de notificação — que o substring liberava a uma conta privilegiada congelada. Removido o `frozenAccountRestriction.middleware.ts` (duplicata morta) e de-minificado o bloco. Princípio confirmado com o sócio: **conta congelada perde todos os poderes**, mantendo só leitura (GETs), o fluxo de apelação (`/disputes` criar/messages/respond) e logout — agnóstico a role. Validado por **13 testes unitários** da `isFrozenActionAllowed` (inclui regressão do substring) + **e2e empírico** (`tests/e2e/ser33-frozen-check.ts`: conta congelada → order e withdraw **403 accountFrozen**; criar disputa → passa o gate). Severidade reclassificada de "a confirmar" para **🟢 Baixa**. **Catalogado SER-41** (descoberto na investigação): o freeze não tem hierarquia — qualquer GERENTE+ pode congelar qualquer conta, inclusive MASTER, sem trava de alvo nem de auto-freeze (risco de lockout administrativo). §1.1 PRE-STAGING: 23 − 1 (SER-33) + 1 (SER-41) = **23** itens.
 >
 > **Changelog v1.26:** SER-38 fechado (Sprint 3 sessão 9): **bcrypt padronizado em cost-12 + rehash transparente no login**. `SALT_ROUNDS` 10 → 12 e exportado em `utils/bcrypt.ts`; novo helper `needsRehash(hash)`; rehash best-effort no `verifyCredentials` (após a senha ser confirmada correta — sem leak novo; falha de rehash é logada e engolida, nunca quebra um login válido); `seed.ts` unificado para usar `hashPassword()` central; backup codes 2FA passam a cost-12 automaticamente. Validado por 4 testes unitários + 2 de integração (contra Postgres real: cost-10 → cost-12 no primeiro login; cost-12 intacto). Baseline preservado (unit 59 → 63 passed; integração roda isolada com `DATABASE_URL`). **Critério 3 (gap < 15%) documentado com honestidade:** o componente de custo do bcrypt (~3.6× / ~265%) foi eliminado (ambos os caminhos agora cost-12); resíduo de ~95ms de I/O (assimetria de escrita no caminho de lockout) **não** vem do hash e foi spin-off para o **SER-40** (severidade baixa, dentro do jitter de rede fora do localhost). Uma tentativa de equalização por "dummy I/O" foi prototipada e descartada (igualava round-trips, não o custo da escrita). §1.1 PRE-STAGING: 23 − 1 (SER-38) + 1 (SER-40) = **23** itens.
 >
@@ -140,6 +142,8 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 > **Nota de v1.25 (Sprint 3 sessão 8):** SER-39 fechado (sai desta lista, −1). Nenhum finding novo catalogado. Saldo líquido 24 − 1 = **23**.
 >
 > **Nota de v1.26 (Sprint 3 sessão 9):** SER-38 fechado (sai desta lista, −1); SER-40 catalogado (entra, +1). Saldo líquido 23 − 1 + 1 = **23**.
+>
+> **Nota de v1.27 (Sprint 3 sessão 10):** SER-33 fechado (sai desta lista, −1); SER-41 catalogado (entra, +1). Saldo líquido 23 − 1 + 1 = **23**.
 
 | ID | Por que adiar agora |
 |----|---------------------|
@@ -158,7 +162,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | SER-30 | Investigar impacto real antes de classifcar e corrigir |
 | SER-31 | Inconsistência arquitetural (socket CORS via NODE_ENV); alinhar à flag em sessão dedicada |
 | SER-32 | Semântica HTTP (500 em rejeição CORS); ajuste trivial, sem urgência funcional |
-| SER-33 | accountFrozen permite login por design; falta verificar empiricamente que conta congelada não executa operações sensíveis (orders, withdrawals) |
+| SER-41 | freeze sem hierarquia: qualquer GERENTE+ pode congelar qualquer conta (inclusive MASTER), sem trava de nível-alvo nem de auto-freeze — risco de lockout administrativo. Adicionar guards (só congelar nível inferior; proteger MASTER; barrar self-freeze) em sessão dedicada |
 | SER-35 | 8 leitores de `localStorage.getItem('user')`; migrar para fonte central (AuthContext / `useCurrentUser` via `/auth/me`) após estabilizar o fluxo de auth |
 | SER-36 | Tela de 2FA do login sem input de backup code (backend já aceita via `z.union`); adicionar toggle quando a UX de 2FA for revisada |
 | SER-40 | gap de timing residual de I/O no lockout (~95ms): assimetria de escrita entre "email inexistente" e "senha errada em conta real" permite enumeração de conta; equalizar via escrita sentinela ou piso de tempo constante em sessão dedicada. **Spin-off do SER-38** (resíduo após eliminar o gap de custo do bcrypt) |
@@ -4283,18 +4287,28 @@ Trocar `callback(new Error('Not allowed by CORS'), false)` por `callback(null, f
 
 ## SER-33 — `accountFrozen` permite login normalmente
 
-**Severidade:** 🟡 A confirmar (verificação empírica pendente)
-**Fase:** 🔵 **[ADIAR PRE-STAGING]**
+**Severidade:** 🟢 Baixa (verificado e endurecido)
+**Fase:** ✅ **Resolvido (v1.27)**
 **Categoria:** Auth / Account control
-**Status:** ⬜ Catalogado (Sprint 3 sessão 6)
+**Status:** ⬜ Catalogado (Sprint 3 sessão 6) · ✅ **Fechado (v1.27, Sprint 3 sessão 10)**
 **Por design:** Lucas confirmou que o usuário congelado precisa conseguir logar para ver a mensagem clara de bloqueio (e poder apelar via disputa).
 
 ### Problema / verificação pendente
 Uma conta com `accountFrozen=true` autentica normalmente. O comportamento é intencional (UX de bloqueio), mas falta **verificar empiricamente** que a conta congelada, apesar de logar, está de fato impedida de executar operações sensíveis (criar/aceitar orders, withdrawals, etc.). O `authMiddleware` já tem guard que bloqueia métodos de escrita para contas congeladas (`user.accountFrozen` em `auth.middleware.ts`), mas isso precisa de confirmação ponta-a-ponta em sessão dedicada.
 
+### Resolução (v1.27, Sprint 3 sessão 10)
+A verificação confirmou que o `authMiddleware` **já bloqueava** order e withdrawal para conta congelada (403). A investigação, porém, revelou que o allowlist de exceções usava `req.path.includes(...)` (substring frouxo) sobre namespaces inteiros (`/disputes`, `/notifications`), liberando demais: uma conta **privilegiada** congelada (manager/admin) ainda alcançava `resolveDispute` (move colateral) e os broadcasts admin.
+
+Correção (branch `fix/ser33-frozen-allowlist`): o gate virou um **allowlist explícito** de `(método, padrão ancorado)` sobre o caminho completo (`req.originalUrl`), **fail-secure**. Conjunto permitido a uma conta congelada (decisão do sócio: **perde todos os poderes**, agnóstico a role): leitura (GETs), apelação (`POST /disputes`, `/messages`, `/respond`) e `POST /auth/logout`. `resolveDispute` e broadcasts admin passaram a ser **bloqueados**. Removido o `frozenAccountRestriction.middleware.ts` (duplicata morta) e de-minificado o bloco.
+
+**Validação:** 13 testes unitários da `isFrozenActionAllowed` (bloqueio de order/withdraw/resolve/broadcast/freeze + regressão da fragilidade de substring) + e2e empírico (`tests/e2e/ser33-frozen-check.ts`): conta congelada → order e withdraw **403 accountFrozen**, criar disputa **passa o gate**. Baseline preservado.
+
+**Spin-off — SER-41:** a investigação destapou que o **controle do freeze não tem hierarquia** (qualquer GERENTE+ congela qualquer conta, inclusive MASTER, sem trava de alvo nem de auto-freeze). É da autorização de quem congela, não do gate — catalogado à parte.
+
 ### Critério de aceitação
-- [ ] Conta congelada loga, mas POST/PUT/PATCH/DELETE sensíveis retornam 403
-- [ ] Severidade reclassificada após a verificação
+- [x] Conta congelada loga, mas POST/PUT/PATCH/DELETE sensíveis retornam 403 ✅ (unit + e2e)
+- [x] Severidade reclassificada após a verificação ✅ (🟡 a confirmar → 🟢 Baixa)
+- [x] Allowlist endurecido (substring → padrões ancorados, fail-secure); `resolveDispute`/broadcasts admin bloqueados para conta congelada
 
 ---
 
@@ -4481,6 +4495,40 @@ Nota: uma equalização por "dummy I/O" (reads sentinela espelhando `isLocked`/`
 ### Critério de aceitação
 - [ ] Gap entre "email inexistente" e "senha errada em conta real" < 15% **e** < 50ms absolutos, medido em bancada
 - [ ] Equalização cobre também o Caminho Z (lockout)
+
+---
+
+## SER-41 — Freeze de conta sem hierarquia de autorização (lockout administrativo)
+
+**Severidade:** 🟠 Sério (inversão de autoridade + risco de lockout administrativo; precondição: ator privilegiado)
+**Fase:** 🔵 **[ADIAR PRE-STAGING]**
+**Categoria:** Auth / Account control / Privilege
+**Status:** ⬜ Catalogado (Sprint 3 sessão 10)
+**Relaciona-se a:** SER-33 (descoberto na investigação do gate de conta congelada).
+
+### Problema
+O freeze/unfreeze (`adminFunds.service.ts` → `freezeAccount`/`unfreezeAccount`, rotas `POST /admin/funds/freeze` e `/unfreeze`) é guardado só pelo `managerMiddleware` (GERENTE/ADMIN/MASTER). **Dentro** dos métodos não há checagem de hierarquia:
+- **Zero** verificação de nível do alvo vs. de quem congela → um **GERENTE (nível 60) pode congelar um MASTER (nível 100)**.
+- **Zero** trava de auto-freeze (`userId === adminUserId`).
+- **Zero** proteção do topo (MASTER é congelável).
+
+Com a decisão "conta congelada perde todos os poderes" (SER-33), o peso aumenta: um único GERENTE+ malicioso/comprometido poderia congelar permanentemente todos os outros GERENTE+/MASTER → **lockout administrativo total**, recuperável só por acesso direto ao banco.
+
+### Recuperação atual (mitigante parcial)
+No caso comum a conta **é** recuperável: outro GERENTE+ não-congelado faz `POST /unfreeze`, e freezes temporários se auto-descongelam (`autoUnfreeze.job.ts`, a cada 5min, por `frozenUntil`); o frozen não se descongela (o gate barra — correto). **Nota:** o `emergency-override` (`pendingApproval`) **não** recupera freeze — é dual-approval de operação financeira MASTER-only. O brick só se materializa se **todos** os GERENTE+ estiverem congelados permanentemente ao mesmo tempo.
+
+### Recomendação
+Em sessão dedicada, guards de hierarquia no `freezeAccount` (espelhar no unfreeze onde couber):
+- só congelar **nível estritamente inferior** ao do solicitante (GERENTE não congela ADMIN/MASTER; ADMIN não congela MASTER);
+- **proteger o topo:** MASTER não-congelável via UI, ou exigir outro MASTER **e** garantir ≥1 MASTER não-congelado;
+- barrar **auto-freeze** (`userId === adminUserId`);
+- (opcional) impedir congelar o **último** GERENTE+ não-congelado.
+
+### Critério de aceitação
+- [ ] `freezeAccount` rejeita congelar nível ≥ ao do solicitante
+- [ ] MASTER protegido contra brick (não-congelável via UI, ou garantia de ≥1 MASTER ativo)
+- [ ] auto-freeze bloqueado
+- [ ] audit log registra tentativa rejeitada
 
 ---
 
