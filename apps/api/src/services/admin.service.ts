@@ -1710,6 +1710,8 @@ export class AdminService {
       updateData.twoFactorBackupCodes = null;
     }
 
+    updateData.forcePasswordReset = true; // SER-15: força o usuário a trocar a senha no próximo login
+
     await prisma.user.update({
       where: { id: targetUserId },
       data: updateData,

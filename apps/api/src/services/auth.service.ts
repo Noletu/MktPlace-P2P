@@ -426,6 +426,7 @@ export class AuthService {
         password: hashedPassword,
         passwordResetToken: null,
         passwordResetExpires: null,
+        forcePasswordReset: false, // SER-15: troca via link de reset também libera a conta
       },
     });
   }
