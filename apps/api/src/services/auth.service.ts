@@ -430,6 +430,27 @@ export class AuthService {
     });
   }
 
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new Error('Usuário não encontrado');
+    }
+
+    const valid = await comparePassword(currentPassword, user.password);
+    if (!valid) {
+      throw new Error('CURRENT_PASSWORD_INVALID');
+    }
+
+    const hashedPassword = await hashPassword(newPassword);
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: hashedPassword,
+        forcePasswordReset: false, // SER-15: troca concluída, libera a conta
+      },
+    });
+  }
+
   async updateProfile(userId: string, data: {
     name?: string;
     email?: string;

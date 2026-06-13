@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { signSocketTicket } from '../utils/jwt';
 import { authService } from '../services/auth.service';
-import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema, completeLoginSchema } from '@mktplace/shared';
+import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema, completeLoginSchema, changePasswordSchema } from '@mktplace/shared';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from '../services/auditLog.service';
 import { emailService } from '../services/email.service';
 import { logger, securityLogger } from '../utils/logger';
@@ -875,6 +875,32 @@ export class AuthController {
     }
   }
 
+  // SER-15: Trocar senha do próprio usuário (autenticado)
+  async changePassword(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ success: false, error: 'Não autenticado' });
+        return;
+      }
+      const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+      await authService.changePassword(req.user.userId, currentPassword, newPassword);
+      res.status(200).json({
+        success: true,
+        message: 'Senha alterada com sucesso.',
+      });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        res.status(400).json({ success: false, error: 'Dados inválidos', details: error.errors });
+        return;
+      }
+      if (error.message === 'CURRENT_PASSWORD_INVALID') {
+        res.status(400).json({ success: false, error: 'Senha atual incorreta' });
+        return;
+      }
+      console.error('[AuthController] changePassword error:', error);
+      res.status(500).json({ success: false, error: 'Erro ao alterar senha' });
+    }
+  }
 
   async socketTicket(req: Request, res: Response): Promise<void> {
     try {
