@@ -1,4 +1,4 @@
-import { isFrozenActionAllowed } from '../auth.middleware';
+import { isFrozenActionAllowed, isPasswordResetActionAllowed } from '../auth.middleware';
 
 describe('SER-33 — isFrozenActionAllowed (allowlist de conta congelada)', () => {
   describe('leitura (sempre permitida)', () => {
@@ -70,6 +70,48 @@ describe('SER-33 — isFrozenActionAllowed (allowlist de conta congelada)', () =
     it('método errado não passa mesmo em path permitido', () => {
       expect(isFrozenActionAllowed('DELETE', '/api/v1/disputes')).toBe(false);
       expect(isFrozenActionAllowed('PUT', '/api/v1/disputes/abc/messages')).toBe(false);
+    });
+  });
+});
+
+describe('SER-15 — isPasswordResetActionAllowed (allowlist de troca de senha obrigatória)', () => {
+  describe('permitido', () => {
+    it('libera GET/HEAD/OPTIONS em qualquer rota', () => {
+      expect(isPasswordResetActionAllowed('GET', '/api/v1/orders')).toBe(true);
+      expect(isPasswordResetActionAllowed('HEAD', '/api/v1/wallets/abc/balance')).toBe(true);
+      expect(isPasswordResetActionAllowed('OPTIONS', '/api/v1/anything')).toBe(true);
+    });
+    it('libera change-password (com e sem barra final)', () => {
+      expect(isPasswordResetActionAllowed('POST', '/api/v1/auth/change-password')).toBe(true);
+      expect(isPasswordResetActionAllowed('POST', '/api/v1/auth/change-password/')).toBe(true);
+    });
+    it('libera logout', () => {
+      expect(isPasswordResetActionAllowed('POST', '/api/v1/auth/logout')).toBe(true);
+    });
+  });
+
+  describe('bloqueado (o coração do gate)', () => {
+    it('bloqueia mutações sensíveis', () => {
+      expect(isPasswordResetActionAllowed('POST', '/api/v1/orders')).toBe(false);
+      expect(isPasswordResetActionAllowed('POST', '/api/v1/wallets/abc/withdraw')).toBe(false);
+      expect(isPasswordResetActionAllowed('PUT', '/api/v1/auth/profile')).toBe(false);
+    });
+    it('bloqueia criar disputa (diferente do gate do frozen — aqui NÃO é exceção)', () => {
+      expect(isPasswordResetActionAllowed('POST', '/api/v1/disputes')).toBe(false);
+    });
+    it('bloqueia reset-password por token (não faz parte do allowlist)', () => {
+      expect(isPasswordResetActionAllowed('POST', '/api/v1/auth/reset-password')).toBe(false);
+    });
+  });
+
+  describe('robustez do match (ancorado)', () => {
+    it('não libera rota que apenas CONTÉM change-password como substring', () => {
+      expect(isPasswordResetActionAllowed('POST', '/api/v1/admin/change-password-policy')).toBe(false);
+      expect(isPasswordResetActionAllowed('POST', '/api/v1/auth/change-password/extra')).toBe(false);
+    });
+    it('método errado em path permitido não passa', () => {
+      expect(isPasswordResetActionAllowed('DELETE', '/api/v1/auth/logout')).toBe(false);
+      expect(isPasswordResetActionAllowed('PUT', '/api/v1/auth/change-password')).toBe(false);
     });
   });
 });
