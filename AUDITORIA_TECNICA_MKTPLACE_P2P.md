@@ -1,6 +1,6 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.27
+> **Versão:** 1.28
 > **Data:** 14 de maio de 2026 (última edição: 12 de junho de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
 > **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
@@ -15,6 +15,8 @@
 > **Changelog v1.20:** TD-SCHEMA01 resolvido (Sprint 3 sessão 3): o sintoma observado (DROP SEQUENCE recorrente em migrations futuras do User) foi eliminado pela mudança de `@default(dbgenerated("nextval(...)"))` para `@default(autoincrement())` no schema.prisma — sem migration estrutural necessária. Verificação empírica confirmou: o diff engine do Prisma normaliza ambas as representações para o mesmo conceito interno. CRIT-02 testado end-to-end: novo usuário recebeu `hdAccountIndex=33` (next correto da sequence), endereços BIP32 distintos confirmados. Rollback plan versionado em `docs/rollback-plans/td-schema01.md`. §1.1 PRE-STAGING atualizado para 21 itens.
 > **Changelog v1.21:** MED-34 fechado (Sprint 3 sessão 4): **21 `@relation` explícitos** adicionados ao schema, cobrindo todas as FKs denormalizadas (User self-relations, Order, WalletTransaction, Withdrawal, Transaction, PlatformTransfer, PlatformWalletMovement, AuditLog, BroadcastLog, ChatArchive, RolePermission, Coupon). Policies `ON DELETE` definidas caso-a-caso: **20 `SetNull`** + **1 `Restrict`** (`PlatformTransfer.requestedBy` — bloqueia deletar o sócio que solicitou uma transferência de plataforma, preservando rastreabilidade financeira; demais campos de auditoria usam `SetNull` para preservar o registro histórico mesmo se o usuário referenciado for removido). **2 renomeações** de `@relation` para desambiguar relations múltiplas User→Model (`OrderOwner` em `Order.user`, `WalletTransactionOwner` em `WalletTransaction.user`). **1 conversão NOT NULL → nullable** (`BroadcastLog.adminId String → String?`) exigida pelo `SetNull`. **Decisão YAGNI sobre indexes:** os 11 índices em colunas FK que o fluxo normal sugeriria **não** foram adicionados — custo de escrita/disco garantido vs. benefício hipotético (nenhuma query atual filtra por esses campos, verificado no código); `CREATE INDEX CONCURRENTLY` é trivial quando uma query real exigir. Migration `20260531144306_med34_explicit_fks` aplicada e verificada via `information_schema` (21 FKs, delete_rule confirmado). Re-check de integridade pré-aplicação: **0 orphans** nos 21 campos. Drift check pós-aplicação: **0** (TD-SCHEMA01 segue resolvido, FKs novas não introduziram drift). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING atualizado para 20 itens.
 > **Changelog v1.22:** SER-17 fechado (Sprint 3 sessão 5): guard `process.env.NODE_ENV !== 'production'` substituído por flag explícita `process.env.CORS_ALLOW_NO_ORIGIN === 'true'` no CORS de `index.ts`. **Default fail-secure:** qualquer ambiente que não setar a flag (inclusive `NODE_ENV` undefined em containers) rejeita requisições sem header `Origin`, fechando o risco residual. Log de rejeição enriquecido com `nodeEnv` e `allowNoOriginFlag`. `.env.example` documenta a flag (default `false`). Validação manual 5/5: `flag false` + sem origin → bloqueado; `flag true` + sem origin → permitido; flag não abre origins inválidas. Dois findings catalogados durante a sessão: **SER-31** (`socket.server.ts` usa padrão `NODE_ENV` para CORS — inconsistência arquitetural com o HTTP; severidade baixa) e **SER-32** (CORS rejeitado propaga HTTP 500 via `callback(new Error(...))` em vez de 403 — semântico, pré-existente; severidade baixa). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING: SER-17 sai (−1), SER-31 + SER-32 entram (+2) → 22 itens.
+>
+> **Changelog v1.28:** SER-41 fechado (Sprint 3 sessão 10): **hierarquia de autorização no freeze de conta**. Antes, o único guard era o `managerMiddleware` (GERENTE/ADMIN/MASTER) e o `freezeAccount` não comparava nada — um GERENTE (60) podia congelar um MASTER (100), congelar a si mesmo, ou (com "perde todos os poderes") travar toda a hierarquia. Agora o service deriva o **nível efetivo** de quem-congela e do alvo (helper `getEffectiveLevel`, com fallback do `legacyRole` para não ler um MASTER "legado" como nível 0) e valida via função pura `canFreezeTarget` **antes de qualquer escrita**: só congela **nível estritamente inferior** ao seu (protege o topo e os pares de graça) e **nunca a própria conta**; a tentativa negada é gravada no audit (`FREEZE_ACCOUNT_DENIED`) e devolve **403**. O **descongelar** segue permissivo (qualquer GERENTE+) — decisão de produto, preserva a recuperação. Validado por **11 testes unitários** (`getEffectiveLevel` + matriz completa de `canFreezeTarget`) + **e2e empírico** (`tests/e2e/ser41-hierarchy-check.ts`, contra Postgres real com os seed users: admin→master **403**, auto-freeze **403**, master→admin **permitido** e restaurado). Baseline preservado (tsc 25, nada novo nos arquivos tocados). §1.1 PRE-STAGING: 23 − 1 (SER-41) = **22** itens.
 >
 > **Changelog v1.27:** SER-33 fechado (Sprint 3 sessão 10): **gate de conta congelada endurecido**. O allowlist de exceções do `authMiddleware` passou de `req.path.includes(...)` (substring frouxo) para um **allowlist explícito** de `(método, padrão ancorado)` sobre o caminho completo (`req.originalUrl`), **fail-secure** (rota nova nasce bloqueada; some o falso-positivo de substring). Efeito: além de já barrar order/withdraw, agora **bloqueia** `resolveDispute` (movia colateral) e os broadcasts admin de notificação — que o substring liberava a uma conta privilegiada congelada. Removido o `frozenAccountRestriction.middleware.ts` (duplicata morta) e de-minificado o bloco. Princípio confirmado com o sócio: **conta congelada perde todos os poderes**, mantendo só leitura (GETs), o fluxo de apelação (`/disputes` criar/messages/respond) e logout — agnóstico a role. Validado por **13 testes unitários** da `isFrozenActionAllowed` (inclui regressão do substring) + **e2e empírico** (`tests/e2e/ser33-frozen-check.ts`: conta congelada → order e withdraw **403 accountFrozen**; criar disputa → passa o gate). Severidade reclassificada de "a confirmar" para **🟢 Baixa**. **Catalogado SER-41** (descoberto na investigação): o freeze não tem hierarquia — qualquer GERENTE+ pode congelar qualquer conta, inclusive MASTER, sem trava de alvo nem de auto-freeze (risco de lockout administrativo). §1.1 PRE-STAGING: 23 − 1 (SER-33) + 1 (SER-41) = **23** itens.
 >
@@ -129,7 +131,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 
 > **MED-34 — ✅ Fechado (v1.21, Sprint 3 sessão 4):** 21 `@relation` explícitos (20 `SetNull` + 1 `Restrict`), 2 renomeações de relation, `BroadcastLog.adminId` → nullable. Policies `ON DELETE` (a fatia que estava adiada para PRE-STAGING) também resolvidas nesta sessão. Indexes não adicionados (YAGNI). Ver §MED-34 e Changelog v1.21.
 
-#### 🔵 ADIAR PRE-STAGING (23)
+#### 🔵 ADIAR PRE-STAGING (22)
 
 > **Trigger:** quando for subir o primeiro ambiente com Postgres real, Redis, domínio próprio e auth funcional fora do localhost.
 >
@@ -144,6 +146,8 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 > **Nota de v1.26 (Sprint 3 sessão 9):** SER-38 fechado (sai desta lista, −1); SER-40 catalogado (entra, +1). Saldo líquido 23 − 1 + 1 = **23**.
 >
 > **Nota de v1.27 (Sprint 3 sessão 10):** SER-33 fechado (sai desta lista, −1); SER-41 catalogado (entra, +1). Saldo líquido 23 − 1 + 1 = **23**.
+>
+> **Nota de v1.28 (Sprint 3 sessão 10):** SER-41 fechado (sai desta lista, −1). Nenhum finding novo catalogado. Saldo líquido 23 − 1 = **22**.
 
 | ID | Por que adiar agora |
 |----|---------------------|
@@ -162,7 +166,6 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | SER-30 | Investigar impacto real antes de classifcar e corrigir |
 | SER-31 | Inconsistência arquitetural (socket CORS via NODE_ENV); alinhar à flag em sessão dedicada |
 | SER-32 | Semântica HTTP (500 em rejeição CORS); ajuste trivial, sem urgência funcional |
-| SER-41 | freeze sem hierarquia: qualquer GERENTE+ pode congelar qualquer conta (inclusive MASTER), sem trava de nível-alvo nem de auto-freeze — risco de lockout administrativo. Adicionar guards (só congelar nível inferior; proteger MASTER; barrar self-freeze) em sessão dedicada |
 | SER-35 | 8 leitores de `localStorage.getItem('user')`; migrar para fonte central (AuthContext / `useCurrentUser` via `/auth/me`) após estabilizar o fluxo de auth |
 | SER-36 | Tela de 2FA do login sem input de backup code (backend já aceita via `z.union`); adicionar toggle quando a UX de 2FA for revisada |
 | SER-40 | gap de timing residual de I/O no lockout (~95ms): assimetria de escrita entre "email inexistente" e "senha errada em conta real" permite enumeração de conta; equalizar via escrita sentinela ou piso de tempo constante em sessão dedicada. **Spin-off do SER-38** (resíduo após eliminar o gap de custo do bcrypt) |
@@ -4500,10 +4503,10 @@ Nota: uma equalização por "dummy I/O" (reads sentinela espelhando `isLocked`/`
 
 ## SER-41 — Freeze de conta sem hierarquia de autorização (lockout administrativo)
 
-**Severidade:** 🟠 Sério (inversão de autoridade + risco de lockout administrativo; precondição: ator privilegiado)
-**Fase:** 🔵 **[ADIAR PRE-STAGING]**
+**Severidade:** 🟠 Sério (inversão de autoridade + risco de lockout administrativo; precondição: ator privilegiado) — resolvido v1.28
+**Fase:** ✅ **Resolvido (v1.28)**
 **Categoria:** Auth / Account control / Privilege
-**Status:** ⬜ Catalogado (Sprint 3 sessão 10)
+**Status:** ⬜ Catalogado (Sprint 3 sessão 10) · ✅ **Fechado (v1.28, Sprint 3 sessão 10)**
 **Relaciona-se a:** SER-33 (descoberto na investigação do gate de conta congelada).
 
 ### Problema
@@ -4524,11 +4527,20 @@ Em sessão dedicada, guards de hierarquia no `freezeAccount` (espelhar no unfree
 - barrar **auto-freeze** (`userId === adminUserId`);
 - (opcional) impedir congelar o **último** GERENTE+ não-congelado.
 
+### Resolução (v1.28, Sprint 3 sessão 10)
+Implementada a hierarquia direto no `freezeAccount` (branch `fix/ser41-freeze-hierarchy`), como funções **puras e testáveis**: `getEffectiveLevel(user)` deriva o nível (usa `role.level` do RBAC novo; cai no `legacyRole` quando não há role relation — fecha o buraco do MASTER "legado" lido como nível 0) e `canFreezeTarget(...)` decide a permissão. O service passou a buscar o nível de **quem congela** e do **alvo** (via `include: { role: { select: { level } } }`) e a validar **antes de qualquer escrita**.
+
+Regras aplicadas (decisão de produto): só congela **nível estritamente inferior** ao do solicitante (protege o topo e os pares **automaticamente** — ninguém congela MASTER, ninguém congela um par); **auto-freeze bloqueado**; a tentativa negada é registrada no audit (`FREEZE_ACCOUNT_DENIED`) e o controller devolve **403**. O **unfreeze** segue permissivo (qualquer GERENTE+) por decisão de produto — preserva a recuperação e não cria brick.
+
+**Validação:** 11 testes unitários (`adminFunds.hierarchy.spec.ts`: `getEffectiveLevel` + matriz de `canFreezeTarget`) + e2e empírico (`tests/e2e/ser41-hierarchy-check.ts`, Postgres real: admin→master **403**, auto-freeze **403**, master→admin **permitido** e restaurado). Baseline preservado.
+
+**Nota de escopo:** a proteção de brick saiu como consequência da regra "estritamente inferior" (o MASTER nunca é congelável por essa rota), então a trava de "≥1 MASTER ativo" e a do "último GERENTE+ não-congelado" (item opcional) ficaram desnecessárias sob a regra adotada.
+
 ### Critério de aceitação
-- [ ] `freezeAccount` rejeita congelar nível ≥ ao do solicitante
-- [ ] MASTER protegido contra brick (não-congelável via UI, ou garantia de ≥1 MASTER ativo)
-- [ ] auto-freeze bloqueado
-- [ ] audit log registra tentativa rejeitada
+- [x] `freezeAccount` rejeita congelar nível ≥ ao do solicitante ✅ (estritamente inferior; unit + e2e)
+- [x] MASTER protegido contra brick ✅ (consequência da regra "estritamente inferior" — não-congelável por essa rota)
+- [x] auto-freeze bloqueado ✅ (unit + e2e)
+- [x] audit log registra tentativa rejeitada ✅ (`FREEZE_ACCOUNT_DENIED`)
 
 ---
 

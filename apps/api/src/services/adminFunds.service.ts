@@ -12,6 +12,53 @@ import {
 } from '../types/adminLock.types';
 
 /**
+ * SER-41 — Hierarquia de autorização do freeze.
+ * Nível efetivo de um usuário: usa role.level (RBAC novo) quando existir;
+ * senão cai no papel antigo (legacyRole). Robusto durante a migração RBAC —
+ * evita que um MASTER "legado" (sem role relation) seja lido como nível 0.
+ */
+const ROLE_LEVELS: Record<string, number> = {
+  MASTER: 100,
+  ADMIN: 80,
+  GERENTE: 60,
+  SUPPORT: 40,
+  USER: 0,
+};
+
+export function getEffectiveLevel(user: {
+  role?: { level: number } | null;
+  legacyRole?: string | null;
+}): number {
+  if (user.role && typeof user.role.level === 'number') {
+    return user.role.level;
+  }
+  const legacy = (user.legacyRole ?? '').toUpperCase();
+  return ROLE_LEVELS[legacy] ?? 0;
+}
+
+/**
+ * Decide se quem congela pode congelar o alvo.
+ * Regra (decisão de produto): NÃO pode congelar a própria conta; só pode
+ * congelar conta de nível ESTRITAMENTE inferior ao seu (isso protege o topo
+ * e os pares automaticamente). Agnóstico ao restante do papel.
+ */
+export function canFreezeTarget(params: {
+  adminUserId: string;
+  targetUserId: string;
+  adminLevel: number;
+  targetLevel: number;
+}): { allowed: boolean; reason?: string } {
+  const { adminUserId, targetUserId, adminLevel, targetLevel } = params;
+  if (adminUserId === targetUserId) {
+    return { allowed: false, reason: 'Você não pode congelar a própria conta.' };
+  }
+  if (targetLevel >= adminLevel) {
+    return { allowed: false, reason: 'Você só pode congelar contas de nível inferior ao seu.' };
+  }
+  return { allowed: true };
+}
+
+/**
  * Admin Funds Service
  *
  * CONTROLE ADMINISTRATIVO TOTAL sobre carteiras e fundos dos usuários.
@@ -331,14 +378,57 @@ export class AdminFundsService {
   }) {
     const { userId, reason, adminUserId, duration } = params;
 
-    // Verificar se usuário existe
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    // SER-41: buscar alvo COM nível (role.level) para a checagem de hierarquia
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { role: { select: { level: true } } },
+    });
     if (!user) {
       throw new Error('Usuário não encontrado');
     }
 
     if (user.accountFrozen) {
       throw new Error('Conta já está congelada');
+    }
+
+    // SER-41: hierarquia de freeze — quem congela (com nível), validado ANTES
+    // de qualquer escrita. Só congela nível inferior; nunca a própria conta.
+    const actingAdmin = await prisma.user.findUnique({
+      where: { id: adminUserId },
+      include: { role: { select: { level: true } } },
+    });
+    if (!actingAdmin) {
+      throw new Error('Administrador não encontrado');
+    }
+
+    const freezeDecision = canFreezeTarget({
+      adminUserId,
+      targetUserId: userId,
+      adminLevel: getEffectiveLevel(actingAdmin),
+      targetLevel: getEffectiveLevel(user),
+    });
+    if (!freezeDecision.allowed) {
+      await prisma.auditLog.create({
+        data: {
+          userId: adminUserId,
+          email: actingAdmin.email,
+          role: actingAdmin.legacyRole ?? '',
+          name: actingAdmin.name ?? '',
+          action: 'FREEZE_ACCOUNT_DENIED',
+          resource: 'USER',
+          resourceId: userId,
+          description: `Tentativa negada de congelar ${user.email}: ${freezeDecision.reason}`,
+          metadata: JSON.stringify({
+            reason: freezeDecision.reason,
+            adminLevel: getEffectiveLevel(actingAdmin),
+            targetLevel: getEffectiveLevel(user),
+          }),
+          success: false,
+        },
+      });
+      const err: any = new Error(freezeDecision.reason);
+      err.statusCode = 403;
+      throw err;
     }
 
     // Calcular frozenUntil se duration fornecida
