@@ -667,6 +667,8 @@ export class AuthController {
       // SECURITY (H-1): Atualizar access token E refresh token nos cookies (token rotation)
       setAccessTokenCookie(res, result.token);
       setRefreshTokenCookie(res, result.newRefreshToken);
+      // SER-30: mantém o cookie userRole em sincronia com o role atual do DB
+      setUserRoleCookie(res, result.role);
 
       res.status(200).json({
         success: true,
