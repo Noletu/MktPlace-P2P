@@ -266,7 +266,7 @@ export class AuthService {
 
   // SECURITY (H-1): Renovar access token com rotação de refresh token
   // Retorna novo access token + novo refresh token (token rotation)
-  async refreshAccessToken(refreshToken: string): Promise<{ token: string; newRefreshToken: string } | null> {
+  async refreshAccessToken(refreshToken: string): Promise<{ token: string; newRefreshToken: string; role: string } | null> {
     const result = await refreshTokenService.validateAndRotateRefreshToken(refreshToken);
 
     if (!result) {
@@ -296,7 +296,10 @@ export class AuthService {
       role: user.role?.slug || user.legacyRole || 'USER',
     });
 
-    return { token, newRefreshToken };
+    // SER-30: role atual do DB em MAIÚSCULO (formato que o cookie userRole exige —
+    // o Next middleware compara 'ADMIN'/'MASTER') para ressincronizar no refresh.
+    const role = user.role?.slug?.toUpperCase() || user.legacyRole || 'USER';
+    return { token, newRefreshToken, role };
   }
 
   // SECURITY: Logout - revogar refresh token
