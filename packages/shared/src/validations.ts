@@ -39,6 +39,55 @@ export const cpfSchema = z
   .regex(/^\d{11}$/, 'CPF deve conter 11 dígitos')
   .refine(validateCPF, 'CPF inválido (dígitos verificadores incorretos)');
 
+// SECURITY (SER-27): Validação completa de CNPJ com dígitos verificadores
+export const validateCNPJ = (cnpj: string): boolean => {
+  cnpj = cnpj.replace(/[^\d]/g, '');
+  if (cnpj.length !== 14) return false;
+  if (cnpj.split('').every((c) => c === cnpj[0])) return false;
+  const calcDigit = (len: number): number => {
+    let sum = 0;
+    let pos = len - 7;
+    for (let i = len; i >= 1; i--) {
+      sum += parseInt(cnpj.charAt(len - i)) * pos--;
+      if (pos < 2) pos = 9;
+    }
+    const r = sum % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  if (calcDigit(12) !== parseInt(cnpj.charAt(12))) return false;
+  if (calcDigit(13) !== parseInt(cnpj.charAt(13))) return false;
+  return true;
+};
+
+export const cnpjSchema = z
+  .string()
+  .regex(/^\d{14}$/, 'CNPJ deve conter 14 dígitos')
+  .refine(validateCNPJ, 'CNPJ inválido (dígitos verificadores incorretos)');
+
+// SECURITY (SER-27): documento = CPF OU CNPJ (ambos com dígitos verificadores)
+export const documentSchema = z
+  .string()
+  .refine(
+    (v) => validateCPF(v) || validateCNPJ(v),
+    'CPF ou CNPJ inválido (dígitos verificadores incorretos)'
+  );
+
+// SECURITY (SER-27): validação de chave PIX conforme o tipo declarado
+const PIX_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PIX_PHONE_REGEX = /^\+55\d{10,11}$/; // E.164 BR: +55 + DDD + número
+const PIX_RANDOM_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i; // chave aleatória EVP (UUID v4)
+
+export const isValidPixKey = (key: string, type: string): boolean => {
+  switch (type) {
+    case 'CPF': return validateCPF(key);
+    case 'CNPJ': return validateCNPJ(key);
+    case 'EMAIL': return PIX_EMAIL_REGEX.test(key);
+    case 'PHONE': return PIX_PHONE_REGEX.test(key);
+    case 'RANDOM': return PIX_RANDOM_REGEX.test(key);
+    default: return false;
+  }
+};
+
 // SECURITY: Política de senha forte
 export const strongPasswordSchema = z
   .string()

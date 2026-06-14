@@ -6,19 +6,23 @@ import { gtBN } from '../utils/money';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from '../services/auditLog.service';
 import { auditLogger } from '../utils/logger';
 import { Transaction } from '@prisma/client';
+import { documentSchema, isValidPixKey } from '@mktplace/shared';
 
 const BoletoDataSchema = z.object({
   barcode: z.string().min(44, 'Código de barras do boleto deve ter no mínimo 44 caracteres'),
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data de vencimento inválida'),
   recipientName: z.string().min(3, 'Nome do beneficiário é obrigatório'),
-  recipientDocument: z.string().min(11, 'CPF/CNPJ do beneficiário é obrigatório'),
+  recipientDocument: documentSchema,
 });
 
 const PixDataSchema = z.object({
   pixKey: z.string().min(3, 'Chave PIX é obrigatória'),
   pixKeyType: z.enum(['CPF', 'CNPJ', 'EMAIL', 'PHONE', 'RANDOM']),
   recipientName: z.string().min(3, 'Nome do beneficiário é obrigatório'),
-});
+}).refine(
+  (d) => isValidPixKey(d.pixKey, d.pixKeyType),
+  { message: 'Chave PIX inválida para o tipo informado', path: ['pixKey'] }
+);
 
 // Schema para ordens SELL (criador fornece dados de pagamento)
 const CreateSellOrderSchema = z.object({
@@ -62,7 +66,10 @@ const AcceptBuyOrderSchema = z.object({
   pixKey: z.string().min(3, 'Chave PIX é obrigatória'),
   pixKeyType: z.enum(['CPF', 'CNPJ', 'EMAIL', 'PHONE', 'RANDOM']),
   recipientName: z.string().min(3, 'Nome do beneficiário é obrigatório'),
-});
+}).refine(
+  (d) => isValidPixKey(d.pixKey, d.pixKeyType),
+  { message: 'Chave PIX inválida para o tipo informado', path: ['pixKey'] }
+);
 
 export class OrderController {
   async createOrder(req: Request, res: Response) {
