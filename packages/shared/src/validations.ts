@@ -93,6 +93,16 @@ export const resetPasswordSchema = z.object({
   twoFactorToken: z.string().optional(),
 });
 
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Senha atual é obrigatória'),
+    newPassword: strongPasswordSchema,
+  })
+  .refine((data) => data.currentPassword !== data.newPassword, {
+    message: 'A nova senha deve ser diferente da atual',
+    path: ['newPassword'],
+  });
+
 // Order schemas
 export const createBoletoOrderSchema = z.object({
   cryptoType: z.nativeEnum(CryptoType),

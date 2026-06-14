@@ -87,6 +87,9 @@ model User {
   passwordResetToken   String?
   passwordResetExpires DateTime?
 
+  // SER-15: força troca de senha no próximo login (ex.: após reset feito por um admin)
+  forcePasswordReset   Boolean   @default(false)
+
   // ADMIN CONTROLS: Account Freeze (Congelamento de conta)
   accountFrozen Boolean   @default(false) // Se conta está congelada
   frozenReason  String? // Motivo do congelamento

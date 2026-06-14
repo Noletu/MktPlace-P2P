@@ -69,6 +69,13 @@ router.put('/profile', authMiddleware, (req, res) => authController.updateProfil
 router.post('/logout', authMiddleware, (req, res) => authController.logout(req, res));
 
 /**
+ * @route   POST /api/v1/auth/change-password
+ * @desc    Trocar senha do próprio usuário (SER-15)
+ * @access  Private
+ */
+router.post('/change-password', authMiddleware, (req, res) => authController.changePassword(req, res));
+
+/**
  * @route   GET /api/v1/auth/check-email
  * @desc    Verificar se email está disponível
  * @access  Public

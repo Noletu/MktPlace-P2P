@@ -48,6 +48,26 @@ export function isFrozenActionAllowed(method: string, path: string): boolean {
   );
 }
 
+/**
+ * SER-15 — Allowlist de ações permitidas a uma conta marcada para troca de senha
+ * obrigatória (forcePasswordReset). Só pode VER (GETs), trocar a senha e deslogar.
+ * Qualquer outra mutação é bloqueada até a troca. Match no caminho COMPLETO
+ * (req.originalUrl sem query) com padrões ANCORADOS (fail-secure).
+ */
+const PASSWORD_RESET_ALLOWED_MUTATIONS: ReadonlyArray<{ method: string; pattern: RegExp }> = [
+  { method: 'POST', pattern: /^\/api\/v1\/auth\/change-password\/?$/ },
+  { method: 'POST', pattern: /^\/api\/v1\/auth\/logout\/?$/ },
+];
+
+export function isPasswordResetActionAllowed(method: string, path: string): boolean {
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    return true;
+  }
+  return PASSWORD_RESET_ALLOWED_MUTATIONS.some(
+    (rule) => rule.method === method && rule.pattern.test(path)
+  );
+}
+
 export const authMiddleware = async (
   req: Request,
   res: Response,
@@ -93,6 +113,7 @@ export const authMiddleware = async (
         name: true,
         legacyRole: true, // Role temporário durante migração RBAC
         accountFrozen: true, // SECURITY: Verificar se conta está bloqueada
+        forcePasswordReset: true, // SER-15: troca de senha obrigatória
         frozenReason: true,
         frozenUntil: true,
         role: {
@@ -155,6 +176,22 @@ export const authMiddleware = async (
         return;
       }
     }
+
+    // SER-15: conta marcada para troca de senha obrigatória — só pode ver (GETs),
+    // trocar a senha e deslogar. Qualquer outra mutação é 403 até a troca.
+    if (user.forcePasswordReset) {
+      const resetRequestPath = req.originalUrl.split('?')[0];
+      if (!isPasswordResetActionAllowed(req.method, resetRequestPath)) {
+        res.status(403).json({
+          success: false,
+          error: 'Troca de senha obrigatória',
+          message: 'Você precisa definir uma nova senha antes de continuar.',
+          forcePasswordReset: true,
+        });
+        return;
+      }
+    }
+
     next();
   } catch (error) {
     console.log('❌ Token inválido:', error);

@@ -1,6 +1,6 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.28
+> **Versão:** 1.29
 > **Data:** 14 de maio de 2026 (última edição: 12 de junho de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
 > **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
@@ -15,6 +15,8 @@
 > **Changelog v1.20:** TD-SCHEMA01 resolvido (Sprint 3 sessão 3): o sintoma observado (DROP SEQUENCE recorrente em migrations futuras do User) foi eliminado pela mudança de `@default(dbgenerated("nextval(...)"))` para `@default(autoincrement())` no schema.prisma — sem migration estrutural necessária. Verificação empírica confirmou: o diff engine do Prisma normaliza ambas as representações para o mesmo conceito interno. CRIT-02 testado end-to-end: novo usuário recebeu `hdAccountIndex=33` (next correto da sequence), endereços BIP32 distintos confirmados. Rollback plan versionado em `docs/rollback-plans/td-schema01.md`. §1.1 PRE-STAGING atualizado para 21 itens.
 > **Changelog v1.21:** MED-34 fechado (Sprint 3 sessão 4): **21 `@relation` explícitos** adicionados ao schema, cobrindo todas as FKs denormalizadas (User self-relations, Order, WalletTransaction, Withdrawal, Transaction, PlatformTransfer, PlatformWalletMovement, AuditLog, BroadcastLog, ChatArchive, RolePermission, Coupon). Policies `ON DELETE` definidas caso-a-caso: **20 `SetNull`** + **1 `Restrict`** (`PlatformTransfer.requestedBy` — bloqueia deletar o sócio que solicitou uma transferência de plataforma, preservando rastreabilidade financeira; demais campos de auditoria usam `SetNull` para preservar o registro histórico mesmo se o usuário referenciado for removido). **2 renomeações** de `@relation` para desambiguar relations múltiplas User→Model (`OrderOwner` em `Order.user`, `WalletTransactionOwner` em `WalletTransaction.user`). **1 conversão NOT NULL → nullable** (`BroadcastLog.adminId String → String?`) exigida pelo `SetNull`. **Decisão YAGNI sobre indexes:** os 11 índices em colunas FK que o fluxo normal sugeriria **não** foram adicionados — custo de escrita/disco garantido vs. benefício hipotético (nenhuma query atual filtra por esses campos, verificado no código); `CREATE INDEX CONCURRENTLY` é trivial quando uma query real exigir. Migration `20260531144306_med34_explicit_fks` aplicada e verificada via `information_schema` (21 FKs, delete_rule confirmado). Re-check de integridade pré-aplicação: **0 orphans** nos 21 campos. Drift check pós-aplicação: **0** (TD-SCHEMA01 segue resolvido, FKs novas não introduziram drift). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING atualizado para 20 itens.
 > **Changelog v1.22:** SER-17 fechado (Sprint 3 sessão 5): guard `process.env.NODE_ENV !== 'production'` substituído por flag explícita `process.env.CORS_ALLOW_NO_ORIGIN === 'true'` no CORS de `index.ts`. **Default fail-secure:** qualquer ambiente que não setar a flag (inclusive `NODE_ENV` undefined em containers) rejeita requisições sem header `Origin`, fechando o risco residual. Log de rejeição enriquecido com `nodeEnv` e `allowNoOriginFlag`. `.env.example` documenta a flag (default `false`). Validação manual 5/5: `flag false` + sem origin → bloqueado; `flag true` + sem origin → permitido; flag não abre origins inválidas. Dois findings catalogados durante a sessão: **SER-31** (`socket.server.ts` usa padrão `NODE_ENV` para CORS — inconsistência arquitetural com o HTTP; severidade baixa) e **SER-32** (CORS rejeitado propaga HTTP 500 via `callback(new Error(...))` em vez de 403 — semântico, pré-existente; severidade baixa). Baseline inalterado (tsc 25, jest 59/18/40). §1.1 PRE-STAGING: SER-17 sai (−1), SER-31 + SER-32 entram (+2) → 22 itens.
+>
+> **Changelog v1.29:** SER-15 fechado (Sprint 3 sessão 10): **mecanismo de troca de senha obrigatória (`forcePasswordReset`)**. Campo novo no schema (+ migration) + gate no `authMiddleware` (função pura `isPasswordResetActionAllowed`: conta com o flag só pode ver, trocar a senha e deslogar — resto **403**) + **novo endpoint** `POST /auth/change-password` (autenticado: senha atual + nova forte, troca e zera o flag; antes não havia troca autenticada, só reset por e-mail) + gatilho: o `adminResetUserPassword` liga o flag (usuário forçado a trocar no próximo login, fechando o buraco de ignorar o e-mail) e o reset-por-link também zera. Correção de rumo: o "padrão de correção" original (seed gerar senha aleatória) foi **superado** — o seed é dev-only por decisão (guard que explode em prod) e o provisionamento dos masters de prod segue como runbook (TECH-DEBT-OP02), que agora reusa este mecanismo. Validado por 21 testes unitários (8 do gate SER-15 + 13 do SER-33) + e2e (`ser15-force-reset-check.ts`: mutação 403 → troca → flag zerado → liberado). Baseline preservado (tsc 25). §1.1 PRE-STAGING: 22 − 1 (SER-15) = **21** itens.
 >
 > **Changelog v1.28:** SER-41 fechado (Sprint 3 sessão 10): **hierarquia de autorização no freeze de conta**. Antes, o único guard era o `managerMiddleware` (GERENTE/ADMIN/MASTER) e o `freezeAccount` não comparava nada — um GERENTE (60) podia congelar um MASTER (100), congelar a si mesmo, ou (com "perde todos os poderes") travar toda a hierarquia. Agora o service deriva o **nível efetivo** de quem-congela e do alvo (helper `getEffectiveLevel`, com fallback do `legacyRole` para não ler um MASTER "legado" como nível 0) e valida via função pura `canFreezeTarget` **antes de qualquer escrita**: só congela **nível estritamente inferior** ao seu (protege o topo e os pares de graça) e **nunca a própria conta**; a tentativa negada é gravada no audit (`FREEZE_ACCOUNT_DENIED`) e devolve **403**. O **descongelar** segue permissivo (qualquer GERENTE+) — decisão de produto, preserva a recuperação. Validado por **11 testes unitários** (`getEffectiveLevel` + matriz completa de `canFreezeTarget`) + **e2e empírico** (`tests/e2e/ser41-hierarchy-check.ts`, contra Postgres real com os seed users: admin→master **403**, auto-freeze **403**, master→admin **permitido** e restaurado). Baseline preservado (tsc 25, nada novo nos arquivos tocados). §1.1 PRE-STAGING: 23 − 1 (SER-41) = **22** itens.
 >
@@ -131,7 +133,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 
 > **MED-34 — ✅ Fechado (v1.21, Sprint 3 sessão 4):** 21 `@relation` explícitos (20 `SetNull` + 1 `Restrict`), 2 renomeações de relation, `BroadcastLog.adminId` → nullable. Policies `ON DELETE` (a fatia que estava adiada para PRE-STAGING) também resolvidas nesta sessão. Indexes não adicionados (YAGNI). Ver §MED-34 e Changelog v1.21.
 
-#### 🔵 ADIAR PRE-STAGING (22)
+#### 🔵 ADIAR PRE-STAGING (21)
 
 > **Trigger:** quando for subir o primeiro ambiente com Postgres real, Redis, domínio próprio e auth funcional fora do localhost.
 >
@@ -148,13 +150,14 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 > **Nota de v1.27 (Sprint 3 sessão 10):** SER-33 fechado (sai desta lista, −1); SER-41 catalogado (entra, +1). Saldo líquido 23 − 1 + 1 = **23**.
 >
 > **Nota de v1.28 (Sprint 3 sessão 10):** SER-41 fechado (sai desta lista, −1). Nenhum finding novo catalogado. Saldo líquido 23 − 1 = **22**.
+>
+> **Nota de v1.29 (Sprint 3 sessão 10):** SER-15 fechado (sai desta lista, −1). Nenhum finding novo catalogado. Saldo líquido 22 − 1 = **21**.
 
 | ID | Por que adiar agora |
 |----|---------------------|
 | CRIT-10 | Decisão de cloud provider e KMS ainda não tomada |
 | CRIT-11 | Depende de CRIT-10 |
 | SER-13 (resto) | TTL curto atrapalha debug enquanto frontend de auth está mudando |
-| SER-15 | Em dev, credenciais fixas facilitam debug (desde que fora do git, vide CRIT-08) |
 | SER-18 | Refator de Argon2id implica re-encriptar wallets → coordenar com KMS migration |
 | SER-19 | Junto com refator de chaves (SER-18) |
 | SER-20 | Frontend de auth ainda em iteração — mexer agora dá merge conflict |
@@ -2563,10 +2566,10 @@ app.use(cookieParser(process.env.COOKIE_SECRET));
 
 ## SER-15 — Senhas hardcoded no seed de admin
 
-**Severidade:** 🟠 Sério
-**Fase:** 🔵 **[ADIAR PRE-STAGING]** — em dev, credenciais fixas facilitam debug (desde que arquivo esteja fora do git via CRIT-08). Mínimo agora: seed gera password aleatório se `NODE_ENV=production`
+**Severidade:** 🟠 Sério — resolvido v1.29 (mecanismo); provisionamento de prod permanece runbook (TECH-DEBT-OP02)
+**Fase:** ✅ **Resolvido (v1.29)**
 **Categoria:** Operacional / Bootstrapping
-**Status:** 🟡 **Mitigação parcial** (commits `17fea25` + `0e4f5eb`) — finding continua aberto
+**Status:** ⬜ Catalogado (Sprint 2) · 🟡 Mitigação parcial (`17fea25` + `0e4f5eb`) · ✅ **Fechado (v1.29, Sprint 3 sessão 10)**
 **Esforço estimado:** meio dia
 
 ### Mitigação parcial (Sprint 2 — Caminho C)
@@ -2633,11 +2636,24 @@ model User {
 
 E no middleware de auth: bloquear ações além de `/auth/change-password` enquanto `forcePasswordReset = true`.
 
+### Resolução (v1.29, Sprint 3 sessão 10)
+**Correção de rumo:** o "Padrão de correção" acima ficou superado. A decisão do projeto (registrada no próprio `seed.ts`) é que o **seed é dev-only** (guard que explode em prod) e o provisionamento dos masters de prod é feito por **runbook** (TECH-DEBT-OP02) — não pelo seed gerando senha aleatória. Em dev, as credenciais fixas seguem de propósito (debug/e2e). O que se implementou foi o **mecanismo de troca de senha obrigatória**, reutilizável pelo runbook e já funcional via um gatilho existente.
+
+Implementado (branch `fix/ser15-force-password-reset`):
+- **Campo** `forcePasswordReset Boolean @default(false)` no schema + migration `20260613202522_ser15_force_password_reset`.
+- **Gate** no `authMiddleware` (função pura `isPasswordResetActionAllowed`): conta com o flag só pode ver (GETs), trocar a senha e deslogar; qualquer outra mutação → **403**.
+- **Endpoint** `POST /auth/change-password` (autenticado): exige a senha atual + nova (forte, ≠ da atual), troca e **zera** o flag. Antes não existia troca de senha autenticada — só "esqueci a senha" por token.
+- **Gatilho funcional:** o `adminResetUserPassword` **liga** o flag → o usuário é forçado a trocar no próximo login (fecha o buraco de ignorar o e-mail de reset). O `resetPassword` (link por e-mail) também **zera** o flag, então os dois caminhos de troca liberam a conta.
+
+**Validação:** 21 testes unitários (`auth.middleware.spec.ts`: 8 do gate do SER-15 + 13 do SER-33) + e2e (`tests/e2e/ser15-force-reset-check.ts`, Postgres + HTTP reais, usuário descartável: mutação **403** → change-password troca → flag zerado → mutação liberada). Baseline preservado (tsc 25).
+
+**Permanece como runbook (TECH-DEBT-OP02):** o provisionamento operacional dos dois masters de prod (gerar credenciais reais e criá-los **com o flag ligado**, usando este mecanismo). É operacional, não-código — sempre foi a decisão. O risco agudo (seed hardcoded rodar em prod) segue contido pelo guard `NODE_ENV`.
+
 ### Critério de aceitação
-- [ ] Seed gera passwords aleatórios fortes
-- [ ] `forcePasswordReset` flag setada em admins recém-criados
-- [ ] Middleware respeita o flag
-- [ ] Endpoint de change-password atualiza flag para false
+- [x] Middleware respeita o flag ✅ (gate `isPasswordResetActionAllowed`; unit + e2e)
+- [x] Endpoint de troca de senha zera o flag ✅ (`POST /auth/change-password` criado; reset-por-link também zera)
+- [x] Há um emissor funcional do flag ✅ (`adminResetUserPassword` liga o flag)
+- [→] "Seed gera passwords aleatórios" / "admins criados com o flag" → **realocado para o runbook TECH-DEBT-OP02** (seed é dev-only; provisionamento de prod usa este mecanismo)
 
 ---
 
