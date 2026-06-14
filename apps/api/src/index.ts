@@ -2,6 +2,7 @@ import './config/env'; // SECURITY (SER-13): deve ser o primeiro import — carr
 import express, { Express, Request, Response, NextFunction } from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
+import { getAllowedOrigins } from './config/cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import authRoutes from './routes/auth.routes';
@@ -147,10 +148,8 @@ app.use(helmet({
   hidePoweredBy: true,
 }));
 
-// SECURITY: CORS whitelist estrita
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-  : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000'];
+// SECURITY: CORS whitelist estrita (SER-31: fonte única compartilhada com o socket)
+const ALLOWED_ORIGINS = getAllowedOrigins();
 
 app.use(cors({
   origin: (origin, callback) => {

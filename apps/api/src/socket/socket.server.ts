@@ -1,6 +1,7 @@
 import { Server as SocketIOServer } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 import { logger } from '../utils/logger';
+import { getAllowedOrigins } from '../config/cors';
 
 let ioInstance: SocketIOServer | null = null;
 
@@ -16,10 +17,8 @@ export function initializeSocketServer(httpServer: HTTPServer): SocketIOServer {
 
   ioInstance = new SocketIOServer(httpServer, {
     cors: {
-      origin:
-        process.env.NODE_ENV === 'production'
-          ? process.env.ALLOWED_ORIGINS?.split(',')
-          : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+      // SER-31: mesma whitelist do CORS HTTP (fonte única em config/cors.ts)
+      origin: getAllowedOrigins(),
       credentials: true,
     },
     path: '/socket.io/',
