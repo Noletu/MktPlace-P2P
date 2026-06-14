@@ -39,6 +39,39 @@ export const cpfSchema = z
   .regex(/^\d{11}$/, 'CPF deve conter 11 dígitos')
   .refine(validateCPF, 'CPF inválido (dígitos verificadores incorretos)');
 
+// SECURITY (SER-27): Validação completa de CNPJ com dígitos verificadores
+export const validateCNPJ = (cnpj: string): boolean => {
+  cnpj = cnpj.replace(/[^\d]/g, '');
+  if (cnpj.length !== 14) return false;
+  if (cnpj.split('').every((c) => c === cnpj[0])) return false;
+  const calcDigit = (len: number): number => {
+    let sum = 0;
+    let pos = len - 7;
+    for (let i = len; i >= 1; i--) {
+      sum += parseInt(cnpj.charAt(len - i)) * pos--;
+      if (pos < 2) pos = 9;
+    }
+    const r = sum % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  if (calcDigit(12) !== parseInt(cnpj.charAt(12))) return false;
+  if (calcDigit(13) !== parseInt(cnpj.charAt(13))) return false;
+  return true;
+};
+
+export const cnpjSchema = z
+  .string()
+  .regex(/^\d{14}$/, 'CNPJ deve conter 14 dígitos')
+  .refine(validateCNPJ, 'CNPJ inválido (dígitos verificadores incorretos)');
+
+// SECURITY (SER-27): documento = CPF OU CNPJ (ambos com dígitos verificadores)
+export const documentSchema = z
+  .string()
+  .refine(
+    (v) => validateCPF(v) || validateCNPJ(v),
+    'CPF ou CNPJ inválido (dígitos verificadores incorretos)'
+  );
+
 // SECURITY: Política de senha forte
 export const strongPasswordSchema = z
   .string()

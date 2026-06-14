@@ -1,5 +1,6 @@
 import { Order } from '@prisma/client';
 import BigNumber from 'bignumber.js';
+import { documentSchema } from '@mktplace/shared';
 import { toBN, sumBN } from '../utils/money';
 import {
   OrderType,
@@ -1940,7 +1941,7 @@ export class OrderService {
         }
 
         if (updates.orderData.recipientDocument !== undefined) {
-          if (updates.orderData.recipientDocument.trim().length < 11) {
+          if (!documentSchema.safeParse(updates.orderData.recipientDocument.trim()).success) {
             throw new Error('CPF/CNPJ do beneficiário inválido');
           }
           newOrderData.recipientDocument = updates.orderData.recipientDocument;
