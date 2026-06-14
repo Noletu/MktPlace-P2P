@@ -72,6 +72,22 @@ export const documentSchema = z
     'CPF ou CNPJ inválido (dígitos verificadores incorretos)'
   );
 
+// SECURITY (SER-27): validação de chave PIX conforme o tipo declarado
+const PIX_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PIX_PHONE_REGEX = /^\+55\d{10,11}$/; // E.164 BR: +55 + DDD + número
+const PIX_RANDOM_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i; // chave aleatória EVP (UUID v4)
+
+export const isValidPixKey = (key: string, type: string): boolean => {
+  switch (type) {
+    case 'CPF': return validateCPF(key);
+    case 'CNPJ': return validateCNPJ(key);
+    case 'EMAIL': return PIX_EMAIL_REGEX.test(key);
+    case 'PHONE': return PIX_PHONE_REGEX.test(key);
+    case 'RANDOM': return PIX_RANDOM_REGEX.test(key);
+    default: return false;
+  }
+};
+
 // SECURITY: Política de senha forte
 export const strongPasswordSchema = z
   .string()

@@ -1,6 +1,6 @@
 import { Order } from '@prisma/client';
 import BigNumber from 'bignumber.js';
-import { documentSchema } from '@mktplace/shared';
+import { documentSchema, isValidPixKey } from '@mktplace/shared';
 import { toBN, sumBN } from '../utils/money';
 import {
   OrderType,
@@ -277,8 +277,8 @@ export class OrderService {
     } else if ('pixKey' in input.orderData) {
       // É um PIX
       const pixData = input.orderData as PixData;
-      if (!pixData.pixKey || pixData.pixKey.length < 3) {
-        throw new Error('Chave PIX inválida');
+      if (!isValidPixKey(pixData.pixKey, pixData.pixKeyType)) {
+        throw new Error('Chave PIX inválida para o tipo informado');
       }
     }
   }
@@ -1905,6 +1905,11 @@ export class OrderService {
           }
           newOrderData.pixKeyType = updates.orderData.pixKeyType;
         }
+
+          // SER-27: valida o par final (chave vs tipo) após o merge dos updates
+          if (newOrderData.pixKey !== undefined && !isValidPixKey(newOrderData.pixKey, newOrderData.pixKeyType)) {
+            throw new Error('Chave PIX inválida para o tipo informado');
+          }
 
         if (updates.orderData.recipientName !== undefined) {
           if (updates.orderData.recipientName.trim().length < 3) {
