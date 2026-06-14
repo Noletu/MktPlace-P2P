@@ -169,7 +169,10 @@ app.use(cors({
         nodeEnv: process.env.NODE_ENV,
         allowNoOriginFlag: allowNoOrigin,
       });
-      return callback(new Error('Not allowed by CORS'), false);
+      // SER-32: rejeição esperada → 403 (lido pelo error handler), não 500.
+      const corsError: any = new Error('Not allowed by CORS');
+      corsError.statusCode = 403;
+      return callback(corsError, false);
     }
 
     callback(null, true);
@@ -318,33 +321,41 @@ app.use((req: Request, res: Response) => {
 
 // Error handler
 app.use((err: Error, req: Request, res: Response, next: any) => {
-  // SECURITY: Log erro no servidor (stack trace apenas em desenvolvimento)
-  if (process.env.NODE_ENV === 'production') {
-    logger.error('Unhandled error', {
-      error: err.message,
-      path: req.path,
-      method: req.method,
-      ip: req.ip,
-      userId: (req as any).user?.userId,
-      // SECURITY: Stack trace NÃO incluído em produção
-    });
-  } else {
-    // Em desenvolvimento, incluir stack trace para debug
-    logger.error('Unhandled error', {
-      error: err.message,
-      stack: err.stack,
-      path: req.path,
-      method: req.method,
-      ip: req.ip,
-    });
+  // SER-32: erros tipados com statusCode (ex.: rejeição CORS = 403) respeitam o
+  // status; apenas 5xx é logado como "Unhandled error" — 4xx são rejeições
+  // esperadas (a origin function do CORS já loga a sua como warn).
+  const status = (err as any).statusCode || 500;
+
+  if (status >= 500) {
+    // SECURITY: Log erro no servidor (stack trace apenas em desenvolvimento)
+    if (process.env.NODE_ENV === 'production') {
+      logger.error('Unhandled error', {
+        error: err.message,
+        path: req.path,
+        method: req.method,
+        ip: req.ip,
+        userId: (req as any).user?.userId,
+        // SECURITY: Stack trace NÃO incluído em produção
+      });
+    } else {
+      // Em desenvolvimento, incluir stack trace para debug
+      logger.error('Unhandled error', {
+        error: err.message,
+        stack: err.stack,
+        path: req.path,
+        method: req.method,
+        ip: req.ip,
+      });
+    }
   }
 
-  // SECURITY: Resposta genérica para cliente (nunca expor detalhes internos)
-  res.status(500).json({
+  // SECURITY: Resposta genérica para 5xx (nunca expor detalhes internos);
+  // 4xx tipados expõem a mensagem (ex.: "Not allowed by CORS").
+  res.status(status).json({
     success: false,
-    error: 'Internal server error',
-    // SECURITY: Em produção, não expor mensagem de erro
-    ...(process.env.NODE_ENV !== 'production' && { message: err.message }),
+    error: status >= 500 ? 'Internal server error' : err.message,
+    // SECURITY: Em produção, não expor mensagem de erro interno (5xx)
+    ...(status >= 500 && process.env.NODE_ENV !== 'production' && { message: err.message }),
   });
 });
 
