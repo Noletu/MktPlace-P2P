@@ -1,4 +1,4 @@
-import { Transaction } from '@prisma/client';
+import { Transaction, Prisma } from '@prisma/client';
 import { TransactionStatus, SubmitProofInput, ValidateProofInput, DisputeInput } from '../types/transaction.types';
 import { OrderStatus, OrderType } from '../types/order.types';
 import { notificationService } from './notification.service';
@@ -807,7 +807,7 @@ export class TransactionService {
         data: {
           status: TransactionStatus.DISPUTED,
           disputeReason: input.reason,
-          disputeData: input.disputeData ? JSON.stringify(input.disputeData) : null,
+          disputeData: input.disputeData ? input.disputeData : Prisma.DbNull,
         },
       }),
       prisma.order.update({
