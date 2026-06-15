@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { boletoOCRService } from '../services/boleto-ocr.service';
+import { detectImageType } from '../utils/imageSignature';
 
 export class BoletoController {
   /**
@@ -72,6 +73,15 @@ export class BoletoController {
         return res.status(400).json({
           success: false,
           error: 'Imagem do boleto obrigatória',
+        });
+      }
+
+      // Validar a assinatura real do arquivo (magic bytes), não o mimetype declarado pelo cliente
+      const imageType = detectImageType(req.file.buffer);
+      if (!imageType) {
+        return res.status(400).json({
+          success: false,
+          error: 'Tipo de arquivo inválido: envie uma imagem JPEG, PNG, WebP ou GIF',
         });
       }
 
