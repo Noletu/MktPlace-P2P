@@ -1,7 +1,7 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.32
-> **Data:** 14 de maio de 2026 (última edição: 13 de junho de 2026)
+> **Versão:** 1.33
+> **Data:** 14 de maio de 2026 (última edição: 14 de junho de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
 > **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
 >
@@ -23,6 +23,8 @@
 > **Changelog v1.31:** SER-30 fechado (Sprint 3 sessão 11) — **refresh ressincroniza o cookie `userRole`**. O `refresh()` gerava tokens novos mas não atualizava o cookie `userRole`, que ficava congelado até relogar (maxAge 7 dias). Agora o `refreshAccessToken` retorna o role atual do DB (em maiúsculo) e o controller chama `setUserRoleCookie` — corrige o admin promovido que ficava travado fora do painel e o rebaixado que via a casca admin. **Reclassificado de 🟠 Sério (condicional) para 🟡 Médio**: o Next middleware autoriza via cookie `httpOnly:false` (editável) e a fronteira de acesso real é o backend (busca role do DB a cada request) — o cookie stale degrada UX/RBAC client-side, mas não abre escalada de privilégio. Validado por e2e (`ser30-refresh-role-check.ts`, 3/3: USER → promove a ADMIN → cookie ADMIN → rebaixa → cookie USER). Baseline preservado (tsc 25). Observação registrada para o tier frontend: o gate admin não deveria depender de um cookie tamperable (relacionado ao SER-35). §1.1 PRE-STAGING: 19 − 1 = **18** itens.
 >
 > **Changelog v1.32:** SER-27 fechado (Sprint 3 sessão 11) — **validação de CPF/CNPJ e chave PIX por dígito verificador / por tipo**. Reaproveitou o `validateCPF` que já existia em `packages/shared` e adicionou `validateCNPJ` (mesmo estilo, sem dependência nova), um `documentSchema` (CPF ou CNPJ) e um `isValidPixKey(key, type)` (CPF/CNPJ por DV; EMAIL regex; PHONE E.164 BR `+55`; RANDOM UUID v4). Pontos cobertos: `recipientDocument` do boleto e o update path do `order.service` (antes `z.string().min(11)`, aceitava `"11111111111"`); `PixDataSchema`/`AcceptBuyOrderSchema` com `.refine` cruzando `pixKey`×`pixKeyType`, e o `order.service` validando o par no create e no update. Optou-se pelo validador **próprio** em vez da lib `cpf-cnpj-validator` sugerida no finding (evita dependência de supply-chain). Validado por 19 testes unitários (`ser27-validation.spec.ts`); CPFs de teste do projeto já são válidos por DV (sem impacto). Baseline preservado (tsc 25). §1.1 PRE-STAGING: 18 − 1 = **17** itens.
+>
+> **Changelog v1.33:** SER-26 fechado (Sprint 3 sessão 11) — checksum FEBRABAN (módulo 10/11) na borda (schema) e no service, reusando o `validateBarcode` existente; bypass de validação em dev removido (estrita em todo ambiente). Bônus: 2 erros `TS2339` latentes desde o commit inicial (`brlAmount` fora do narrowing no audit log) corrigidos — `tsc` 25 → 23. Lacuna de e2e SELL+boleto registrada. §1.1 PRE-STAGING: 17 − 1 = **16** itens.
 >
 > **Changelog v1.28:** SER-41 fechado (Sprint 3 sessão 10): **hierarquia de autorização no freeze de conta**. Antes, o único guard era o `managerMiddleware` (GERENTE/ADMIN/MASTER) e o `freezeAccount` não comparava nada — um GERENTE (60) podia congelar um MASTER (100), congelar a si mesmo, ou (com "perde todos os poderes") travar toda a hierarquia. Agora o service deriva o **nível efetivo** de quem-congela e do alvo (helper `getEffectiveLevel`, com fallback do `legacyRole` para não ler um MASTER "legado" como nível 0) e valida via função pura `canFreezeTarget` **antes de qualquer escrita**: só congela **nível estritamente inferior** ao seu (protege o topo e os pares de graça) e **nunca a própria conta**; a tentativa negada é gravada no audit (`FREEZE_ACCOUNT_DENIED`) e devolve **403**. O **descongelar** segue permissivo (qualquer GERENTE+) — decisão de produto, preserva a recuperação. Validado por **11 testes unitários** (`getEffectiveLevel` + matriz completa de `canFreezeTarget`) + **e2e empírico** (`tests/e2e/ser41-hierarchy-check.ts`, contra Postgres real com os seed users: admin→master **403**, auto-freeze **403**, master→admin **permitido** e restaurado). Baseline preservado (tsc 25, nada novo nos arquivos tocados). §1.1 PRE-STAGING: 23 − 1 (SER-41) = **22** itens.
 >
@@ -139,7 +141,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 
 > **MED-34 — ✅ Fechado (v1.21, Sprint 3 sessão 4):** 21 `@relation` explícitos (20 `SetNull` + 1 `Restrict`), 2 renomeações de relation, `BroadcastLog.adminId` → nullable. Policies `ON DELETE` (a fatia que estava adiada para PRE-STAGING) também resolvidas nesta sessão. Indexes não adicionados (YAGNI). Ver §MED-34 e Changelog v1.21.
 
-#### 🔵 ADIAR PRE-STAGING (17)
+#### 🔵 ADIAR PRE-STAGING (16)
 
 > **Trigger:** quando for subir o primeiro ambiente com Postgres real, Redis, domínio próprio e auth funcional fora do localhost.
 >
@@ -165,6 +167,8 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 
 > **Nota de v1.32 (Sprint 3 sessão 11):** SER-27 fechado (saiu desta lista, −1). Nenhum finding novo catalogado. Saldo líquido 18 − 1 = **17**.
 
+> **Nota de v1.33 (Sprint 3 sessão 11):** SER-26 fechado (saiu desta lista, −1). Estava marcado para adiar ("boleto fake em dev"), mas foi resolvido nesta sessão. Nenhum finding novo catalogado. Saldo líquido 17 − 1 = **16**.
+
 | ID | Por que adiar agora |
 |----|---------------------|
 | CRIT-10 | Decisão de cloud provider e KMS ainda não tomada |
@@ -175,7 +179,6 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | SER-20 | Frontend de auth ainda em iteração — mexer agora dá merge conflict |
 | SER-24 | Workers ainda em iteração; require2FA prematuro atrapalha |
 | SER-25 | Adiciona dependência de Redis. `setImmediate` é suficiente em dev |
-| SER-26 | Em dev usa-se boleto fake mesmo |
 | SER-28 | Mesma razão de SER-24 |
 | SER-35 | 8 leitores de `localStorage.getItem('user')`; migrar para fonte central (AuthContext / `useCurrentUser` via `/auth/me`) após estabilizar o fluxo de auth |
 | SER-36 | Tela de 2FA do login sem input de backup code (backend já aceita via `z.union`); adicionar toggle quando a UX de 2FA for revisada |
@@ -3255,7 +3258,8 @@ await notificationQueue.add('order-matched', {
 ## SER-26 — Validação de boleto sem checksum
 
 **Severidade:** 🟠 Sério
-**Fase:** 🔵 **[ADIAR PRE-STAGING]** — em dev usa-se boleto fake; validador real só importa quando entrar comprovante real
+**Fase:** ✅ **RESOLVIDO** (Sprint 3 sessão 11)
+**Status:** ✅ Resolvido
 **Categoria:** Validação de input
 **Esforço estimado:** 1 dia
 
@@ -3299,8 +3303,24 @@ function validateBoletoChecksum(barcode: string): boolean {
 ```
 
 ### Critério de aceitação
-- [ ] Checksum validado
-- [ ] Boletos inválidos rejeitados com mensagem clara
+- [x] Checksum validado
+- [x] Boletos inválidos rejeitados com mensagem clara
+
+#### ✅ Resolução (Sprint 3 sessão 11 — v1.33)
+
+Validação de dígitos verificadores (módulo 10/11 FEBRABAN) reaproveitando o `boletoOCRService.validateBarcode` que já existia — aceita linha digitável de **47** dígitos (boleto bancário) ou **48** (convênio/arrecadação) e rejeita 44 (código de barras puro, não é linha digitável). Sem dependência nova (a Opção A do finding sugeria uma lib; optou-se pelo validador interno já presente, evitando supply-chain numa plataforma custodial).
+
+Pontos cobertos:
+- **Borda (schema):** `BoletoDataSchema.barcode` passou de `z.string().min(44)` para `.refine(validateBarcode)` com mensagem clara.
+- **Service:** removido o bypass de desenvolvimento no create path (que só rejeitava em produção) — validação estrita em todo ambiente; o update path passou de `length < 44` para `validateBarcode`.
+
+Bônus (dívida de tipo): 2 erros `TS2339` latentes **desde o commit inicial** foram corrigidos — o audit log lia `validatedData.brlAmount` fora do narrowing do `discriminatedUnion` (campo só existe em ordens SELL). Corrigido com checagem de tipo (`type === 'SELL' ? … : undefined`), runtime idêntico. Baseline `tsc` **25 → 23**.
+
+Validação: 6 testes unitários (`apps/api/src/__tests__/ser26-barcode.spec.ts`) — 47 válido aceito, com pontuação aceito, dígito adulterado rejeitado, 44 rejeitado, comprimentos inválidos e vazio rejeitados. A linha de teste válida foi gerada pelo próprio algoritmo do projeto.
+
+Lacuna registrada: nenhum e2e cobre o caminho SELL+boleto (o único e2e com boleto, `test-2`, é BUY e descarta o `orderData`). O teste unitário cobre a lógica; um e2e SELL+colateral+boleto fica como melhoria futura.
+
+Commits: branch `fix/ser26-boleto-checksum`, F1+F1.5 `40db5ed`, F2 `acd9a1e`, testes/limpeza F3 `04963e7`.
 
 ---
 
