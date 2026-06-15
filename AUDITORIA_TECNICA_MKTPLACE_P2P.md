@@ -1,6 +1,6 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.34
+> **Versão:** 1.35
 > **Data:** 14 de maio de 2026 (última edição: 14 de junho de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
 > **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
@@ -27,6 +27,8 @@
 > **Changelog v1.33:** SER-26 fechado (Sprint 3 sessão 11) — checksum FEBRABAN (módulo 10/11) na borda (schema) e no service, reusando o `validateBarcode` existente; bypass de validação em dev removido (estrita em todo ambiente). Bônus: 2 erros `TS2339` latentes desde o commit inicial (`brlAmount` fora do narrowing no audit log) corrigidos — `tsc` 25 → 23. Lacuna de e2e SELL+boleto registrada. §1.1 PRE-STAGING: 17 − 1 = **16** itens.
 >
 > **Changelog v1.34:** MED-38 fechado (Sprint 3 sessão 11) — validação de magic bytes no upload de OCR (`/boleto/extract`). Novo util `detectImageType` (JPEG/PNG/WebP/GIF por assinatura) aplicado no `extractFromImage` antes do `sharp`; rejeita o que não for imagem real (SVG inclusive). Validador próprio (apps/api é CommonJS; `file-type` é ESM-only). 9 testes unit, `tsc` 23. §1.1 PRE-STAGING: 16 − 1 = **15** itens.
+>
+> **Changelog v1.35:** SER-40 fechado (Sprint 3 sessão 11) — piso de tempo constante (`LOGIN_FAIL_FLOOR_MS`, default 700ms) nos 3 caminhos de FALHA do `verifyCredentials` (email inexistente, lockout, senha errada), igualando o tempo de resposta e fechando a enumeração de conta por timing. Sucesso não recebe piso. Validado empiricamente (`tests/e2e/ser40-timing-check.ts`, medindo o service direto p/ fugir do authLimiter): gap A↔C **3,4ms (0,5%)**, bem abaixo de 50ms/15%. `tsc` 23. §1.1 PRE-STAGING: 15 − 1 = **14** itens.
 >
 > **Changelog v1.28:** SER-41 fechado (Sprint 3 sessão 10): **hierarquia de autorização no freeze de conta**. Antes, o único guard era o `managerMiddleware` (GERENTE/ADMIN/MASTER) e o `freezeAccount` não comparava nada — um GERENTE (60) podia congelar um MASTER (100), congelar a si mesmo, ou (com "perde todos os poderes") travar toda a hierarquia. Agora o service deriva o **nível efetivo** de quem-congela e do alvo (helper `getEffectiveLevel`, com fallback do `legacyRole` para não ler um MASTER "legado" como nível 0) e valida via função pura `canFreezeTarget` **antes de qualquer escrita**: só congela **nível estritamente inferior** ao seu (protege o topo e os pares de graça) e **nunca a própria conta**; a tentativa negada é gravada no audit (`FREEZE_ACCOUNT_DENIED`) e devolve **403**. O **descongelar** segue permissivo (qualquer GERENTE+) — decisão de produto, preserva a recuperação. Validado por **11 testes unitários** (`getEffectiveLevel` + matriz completa de `canFreezeTarget`) + **e2e empírico** (`tests/e2e/ser41-hierarchy-check.ts`, contra Postgres real com os seed users: admin→master **403**, auto-freeze **403**, master→admin **permitido** e restaurado). Baseline preservado (tsc 25, nada novo nos arquivos tocados). §1.1 PRE-STAGING: 23 − 1 (SER-41) = **22** itens.
 >
@@ -143,7 +145,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 
 > **MED-34 — ✅ Fechado (v1.21, Sprint 3 sessão 4):** 21 `@relation` explícitos (20 `SetNull` + 1 `Restrict`), 2 renomeações de relation, `BroadcastLog.adminId` → nullable. Policies `ON DELETE` (a fatia que estava adiada para PRE-STAGING) também resolvidas nesta sessão. Indexes não adicionados (YAGNI). Ver §MED-34 e Changelog v1.21.
 
-#### 🔵 ADIAR PRE-STAGING (15)
+#### 🔵 ADIAR PRE-STAGING (14)
 
 > **Trigger:** quando for subir o primeiro ambiente com Postgres real, Redis, domínio próprio e auth funcional fora do localhost.
 >
@@ -173,6 +175,8 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 
 > **Nota de v1.34 (Sprint 3 sessão 11):** MED-38 fechado (saiu desta lista, −1). Estava marcado para adiar; resolvido nesta sessão. Nenhum finding novo catalogado. Saldo líquido 16 − 1 = **15**.
 
+> **Nota de v1.35 (Sprint 3 sessão 11):** SER-40 fechado (saiu desta lista, −1). Estava marcado para adiar; resolvido nesta sessão. Nenhum finding novo catalogado. Saldo líquido 15 − 1 = **14**.
+
 | ID | Por que adiar agora |
 |----|---------------------|
 | CRIT-10 | Decisão de cloud provider e KMS ainda não tomada |
@@ -186,7 +190,6 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | SER-28 | Mesma razão de SER-24 |
 | SER-35 | 8 leitores de `localStorage.getItem('user')`; migrar para fonte central (AuthContext / `useCurrentUser` via `/auth/me`) após estabilizar o fluxo de auth |
 | SER-36 | Tela de 2FA do login sem input de backup code (backend já aceita via `z.union`); adicionar toggle quando a UX de 2FA for revisada |
-| SER-40 | gap de timing residual de I/O no lockout (~95ms): assimetria de escrita entre "email inexistente" e "senha errada em conta real" permite enumeração de conta; equalizar via escrita sentinela ou piso de tempo constante em sessão dedicada. **Spin-off do SER-38** (resíduo após eliminar o gap de custo do bcrypt) |
 | MED-31 (resto) | Refator completo só faz sentido quando log aggregation estiver configurado |
 | MED-36 | Em dev `unsafe-inline` ajuda no debug visual |
 | MED-37 | Documentação melhor quando frontend de RBAC estabilizar |
@@ -4577,9 +4580,9 @@ Durante o desenvolvimento do harness de testes do SER-22 ficou evidente que escr
 ## SER-40 — Gap de timing residual de I/O no caminho de lockout (enumeração de conta)
 
 **Severidade:** 🟢 Baixa (resíduo de ~95ms, dentro do jitter de rede em qualquer deploy fora do localhost)
-**Fase:** 🔵 **[ADIAR PRE-STAGING]**
+**Fase:** ✅ **RESOLVIDO** (Sprint 3 sessão 11)
 **Categoria:** Auth / Timing
-**Status:** ⬜ Catalogado (Sprint 3 sessão 9)
+**Status:** ✅ Resolvido
 **Relaciona-se a:** SER-38 (spin-off — resíduo após eliminar o gap de custo do bcrypt) · SER-23 (defesa de timing do login) · SER-22 (Caminho Z).
 
 ### Problema
@@ -4599,8 +4602,18 @@ Equalizar o I/O entre os caminhos de modo que iguale o **custo real** (não só 
 Nota: uma equalização por "dummy I/O" (reads sentinela espelhando `isLocked`/`recordFailedLogin`) foi prototipada e descartada na sessão 9 — igualava o número de queries mas não o custo da escrita, então o resíduo absoluto permanecia ~95ms.
 
 ### Critério de aceitação
-- [ ] Gap entre "email inexistente" e "senha errada em conta real" < 15% **e** < 50ms absolutos, medido em bancada
-- [ ] Equalização cobre também o Caminho Z (lockout)
+- [x] Gap entre "email inexistente" e "senha errada em conta real" < 15% **e** < 50ms absolutos, medido em bancada
+- [x] Equalização cobre também o Caminho Z (lockout)
+
+#### ✅ Resolução (Sprint 3 sessão 11 — v1.35)
+
+Adotada a abordagem **(b) piso de tempo constante**, não a (a) sentinela — a (a) acoplaria ao schema e exigiria replicar exatamente os 3 writes do `recordFailedLogin` (e ainda cobrir o lockout, que nem chama `recordFailedLogin`). O `verifyCredentials` marca `start` no início e, antes de cada `return null` (email inexistente, lockout/Caminho Z, senha errada), chama `enforceLoginFailFloor(start)`, que dorme até completar `LOGIN_FAIL_FLOOR_MS` (default **700ms**, configurável por env). O caminho de **sucesso não recebe piso** — distinguir sucesso de falha não é enumeração, e penalizaria o login legítimo.
+
+Validação empírica (`apps/api/tests/e2e/ser40-timing-check.ts`): mede os 3 caminhos direto no `verifyCredentials` (sem HTTP, para fugir do `authLimiter` de 5/15min; reset via `recordSuccessfulLogin` entre as amostras do caminho C para não disparar o lockout de threshold 3). Resultado (N=10, mediana): A (email inexistente) ~713ms, B (lockout) ~710ms, C (senha errada em conta real) ~710ms → **gap A↔C 3,4ms (0,5%)**, bem abaixo dos 50ms / 15%. Como o trabalho real (447–538ms) fica abaixo do piso, os três convergem para o teto.
+
+Ressalva registrada: quando uma falha **dispara** o lockout, o caminho da senha errada ainda roda `notifyLockout` (e-mail best-effort) e pode ultrapassar o piso naquele request único de transição — evento raro, sem valor de oráculo; os requests seguintes caem no caminho de lockout (rápido + piso).
+
+Commits: branch `fix/ser40-login-timing-floor`, F1 `9e55a78`, medição F2 `9cf5e4c`.
 
 ---
 
