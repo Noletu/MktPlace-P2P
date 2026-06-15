@@ -19,6 +19,20 @@ const prisma = new PrismaClient();
 // definitivo.
 const TIMING_DUMMY_HASH = '$2a$12$nxdTFDgQB8OJN773LSlbSe5tVLFGXdozBi6mu07/THohvuO3VGify';
 
+// SECURITY (SER-40): piso de tempo constante para os caminhos de FALHA do login.
+// "email inexistente", "lockout" e "senha errada" fazem I/O de banco diferente (a
+// senha errada escreve via recordFailedLogin), o que vazava ~95ms e permitia
+// enumerar contas por timing. Espera-se até um teto fixo em todos os caminhos de
+// falha, tornando a resposta independente do trabalho real. Não se aplica ao sucesso.
+const LOGIN_FAIL_FLOOR_MS = Number(process.env.LOGIN_FAIL_FLOOR_MS) || 700;
+
+async function enforceLoginFailFloor(startMs: number): Promise<void> {
+  const remaining = LOGIN_FAIL_FLOOR_MS - (Date.now() - startMs);
+  if (remaining > 0) {
+    await new Promise((resolve) => setTimeout(resolve, remaining));
+  }
+}
+
 export interface RegisterInput {
   email: string;
   password: string;
@@ -106,6 +120,9 @@ export class AuthService {
   async verifyCredentials(
     input: LoginInput
   ): Promise<{ userId: string; twoFactorEnabled: boolean } | null> {
+    // SER-40: marca o início para o piso de tempo dos caminhos de falha.
+    const start = Date.now();
+
     const user = await prisma.user.findUnique({
       where: { email: input.email },
       select: {
@@ -120,6 +137,7 @@ export class AuthService {
       // equalizar o tempo de resposta com o caso "email existe + senha errada".
       // O resultado é descartado — só importa o custo computacional.
       await comparePassword(input.password, TIMING_DUMMY_HASH);
+      await enforceLoginFailFloor(start); // SER-40
       return null;
     }
 
@@ -130,6 +148,7 @@ export class AuthService {
     const lockStatus = await accountLockoutService.isLocked(user.id);
     if (lockStatus.locked) {
       await comparePassword(input.password, TIMING_DUMMY_HASH);
+      await enforceLoginFailFloor(start); // SER-40
       return null;
     }
 
@@ -149,6 +168,7 @@ export class AuthService {
       }
 
       // Retorno null uniforme, sem expor ao caller falha de senha vs. lockout.
+      await enforceLoginFailFloor(start); // SER-40
       return null;
     }
 
