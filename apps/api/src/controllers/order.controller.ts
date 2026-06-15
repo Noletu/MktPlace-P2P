@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { orderService } from '../services/order.service';
+import { boletoOCRService } from '../services/boleto-ocr.service';
 import { OrderType, PaymentMethod } from '../types/order.types';
 import { z } from 'zod';
 import { gtBN } from '../utils/money';
@@ -9,7 +10,10 @@ import { Transaction } from '@prisma/client';
 import { documentSchema, isValidPixKey } from '@mktplace/shared';
 
 const BoletoDataSchema = z.object({
-  barcode: z.string().min(44, 'Código de barras do boleto deve ter no mínimo 44 caracteres'),
+  barcode: z.string().refine((code) => boletoOCRService.validateBarcode(code), {
+    message:
+      'Código de barras inválido: use a linha digitável de 47 dígitos (boleto bancário) ou 48 dígitos (convênio/arrecadação) com dígitos verificadores válidos',
+  }),
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data de vencimento inválida'),
   recipientName: z.string().min(3, 'Nome do beneficiário é obrigatório'),
   recipientDocument: documentSchema,
@@ -138,13 +142,13 @@ export class OrderController {
         {
           type: validatedData.type,
           cryptoAmount: validatedData.cryptoAmount,
-          brlAmount: validatedData.brlAmount,
+          brlAmount: validatedData.type === 'SELL' ? validatedData.brlAmount : undefined,
         }
       );
 
       auditLogger.orderCreated(userId, order.id, {
         type: validatedData.type,
-        brlAmount: validatedData.brlAmount,
+        brlAmount: validatedData.type === 'SELL' ? validatedData.brlAmount : undefined,
       });
 
       res.status(201).json({

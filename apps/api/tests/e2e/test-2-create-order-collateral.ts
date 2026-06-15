@@ -148,13 +148,6 @@ async function runTest() {
           cryptoType: 'USDT',
           cryptoNetwork: 'POLYGON',
           cryptoAmount: '100', // 100 USDT
-          brlAmount: '550.00', // R$ 550 (100 USDT at ~R$5.50 rate)
-          orderData: {
-            barcode: '23790128800000100003380260100018851030026303', // Código válido (47 dígitos)
-            dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0], // 3 days from now
-            recipientName: 'Empresa Teste LTDA',
-            recipientDocument: '12345678000190', // CNPJ teste
-          },
         }),
       });
 

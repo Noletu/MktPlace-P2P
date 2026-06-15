@@ -254,15 +254,10 @@ export class OrderService {
         throw new Error('Código de barras do boleto é obrigatório');
       }
 
-      // Validar código de barras usando o serviço de OCR
-      // TODO: Em produção, ativar validação estrita de dígitos verificadores
+      // Validar código de barras (dígitos verificadores módulo 10/11) em todos os ambientes
       const isValid = boletoOCRService.validateBarcode(boletoData.barcode);
-      if (!isValid && process.env.NODE_ENV === 'production') {
-        throw new Error('Código de barras do boleto inválido. Verifique se digitou corretamente.');
-      }
-
       if (!isValid) {
-        console.log('⚠️ [DEV] Código de barras com dígitos verificadores inválidos - permitido em desenvolvimento');
+        throw new Error('Código de barras do boleto inválido. Verifique se digitou corretamente.');
       }
 
       // Extrair e validar valor do boleto
@@ -1920,8 +1915,8 @@ export class OrderService {
       } else if (isBoleto) {
         // Atualizar campos BOLETO
         if (updates.orderData.barcode !== undefined) {
-          if (updates.orderData.barcode.length < 44) {
-            throw new Error('Código de barras deve ter no mínimo 44 caracteres');
+          if (!boletoOCRService.validateBarcode(updates.orderData.barcode)) {
+            throw new Error('Código de barras do boleto inválido. Verifique se digitou corretamente.');
           }
           newOrderData.barcode = updates.orderData.barcode;
         }
