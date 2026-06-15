@@ -1,6 +1,6 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.33
+> **Versão:** 1.34
 > **Data:** 14 de maio de 2026 (última edição: 14 de junho de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
 > **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
@@ -25,6 +25,8 @@
 > **Changelog v1.32:** SER-27 fechado (Sprint 3 sessão 11) — **validação de CPF/CNPJ e chave PIX por dígito verificador / por tipo**. Reaproveitou o `validateCPF` que já existia em `packages/shared` e adicionou `validateCNPJ` (mesmo estilo, sem dependência nova), um `documentSchema` (CPF ou CNPJ) e um `isValidPixKey(key, type)` (CPF/CNPJ por DV; EMAIL regex; PHONE E.164 BR `+55`; RANDOM UUID v4). Pontos cobertos: `recipientDocument` do boleto e o update path do `order.service` (antes `z.string().min(11)`, aceitava `"11111111111"`); `PixDataSchema`/`AcceptBuyOrderSchema` com `.refine` cruzando `pixKey`×`pixKeyType`, e o `order.service` validando o par no create e no update. Optou-se pelo validador **próprio** em vez da lib `cpf-cnpj-validator` sugerida no finding (evita dependência de supply-chain). Validado por 19 testes unitários (`ser27-validation.spec.ts`); CPFs de teste do projeto já são válidos por DV (sem impacto). Baseline preservado (tsc 25). §1.1 PRE-STAGING: 18 − 1 = **17** itens.
 >
 > **Changelog v1.33:** SER-26 fechado (Sprint 3 sessão 11) — checksum FEBRABAN (módulo 10/11) na borda (schema) e no service, reusando o `validateBarcode` existente; bypass de validação em dev removido (estrita em todo ambiente). Bônus: 2 erros `TS2339` latentes desde o commit inicial (`brlAmount` fora do narrowing no audit log) corrigidos — `tsc` 25 → 23. Lacuna de e2e SELL+boleto registrada. §1.1 PRE-STAGING: 17 − 1 = **16** itens.
+>
+> **Changelog v1.34:** MED-38 fechado (Sprint 3 sessão 11) — validação de magic bytes no upload de OCR (`/boleto/extract`). Novo util `detectImageType` (JPEG/PNG/WebP/GIF por assinatura) aplicado no `extractFromImage` antes do `sharp`; rejeita o que não for imagem real (SVG inclusive). Validador próprio (apps/api é CommonJS; `file-type` é ESM-only). 9 testes unit, `tsc` 23. §1.1 PRE-STAGING: 16 − 1 = **15** itens.
 >
 > **Changelog v1.28:** SER-41 fechado (Sprint 3 sessão 10): **hierarquia de autorização no freeze de conta**. Antes, o único guard era o `managerMiddleware` (GERENTE/ADMIN/MASTER) e o `freezeAccount` não comparava nada — um GERENTE (60) podia congelar um MASTER (100), congelar a si mesmo, ou (com "perde todos os poderes") travar toda a hierarquia. Agora o service deriva o **nível efetivo** de quem-congela e do alvo (helper `getEffectiveLevel`, com fallback do `legacyRole` para não ler um MASTER "legado" como nível 0) e valida via função pura `canFreezeTarget` **antes de qualquer escrita**: só congela **nível estritamente inferior** ao seu (protege o topo e os pares de graça) e **nunca a própria conta**; a tentativa negada é gravada no audit (`FREEZE_ACCOUNT_DENIED`) e devolve **403**. O **descongelar** segue permissivo (qualquer GERENTE+) — decisão de produto, preserva a recuperação. Validado por **11 testes unitários** (`getEffectiveLevel` + matriz completa de `canFreezeTarget`) + **e2e empírico** (`tests/e2e/ser41-hierarchy-check.ts`, contra Postgres real com os seed users: admin→master **403**, auto-freeze **403**, master→admin **permitido** e restaurado). Baseline preservado (tsc 25, nada novo nos arquivos tocados). §1.1 PRE-STAGING: 23 − 1 (SER-41) = **22** itens.
 >
@@ -141,7 +143,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 
 > **MED-34 — ✅ Fechado (v1.21, Sprint 3 sessão 4):** 21 `@relation` explícitos (20 `SetNull` + 1 `Restrict`), 2 renomeações de relation, `BroadcastLog.adminId` → nullable. Policies `ON DELETE` (a fatia que estava adiada para PRE-STAGING) também resolvidas nesta sessão. Indexes não adicionados (YAGNI). Ver §MED-34 e Changelog v1.21.
 
-#### 🔵 ADIAR PRE-STAGING (16)
+#### 🔵 ADIAR PRE-STAGING (15)
 
 > **Trigger:** quando for subir o primeiro ambiente com Postgres real, Redis, domínio próprio e auth funcional fora do localhost.
 >
@@ -169,6 +171,8 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 
 > **Nota de v1.33 (Sprint 3 sessão 11):** SER-26 fechado (saiu desta lista, −1). Estava marcado para adiar ("boleto fake em dev"), mas foi resolvido nesta sessão. Nenhum finding novo catalogado. Saldo líquido 17 − 1 = **16**.
 
+> **Nota de v1.34 (Sprint 3 sessão 11):** MED-38 fechado (saiu desta lista, −1). Estava marcado para adiar; resolvido nesta sessão. Nenhum finding novo catalogado. Saldo líquido 16 − 1 = **15**.
+
 | ID | Por que adiar agora |
 |----|---------------------|
 | CRIT-10 | Decisão de cloud provider e KMS ainda não tomada |
@@ -186,7 +190,6 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 | MED-31 (resto) | Refator completo só faz sentido quando log aggregation estiver configurado |
 | MED-36 | Em dev `unsafe-inline` ajuda no debug visual |
 | MED-37 | Documentação melhor quando frontend de RBAC estabilizar |
-| MED-38 | Quando upload de comprovante for usado de fato |
 | TD-ENV01 | Risco latente (nenhum bug ativo) — higiene preventiva antes de subir staging |
 | TECH-DEBT-DEV11 | Fallback sem efeito, mas decisão de remover/ajustar pertence ao ciclo de estabilização de auth |
 | TECH-DEBT-DEV12 | Melhoria de manutenibilidade; não urgente |
@@ -3748,7 +3751,8 @@ export const setUserRoleCookie = ...
 ## MED-38 — Multer sem validação de magic bytes
 
 **Severidade:** 🟡 Médio (escala para SER se uploads forem servidos publicamente)
-**Fase:** 🔵 **[ADIAR PRE-STAGING]** — só importa quando upload de comprovante for usado de fato em testes E2E reais
+**Fase:** ✅ **RESOLVIDO** (Sprint 3 sessão 11)
+**Status:** ✅ Resolvido
 **Esforço estimado:** 2h
 
 ### Correção
@@ -3775,9 +3779,19 @@ router.post('/proof', upload.single('comprovante'), async (req, res) => {
 ```
 
 ### Critério de aceitação
-- [ ] Magic bytes validados além de mime
-- [ ] Filename randomizado
-- [ ] PDFs scaneados ANTES de OCR (cf. `boleto-ocr.service.ts`)
+- [x] Magic bytes validados além de mime
+- [ ] Filename randomizado — N/A (upload usa memoryStorage; nada vai a disco)
+- [ ] PDFs scaneados ANTES de OCR (cf. `boleto-ocr.service.ts`) — N/A (fluxo aceita apenas imagens; PDF é rejeitado)
+
+#### ✅ Resolução (Sprint 3 sessão 11 — v1.34)
+
+Validação de assinatura (magic bytes) no único ponto de upload (`POST /boleto/extract`, OCR). Criado `apps/api/src/utils/imageSignature.ts` com `detectImageType(buffer)` — inspeciona os bytes iniciais e reconhece JPEG (`FF D8 FF`), PNG (`89 50 4E 47 0D 0A 1A 0A`), GIF (`47 49 46 38`) e WebP (`RIFF…WEBP`); qualquer outra coisa retorna `null`. Aplicado no `extractFromImage` após o check de `req.file` e antes do `sharp`/OCR: buffer que não bate assinatura conhecida → **400**. O `fileFilter` do Multer (mimetype) foi mantido como primeira barreira (defesa em camadas).
+
+Decisão: validador próprio em vez da lib `file-type` do finding — o `apps/api` é CommonJS e o `file-type` atual é ESM-only (exigiria `await import()` ou versão legada), além de evitar dependência de supply-chain (coerente com SER-27). SVG é recusado de propósito (XML/vetor — risco de conteúdo ativo), apesar de o `sharp` aceitá-lo.
+
+Validação: 9 testes unitários (`apps/api/src/__tests__/med38-image-signature.spec.ts`) — 4 formatos válidos detectados; texto, PDF, SVG, buffer curto e vazio rejeitados. Baseline `tsc` preservado (23).
+
+Commits: branch `fix/med38-upload-magic-bytes`, F1+F2 `8350894`, testes F3 `02d8b68`.
 
 ---
 
