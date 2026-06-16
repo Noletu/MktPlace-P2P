@@ -1,4 +1,4 @@
-import { Order } from '@prisma/client';
+import { Order, Prisma } from '@prisma/client';
 import BigNumber from 'bignumber.js';
 import { documentSchema, isValidPixKey } from '@mktplace/shared';
 import { toBN, sumBN } from '../utils/money';
@@ -442,7 +442,7 @@ export class OrderService {
           appliedCouponDiscount: couponData?.discountPercentage || null,
           originalPlatformFee: couponData?.originalPlatformFee || null,
           discountAmount: couponData?.discountAmount || null,
-          orderData: JSON.stringify(input.orderData),
+          orderData: input.orderData as unknown as Prisma.InputJsonValue,
           timeoutAt,
           customExpirationHours: input.customExpirationHours,
           manualCancelOnly: input.manualCancelOnly || false,
@@ -593,7 +593,7 @@ export class OrderService {
         platformFee: fees.platformFee,
         payerReward: fees.payerReward, // 0 para BUY
         totalFee: fees.totalFee,
-        orderData: JSON.stringify({}), // Vazio - provedor preenche ao aceitar
+        orderData: {}, // Vazio - provedor preenche ao aceitar
         timeoutAt,
         customExpirationHours: input.customExpirationHours,
         manualCancelOnly: input.manualCancelOnly || false,
@@ -773,7 +773,7 @@ export class OrderService {
           timeoutAt: timeout,
           providerId: input.providerId,
           providerWalletId: providerWallet.id,
-          orderData: JSON.stringify(providerPixData),
+          orderData: providerPixData as unknown as Prisma.InputJsonValue,
           walletId: providerWallet.id,
           collateralSource: 'HD_WALLET',
           collateralConfirmed: true,
@@ -1687,7 +1687,7 @@ export class OrderService {
           providerId: null,
           providerWalletId: null,
           walletId: null,
-          orderData: JSON.stringify({}),
+          orderData: {},
           collateralSource: null,
           collateralConfirmed: false,
           collateralLocked: false,
@@ -1876,7 +1876,7 @@ export class OrderService {
 
     // Atualizar dados de pagamento
     if (updates.orderData) {
-      const currentOrderData = JSON.parse(order.orderData);
+      const currentOrderData = (typeof order.orderData === 'string' ? JSON.parse(order.orderData) : order.orderData) as any;
       const newOrderData = { ...currentOrderData };
 
       // Detectar método de pagamento pelos dados existentes
@@ -1948,7 +1948,7 @@ export class OrderService {
         }
       }
 
-      updateData.orderData = JSON.stringify(newOrderData);
+      updateData.orderData = newOrderData;
     }
 
     // Se não há nada para atualizar

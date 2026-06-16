@@ -388,8 +388,8 @@ model Order {
   originalPlatformFee   Decimal? @db.Decimal(38, 18) // Taxa original antes do desconto
   discountAmount        Decimal? @db.Decimal(38, 18) // Valor economizado
 
-  // Order specific data (JSON string)
-  orderData String
+  // Order specific data (jsonb)
+  orderData Json
 
   // HD WALLET COLLATERAL SYSTEM (Novo)
   walletId               String? // ID da carteira HD usada para colateral
