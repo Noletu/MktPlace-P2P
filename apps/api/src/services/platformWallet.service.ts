@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { DerivationService } from './hd-wallet/derivation.service';
 import { KeyManagementService } from './hd-wallet/key-management.service';
 import { toBN, addBN, subBN, ltBN } from '../utils/money';
@@ -324,7 +324,7 @@ export class PlatformWalletService {
         toAddress: data.toAddress || null,
         fromAddress: data.fromAddress || null,
         userId: data.userId || null,
-        metadata: data.metadata ? JSON.stringify(data.metadata) : null,
+        metadata: data.metadata ? data.metadata : Prisma.DbNull,
       },
     });
   }
