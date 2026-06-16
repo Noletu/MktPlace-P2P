@@ -648,8 +648,8 @@ model PlatformWalletMovement {
   // Descrição legível
   description String
 
-  // Metadata adicional (JSON)
-  metadata String?
+  // Metadata adicional (jsonb)
+  metadata Json?
 
   createdAt DateTime @default(now())
 
