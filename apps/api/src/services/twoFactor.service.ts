@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 import crypto from 'crypto';
@@ -106,7 +106,7 @@ export class TwoFactorService {
       where: { id: userId },
       data: {
         twoFactorEnabled: true,
-        twoFactorBackupCodes: JSON.stringify(hashedCodes),
+        twoFactorBackupCodes: hashedCodes,
       },
     });
 
@@ -146,7 +146,7 @@ export class TwoFactorService {
       data: {
         twoFactorEnabled: false,
         twoFactorSecret: null,
-        twoFactorBackupCodes: null,
+        twoFactorBackupCodes: Prisma.DbNull,
         twoFactorLastUsedStep: null,
       },
     });
@@ -256,7 +256,7 @@ export class TwoFactorService {
     if (!normalized) return false;
 
     try {
-      const backupCodes = JSON.parse(user.twoFactorBackupCodes) as string[];
+      const backupCodes = (typeof user.twoFactorBackupCodes === 'string' ? JSON.parse(user.twoFactorBackupCodes) : user.twoFactorBackupCodes) as string[];
 
       // Verificar se algum código hashado corresponde
       for (let i = 0; i < backupCodes.length; i++) {
@@ -269,7 +269,7 @@ export class TwoFactorService {
           await prisma.user.update({
             where: { id: userId },
             data: {
-              twoFactorBackupCodes: JSON.stringify(backupCodes),
+              twoFactorBackupCodes: backupCodes,
             },
           });
 
@@ -351,7 +351,7 @@ export class TwoFactorService {
     await prisma.user.update({
       where: { id: userId },
       data: {
-        twoFactorBackupCodes: JSON.stringify(hashedCodes),
+        twoFactorBackupCodes: hashedCodes,
       },
     });
 
@@ -375,7 +375,7 @@ export class TwoFactorService {
     }
 
     try {
-      const backupCodes = JSON.parse(user.twoFactorBackupCodes) as string[];
+      const backupCodes = (typeof user.twoFactorBackupCodes === 'string' ? JSON.parse(user.twoFactorBackupCodes) : user.twoFactorBackupCodes) as string[];
       return backupCodes.length;
     } catch (error) {
       return 0;

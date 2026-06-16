@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import crypto from 'crypto';
 import { auditLogService, AUDIT_ACTIONS, AUDIT_RESOURCES } from './auditLog.service';
 import { notificationService } from './notification.service';
@@ -1707,7 +1707,7 @@ export class AdminService {
     if (options?.disable2FA) {
       updateData.twoFactorEnabled = false;
       updateData.twoFactorSecret = null;
-      updateData.twoFactorBackupCodes = null;
+      updateData.twoFactorBackupCodes = Prisma.DbNull;
     }
 
     updateData.forcePasswordReset = true; // SER-15: força o usuário a trocar a senha no próximo login

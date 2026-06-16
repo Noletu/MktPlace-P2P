@@ -62,7 +62,7 @@ model User {
   twoFactorEnabled      Boolean @default(false)
   twoFactorSecret       String?
   twoFactorTempSecret   String? // Secret temporário durante setup
-  twoFactorBackupCodes  String? // JSON array de códigos hasheados
+  twoFactorBackupCodes  Json? // jsonb array de códigos hasheados
   twoFactorLastUsedStep BigInt? // CRIT-07: último timestep TOTP aceito (Unix epoch / 30). Anti-replay: token cujo step seja <= este valor é rejeitado.
 
   // SECURITY (SER-22): Account lockout automático (defesa anti-brute-force).
