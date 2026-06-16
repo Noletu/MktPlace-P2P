@@ -1,6 +1,6 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.36
+> **Versão:** 1.37
 > **Data:** 14 de maio de 2026 (última edição: 14 de junho de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
 > **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
@@ -31,6 +31,8 @@
 > **Changelog v1.35:** SER-40 fechado (Sprint 3 sessão 11) — piso de tempo constante (`LOGIN_FAIL_FLOOR_MS`, default 700ms) nos 3 caminhos de FALHA do `verifyCredentials` (email inexistente, lockout, senha errada), igualando o tempo de resposta e fechando a enumeração de conta por timing. Sucesso não recebe piso. Validado empiricamente (`tests/e2e/ser40-timing-check.ts`, medindo o service direto p/ fugir do authLimiter): gap A↔C **3,4ms (0,5%)**, bem abaixo de 50ms/15%. `tsc` 23. §1.1 PRE-STAGING: 15 − 1 = **14** itens.
 >
 > **Changelog v1.36:** MED-33 (Fatia 1) iniciada (Sprint 3 sessão 11) — piloto `disputeData` (model Transaction) migrado de `String` para `Json`/`jsonb`. Padrão estabelecido: a migration é editada à mão para `ALTER COLUMN ... USING` (o Prisma gera `DROP+ADD` destrutivo para `String→Json`), preservando os dados; o código grava o objeto direto (sem `JSON.stringify`) e usa `Prisma.DbNull` no caso vazio. Restam `orderData`, `notificationPreferences`, `twoFactorBackupCodes`, `metadata` (Fatia 1) e a validação Zod robusta (Fatia 2, PRE-STAGING). `tsc` 23.
+>
+> **Changelog v1.37:** MED-33 (Fatia 1) — `notificationPreferences` (model User) migrado de `String` para `Json`/`jsonb` (Sprint 3 sessão 11). Mesmo padrão de migration (`ALTER COLUMN ... USING`, preserva dados). Toda a (de)serialização estava encapsulada em `notificationPreferences.service.ts`: `getPreferences` virou tolerante (aceita objeto do jsonb OU string legada), `updatePreferences` grava o objeto direto. Smoke test `tests/e2e/med33-notifprefs-check.ts` (10/10) confirma coluna `jsonb`, ida-e-volta como objeto e `jsonb_typeof = object`. 2 de 5 campos migrados. `tsc` 23.
 >
 > **Changelog v1.28:** SER-41 fechado (Sprint 3 sessão 10): **hierarquia de autorização no freeze de conta**. Antes, o único guard era o `managerMiddleware` (GERENTE/ADMIN/MASTER) e o `freezeAccount` não comparava nada — um GERENTE (60) podia congelar um MASTER (100), congelar a si mesmo, ou (com "perde todos os poderes") travar toda a hierarquia. Agora o service deriva o **nível efetivo** de quem-congela e do alvo (helper `getEffectiveLevel`, com fallback do `legacyRole` para não ler um MASTER "legado" como nível 0) e valida via função pura `canFreezeTarget` **antes de qualquer escrita**: só congela **nível estritamente inferior** ao seu (protege o topo e os pares de graça) e **nunca a própria conta**; a tentativa negada é gravada no audit (`FREEZE_ACCOUNT_DENIED`) e devolve **403**. O **descongelar** segue permissivo (qualquer GERENTE+) — decisão de produto, preserva a recuperação. Validado por **11 testes unitários** (`getEffectiveLevel` + matriz completa de `canFreezeTarget`) + **e2e empírico** (`tests/e2e/ser41-hierarchy-check.ts`, contra Postgres real com os seed users: admin→master **403**, auto-freeze **403**, master→admin **permitido** e restaurado). Baseline preservado (tsc 25, nada novo nos arquivos tocados). §1.1 PRE-STAGING: 23 − 1 (SER-41) = **22** itens.
 >
@@ -143,7 +145,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 |----|-------------|------------|
 | SER-13 | Algoritmo explícito em sign/verify + secrets separados (`JWT_ACCESS_SECRET` ≠ `JWT_REFRESH_SECRET`) — ~1h | 🔶 **Parcial** — fatia "FAZER AGORA" fechada (commits `8e956f4`, `e2a53c0`, `d5f71f8`). Pendente [PRE-STAGING]: TTL curto (15min). |
 | MED-31 | Substituir apenas `console.log` que vaza dado sensível (vide `auth.middleware.ts:51` que logga email) — ~1h | Refator completo para winston → PRE-STAGING |
-| MED-33 | Migrar para `Json`/`jsonb` (junto com CRIT-01) | 🔶 **Parcial** — Fatia 1 fechada (v1.36): `disputeData` migrado para `Json?`/JSONB. Pendente [PRE-STAGING]: campos restantes + validação Zod. |
+| MED-33 | Migrar para `Json`/`jsonb` (junto com CRIT-01) | 🔶 **Parcial** — 2 de 5 campos migrados: `disputeData` (v1.36), `notificationPreferences` (v1.37). Pendente: `orderData`, `twoFactorBackupCodes`, `metadata` + validação Zod ([PRE-STAGING]). |
 
 > **MED-34 — ✅ Fechado (v1.21, Sprint 3 sessão 4):** 21 `@relation` explícitos (20 `SetNull` + 1 `Restrict`), 2 renomeações de relation, `BroadcastLog.adminId` → nullable. Policies `ON DELETE` (a fatia que estava adiada para PRE-STAGING) também resolvidas nesta sessão. Indexes não adicionados (YAGNI). Ver §MED-34 e Changelog v1.21.
 
@@ -3556,9 +3558,9 @@ Nota: critério original pedia "todos os models têm `createdAt` + `updatedAt`" 
 ## MED-33 — Strings JSON em campos do banco
 
 **Severidade:** 🟡 Médio
-**Fase:** 🟡 **[EM PROGRESSO — PARCIAL]** — piloto `disputeData` migrado para `Json`/`@db.JsonB` (v1.36). Restam 4 campos (`orderData`, `notificationPreferences`, `twoFactorBackupCodes`, `metadata`); validação Zod robusta → 🔵 **[PRE-STAGING]**
+**Fase:** 🟡 **[EM PROGRESSO — PARCIAL]** — `disputeData` (v1.36) e `notificationPreferences` (v1.37) migrados para `Json`/`@db.JsonB`. Restam 3 campos (`orderData`, `twoFactorBackupCodes`, `metadata`); validação Zod robusta → 🔵 **[PRE-STAGING]**
 **Esforço estimado:** 1 dia (após CRIT-01)
-**Status:** 🟡 Em progresso — 1 de 5 campos migrados (`disputeData`, v1.36). Restam `orderData` (NOT NULL, central), `notificationPreferences`, `twoFactorBackupCodes` (sensível), `metadata` (24 arquivos)
+**Status:** 🟡 Em progresso — 2 de 5 campos migrados (`disputeData` v1.36, `notificationPreferences` v1.37). Restam `orderData` (NOT NULL, central), `twoFactorBackupCodes` (sensível), `metadata` (24 arquivos)
 
 ### Problema
 
@@ -3583,12 +3585,12 @@ await prisma.order.create({
 ```
 
 ### Critério de aceitação
-- [x] Campo piloto migrado para `Json`/`@db.JsonB` — **disputeData**
-- [ ] Campos JSON restantes migrados (`orderData`, `notificationPreferences`, `twoFactorBackupCodes`, `metadata`)
+- [x] Campos migrados para `Json`/`@db.JsonB` — **disputeData** (v1.36), **notificationPreferences** (v1.37)
+- [ ] Campos JSON restantes migrados (`orderData`, `twoFactorBackupCodes`, `metadata`)
 - [ ] Validação Zod aplicada
 - [ ] Queries que filtram por subcampo usam `path` do Prisma
 
-### Progresso (v1.36 — piloto disputeData)
+### Progresso (Fatia 1)
 
 **Campo piloto:** `disputeData` (3 referências, nullable, menor blast radius)
 
@@ -3609,6 +3611,12 @@ await prisma.order.create({
 **Padrão estabelecido** para os campos restantes (Fatia 2):
 - Editar schema → `prisma migrate dev --create-only` → substituir SQL destrutivo → aplicar
 - No service: remover `JSON.stringify`/`JSON.parse`, usar `Prisma.DbNull` para nullable
+
+**v1.37 — `notificationPreferences`** (model `User`, nullable):
+- Toda a (de)serialização estava encapsulada em `notificationPreferences.service.ts` (1 `JSON.parse`, 1 `JSON.stringify`); os 3 consumers só repassam o valor. Código contido a 1 arquivo.
+- `getPreferences` ficou **tolerante** — `typeof raw === 'string' ? JSON.parse(raw) : raw` — aceita objeto (do jsonb) ou string legada; o `try/catch` existente segue protegendo contra lixo. Assinaturas `string` → `unknown` nas 3 funções de leitura.
+- `updatePreferences` grava o objeto direto; como sempre faz merge com `DEFAULTS`, nunca grava `null` (não precisou de `Prisma.DbNull`).
+- Validação: `tests/e2e/med33-notifprefs-check.ts` (10/10) — coluna `jsonb`, ida-e-volta como objeto, `jsonb_typeof = object`, tolerância objeto-vs-string.
 
 ---
 
