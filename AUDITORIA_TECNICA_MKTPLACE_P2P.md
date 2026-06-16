@@ -1,6 +1,6 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.39
+> **Versão:** 1.40
 > **Data:** 14 de maio de 2026 (última edição: 14 de junho de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
 > **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
@@ -37,6 +37,8 @@
 > **Changelog v1.38:** MED-33 (Fatia 1) — `twoFactorBackupCodes` (model User, sensível) migrado de `String` para `Json`/`jsonb` (Sprint 3 sessão 11). Mesmo padrão de migration (`ALTER COLUMN ... USING`). (De)serialização em `twoFactor.service.ts` (+`admin.service.ts` no disable): 3 `JSON.stringify` → array direto, 2 `JSON.parse` → tolerantes (array do jsonb OU string legada, dentro de try/catch), e os 2 `= null` do disable-2FA → `Prisma.DbNull`. Smoke test `tests/e2e/med33-2fabackup-check.ts` (10/10) cobre o consumo one-time real, `jsonb_typeof = array` após regravação, tolerância e DbNull. 3 de 5 campos migrados. `tsc` 23.
 >
 > **Changelog v1.39:** MED-33 (Fatia 1) — `orderData` (model Order, **NOT NULL**, campo central) migrado de `String` para `Json`/`jsonb` (Sprint 3 sessão 11). Migration `ALTER COLUMN ... USING` com fallback `'{}'::jsonb` (NOT NULL não admite null). Código em `order.service.ts` + `order-expiration.worker.ts` (+2 specs): 6 `JSON.stringify` → objeto direto (`{}` onde era vazio), 3 `JSON.parse` → tolerantes (`as any` p/ acesso às props). Writes de objeto tipado (`input.orderData`/`providerPixData`) → `as unknown as Prisma.InputJsonValue`. Create já validava via `z.union([BoletoDataSchema, PixDataSchema])`. Smoke test `tests/e2e/med33-orderdata-check.ts` (7/7) cria Order real: `jsonb_typeof = object`, `{}` no NOT NULL, premissa da tolerância. 4 de 5 campos migrados. `tsc` 23.
+>
+> **Changelog v1.40:** MED-33 (Fatia 1) — o 5º campo (`metadata`) se decompõe em 5 models distintos; migrado o do model `Notification` (`String?`→`Json?`/`jsonb`, Sprint 3 sessão 11). Write-only no backend (único ponto: `notification.service.ts:62`, `JSON.stringify`→objeto + `Prisma.DbNull`); zero reads-parse. Smoke test `tests/e2e/med33-notif-metadata-check.ts` (4/4) pelo caminho real `createNotification`. ⚠️ **Contrato de API:** `metadata` (e `orderData`, v1.39) são servidos ao frontend — com jsonb a API passa a entregá-los como **objeto**, não string; item de coordenação p/ o tier frontend (Lucas): remover os `JSON.parse` no client. Restam 4 models do metadata: `WalletTransaction`, `PlatformWalletMovement`, `AuditLog`, `AdminAction`. `tsc` 23.
 >
 > **Changelog v1.28:** SER-41 fechado (Sprint 3 sessão 10): **hierarquia de autorização no freeze de conta**. Antes, o único guard era o `managerMiddleware` (GERENTE/ADMIN/MASTER) e o `freezeAccount` não comparava nada — um GERENTE (60) podia congelar um MASTER (100), congelar a si mesmo, ou (com "perde todos os poderes") travar toda a hierarquia. Agora o service deriva o **nível efetivo** de quem-congela e do alvo (helper `getEffectiveLevel`, com fallback do `legacyRole` para não ler um MASTER "legado" como nível 0) e valida via função pura `canFreezeTarget` **antes de qualquer escrita**: só congela **nível estritamente inferior** ao seu (protege o topo e os pares de graça) e **nunca a própria conta**; a tentativa negada é gravada no audit (`FREEZE_ACCOUNT_DENIED`) e devolve **403**. O **descongelar** segue permissivo (qualquer GERENTE+) — decisão de produto, preserva a recuperação. Validado por **11 testes unitários** (`getEffectiveLevel` + matriz completa de `canFreezeTarget`) + **e2e empírico** (`tests/e2e/ser41-hierarchy-check.ts`, contra Postgres real com os seed users: admin→master **403**, auto-freeze **403**, master→admin **permitido** e restaurado). Baseline preservado (tsc 25, nada novo nos arquivos tocados). §1.1 PRE-STAGING: 23 − 1 (SER-41) = **22** itens.
 >
@@ -149,7 +151,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 |----|-------------|------------|
 | SER-13 | Algoritmo explícito em sign/verify + secrets separados (`JWT_ACCESS_SECRET` ≠ `JWT_REFRESH_SECRET`) — ~1h | 🔶 **Parcial** — fatia "FAZER AGORA" fechada (commits `8e956f4`, `e2a53c0`, `d5f71f8`). Pendente [PRE-STAGING]: TTL curto (15min). |
 | MED-31 | Substituir apenas `console.log` que vaza dado sensível (vide `auth.middleware.ts:51` que logga email) — ~1h | Refator completo para winston → PRE-STAGING |
-| MED-33 | Migrar para `Json`/`jsonb` (junto com CRIT-01) | 🔶 **Parcial** — 4 de 5 campos migrados: `disputeData` (v1.36), `notificationPreferences` (v1.37), `twoFactorBackupCodes` (v1.38), `orderData` (v1.39). Pendente: `metadata` + validação Zod ([PRE-STAGING]). |
+| MED-33 | Migrar para `Json`/`jsonb` (junto com CRIT-01) | 🔶 **Parcial** — 4 campos + `metadata` 1/5 models: `disputeData` (v1.36), `notificationPreferences` (v1.37), `twoFactorBackupCodes` (v1.38), `orderData` (v1.39); `metadata` do `Notification` (v1.40). Pendente: 4 models do `metadata` (`WalletTransaction`, `PlatformWalletMovement`, `AuditLog`, `AdminAction`) + validação Zod ([PRE-STAGING]). |
 
 > **MED-34 — ✅ Fechado (v1.21, Sprint 3 sessão 4):** 21 `@relation` explícitos (20 `SetNull` + 1 `Restrict`), 2 renomeações de relation, `BroadcastLog.adminId` → nullable. Policies `ON DELETE` (a fatia que estava adiada para PRE-STAGING) também resolvidas nesta sessão. Indexes não adicionados (YAGNI). Ver §MED-34 e Changelog v1.21.
 
@@ -3562,9 +3564,9 @@ Nota: critério original pedia "todos os models têm `createdAt` + `updatedAt`" 
 ## MED-33 — Strings JSON em campos do banco
 
 **Severidade:** 🟡 Médio
-**Fase:** 🟡 **[EM PROGRESSO — PARCIAL]** — `disputeData` (v1.36), `notificationPreferences` (v1.37), `twoFactorBackupCodes` (v1.38) e `orderData` (v1.39) migrados para `Json`/`@db.JsonB`. Resta 1 campo (`metadata`); validação Zod robusta → 🔵 **[PRE-STAGING]**
+**Fase:** 🟡 **[EM PROGRESSO — PARCIAL]** — `disputeData` (v1.36), `notificationPreferences` (v1.37), `twoFactorBackupCodes` (v1.38) e `orderData` (v1.39) migrados. O 5º campo `metadata` está em 5 models: `Notification` feito (v1.40); restam `WalletTransaction`, `PlatformWalletMovement`, `AuditLog`, `AdminAction`; validação Zod robusta → 🔵 **[PRE-STAGING]**
 **Esforço estimado:** 1 dia (após CRIT-01)
-**Status:** 🟡 Em progresso — 4 de 5 campos migrados (`disputeData` v1.36, `notificationPreferences` v1.37, `twoFactorBackupCodes` v1.38, `orderData` v1.39). Resta `metadata` (24 arquivos)
+**Status:** 🟡 Em progresso — 4 campos migrados (`disputeData` v1.36, `notificationPreferences` v1.37, `twoFactorBackupCodes` v1.38, `orderData` v1.39); o 5º (`metadata`) abrange 5 models — `Notification` migrado (v1.40), restam `WalletTransaction`, `PlatformWalletMovement`, `AuditLog`, `AdminAction`
 
 ### Problema
 
@@ -3590,7 +3592,7 @@ await prisma.order.create({
 
 ### Critério de aceitação
 - [x] Campos migrados para `Json`/`@db.JsonB` — **disputeData** (v1.36), **notificationPreferences** (v1.37), **twoFactorBackupCodes** (v1.38), **orderData** (v1.39)
-- [ ] Campo JSON restante migrado (`metadata`)
+- [ ] Campo `metadata` migrado (5 models — `Notification` ✅ v1.40; restam `WalletTransaction`, `PlatformWalletMovement`, `AuditLog`, `AdminAction`)
 - [ ] Validação Zod aplicada
 - [ ] Queries que filtram por subcampo usam `path` do Prisma
 
@@ -3632,6 +3634,13 @@ await prisma.order.create({
 - `order.service.ts` + `order-expiration.worker.ts`: 6 `JSON.stringify` → objeto direto (`{}` onde era `JSON.stringify({})`); 3 `JSON.parse` → tolerantes com `as any` (o código acessa `.barcode`/`.pixKey`/`.dueDate` e faz spread). 3 `stringify` em specs idem. Writes de objeto tipado (`input.orderData`, `providerPixData`) → `as unknown as Prisma.InputJsonValue`.
 - Validação Zod do create já existia (`z.union([BoletoDataSchema, PixDataSchema])`); validação robusta de todos os shapes segue Fatia 2.
 - Validação: `tests/e2e/med33-orderdata-check.ts` (7/7) — cria `Order` real, `jsonb_typeof = object`, releitura como objeto com campo preservado, `{}` no NOT NULL, premissa da tolerância (string legada lida como string).
+
+**v1.40 — `metadata` do model `Notification`** (1 de 5 models do 5º campo):
+- O campo `metadata` existe em 5 models (`WalletTransaction`, `PlatformWalletMovement`, `AuditLog`, `AdminAction`, `Notification`), todos `String?`. Estratégia: **1 model por vez** — cada um tem uso próprio no código (~44 `JSON.stringify` e 2 `JSON.parse` em 17 arquivos, muitos sendo argumentos passados a services centralizadores, não writes diretos), então tratá-los juntos arrisca esquecer um ponto.
+- `Notification` (piloto): write-only no backend, único ponto `notification.service.ts:62` (`JSON.stringify`→objeto, `null`→`Prisma.DbNull`); zero reads-parse; interface já era `Record<string,any>`.
+- ⚠️ **Contrato de API (tier frontend):** `Notification.metadata` é servido ao frontend, hoje como string (client faz `JSON.parse`). Com jsonb, a API entrega objeto. O mesmo vale para `orderData` (v1.39). Coordenar com o Lucas: remover os `JSON.parse` desses campos no client.
+- Validação: `tests/e2e/med33-notif-metadata-check.ts` (4/4) — coluna `jsonb`, gravação como objeto pelo caminho real (`createNotification`), releitura preservada, `DbNull`→NULL.
+- Restam 4 models: `WalletTransaction`, `PlatformWalletMovement`, `AuditLog`, `AdminAction`.
 
 ---
 
