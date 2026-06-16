@@ -80,7 +80,7 @@ describeIfPg('CRIT-05: submitProof — claim atômico', () => {
         platformFee: '1.50',
         payerReward: '1.00',
         totalFee: '2.50',
-        orderData: JSON.stringify({}),
+        orderData: {},
       },
     });
   }

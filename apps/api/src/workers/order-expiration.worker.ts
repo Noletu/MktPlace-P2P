@@ -77,7 +77,7 @@ class OrderExpirationWorker {
 
   private async processExpiredOrder(order: any) {
     try {
-      const orderData = JSON.parse(order.orderData);
+      const orderData = (typeof order.orderData === 'string' ? JSON.parse(order.orderData) : order.orderData) as any;
 
       // MATCHED orders: return to marketplace
       if (order.status === 'MATCHED') {
@@ -114,7 +114,7 @@ class OrderExpirationWorker {
           updateData.providerId = null;
           updateData.providerWalletId = null;
           updateData.walletId = null;
-          updateData.orderData = JSON.stringify({});
+          updateData.orderData = {};
           updateData.collateralSource = null;
           updateData.collateralConfirmed = false;
           updateData.collateralLocked = false;
@@ -303,7 +303,7 @@ class OrderExpirationWorker {
 
       for (const order of pendingBoletos) {
         try {
-          const orderData = JSON.parse(order.orderData);
+          const orderData = (typeof order.orderData === 'string' ? JSON.parse(order.orderData) : order.orderData) as any;
           const dueDate = new Date(orderData.dueDate);
 
           // Se passou da data de vencimento
