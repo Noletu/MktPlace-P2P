@@ -98,7 +98,7 @@ model User {
   frozenUntil   DateTime? // Data/hora para auto-desbloqueio (null = permanente)
 
   // Notification Preferences (JSON: category → 'both'|'email'|'push'|'none')
-  notificationPreferences String?
+  notificationPreferences Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

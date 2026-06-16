@@ -23,11 +23,11 @@ class NotificationPreferencesService {
    * Parse raw JSON string into preferences merged with defaults.
    * Returns defaults if raw is null/invalid.
    */
-  getPreferences(raw: string | null | undefined): NotifPreferences {
+  getPreferences(raw: unknown): NotifPreferences {
     if (!raw) return { ...DEFAULTS };
 
     try {
-      const parsed = JSON.parse(raw) as NotifPreferences;
+      const parsed = (typeof raw === 'string' ? JSON.parse(raw) : raw) as NotifPreferences;
       const merged = { ...DEFAULTS };
       for (const key of VALID_CATEGORIES) {
         if (parsed[key] && VALID_CHANNELS.includes(parsed[key])) {
@@ -41,7 +41,7 @@ class NotificationPreferencesService {
   }
 
   /** Should we send an email for this category? */
-  shouldEmail(raw: string | null | undefined, category: string): boolean {
+  shouldEmail(raw: unknown, category: string): boolean {
     if (FORCED_BOTH.includes(category)) return true;
     const prefs = this.getPreferences(raw);
     const channel = prefs[category] || 'both';
@@ -49,7 +49,7 @@ class NotificationPreferencesService {
   }
 
   /** Should we send an in-app notification (push/bell) for this category? */
-  shouldPush(raw: string | null | undefined, category: string): boolean {
+  shouldPush(raw: unknown, category: string): boolean {
     if (FORCED_BOTH.includes(category)) return true;
     const prefs = this.getPreferences(raw);
     const channel = prefs[category] || 'both';
@@ -74,7 +74,7 @@ class NotificationPreferencesService {
 
     await prisma.user.update({
       where: { id: userId },
-      data: { notificationPreferences: JSON.stringify(current) },
+      data: { notificationPreferences: current },
     });
 
     return current;
