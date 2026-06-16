@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { getNotificationSocket } from '../socket/notification.socket';
 import { notifPrefsService } from './notificationPreferences.service';
@@ -59,7 +59,7 @@ export class NotificationService {
           relatedId: input.relatedId,
           relatedType: input.relatedType,
           priority: input.priority || 'NORMAL',
-          metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+          metadata: input.metadata ? input.metadata : Prisma.DbNull,
         },
       });
 

@@ -1023,7 +1023,7 @@ model Notification {
   priority String @default("NORMAL")
 
   // Metadata adicional (JSON)
-  metadata String?
+  metadata Json?
 
   // Estado
   isRead Boolean   @default(false)
