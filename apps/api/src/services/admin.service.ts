@@ -1781,13 +1781,18 @@ export class AdminService {
     action: string;
     resource: string;
     resourceId?: string;
-    metadata?: string;
+    metadata?: string | Record<string, any>;
     ip?: string;
   }) {
+    const { metadata, ...rest } = data;
     const log = await prisma.adminAction.create({
-      data,
+      data: {
+        ...rest,
+        metadata: metadata
+          ? (typeof metadata === 'string' ? JSON.parse(metadata) : metadata)
+          : Prisma.DbNull,
+      },
     });
-
     return log;
   }
 

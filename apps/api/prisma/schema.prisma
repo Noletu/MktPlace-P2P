@@ -844,7 +844,7 @@ model AdminAction {
   resource   String // USER, ORDER, WALLET, KYC, etc
   resourceId String? // ID do recurso afetado
 
-  metadata String? // JSON com dados adicionais
+  metadata Json? // JSON com dados adicionais
   ip       String? // IP do admin
 
   createdAt DateTime @default(now())
