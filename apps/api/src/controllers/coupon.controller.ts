@@ -120,7 +120,7 @@ export class CouponController {
         resource: 'COUPON',
         resourceId: coupon.id,
         description: `Atualizou cupom ${coupon.code}`,
-        metadata: JSON.stringify(validation.data),
+        metadata: validation.data,
       });
 
       res.json({

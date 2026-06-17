@@ -418,11 +418,11 @@ export class AdminFundsService {
           resource: 'USER',
           resourceId: userId,
           description: `Tentativa negada de congelar ${user.email}: ${freezeDecision.reason}`,
-          metadata: JSON.stringify({
+          metadata: {
             reason: freezeDecision.reason,
             adminLevel: getEffectiveLevel(actingAdmin),
             targetLevel: getEffectiveLevel(user),
-          }),
+          },
           success: false,
         },
       });
@@ -470,12 +470,12 @@ export class AdminFundsService {
         description: freezeType === 'TEMPORARY'
           ? `Admin congelou conta de ${user.email} temporariamente (${duration}h)`
           : `Admin congelou conta de ${user.email} permanentemente`,
-        metadata: JSON.stringify({
+        metadata: {
           reason,
           freezeType,
           duration: duration || null,
           frozenUntil: frozenUntil ? frozenUntil.toISOString() : null,
-        }),
+        },
         success: true,
       },
     });
@@ -824,12 +824,12 @@ export class AdminFundsService {
           resource: 'WALLET',
           resourceId: fromWalletId,
           description: `Transferência interna: ${fromWallet.user.email} → ${toWallet.user.email}`,
-          metadata: JSON.stringify({
+          metadata: {
             from: { walletId: fromWalletId, userId: fromWallet.userId },
             to: { walletId: toWalletId, userId: toWallet.userId },
             amount,
             reason,
-          }),
+          },
           success: true,
         },
       });
@@ -965,14 +965,14 @@ export class AdminFundsService {
           resource: 'WALLET',
           resourceId: walletId,
           description: `Ajuste de saldo para ${wallet.user.email}`,
-          metadata: JSON.stringify({
+          metadata: {
             walletId,
             userId: wallet.userId,
             adjustment,
             reason,
             before: wallet.balance,
             after: newBalance.toString(),
-          }),
+          },
           success: true,
         },
       });
@@ -1145,7 +1145,7 @@ export class AdminFundsService {
             resource: 'PLATFORM_WALLET',
             resourceId: platformWallet.id,
             description: `Cobrança da plataforma: ${userWallet.user.email} → ${cryptoType}/${network}`,
-            metadata: JSON.stringify({
+            metadata: {
               platformWalletId: platformWallet.id,
               fromWalletId: toWalletId,
               fromUserId: userWallet.userId,
@@ -1155,7 +1155,7 @@ export class AdminFundsService {
               platformBalanceAfter: newPlatformBalance,
               userBalanceBefore: userWallet.balance,
               userBalanceAfter: newUserBalance,
-            }),
+            },
             success: true,
           },
         });
@@ -1280,7 +1280,7 @@ export class AdminFundsService {
           resource: 'PLATFORM_WALLET',
           resourceId: platformWallet.id,
           description: `Reembolso da plataforma: ${cryptoType}/${network} → ${userWallet.user.email}`,
-          metadata: JSON.stringify({
+          metadata: {
             platformWalletId: platformWallet.id,
             toWalletId,
             toUserId: userWallet.userId,
@@ -1290,7 +1290,7 @@ export class AdminFundsService {
             platformBalanceAfter: newPlatformBalance,
             userBalanceBefore: userWallet.balance,
             userBalanceAfter: newToBalance,
-          }),
+          },
           success: true,
         },
       });
@@ -1410,7 +1410,7 @@ export class AdminFundsService {
           resource: log.resource,
           resourceId: log.resourceId,
           description: log.description,
-          metadata: log.metadata ? JSON.parse(log.metadata) : null,
+          metadata: typeof log.metadata === 'string' ? JSON.parse(log.metadata) : (log.metadata ?? null),
           success: log.success,
           createdAt: log.createdAt,
         })),
@@ -1955,7 +1955,7 @@ export class AdminFundsService {
           resource: 'WALLET',
           resourceId: walletId,
           description: `Admin bloqueou ${amount} ${wallet.cryptoType} de ${wallet.user.email}`,
-          metadata: JSON.stringify({
+          metadata: {
             walletId,
             targetUserId: wallet.userId,
             amount,
@@ -1965,7 +1965,7 @@ export class AdminFundsService {
             previousLocked: wallet.lockedBalance,
             newAvailable: newAvailableBalance,
             newLocked: newLockedBalance,
-          }),
+          },
           success: true,
         },
       });
@@ -2100,7 +2100,7 @@ export class AdminFundsService {
           resource: 'WALLET',
           resourceId: walletId,
           description: `Admin desbloqueou ${amount} ${wallet.cryptoType} de ${wallet.user.email}`,
-          metadata: JSON.stringify({
+          metadata: {
             walletId,
             targetUserId: wallet.userId,
             amount,
@@ -2110,7 +2110,7 @@ export class AdminFundsService {
             previousLocked: wallet.lockedBalance,
             newAvailable: newAvailableBalance,
             newLocked: newLockedBalance,
-          }),
+          },
           success: true,
         },
       });
