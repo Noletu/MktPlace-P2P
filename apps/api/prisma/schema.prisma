@@ -813,7 +813,7 @@ model AuditLog {
 
   // Detalhes da ação
   description String? // Descrição legível da ação
-  metadata    String? // JSON com dados adicionais (antes/depois, etc)
+  metadata    Json? // JSON com dados adicionais (antes/depois, etc)
 
   // Informações de contexto
   ipAddress    String? // IP do cliente

@@ -14,7 +14,7 @@ export interface AuditLogInput {
   description?: string;
   ipAddress?: string;
   userAgent?: string;
-  metadata?: Record<string, any>;
+  metadata?: string | Record<string, any>;
   success?: boolean;
   errorMessage?: string;
 }
@@ -35,7 +35,7 @@ export class AuditLogService {
           description: input.description,
           ipAddress: input.ipAddress,
           userAgent: input.userAgent,
-          metadata: input.metadata ? JSON.stringify(input.metadata) : undefined,
+          metadata: input.metadata ? (typeof input.metadata === 'string' ? JSON.parse(input.metadata) : input.metadata) : undefined,
           success: input.success ?? true,
           errorMessage: input.errorMessage,
         },

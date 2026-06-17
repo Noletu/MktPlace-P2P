@@ -1,6 +1,6 @@
 # Auditoria Técnica — MktPlace-P2P
 
-> **Versão:** 1.42
+> **Versão:** 1.43
 > **Data:** 14 de maio de 2026 (última edição: 14 de junho de 2026)
 > **Repositório auditado:** [Noletu/MktPlace-P2P](https://github.com/Noletu/MktPlace-P2P) `main` @ commit HEAD no momento da auditoria
 > **Stack:** Turborepo · Next.js 14 · Express · TypeScript · Prisma · PostgreSQL · BigNumber.js · BIP39/BIP32
@@ -43,6 +43,8 @@
 > **Changelog v1.41:** MED-33 (Fatia 1) — 2º model do `metadata` migrado: `PlatformWalletMovement` (`String?`→`Json?`/`jsonb`, Sprint 3 sessão 11). Write-only, único ponto `platformWallet.service.ts:327` (`recordMovement`): `JSON.stringify`→objeto + `Prisma.DbNull`; zero reads-parse. Cobertura por **paridade** com `Notification` (v1.40): coluna `jsonb` confirmada empiricamente + `tsc` 23 — sem smoke e2e dedicado (exigiria criar um `PlatformWallet` de teste com FK; critério análogo ao `disputeData`). metadata 2/5 models; restam `WalletTransaction`, `AuditLog`, `AdminAction`.
 >
 > **Changelog v1.42:** MED-33 (Fatia 1) — 3º model do `metadata` migrado: `AdminAction` (`String?`→`Json?`/`jsonb`, Sprint 3 sessão 11). Diferente dos anteriores: o gravador central `logAdminAction` faz passthrough e os **9 callers** é que stringificam. Opção A (mínima): `logAdminAction` passou a aceitar `string | Record<string,any>` e normaliza antes de gravar (`JSON.parse` se string, objeto direto se objeto) + `Prisma.DbNull` no vazio — 1 edição, callers intactos. Smoke `tests/e2e/med33-adminaction-metadata-check.ts` (6/6): caminho string (legado), caminho objeto (futuro), sem-metadata→NULL. `tsc` 23. **Dívida menor (não-bloqueante):** limpar os 9 `JSON.stringify` dos callers de `logAdminAction` (passar objeto direto) — a tolerância do service cobre a transição. metadata 3/5 models; restam `WalletTransaction`, `AuditLog`.
+>
+> **Changelog v1.43:** MED-33 (Fatia 1) — 4º model do `metadata` migrado: `AuditLog` (`String?`→`Json?`/`jsonb`, Sprint 3 sessão 11). O mais complexo: **12+ pontos de escrita** em 4 arquivos + 1 leitura com `JSON.parse`. Gravador central `auditLogService.log()` passou a aceitar `string | Record<string,any>` e normaliza (tolerância: `JSON.parse` se string, objeto direto se objeto); 8 `auditLog.create` diretos em `adminFunds.service.ts` + 2 em `collateral-release.worker.ts` + 1 em `autoUnfreeze.job.ts` convertidos de `JSON.stringify({…})`→objeto direto; leitura em `adminFunds.service.ts:1413` tornada tolerante (`typeof === 'string' ? JSON.parse : objeto`). **Bug fix:** `coupon.controller.ts:123` passava `JSON.stringify(validation.data)` ao `auditLogService.log()` — corrigido para `validation.data` (eliminando 1 erro tsc pré-existente: 23 → 22). Smoke `tests/e2e/med33-auditlog-metadata-check.ts` (5/5): coluna `jsonb`, caminho objeto→object, caminho string (tolerância)→object, sem-metadata→NULL, create direto→object. `tsc` 22. metadata 4/5 models; resta `WalletTransaction`.
 >
 > **Changelog v1.28:** SER-41 fechado (Sprint 3 sessão 10): **hierarquia de autorização no freeze de conta**. Antes, o único guard era o `managerMiddleware` (GERENTE/ADMIN/MASTER) e o `freezeAccount` não comparava nada — um GERENTE (60) podia congelar um MASTER (100), congelar a si mesmo, ou (com "perde todos os poderes") travar toda a hierarquia. Agora o service deriva o **nível efetivo** de quem-congela e do alvo (helper `getEffectiveLevel`, com fallback do `legacyRole` para não ler um MASTER "legado" como nível 0) e valida via função pura `canFreezeTarget` **antes de qualquer escrita**: só congela **nível estritamente inferior** ao seu (protege o topo e os pares de graça) e **nunca a própria conta**; a tentativa negada é gravada no audit (`FREEZE_ACCOUNT_DENIED`) e devolve **403**. O **descongelar** segue permissivo (qualquer GERENTE+) — decisão de produto, preserva a recuperação. Validado por **11 testes unitários** (`getEffectiveLevel` + matriz completa de `canFreezeTarget`) + **e2e empírico** (`tests/e2e/ser41-hierarchy-check.ts`, contra Postgres real com os seed users: admin→master **403**, auto-freeze **403**, master→admin **permitido** e restaurado). Baseline preservado (tsc 25, nada novo nos arquivos tocados). §1.1 PRE-STAGING: 23 − 1 (SER-41) = **22** itens.
 >
@@ -155,7 +157,7 @@ Nem todos os findings precisam ser resolvidos imediatamente. A classificação a
 |----|-------------|------------|
 | SER-13 | Algoritmo explícito em sign/verify + secrets separados (`JWT_ACCESS_SECRET` ≠ `JWT_REFRESH_SECRET`) — ~1h | 🔶 **Parcial** — fatia "FAZER AGORA" fechada (commits `8e956f4`, `e2a53c0`, `d5f71f8`). Pendente [PRE-STAGING]: TTL curto (15min). |
 | MED-31 | Substituir apenas `console.log` que vaza dado sensível (vide `auth.middleware.ts:51` que logga email) — ~1h | Refator completo para winston → PRE-STAGING |
-| MED-33 | Migrar para `Json`/`jsonb` (junto com CRIT-01) | 🔶 **Parcial** — 4 campos + `metadata` 3/5 models: `disputeData` (v1.36), `notificationPreferences` (v1.37), `twoFactorBackupCodes` (v1.38), `orderData` (v1.39); `metadata` de `Notification` (v1.40), `PlatformWalletMovement` (v1.41) e `AdminAction` (v1.42). Pendente: 2 models do `metadata` (`WalletTransaction`, `AuditLog`) + validação Zod ([PRE-STAGING]). |
+| MED-33 | Migrar para `Json`/`jsonb` (junto com CRIT-01) | 🔶 **Parcial** — 4 campos + `metadata` 4/5 models: `disputeData` (v1.36), `notificationPreferences` (v1.37), `twoFactorBackupCodes` (v1.38), `orderData` (v1.39); `metadata` de `Notification` (v1.40), `PlatformWalletMovement` (v1.41), `AdminAction` (v1.42) e `AuditLog` (v1.43). Pendente: 1 model do `metadata` (`WalletTransaction`) + validação Zod ([PRE-STAGING]). |
 
 > **MED-34 — ✅ Fechado (v1.21, Sprint 3 sessão 4):** 21 `@relation` explícitos (20 `SetNull` + 1 `Restrict`), 2 renomeações de relation, `BroadcastLog.adminId` → nullable. Policies `ON DELETE` (a fatia que estava adiada para PRE-STAGING) também resolvidas nesta sessão. Indexes não adicionados (YAGNI). Ver §MED-34 e Changelog v1.21.
 
@@ -3568,9 +3570,9 @@ Nota: critério original pedia "todos os models têm `createdAt` + `updatedAt`" 
 ## MED-33 — Strings JSON em campos do banco
 
 **Severidade:** 🟡 Médio
-**Fase:** 🟡 **[EM PROGRESSO — PARCIAL]** — `disputeData` (v1.36), `notificationPreferences` (v1.37), `twoFactorBackupCodes` (v1.38) e `orderData` (v1.39) migrados. O 5º campo `metadata` está em 5 models: `Notification` (v1.40), `PlatformWalletMovement` (v1.41) e `AdminAction` (v1.42) feitos; restam `WalletTransaction`, `AuditLog`; validação Zod robusta → 🔵 **[PRE-STAGING]**
+**Fase:** 🟡 **[EM PROGRESSO — PARCIAL]** — `disputeData` (v1.36), `notificationPreferences` (v1.37), `twoFactorBackupCodes` (v1.38) e `orderData` (v1.39) migrados. O 5º campo `metadata` está em 5 models: `Notification` (v1.40), `PlatformWalletMovement` (v1.41), `AdminAction` (v1.42) e `AuditLog` (v1.43) feitos; resta `WalletTransaction`; validação Zod robusta → 🔵 **[PRE-STAGING]**
 **Esforço estimado:** 1 dia (após CRIT-01)
-**Status:** 🟡 Em progresso — 4 campos migrados (`disputeData` v1.36, `notificationPreferences` v1.37, `twoFactorBackupCodes` v1.38, `orderData` v1.39); o 5º (`metadata`) abrange 5 models — `Notification` (v1.40), `PlatformWalletMovement` (v1.41) e `AdminAction` (v1.42) migrados, restam `WalletTransaction`, `AuditLog`
+**Status:** 🟡 Em progresso — 4 campos migrados (`disputeData` v1.36, `notificationPreferences` v1.37, `twoFactorBackupCodes` v1.38, `orderData` v1.39); o 5º (`metadata`) abrange 5 models — `Notification` (v1.40), `PlatformWalletMovement` (v1.41), `AdminAction` (v1.42) e `AuditLog` (v1.43) migrados, resta `WalletTransaction`
 
 ### Problema
 
@@ -3596,7 +3598,7 @@ await prisma.order.create({
 
 ### Critério de aceitação
 - [x] Campos migrados para `Json`/`@db.JsonB` — **disputeData** (v1.36), **notificationPreferences** (v1.37), **twoFactorBackupCodes** (v1.38), **orderData** (v1.39)
-- [ ] Campo `metadata` migrado (5 models — `Notification` ✅ v1.40, `PlatformWalletMovement` ✅ v1.41, `AdminAction` ✅ v1.42; restam `WalletTransaction`, `AuditLog`)
+- [ ] Campo `metadata` migrado (5 models — `Notification` ✅ v1.40, `PlatformWalletMovement` ✅ v1.41, `AdminAction` ✅ v1.42, `AuditLog` ✅ v1.43; resta `WalletTransaction`)
 - [ ] Validação Zod aplicada
 - [ ] Queries que filtram por subcampo usam `path` do Prisma
 
@@ -3657,6 +3659,15 @@ await prisma.order.create({
 - **Dívida menor (não-bloqueante):** limpar os 9 `JSON.stringify` dos callers de `logAdminAction` (passar objeto direto) — a tolerância do service cobre a transição.
 - Validação: `tests/e2e/med33-adminaction-metadata-check.ts` (6/6) — coluna `jsonb`, caminho string (legado)→object, caminho objeto (futuro)→object, valores preservados, sem-metadata→NULL.
 - Restam 2 models: `WalletTransaction`, `AuditLog`.
+
+**v1.43 — `metadata` do model `AuditLog`** (4 de 5 models):
+- O mais complexo: **12+ pontos de escrita** em 4 arquivos (`auditLog.service.ts`, `adminFunds.service.ts` ×8, `collateral-release.worker.ts` ×2, `autoUnfreeze.job.ts` ×1) + 1 leitura com `JSON.parse` (`adminFunds.service.ts:1413`).
+- Gravador central `auditLogService.log()`: interface `metadata?: string | Record<string,any>`, normaliza antes de gravar — `typeof === 'string' ? JSON.parse : objeto`; `undefined` no vazio (Prisma trata como NULL). ~40 callers via `log()` e `logFromRequest()` cobertos pela tolerância.
+- 11 `auditLog.create`/`createMany` diretos convertidos: `JSON.stringify({…})`→objeto direto (8 em `adminFunds`, 2 em `collateral-release.worker`, 1 em `autoUnfreeze.job`).
+- Leitura em `adminFunds.service.ts:1413` tornada tolerante: `typeof === 'string' ? JSON.parse : (objeto ?? null)`.
+- **Bug fix:** `coupon.controller.ts:123` passava `JSON.stringify(validation.data)` ao service — corrigido para `validation.data` (eliminou 1 erro tsc pré-existente: **23 → 22**).
+- Validação: `tests/e2e/med33-auditlog-metadata-check.ts` (5/5) — coluna `jsonb`, caminho objeto→object, caminho string (tolerância)→object, sem-metadata→NULL, create direto→object.
+- Resta 1 model: `WalletTransaction`.
 
 ---
 

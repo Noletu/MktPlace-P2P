@@ -68,14 +68,14 @@ export const startAutoUnfreezeJob = () => {
         resource: 'USER',
         resourceId: user.id,
         description: `Conta desbloqueada automaticamente: ${user.email}`,
-        metadata: JSON.stringify({
+        metadata: {
           email: user.email,
           name: user.name,
           frozenReason: user.frozenReason,
           frozenAt: user.frozenAt,
           frozenUntil: user.frozenUntil,
           unfrozenAt: now,
-        }),
+        },
         success: true,
       }));
 

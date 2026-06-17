@@ -149,14 +149,14 @@ class CollateralReleaseWorker {
         resource: 'ORDER',
         resourceId: order.id,
         description: `Colateral liberado automaticamente: ${order.collateralLockedAmount} ${order.cryptoType}`,
-        metadata: JSON.stringify({
+        metadata: {
           orderId: order.id,
           orderStatus: order.status,
           cryptoType: order.cryptoType,
           network: order.cryptoNetwork,
           amount: order.collateralLockedAmount,
           releasedAt: new Date().toISOString(),
-        }),
+        },
         success: true,
       },
     });
@@ -204,14 +204,14 @@ class CollateralReleaseWorker {
               resource: 'ORDER',
               resourceId: order.id,
               description: `Pedido com colateral bloqueado há mais de 24h (${hoursLocked}h)`,
-              metadata: JSON.stringify({
+              metadata: {
                 orderId: order.id,
                 orderStatus: order.status,
                 createdAt: order.createdAt,
                 hoursLocked,
                 amount: order.collateralLockedAmount,
                 cryptoType: order.cryptoType,
-              }),
+              },
               success: false,
               errorMessage: 'Colateral bloqueado por tempo anormal - requer investigação manual',
             },
