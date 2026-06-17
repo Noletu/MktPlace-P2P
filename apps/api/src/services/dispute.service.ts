@@ -769,12 +769,12 @@ export class DisputeService {
                   lockedBefore: sellerWallet.lockedBalance,
                   lockedAfter: sellerNewLockedBN.toFixed(8),
                   description: `Disputa resolvida - Cripto transferida ao comprador (Order ${order.id})`,
-                  metadata: JSON.stringify({
+                  metadata: {
                     disputeId: input.disputeId,
                     resolutionType: input.resolutionType,
                     buyerId,
                     buyerWalletId: buyerWallet.id,
-                  }),
+                  },
                 },
               });
 
@@ -789,12 +789,12 @@ export class DisputeService {
                   balanceBefore: buyerWallet.balance,
                   balanceAfter: buyerNewBalanceBN.toFixed(8),
                   description: `Disputa resolvida - Cripto recebida do vendedor (Order ${order.id})`,
-                  metadata: JSON.stringify({
+                  metadata: {
                     disputeId: input.disputeId,
                     resolutionType: input.resolutionType,
                     sellerId,
                     sellerWalletId: sellerWallet.id,
-                  }),
+                  },
                 },
               });
 
@@ -822,12 +822,12 @@ export class DisputeService {
                     lockedBefore: sellerLockedBeforeFee.toFixed(8),
                     lockedAfter: sellerLockedAfterFee.toFixed(8),
                     description: `Disputa resolvida - Platform fee (Order ${order.id})`,
-                    metadata: JSON.stringify({
+                    metadata: {
                       disputeId: input.disputeId,
                       platformWalletId: platformWallet.id,
                       platformFee: platformFeeBN.toFixed(8),
                       feeSource: isBuyOrder ? 'locked' : 'available',
-                    }),
+                    },
                   },
                 });
 
@@ -904,10 +904,10 @@ export class DisputeService {
                   lockedBefore: sellerWallet.lockedBalance,
                   lockedAfter: sellerNewLockedBN.toFixed(8),
                   description: `Disputa resolvida - Colateral desbloqueado (Order ${order.id})`,
-                  metadata: JSON.stringify({
+                  metadata: {
                     disputeId: input.disputeId,
                     resolutionType: input.resolutionType,
-                  }),
+                  },
                 },
               });
 

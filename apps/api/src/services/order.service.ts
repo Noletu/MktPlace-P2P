@@ -465,7 +465,7 @@ export class OrderService {
           balanceBefore: wallet.availableBalance,
           balanceAfter: newAvailable.toFixed(8),
           description: `Colateral bloqueado para pedido ${order.id}`,
-          metadata: JSON.stringify({ orderId: order.id, lockedAmount: collateralAmount }),
+          metadata: { orderId: order.id, lockedAmount: collateralAmount },
         },
       });
 
@@ -762,7 +762,7 @@ export class OrderService {
           balanceBefore: providerWallet.availableBalance,
           balanceAfter: newProviderAvailable.toFixed(8),
           description: `Colateral bloqueado para ordem BUY`,
-          metadata: JSON.stringify({ orderId: input.orderId, lockedAmount: requiredCollateral }),
+          metadata: { orderId: input.orderId, lockedAmount: requiredCollateral },
         },
       });
 

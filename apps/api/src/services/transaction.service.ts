@@ -304,7 +304,7 @@ export class TransactionService {
             lockedBefore: sellerWallet.lockedBalance,
             lockedAfter: sellerNewLockedBN.toFixed(8),
             description: `Crypto transferred to buyer (Order ${completedOrder.id})`,
-            metadata: JSON.stringify({
+            metadata: {
               orderId: completedOrder.id,
               orderType: completedOrder.type,
               buyerUserId: buyerId,
@@ -313,7 +313,7 @@ export class TransactionService {
               payerReward: payerRewardBN.toFixed(8),
               totalTransferred: totalToTransferBN.toFixed(8),
               timestamp: new Date().toISOString(),
-            }),
+            },
           },
         });
 
@@ -328,7 +328,7 @@ export class TransactionService {
             balanceBefore: buyerWallet.balance,
             balanceAfter: buyerNewBalanceBN.toFixed(8),
             description: `Crypto received from seller (Order ${completedOrder.id})`,
-            metadata: JSON.stringify({
+            metadata: {
               orderId: completedOrder.id,
               orderType: completedOrder.type,
               sellerUserId: sellerId,
@@ -337,7 +337,7 @@ export class TransactionService {
               payerReward: payerRewardBN.toFixed(8),
               totalReceived: totalToTransferBN.toFixed(8),
               timestamp: new Date().toISOString(),
-            }),
+            },
           },
         });
 
@@ -453,13 +453,13 @@ export class TransactionService {
               lockedBefore: sellerCurrentLocked.toFixed(8),
               lockedAfter: feeLockedAfter,
               description: `Platform fee transferred (Order ${completedOrder.id})`,
-              metadata: JSON.stringify({
+              metadata: {
                 orderId: completedOrder.id,
                 platformWalletId: platformWallet.id,
                 platformFee: platformFeeBN.toFixed(8),
                 feeSource: isBuyOrder ? 'locked' : 'available',
                 timestamp: new Date().toISOString(),
-              }),
+              },
             },
           });
 

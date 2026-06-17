@@ -1800,7 +1800,7 @@ export class AdminFundsService {
         let category: LockCategory | null = null;
         if (tx.metadata) {
           try {
-            const meta = JSON.parse(tx.metadata);
+            const meta: any = typeof tx.metadata === 'string' ? JSON.parse(tx.metadata) : tx.metadata;
             category = meta.category || null;
           } catch {
             // Ignorar erro de parse
@@ -1939,11 +1939,11 @@ export class AdminFundsService {
           adminUserId,
           adminReason: reason,
           description: `Bloqueio administrativo: ${LockCategoryLabels[category]}`,
-          metadata: JSON.stringify({
+          metadata: {
             category,
             lockedAmount: amount,
             timestamp: new Date().toISOString(),
-          }),
+          },
         },
       });
 
@@ -2084,11 +2084,11 @@ export class AdminFundsService {
           adminUserId,
           adminReason: reason,
           description: `Desbloqueio administrativo: ${LockCategoryLabels[category]}`,
-          metadata: JSON.stringify({
+          metadata: {
             category,
             unlockedAmount: amount,
             timestamp: new Date().toISOString(),
-          }),
+          },
         },
       });
 
