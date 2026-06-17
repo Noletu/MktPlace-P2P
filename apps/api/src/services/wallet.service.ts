@@ -318,11 +318,11 @@ export class WalletService {
           balanceBefore: wallet.availableBalance,
           balanceAfter: newAvailableBN.toFixed(8),
           description: reason,
-          metadata: JSON.stringify({
+          metadata: {
             orderId,
             lockedAmount: amount,
             timestamp: new Date().toISOString(),
-          }),
+          },
         },
       });
 
@@ -391,7 +391,7 @@ export class WalletService {
             balanceBefore: wallet.availableBalance,
             balanceAfter: newAvailableBalance,
             description: reason,
-            metadata: JSON.stringify({ orderId, unlockedAmount: amount, timestamp: new Date().toISOString() }),
+            metadata: { orderId, unlockedAmount: amount, timestamp: new Date().toISOString() },
           },
         });
 
@@ -463,7 +463,7 @@ export class WalletService {
             balanceBefore: wallet.balance,
             balanceAfter: newBalance,
             description: reason,
-            metadata: JSON.stringify({ fromLocked, timestamp: new Date().toISOString() }),
+            metadata: { fromLocked, timestamp: new Date().toISOString() },
           },
         });
 
@@ -518,7 +518,7 @@ export class WalletService {
             balanceAfter: newBalance,
             description: reason,
             orderId,
-            metadata: JSON.stringify({ creditAmount: amount, orderId, timestamp: new Date().toISOString() }),
+            metadata: { creditAmount: amount, orderId, timestamp: new Date().toISOString() },
           },
         });
 
@@ -628,11 +628,11 @@ export class WalletService {
           balanceBefore: wallet.balance,
           balanceAfter: newBalance,
           description: '[TEST] Added test balance for development/testing',
-          metadata: JSON.stringify({
+          metadata: {
             testBalance: true,
             addedAmount: amount,
             timestamp: new Date().toISOString(),
-          }),
+          },
         },
       }),
     ]);

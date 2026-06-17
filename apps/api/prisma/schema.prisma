@@ -301,7 +301,7 @@ model WalletTransaction {
 
   // Metadados
   description String? // Descrição legível
-  metadata    String? // JSON com dados adicionais
+  metadata    Json? // JSON com dados adicionais
 
   createdAt DateTime @default(now())
 

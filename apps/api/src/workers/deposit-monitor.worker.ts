@@ -219,10 +219,10 @@ export class DepositMonitorWorker {
           blockHeight: deposit.blockHeight,
           confirmations: deposit.confirmations,
           description: `Depósito recebido na rede ${wallet.network}`,
-          metadata: JSON.stringify({
+          metadata: {
             from: deposit.from,
             timestamp: deposit.timestamp,
-          }),
+          },
         },
       })
     );

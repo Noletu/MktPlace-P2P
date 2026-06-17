@@ -245,10 +245,10 @@ export class WithdrawalProcessorService {
             balanceBefore: wallet.balance.toString(),
             balanceAfter: newBalance,
             description: `Withdrawal to ${withdrawal.toAddress}`,
-            metadata: JSON.stringify({
+            metadata: {
               fromLocked: true,
               timestamp: new Date().toISOString(),
-            }),
+            },
           },
         });
 
@@ -293,14 +293,14 @@ export class WithdrawalProcessorService {
             balanceAfter: newBalance,
             txHash: result.txHash,
             description: `Saque para ${withdrawal.toAddress} (via hot wallet)`,
-            metadata: JSON.stringify({
+            metadata: {
               toAddress: withdrawal.toAddress,
               fromAddress,
               networkFee: result.networkFee,
               amountSent: amountToSend,
               withdrawalId,
               hotWalletId: hotWallet.id,
-            }),
+            },
           },
         });
       });

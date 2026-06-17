@@ -53,11 +53,11 @@ export class CollateralTransactionService {
         balanceBefore: wallet.balance,
         balanceAfter: wallet.balance, // Será atualizado pelo WalletService
         description: data.description || `${data.type} transaction`,
-        metadata: JSON.stringify({
+        metadata: {
           ...data.metadata,
           orderId: data.orderId,
           legacySource: 'collateral-transaction-service',
-        }),
+        },
       },
     });
 
