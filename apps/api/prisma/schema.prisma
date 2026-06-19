@@ -375,6 +375,14 @@ model Order {
   // BRL side
   brlAmount Decimal @db.Decimal(38, 18)
 
+  // FEATURE (preço personalizado): preço unitário em BRL por 1 unidade
+  // de cripto, definido pelo criador do pedido. Nullable: pedidos
+  // antigos e pedidos a preço de mercado podem não ter este snapshot.
+  // NÃO afeta fee nem colateral (que são % de cryptoAmount). Usado
+  // para exibição/ordenação no marketplace e como registro da intenção
+  // de preço do criador.
+  unitPrice Decimal? @db.Decimal(38, 18)
+
   // Fee calculation
   platformFee Decimal @db.Decimal(38, 18)
   payerReward Decimal @db.Decimal(38, 18)

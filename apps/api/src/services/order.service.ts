@@ -434,6 +434,7 @@ export class OrderService {
           cryptoNetwork: input.cryptoNetwork,
           cryptoAmount: input.cryptoAmount,
           brlAmount: input.brlAmount,
+          unitPrice: input.unitPrice ?? null, // FEATURE (preço personalizado): persiste o snapshot se vier; null = preço de mercado
           platformFee: fees.platformFee,
           payerReward: fees.payerReward,
           totalFee: fees.totalFee,
@@ -590,6 +591,7 @@ export class OrderService {
         cryptoNetwork: input.cryptoNetwork,
         cryptoAmount: input.cryptoAmount,
         brlAmount: brlAmount,
+        unitPrice: input.unitPrice ?? null, // FEATURE (preço personalizado): persiste o snapshot se vier; null = preço de mercado
         platformFee: fees.platformFee,
         payerReward: fees.payerReward, // 0 para BUY
         totalFee: fees.totalFee,

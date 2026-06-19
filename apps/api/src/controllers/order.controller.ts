@@ -40,6 +40,12 @@ const CreateSellOrderSchema = z.object({
   brlAmount: z.string()
     .min(1, 'Valor em BRL é obrigatório')
     .refine((val) => gtBN(val, '0'), 'Valor em BRL deve ser maior que zero'),
+  // FEATURE (preço personalizado): opcional. Se ausente = preço de mercado (comportamento atual).
+  // Sem trava de desvio de mercado (decisão de produto). Apenas validado como decimal > 0.
+  unitPrice: z.string()
+    .refine((val) => /^\d+(\.\d+)?$/.test(val), 'Preço unitário inválido')
+    .refine((val) => gtBN(val, '0'), 'Preço unitário deve ser maior que zero')
+    .optional(),
   orderData: z.union([BoletoDataSchema, PixDataSchema]),
   collateralAddressId: z.string().optional(),
   customExpirationHours: z.number().int().min(1).max(720).optional(),
@@ -55,6 +61,12 @@ const CreateBuyOrderSchema = z.object({
     .min(1, 'Valor em criptomoeda é obrigatório')
     .refine((val) => gtBN(val, '0'), 'Valor em criptomoeda deve ser maior que zero'),
   // brlAmount é calculado automaticamente pelo sistema para BUY orders
+  // FEATURE (preço personalizado): opcional. Se ausente = preço de mercado (comportamento atual).
+  // Sem trava de desvio de mercado (decisão de produto). Apenas validado como decimal > 0.
+  unitPrice: z.string()
+    .refine((val) => /^\d+(\.\d+)?$/.test(val), 'Preço unitário inválido')
+    .refine((val) => gtBN(val, '0'), 'Preço unitário deve ser maior que zero')
+    .optional(),
   customExpirationHours: z.number().int().min(1).max(720).optional(),
   manualCancelOnly: z.boolean().optional(),
 });
@@ -106,6 +118,7 @@ export class OrderController {
           cryptoType: validatedData.cryptoType,
           cryptoNetwork: validatedData.cryptoNetwork,
           cryptoAmount: validatedData.cryptoAmount,
+          unitPrice: validatedData.unitPrice, // FEATURE (preço personalizado): persiste o snapshot; cálculo do brlAmount fica na Parte C
           customExpirationHours: validatedData.customExpirationHours,
           manualCancelOnly: validatedData.manualCancelOnly,
         });
