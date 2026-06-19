@@ -123,12 +123,32 @@ export class OrderService {
    * Calcula valor em BRL para ordem BUY com markup
    * Busca cotação atual e aplica markup de 2.5%
    */
-  async calculateBuyOrderBrlAmount(cryptoAmount: string, cryptoType: string): Promise<string> {
-    const amount = toBN(cryptoAmount);
-    const brlValue = await priceService.convertCryptoToBRL(amount.toNumber(), cryptoType as CryptoType);
-    const brlBase = toBN(brlValue);
-    const brlWithMarkup = brlBase.multipliedBy(toBN("1").plus(BUY_ORDER_CONFIG.BRL_MARKUP_PERCENTAGE));
-    return brlWithMarkup.toFixed(2);
+  async calculateBuyOrderBrlAmount(
+    cryptoAmount: string,
+    cryptoType: string,
+    unitPrice?: string
+  ): Promise<{ brlAmount: string; unitPrice: string }> {
+    // FEATURE (preço personalizado) — Parte C: define o preço unitário efetivo.
+    // Custom: usa o unitPrice informado pelo comprador.
+    // Mercado: busca cotação via getPrice e a usa como unitPrice (snapshot do instante).
+    let unitPriceEfetivo: string;
+    if (unitPrice) {
+      unitPriceEfetivo = unitPrice;
+    } else {
+      const quote = await priceService.getPrice(cryptoType as CryptoType);
+      unitPriceEfetivo = quote.brlPrice;
+    }
+
+    // brlAmount = preço unitário × quantidade × (1 + markup 2.5%).
+    // ARREDONDAMENTO ÚNICO (opção B): um único toFixed(2) no final, sem o duplo
+    // arredondamento do legado (que arredondava a conversão e de novo após o markup).
+    // Fee (1,5% cripto) e colateral permanecem INALTERADOS (são % de cryptoAmount).
+    const brlAmount = toBN(unitPriceEfetivo)
+      .multipliedBy(toBN(cryptoAmount))
+      .multipliedBy(toBN("1").plus(BUY_ORDER_CONFIG.BRL_MARKUP_PERCENTAGE))
+      .toFixed(2);
+
+    return { brlAmount, unitPrice: unitPriceEfetivo };
   }
 
   /**
@@ -291,6 +311,21 @@ export class OrderService {
   }): Promise<Order | { requiresDeposit: true; missingAmount: string; availableBalance: number; requiredCollateral: string; walletAddress: string }> {
     // Log de entrada para debug
     console.log(`📝 [ORDER] Creating order - userId: ${input.userId}, type: ${input.type}, crypto: ${input.cryptoType}/${input.cryptoNetwork}, amount: ${input.brlAmount} BRL, useInternalBalance: ${input.useInternalBalance}`);
+
+    // FEATURE (preço personalizado) — Parte C: o servidor é a FONTE DE VERDADE do brlAmount.
+    // Derivamos brlAmount e unitPrice ANTES de validateOrderCreation, para que o limite diário
+    // (linha ~167) e o mínimo R$10 (linha ~236) usem o valor do servidor — fecha o vetor de
+    // burlar o limite enviando um brlAmount baixo pelo front. O brlAmount vindo do frontend
+    // passa a ser IGNORADO no cálculo (mantido no tipo apenas por compatibilidade).
+    if (input.unitPrice) {
+      // Preço personalizado: usa o unitPrice informado pelo criador
+      input.brlAmount = toBN(input.unitPrice).multipliedBy(toBN(input.cryptoAmount)).toFixed(2);
+    } else {
+      // Preço de mercado: busca cotação e a usa como unitPrice (snapshot do instante da criação)
+      const quote = await priceService.getPrice(input.cryptoType as CryptoType);
+      input.unitPrice = quote.brlPrice;
+      input.brlAmount = toBN(quote.brlPrice).multipliedBy(toBN(input.cryptoAmount)).toFixed(2);
+    }
 
     // Validar criação
     await this.validateOrderCreation(input);
@@ -503,8 +538,13 @@ export class OrderService {
   async createBuyOrder(input: CreateBuyOrderInput): Promise<Order> {
     console.log(`📝 [BUY ORDER] Creating - userId: ${input.userId}, crypto: ${input.cryptoType}/${input.cryptoNetwork}, amount: ${input.cryptoAmount}`);
 
-    // Validar limite diario baseado em reputacao (usando o brlAmount calculado)
-    const brlAmount = await this.calculateBuyOrderBrlAmount(input.cryptoAmount, input.cryptoType);
+    // Validar limite diario baseado em reputacao (usando o brlAmount calculado).
+    // FEATURE (preço personalizado) — Parte C: deriva brlAmount E unitPrice efetivo (custom ou mercado).
+    const { brlAmount, unitPrice: unitPriceEfetivo } = await this.calculateBuyOrderBrlAmount(
+      input.cryptoAmount,
+      input.cryptoType,
+      input.unitPrice
+    );
     const limitCheck = await limitService.canUserTransact(input.userId, toBN(brlAmount).toNumber());
 
     if (!limitCheck.allowed) {
@@ -591,7 +631,7 @@ export class OrderService {
         cryptoNetwork: input.cryptoNetwork,
         cryptoAmount: input.cryptoAmount,
         brlAmount: brlAmount,
-        unitPrice: input.unitPrice ?? null, // FEATURE (preço personalizado): persiste o snapshot se vier; null = preço de mercado
+        unitPrice: unitPriceEfetivo, // FEATURE (preço personalizado) — Parte C: snapshot custom OU mercado (nunca null no BUY daqui pra frente)
         platformFee: fees.platformFee,
         payerReward: fees.payerReward, // 0 para BUY
         totalFee: fees.totalFee,
