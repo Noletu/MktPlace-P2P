@@ -170,6 +170,9 @@ model User {
   chatArchivesManaged        ChatArchive[]            @relation("ChatArchiveAdmin")
   rolePermissionsGranted     RolePermission[]         @relation("RolePermissionGrantor")
   pendingLogins              PendingLogin[]           @relation("PendingLoginUser")
+
+  // FEATURE (preço personalizado / price-lock): cotações travadas criadas pelo usuário
+  orderQuotes                OrderQuote[]
 }
 
 // SECURITY (SER-23): Estado de login em andamento após verificação
@@ -772,6 +775,28 @@ model PriceQuote {
   source     String  @default("coingecko")
 
   createdAt DateTime @default(now())
+}
+
+// FEATURE (preço personalizado / price-lock): cotação travada para criação de pedido
+// a preço de mercado. O cliente trava o unitPrice via POST /orders/quote e envia o
+// quoteId no submit; o backend usa o preço travado (se válido), eliminando a divergência
+// entre o preço exibido e o gravado. TTL de 120s; single-use (usedAt marcado SÓ em
+// sucesso de criação do pedido). Não se aplica ao modo de preço personalizado (custom).
+model OrderQuote {
+  id         String    @id @default(cuid())
+  userId     String
+  cryptoType String
+  unitPrice  Decimal   @db.Decimal(38, 18) // preço travado (BRL por unidade)
+  source     String                        // origem da cotação (coingecko/exchange)
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime                       // createdAt + 120s
+  usedAt     DateTime?                      // marcado SÓ em sucesso de criação (single-use)
+  orderId    String?                        // pedido que consumiu a quote (auditoria)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // SECURITY: Refresh tokens para sessões persistentes
