@@ -64,6 +64,18 @@ export const orderCreationLimiter = rateLimit({
   handler: rateLimitHandler,
 });
 
+// SECURITY: Rate limiter para cotação travada (price-lock).
+// Mais permissivo que orderCreationLimiter: o usuário pode pedir várias quotes
+// enquanto decide o preço/valor, mas ainda barra martelo automatizado.
+export const quoteLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minuto
+  max: process.env.NODE_ENV === 'production' ? 30 : 1000, // Dev: 1000, Prod: 30 quotes/min
+  message: 'Muitas cotações solicitadas. Aguarde alguns instantes.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: rateLimitHandler,
+});
+
 // SECURITY: Rate limiter para upload de comprovantes
 export const proofUploadLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutos

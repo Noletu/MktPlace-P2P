@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { orderService } from '../services/order.service';
+import { orderQuoteService } from '../services/orderQuote.service';
 import { boletoOCRService } from '../services/boleto-ocr.service';
 import { OrderType, PaymentMethod } from '../types/order.types';
 import { z } from 'zod';
@@ -76,6 +77,12 @@ const CreateOrderSchema = z.discriminatedUnion('type', [
   CreateSellOrderSchema,
   CreateBuyOrderSchema,
 ]);
+
+// Schema para criar cotação travada (price-lock). A validação contra o enum
+// CryptoType acontece no service; aqui só garantimos presença/tipo do campo.
+const CreateQuoteSchema = z.object({
+  cryptoType: z.string().min(1, 'Tipo de criptomoeda é obrigatório'),
+});
 
 // Schema para provedor aceitar ordem BUY
 const AcceptBuyOrderSchema = z.object({
@@ -198,6 +205,52 @@ export class OrderController {
         success: false,
         error: error.message || 'Erro ao criar pedido',
         message: error.message || 'Ocorreu um erro ao processar seu pedido',
+      });
+    }
+  }
+
+  /**
+   * Cria uma cotação travada (price-lock) para criação de pedido a preço de mercado.
+   * Retorna { quoteId, unitPrice, expiresAt }. O consumo da quote acontece no submit
+   * do pedido (E.2d). Aqui o único erro de negócio possível é INVALID_CRYPTO_TYPE.
+   */
+  async createQuote(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, error: 'Não autorizado' });
+      }
+
+      const { cryptoType } = CreateQuoteSchema.parse(req.body);
+
+      const quote = await orderQuoteService.createOrderQuote(userId, cryptoType);
+
+      return res.status(201).json({
+        success: true,
+        data: quote, // { quoteId, unitPrice, expiresAt }
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Dados inválidos',
+          message: `Erro de validação: ${error.errors[0]?.message}`,
+        });
+      }
+
+      if (error.message === 'INVALID_CRYPTO_TYPE') {
+        return res.status(400).json({
+          success: false,
+          error: 'Criptomoeda inválida',
+          code: 'INVALID_CRYPTO_TYPE',
+        });
+      }
+
+      console.error('❌ [QUOTE] Error creating quote:', error.message);
+      console.error('Stack trace:', error.stack);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao gerar cotação',
       });
     }
   }
