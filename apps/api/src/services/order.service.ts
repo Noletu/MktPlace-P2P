@@ -558,12 +558,25 @@ export class OrderService {
   async createBuyOrder(input: CreateBuyOrderInput): Promise<Order> {
     console.log(`📝 [BUY ORDER] Creating - userId: ${input.userId}, crypto: ${input.cryptoType}/${input.cryptoNetwork}, amount: ${input.cryptoAmount}`);
 
+    // FEATURE (price-lock) — E.2d-2: resolve o preço unitário efetivo FORA da transação,
+    // com precedência custom > travado > live:
+    //  - custom: usa o unitPrice informado pelo comprador.
+    //  - travado: consome a cotação (valida dono/expiração/uso) e usa o preço congelado; a
+    //    marcação como usada (single-use) ocorre DENTRO da transação de criação, com revalidação
+    //    atômica (opção B).
+    //  - live: deixa undefined → calculateBuyOrderBrlAmount busca getPrice (comportamento atual).
+    // Em todos os casos o markup de 2.5% é aplicado por calculateBuyOrderBrlAmount sobre o preço.
+    let effectiveUnitPrice = input.unitPrice;
+    if (!effectiveUnitPrice && input.quoteId) {
+      effectiveUnitPrice = await orderQuoteService.consumeOrderQuote(input.quoteId, input.userId);
+    }
+
     // Validar limite diario baseado em reputacao (usando o brlAmount calculado).
     // FEATURE (preço personalizado) — Parte C: deriva brlAmount E unitPrice efetivo (custom ou mercado).
     const { brlAmount, unitPrice: unitPriceEfetivo } = await this.calculateBuyOrderBrlAmount(
       input.cryptoAmount,
       input.cryptoType,
-      input.unitPrice
+      effectiveUnitPrice
     );
     const limitCheck = await limitService.canUserTransact(input.userId, toBN(brlAmount).toNumber());
 
@@ -641,32 +654,49 @@ export class OrderService {
     // Criar ordem BUY
     // NOTA: Ordem criada SEM colateral (provedor deposita ao aceitar)
     // NOTA: Ordem criada SEM orderData (provedor fornece PIX ao aceitar)
-    const order = await prisma.order.create({
-      data: {
-        userId: input.userId,
-        orderType: OrderType.BUY, // BUY = usuario quer comprar crypto
-        type: 'PIX', // Payment method - BUY orders only support PIX
-        status: OrderStatus.PENDING,
-        cryptoType: input.cryptoType,
-        cryptoNetwork: input.cryptoNetwork,
-        cryptoAmount: input.cryptoAmount,
-        brlAmount: brlAmount,
-        unitPrice: unitPriceEfetivo, // FEATURE (preço personalizado) — Parte C: snapshot custom OU mercado (nunca null no BUY daqui pra frente)
-        platformFee: fees.platformFee,
-        payerReward: fees.payerReward, // 0 para BUY
-        totalFee: fees.totalFee,
-        orderData: {}, // Vazio - provedor preenche ao aceitar
-        timeoutAt,
-        customExpirationHours: input.customExpirationHours,
-        manualCancelOnly: input.manualCancelOnly || false,
-        paidByPlatform: false,
-        // Colateral NAO confirmado ainda - provedor deposita ao aceitar
-        collateralConfirmed: false,
-        collateralSource: null,
-        walletId: null,
-        collateralLocked: false,
-        collateralLockedAmount: null,
-      },
+    // FEATURE (price-lock) — E.2d-2: ao contrário do SELL, o BUY não tinha $transaction (o
+    // order.create era solto). Envolvemos o create + a marcação da quote numa transação para
+    // ter a MESMA atomicidade do SELL (opção B). O order.create é a ÚNICA escrita deste bloco
+    // (não há audit/notificação/contador aqui — isso fica fora, no controller), então só ele
+    // e a marcação entram no tx.
+    const order = await prisma.$transaction(async (tx) => {
+      const created = await tx.order.create({
+        data: {
+          userId: input.userId,
+          orderType: OrderType.BUY, // BUY = usuario quer comprar crypto
+          type: 'PIX', // Payment method - BUY orders only support PIX
+          status: OrderStatus.PENDING,
+          cryptoType: input.cryptoType,
+          cryptoNetwork: input.cryptoNetwork,
+          cryptoAmount: input.cryptoAmount,
+          brlAmount: brlAmount,
+          unitPrice: unitPriceEfetivo, // FEATURE (preço personalizado) — Parte C: snapshot custom OU mercado (nunca null no BUY daqui pra frente)
+          platformFee: fees.platformFee,
+          payerReward: fees.payerReward, // 0 para BUY
+          totalFee: fees.totalFee,
+          orderData: {}, // Vazio - provedor preenche ao aceitar
+          timeoutAt,
+          customExpirationHours: input.customExpirationHours,
+          manualCancelOnly: input.manualCancelOnly || false,
+          paidByPlatform: false,
+          // Colateral NAO confirmado ainda - provedor deposita ao aceitar
+          collateralConfirmed: false,
+          collateralSource: null,
+          walletId: null,
+          collateralLocked: false,
+          collateralLockedAmount: null,
+        },
+      });
+
+      // Opção B: se o pedido nasceu de uma cotação travada, revalidar expiração/uso DENTRO do tx
+      // (fecha o gap de ms desde o consumeOrderQuote do topo) e marcar como usada atomicamente.
+      // Qualquer falha (expirada/usada por submit concorrente) → ROLLBACK: pedido não é criado.
+      if (input.quoteId) {
+        await orderQuoteService.consumeOrderQuote(input.quoteId, input.userId, tx);
+        await orderQuoteService.markQuoteUsed(input.quoteId, created.id, tx);
+      }
+
+      return created;
     });
 
     console.log(`✅ [BUY ORDER] Created: ${order.id}`);

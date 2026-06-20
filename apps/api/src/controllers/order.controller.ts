@@ -71,6 +71,9 @@ const CreateBuyOrderSchema = z.object({
     .refine((val) => /^\d+(\.\d+)?$/.test(val), 'Preço unitário inválido')
     .refine((val) => gtBN(val, '0'), 'Preço unitário deve ser maior que zero')
     .optional(),
+  // FEATURE (price-lock): cotação travada a consumir num pedido a preço de mercado.
+  // Ausente = mercado live (comportamento atual). Ignorado quando unitPrice (custom) vier.
+  quoteId: z.string().min(1).optional(),
   customExpirationHours: z.number().int().min(1).max(720).optional(),
   manualCancelOnly: z.boolean().optional(),
 });
@@ -129,6 +132,7 @@ export class OrderController {
           cryptoNetwork: validatedData.cryptoNetwork,
           cryptoAmount: validatedData.cryptoAmount,
           unitPrice: validatedData.unitPrice, // FEATURE (preço personalizado): persiste o snapshot; cálculo do brlAmount fica na Parte C
+          quoteId: validatedData.quoteId, // FEATURE (price-lock): cotação travada a consumir (E.2d-2); mapeamento explícito (BUY não usa spread)
           customExpirationHours: validatedData.customExpirationHours,
           manualCancelOnly: validatedData.manualCancelOnly,
         });

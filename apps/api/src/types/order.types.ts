@@ -85,6 +85,7 @@ export interface CreateBuyOrderInput {
   cryptoNetwork: string;
   cryptoAmount: string; // Quanto crypto quer comprar
   unitPrice?: string; // FEATURE (preço personalizado): preço unitário BRL/cripto definido pelo comprador; null = preço de mercado
+  quoteId?: string; // FEATURE (price-lock): cotação travada a consumir (pedido a preço de mercado com preço congelado); ausente = mercado live
   customExpirationHours?: number;
   manualCancelOnly?: boolean;
 }
