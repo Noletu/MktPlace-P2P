@@ -23,6 +23,7 @@ import { notificationService } from './notification.service';
 import { prisma } from '../utils/prisma';
 import { couponService } from './coupon.service';
 import { emailService } from './email.service';
+import { orderQuoteService } from './orderQuote.service';
 
 export class OrderService {
   /**
@@ -317,11 +318,19 @@ export class OrderService {
     // (linha ~167) e o mínimo R$10 (linha ~236) usem o valor do servidor — fecha o vetor de
     // burlar o limite enviando um brlAmount baixo pelo front. O brlAmount vindo do frontend
     // passa a ser IGNORADO no cálculo (mantido no tipo apenas por compatibilidade).
+    // Precedência: custom > mercado-travado (price-lock) > mercado-live.
     if (input.unitPrice) {
-      // Preço personalizado: usa o unitPrice informado pelo criador
+      // Preço personalizado: usa o unitPrice informado pelo criador. Não consome quote.
       input.brlAmount = toBN(input.unitPrice).multipliedBy(toBN(input.cryptoAmount)).toFixed(2);
+    } else if (input.quoteId) {
+      // FEATURE (price-lock) — E.2d: preço de mercado TRAVADO. Consome a cotação (valida
+      // dono/expiração/uso) e usa o preço congelado. A marcação como usada (single-use) ocorre
+      // DENTRO da transação de criação (createOrderWithWalletBalance), com revalidação atômica.
+      const lockedPrice = await orderQuoteService.consumeOrderQuote(input.quoteId, input.userId);
+      input.unitPrice = lockedPrice;
+      input.brlAmount = toBN(lockedPrice).multipliedBy(toBN(input.cryptoAmount)).toFixed(2);
     } else {
-      // Preço de mercado: busca cotação e a usa como unitPrice (snapshot do instante da criação)
+      // Preço de mercado live: busca cotação e a usa como unitPrice (snapshot do instante da criação)
       const quote = await priceService.getPrice(input.cryptoType as CryptoType);
       input.unitPrice = quote.brlPrice;
       input.brlAmount = toBN(quote.brlPrice).multipliedBy(toBN(input.cryptoAmount)).toFixed(2);
@@ -490,6 +499,17 @@ export class OrderService {
           collateralLockedAmount: collateralAmount,
         },
       });
+
+      // 3b. FEATURE (price-lock) — E.2d, opção B: se o pedido nasceu de uma cotação travada,
+      // consumir a quote NA MESMA transação. Revalida expiração/uso DENTRO do tx (fecha o gap
+      // de ms entre o consumeOrderQuote do topo de createOrder e este ponto) e marca como usada
+      // atomicamente. Se a quote expirou ou foi usada por um submit concorrente nesse intervalo,
+      // lança QUOTE_EXPIRED/QUOTE_ALREADY_USED e a transação inteira faz ROLLBACK — pedido não
+      // criado, saldo não debitado, colateral não bloqueado.
+      if (input.quoteId) {
+        await orderQuoteService.consumeOrderQuote(input.quoteId, input.userId, tx);
+        await orderQuoteService.markQuoteUsed(input.quoteId, order.id, tx);
+      }
 
       // 4. Registrar WalletTransaction (audit trail)
       await tx.walletTransaction.create({

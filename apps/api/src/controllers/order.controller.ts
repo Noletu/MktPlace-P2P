@@ -47,6 +47,9 @@ const CreateSellOrderSchema = z.object({
     .refine((val) => /^\d+(\.\d+)?$/.test(val), 'Preço unitário inválido')
     .refine((val) => gtBN(val, '0'), 'Preço unitário deve ser maior que zero')
     .optional(),
+  // FEATURE (price-lock): cotação travada a consumir num pedido a preço de mercado.
+  // Ausente = mercado live (comportamento atual). Ignorado quando unitPrice (custom) vier.
+  quoteId: z.string().min(1).optional(),
   orderData: z.union([BoletoDataSchema, PixDataSchema]),
   collateralAddressId: z.string().optional(),
   customExpirationHours: z.number().int().min(1).max(720).optional(),
@@ -196,6 +199,24 @@ export class OrderController {
           error: 'Dados inválidos',
           message: `Erro de validação: ${fieldErrors[0].message}`,
           details: fieldErrors,
+        });
+      }
+
+      // FEATURE (price-lock) — E.2d: mapear erros de consumo da cotação travada.
+      // QUOTE_FORBIDDEN vira 404 (não vaza que a quote existe para outro usuário).
+      // O front distingue expirada/usada pelo `code` no corpo, não pelo status.
+      if (error.message === 'QUOTE_NOT_FOUND' || error.message === 'QUOTE_FORBIDDEN') {
+        return res.status(404).json({
+          success: false,
+          error: 'Cotação não encontrada',
+          code: error.message,
+        });
+      }
+      if (error.message === 'QUOTE_EXPIRED' || error.message === 'QUOTE_ALREADY_USED') {
+        return res.status(409).json({
+          success: false,
+          error: error.message === 'QUOTE_EXPIRED' ? 'Cotação expirada' : 'Cotação já utilizada',
+          code: error.message,
         });
       }
 

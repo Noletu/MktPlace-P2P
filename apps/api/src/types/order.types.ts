@@ -42,6 +42,7 @@ export interface CreateOrderInput {
   cryptoAmount: string;
   brlAmount: string;
   unitPrice?: string; // FEATURE (preço personalizado): preço unitário BRL/cripto definido pelo criador; null = preço de mercado
+  quoteId?: string; // FEATURE (price-lock): cotação travada a consumir (pedido a preço de mercado com preço congelado); ausente = mercado live
   orderData: BoletoData | PixData;
   customExpirationHours?: number; // Custom expiration time (1-720 hours)
   manualCancelOnly?: boolean; // If true, expires after 6 months instead of custom/default
