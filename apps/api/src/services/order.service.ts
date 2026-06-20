@@ -321,6 +321,10 @@ export class OrderService {
     // Precedência: custom > mercado-travado (price-lock) > mercado-live.
     if (input.unitPrice) {
       // Preço personalizado: usa o unitPrice informado pelo criador. Não consome quote.
+      // Limpa quoteId para que custom NÃO toque a quote (precedência custom > lock): assim a
+      // guarda transacional `if (input.quoteId)` em createOrderWithWalletBalance não dispara e
+      // a quote não é consumida/marcada por um pedido cujo preço veio do custom. (fix Q-8)
+      input.quoteId = undefined;
       input.brlAmount = toBN(input.unitPrice).multipliedBy(toBN(input.cryptoAmount)).toFixed(2);
     } else if (input.quoteId) {
       // FEATURE (price-lock) — E.2d: preço de mercado TRAVADO. Consome a cotação (valida
@@ -567,7 +571,11 @@ export class OrderService {
     //  - live: deixa undefined → calculateBuyOrderBrlAmount busca getPrice (comportamento atual).
     // Em todos os casos o markup de 2.5% é aplicado por calculateBuyOrderBrlAmount sobre o preço.
     let effectiveUnitPrice = input.unitPrice;
-    if (!effectiveUnitPrice && input.quoteId) {
+    if (effectiveUnitPrice) {
+      // custom vence: limpa quoteId para a guarda transacional NÃO consumir/marcar a quote
+      // (precedência custom > lock; "custom não toca a quote"). (fix Q-8)
+      input.quoteId = undefined;
+    } else if (input.quoteId) {
       effectiveUnitPrice = await orderQuoteService.consumeOrderQuote(input.quoteId, input.userId);
     }
 
