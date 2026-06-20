@@ -10,6 +10,7 @@ import ThemeToggle from '@/components/ThemeToggle';
 import AppHeader from '@/components/AppHeader';
 import { fetchWithAuth } from '@/utils/api';
 import { FrozenAccountBanner } from '@/components/FrozenAccountBanner';
+import { usePriceLock } from '@/hooks/usePriceLock';
 
 export default function CreateOrderPage() {
   const router = useRouter();
@@ -35,6 +36,11 @@ export default function CreateOrderPage() {
   // SELL order - swap input currency (BRL or CRYPTO)
   const [inputCurrency, setInputCurrency] = useState<'BRL' | 'CRYPTO'>('BRL');
   const [sellCryptoInput, setSellCryptoInput] = useState('');
+
+  // FEATURE (preço personalizado/price-lock) — SELL: modo de preço.
+  // MARKET (padrão) = cotação travada via usePriceLock; CUSTOM = preço unitário do criador.
+  const [priceModeSell, setPriceModeSell] = useState<'MARKET' | 'CUSTOM'>('MARKET');
+  const [customUnitPriceSell, setCustomUnitPriceSell] = useState('');
 
   // BUY order - swap input currency (CRYPTO default, or BRL)
   const [buyInputCurrency, setBuyInputCurrency] = useState<'BRL' | 'CRYPTO'>('CRYPTO');
@@ -84,6 +90,13 @@ export default function CreateOrderPage() {
     USDC: ['BASE', 'SOLANA'],
     USDT: ['BASE', 'SOLANA'],
   };
+
+  // FEATURE (price-lock) — SELL: cotação travada. Inerte (enabled=false) no modo custom
+  // e quando o usuário está no fluxo BUY. O BUY terá seu próprio usePriceLock na F.2d.
+  const sellPriceLock = usePriceLock({
+    cryptoType: crypto,
+    enabled: orderMode === 'SELL' && priceModeSell === 'MARKET',
+  });
 
   useEffect(() => {
     setNetwork(NETWORK_OPTIONS[crypto][0]);
@@ -1435,6 +1448,37 @@ export default function CreateOrderPage() {
                   </div>
                 </div>
               )}
+
+              {/* FEATURE (preço personalizado/price-lock) — Toggle de modo de preço (SELL) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Como definir o preço
+                </label>
+                <div className="flex p-1 bg-gray-100 dark:bg-gray-700 rounded-full">
+                  <button
+                    type="button"
+                    onClick={() => setPriceModeSell('MARKET')}
+                    className={`flex-1 py-2 px-4 rounded-full text-sm font-medium transition-all ${
+                      priceModeSell === 'MARKET'
+                        ? 'bg-blue-600 dark:bg-blue-700 text-white shadow'
+                        : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Preço de mercado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPriceModeSell('CUSTOM')}
+                    className={`flex-1 py-2 px-4 rounded-full text-sm font-medium transition-all ${
+                      priceModeSell === 'CUSTOM'
+                        ? 'bg-blue-600 dark:bg-blue-700 text-white shadow'
+                        : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Meu preço
+                  </button>
+                </div>
+              </div>
 
               {/* Valor - com swap BRL/CRYPTO */}
               <div>
