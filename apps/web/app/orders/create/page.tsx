@@ -355,14 +355,22 @@ export default function CreateOrderPage() {
 
   // BUY: calcular crypto quando input é BRL
   const buyCalculatedCrypto = useMemo(() => {
-    if (buyInputCurrency !== 'BRL' || !buyBrlInput || !prices[crypto]) return '0';
+    if (buyInputCurrency !== 'BRL' || !buyBrlInput) return '0';
+    // FEATURE (preço personalizado) — F.2d-3b: no custom o preço vem do comprador (não do
+    // mercado); só o mercado exige prices[crypto]. Lógica de preço INLINE (não const externa)
+    // para o useMemo reagir via deps. ATENÇÃO: o markup /BUY_MARKUP_MULTIPLIER PERMANECE no
+    // custom (≠ SELL) — só a fonte do preço muda.
+    if (priceModeBuy !== 'CUSTOM' && !prices[crypto]) return '0';
+    if (priceModeBuy === 'CUSTOM' && (!customUnitPriceBuy || parseFloat(customUnitPriceBuy) <= 0)) return '0';
     const brl = parseFloat(buyBrlInput);
-    const price = parseFloat(prices[crypto]);
+    const price = (priceModeBuy === 'CUSTOM' && customUnitPriceBuy && parseFloat(customUnitPriceBuy) > 0)
+      ? parseFloat(customUnitPriceBuy)
+      : parseFloat(prices[crypto]);
     if (isNaN(brl) || isNaN(price) || price === 0 || brl <= 0) return '0';
     const decimals = (crypto === 'USDC' || crypto === 'USDT') ? 2 : 8;
-    // BRL inclui markup de 2.5%, então crypto = brl / price / 1.025
-    return (brl / price / 1.025).toFixed(decimals);
-  }, [buyBrlInput, crypto, prices, buyInputCurrency]);
+    // BRL inclui markup de 2,5%, então crypto = brl / price / markup
+    return (brl / price / BUY_MARKUP_MULTIPLIER).toFixed(decimals);
+  }, [buyBrlInput, crypto, prices, buyInputCurrency, priceModeBuy, customUnitPriceBuy]);
 
   // BUY: valor efetivo de crypto para submit e resumo
   const effectiveBuyCryptoAmount = useMemo(() => {
@@ -409,23 +417,29 @@ export default function CreateOrderPage() {
 
   // Calcular valor em BRL para ordens BUY (com markup de 2.5%)
   const buyBrlAmount = useMemo(() => {
-    if (orderMode !== 'BUY' || !effectiveBuyCryptoAmount || effectiveBuyCryptoAmount === '0' || !prices[crypto]) {
+    if (orderMode !== 'BUY' || !effectiveBuyCryptoAmount || effectiveBuyCryptoAmount === '0') {
       return '0';
     }
-    // Se input é BRL, usar o valor digitado diretamente
+    // FEATURE (preço personalizado) — F.2d-3b: só o mercado exige prices[crypto]; o custom
+    // exige customUnitPriceBuy válido. O markup ×BUY_MARKUP_MULTIPLIER PERMANECE no custom.
+    if (priceModeBuy !== 'CUSTOM' && !prices[crypto]) return '0';
+    if (priceModeBuy === 'CUSTOM' && (!customUnitPriceBuy || parseFloat(customUnitPriceBuy) <= 0)) return '0';
+    // Se input é BRL, usar o valor digitado diretamente (já coerente: backend recalcula e bate)
     if (buyInputCurrency === 'BRL') {
       return buyBrlInput || '0';
     }
     const cryptoAmt = parseFloat(effectiveBuyCryptoAmount);
-    const price = parseFloat(prices[crypto]);
+    const price = (priceModeBuy === 'CUSTOM' && customUnitPriceBuy && parseFloat(customUnitPriceBuy) > 0)
+      ? parseFloat(customUnitPriceBuy)
+      : parseFloat(prices[crypto]);
     if (isNaN(cryptoAmt) || isNaN(price) || price === 0 || cryptoAmt <= 0) {
       return '0';
     }
-    // Valor base + 2.5% markup
+    // Valor base + 2,5% markup (preço base do comprador no custom; mercado caso contrário)
     const brlBase = cryptoAmt * price;
-    const brlWithMarkup = brlBase * 1.025;
+    const brlWithMarkup = brlBase * BUY_MARKUP_MULTIPLIER;
     return brlWithMarkup.toFixed(2);
-  }, [effectiveBuyCryptoAmount, crypto, prices, orderMode, buyInputCurrency, buyBrlInput]);
+  }, [effectiveBuyCryptoAmount, crypto, prices, orderMode, buyInputCurrency, buyBrlInput, priceModeBuy, customUnitPriceBuy]);
 
   // Calcular BRL quando input é em crypto (SELL mode)
   const calculatedBrl = useMemo(() => {
@@ -536,7 +550,9 @@ export default function CreateOrderPage() {
           throw new Error('Quantidade de cripto deve ser maior que zero');
         }
 
-        if (!prices[crypto]) {
+        // FEATURE (price-lock) — F.2d-3b: no custom não exigimos cotação de mercado (o preço
+        // vem do comprador); só o modo mercado precisa de prices[crypto] carregado.
+        if (priceModeBuy !== 'CUSTOM' && !prices[crypto]) {
           throw new Error('Aguarde o carregamento das cotações');
         }
 
