@@ -370,20 +370,27 @@ export default function CreateOrderPage() {
       return (cryptoVal / 0.975).toFixed(decimals);
     }
     // Modo BRL (padrão)
-    if (!brlAmount || !prices[crypto]) {
-      console.log(`⚠️ Cannot calculate: brlAmount=${brlAmount}, crypto=${crypto}, price=${prices[crypto]}`);
-      return '0';
-    }
+    // FEATURE (preço personalizado) — F.2c-fix: no custom o preço vem do usuário (não do
+    // mercado), então só o modo mercado exige prices[crypto] carregado; o custom exige o
+    // customUnitPriceSell válido.
+    if (!brlAmount) return '0';
+    if (priceModeSell !== 'CUSTOM' && !prices[crypto]) return '0';
+    if (priceModeSell === 'CUSTOM' && (!customUnitPriceSell || parseFloat(customUnitPriceSell) <= 0)) return '0';
     const brl = parseFloat(brlAmount);
-    const price = parseFloat(prices[crypto]);
+    // Custom: preço unitário do criador. Mercado: cotação atual.
+    const price = (priceModeSell === 'CUSTOM' && customUnitPriceSell && parseFloat(customUnitPriceSell) > 0)
+      ? parseFloat(customUnitPriceSell)
+      : parseFloat(prices[crypto]);
     if (isNaN(brl) || isNaN(price) || price === 0) {
       return '0';
     }
-    // Incluir 2.5% de taxa: divide por 0.975 para que o valor líquido seja o desejado
-    const result = (brl / price / 0.975).toFixed(decimals);
-    console.log(`💱 Converting R$${brl} with ${crypto} @ ${price}: ${result} ${crypto}`);
+    // Mercado: divide por 0.975 para embutir o fee de 2,5% na conversão BRL→cripto (atual).
+    // Custom: o preço é do usuário e o fee é cobrado em cripto — sem gross-up (divisor 1).
+    const divisor = priceModeSell === 'CUSTOM' ? 1 : 0.975;
+    const result = (brl / price / divisor).toFixed(decimals);
+    console.log(`💱 Converting R$${brl} with ${crypto} @ ${price} (modo ${priceModeSell}): ${result} ${crypto}`);
     return result;
-  }, [brlAmount, crypto, prices, orderMode, effectiveBuyCryptoAmount, inputCurrency, sellCryptoInput]);
+  }, [brlAmount, crypto, prices, orderMode, effectiveBuyCryptoAmount, inputCurrency, sellCryptoInput, priceModeSell, customUnitPriceSell]);
 
   // Calcular valor em BRL para ordens BUY (com markup de 2.5%)
   const buyBrlAmount = useMemo(() => {
