@@ -53,6 +53,11 @@ export default function CreateOrderPage() {
   const [buyInputCurrency, setBuyInputCurrency] = useState<'BRL' | 'CRYPTO'>('CRYPTO');
   const [buyBrlInput, setBuyBrlInput] = useState('');
 
+  // FEATURE (preço personalizado/price-lock) — BUY: modo de preço.
+  // MARKET (padrão) = cotação travada via usePriceLock; CUSTOM = preço unitário do comprador.
+  const [priceModeBuy, setPriceModeBuy] = useState<'MARKET' | 'CUSTOM'>('MARKET');
+  const [customUnitPriceBuy, setCustomUnitPriceBuy] = useState('');
+
   // PIX fields
   const [pixKey, setPixKey] = useState('');
   const [pixKeyType, setPixKeyType] = useState<'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM'>('CPF');
@@ -103,6 +108,13 @@ export default function CreateOrderPage() {
   const sellPriceLock = usePriceLock({
     cryptoType: crypto,
     enabled: orderMode === 'SELL' && priceModeSell === 'MARKET',
+  });
+
+  // FEATURE (price-lock) — BUY: cotação travada. Inerte (enabled=false) no modo custom e
+  // quando o usuário está no fluxo SELL. Espelha o sellPriceLock.
+  const buyPriceLock = usePriceLock({
+    cryptoType: crypto,
+    enabled: orderMode === 'BUY' && priceModeBuy === 'MARKET',
   });
 
   useEffect(() => {
@@ -1289,6 +1301,37 @@ export default function CreateOrderPage() {
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  {/* FEATURE (preço personalizado/price-lock) — Toggle de modo de preço (BUY) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Como definir o preço
+                    </label>
+                    <div className="flex p-1 bg-gray-100 dark:bg-gray-700 rounded-full">
+                      <button
+                        type="button"
+                        onClick={() => setPriceModeBuy('MARKET')}
+                        className={`flex-1 py-2 px-4 rounded-full text-sm font-medium transition-all ${
+                          priceModeBuy === 'MARKET'
+                            ? 'bg-blue-600 dark:bg-blue-700 text-white shadow'
+                            : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+                        }`}
+                      >
+                        Preço de mercado
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPriceModeBuy('CUSTOM')}
+                        className={`flex-1 py-2 px-4 rounded-full text-sm font-medium transition-all ${
+                          priceModeBuy === 'CUSTOM'
+                            ? 'bg-blue-600 dark:bg-blue-700 text-white shadow'
+                            : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+                        }`}
+                      >
+                        Meu preço
+                      </button>
+                    </div>
                   </div>
 
                   {/* Quantidade - com swap BRL/CRYPTO */}
