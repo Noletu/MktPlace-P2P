@@ -540,6 +540,25 @@ export default function CreateOrderPage() {
           throw new Error('Aguarde o carregamento das cotações');
         }
 
+        // FEATURE (preço personalizado/price-lock) — F.2d-3a: campos de preço conforme o modo.
+        // CUSTOM: envia unitPrice (comprador define). MARKET: envia quoteId (cotação travada).
+        // O BUY NÃO envia brlAmount — o backend calcula com markup (Parte C/E.2d-2).
+        let buyPriceFields: { unitPrice: string } | { quoteId: string };
+        if (priceModeBuy === 'CUSTOM') {
+          if (!customUnitPriceBuy || parseFloat(customUnitPriceBuy) <= 0) {
+            setError('Informe um preço válido');
+            return;
+          }
+          buyPriceFields = { unitPrice: customUnitPriceBuy };
+        } else {
+          const lockedQuote = buyPriceLock.quote;
+          if (buyPriceLock.loading || buyPriceLock.isExpired || !lockedQuote) {
+            setError('Cotação indisponível. Atualize a cotação e tente novamente.');
+            return;
+          }
+          buyPriceFields = { quoteId: lockedQuote.quoteId };
+        }
+
         console.log('✅ Criando ordem BUY:', {
           cryptoAmount: effectiveBuyCryptoAmount,
           brlAmount: buyBrlAmount,
@@ -559,6 +578,7 @@ export default function CreateOrderPage() {
             cryptoType: crypto,
             cryptoNetwork: network,
             cryptoAmount: effectiveBuyCryptoAmount,
+            ...buyPriceFields,
             ...expirationFields,
           }),
         });
@@ -566,6 +586,19 @@ export default function CreateOrderPage() {
         const data = await response.json();
 
         if (!response.ok) {
+          // FEATURE (price-lock) — F.2d-3a: erros de consumo da cotação travada. Não
+          // re-submeter sozinho — buscamos nova quote e o usuário reconfirma manualmente.
+          const code: string | undefined = data.code;
+          if (code === 'QUOTE_EXPIRED' || code === 'QUOTE_ALREADY_USED') {
+            setError('A cotação expirou. Travamos uma nova — confira o preço e confirme.');
+            buyPriceLock.refresh();
+            return;
+          }
+          if (code === 'QUOTE_NOT_FOUND' || code === 'QUOTE_FORBIDDEN') {
+            setError('Houve um problema com a cotação. Confira o preço e tente novamente.');
+            buyPriceLock.refresh();
+            return;
+          }
           if (data.details && data.details.length > 0) {
             const errorDetails = data.details
               .map((d: any) => `• ${d.field}: ${d.message}`)
@@ -1546,7 +1579,7 @@ export default function CreateOrderPage() {
 
                   <button
                     type="submit"
-                    disabled={loading || loadingAccountStatus || accountStatus?.frozen || !effectiveBuyCryptoAmount || parseFloat(effectiveBuyCryptoAmount) <= 0}
+                    disabled={loading || loadingAccountStatus || accountStatus?.frozen || !effectiveBuyCryptoAmount || parseFloat(effectiveBuyCryptoAmount) <= 0 || (priceModeBuy === 'MARKET' && (buyPriceLock.loading || buyPriceLock.isExpired || !buyPriceLock.quote))}
                     className={`w-full py-3 px-4 font-semibold rounded-lg disabled:opacity-50 ${
                       accountStatus?.frozen
                         ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed text-gray-200'
