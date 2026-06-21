@@ -775,6 +775,30 @@ export default function CreateOrderPage() {
 
   // Handler: Usar saldo interno para criar pedido
   const handleUseInternalBalance = async () => {
+    // FEATURE (preço personalizado/price-lock) — F.2c: monta os campos de preço conforme o modo.
+    // CUSTOM: envia unitPrice (criador define). MARKET: envia quoteId (cotação travada).
+    // brlAmount é estimado no front (unitPrice × cryptoAmount) só para passar o Zod — o backend
+    // é a fonte de verdade e recalcula do unitPrice custom ou da quote travada (Parte C/E.2d).
+    let priceFields: { unitPrice: string } | { quoteId: string };
+    let unitForBrl: string;
+    if (priceModeSell === 'CUSTOM') {
+      if (!customUnitPriceSell || parseFloat(customUnitPriceSell) <= 0) {
+        setError('Informe um preço válido');
+        return;
+      }
+      priceFields = { unitPrice: customUnitPriceSell };
+      unitForBrl = customUnitPriceSell;
+    } else {
+      const lockedQuote = sellPriceLock.quote;
+      if (sellPriceLock.loading || sellPriceLock.isExpired || !lockedQuote) {
+        setError('Cotação indisponível. Atualize a cotação e tente novamente.');
+        return;
+      }
+      priceFields = { quoteId: lockedQuote.quoteId };
+      unitForBrl = lockedQuote.unitPrice;
+    }
+    const estimatedBrl = (parseFloat(unitForBrl) * parseFloat(cryptoAmount)).toFixed(2);
+
     let navigating = false;
     try {
       setLoading(true);
@@ -793,7 +817,8 @@ export default function CreateOrderPage() {
           cryptoType: crypto,
           cryptoNetwork: network,
           cryptoAmount,
-          brlAmount: effectiveBrlAmount,
+          brlAmount: estimatedBrl,
+          ...priceFields,
           orderData: orderType === 'PIX' ? {
             pixKey,
             pixKeyType,
@@ -816,6 +841,19 @@ export default function CreateOrderPage() {
         navigating = true;
         router.push(`/orders/${createData.data.id}`);
       } else {
+        // FEATURE (price-lock) — F.2c: erros de consumo da cotação travada. Não re-submeter
+        // sozinho — buscamos nova quote e o usuário reconfirma manualmente.
+        const code: string | undefined = createData.code;
+        if (code === 'QUOTE_EXPIRED' || code === 'QUOTE_ALREADY_USED') {
+          setError('A cotação expirou. Travamos uma nova — confira o preço e confirme.');
+          sellPriceLock.refresh();
+          return;
+        }
+        if (code === 'QUOTE_NOT_FOUND' || code === 'QUOTE_FORBIDDEN') {
+          setError('Houve um problema com a cotação. Confira o preço e tente novamente.');
+          sellPriceLock.refresh();
+          return;
+        }
         if (createData.details && createData.details.length > 0) {
           const errorDetails = createData.details
             .map((d: any) => `• ${d.field}: ${d.message}`)
@@ -1834,7 +1872,7 @@ export default function CreateOrderPage() {
 
               <button
                 type="submit"
-                disabled={loading || loadingAccountStatus || accountStatus?.frozen}
+                disabled={loading || loadingAccountStatus || accountStatus?.frozen || (priceModeSell === 'MARKET' && (sellPriceLock.loading || sellPriceLock.isExpired || !sellPriceLock.quote))}
                 className={`w-full py-3 px-4 font-semibold rounded-lg disabled:opacity-50 ${
                   accountStatus?.frozen
                     ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed text-gray-200'
