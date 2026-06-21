@@ -19,6 +19,9 @@ function formatCountdown(totalSeconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+/** Markup de 2,5% aplicado ao BRL nas ordens BUY (1,5% plataforma + 1% provedor). */
+const BUY_MARKUP_MULTIPLIER = 1.025;
+
 export default function CreateOrderPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -1333,6 +1336,101 @@ export default function CreateOrderPage() {
                       </button>
                     </div>
                   </div>
+
+                  {/* FEATURE — UI do MODO MERCADO (price-lock, BUY): base + efetivo (markup) + cronômetro */}
+                  {priceModeBuy === 'MARKET' && (
+                    <div>
+                      {buyPriceLock.loading ? (
+                        <div className="p-3 bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300">
+                          Buscando cotação...
+                        </div>
+                      ) : buyPriceLock.error ? (
+                        <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg flex items-center justify-between gap-3">
+                          <span className="text-sm text-red-700 dark:text-red-300">{buyPriceLock.error}</span>
+                          <button
+                            type="button"
+                            onClick={buyPriceLock.refresh}
+                            className="text-sm font-medium text-red-700 dark:text-red-300 underline hover:no-underline"
+                          >
+                            Tentar novamente
+                          </button>
+                        </div>
+                      ) : buyPriceLock.isExpired ? (
+                        <div className="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg flex items-center justify-between gap-3">
+                          <span className="text-sm text-amber-800 dark:text-amber-300">Cotação expirada</span>
+                          <button
+                            type="button"
+                            onClick={buyPriceLock.refresh}
+                            className="text-sm font-medium text-amber-800 dark:text-amber-300 underline hover:no-underline"
+                          >
+                            Atualizar
+                          </button>
+                        </div>
+                      ) : buyPriceLock.quote ? (
+                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg space-y-1">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">Preço base (mercado):</span>
+                            <span className="font-medium text-gray-700 dark:text-gray-200">
+                              1 {crypto} = {formatBRL(buyPriceLock.quote.unitPrice)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">+ taxa 2,5% (você paga):</span>
+                            <span className="font-semibold text-blue-600 dark:text-blue-400">
+                              {formatBRL(parseFloat(buyPriceLock.quote.unitPrice) * BUY_MARKUP_MULTIPLIER)}/un
+                            </span>
+                          </div>
+                          <div className={`text-xs ${buyPriceLock.secondsLeft < 15 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400'}`}>
+                            Válido por {formatCountdown(buyPriceLock.secondsLeft)}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {/* FEATURE — UI do MODO CUSTOM (BUY): preço unitário + referência + dois desvios */}
+                  {priceModeBuy === 'CUSTOM' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Seu preço por {crypto} (R$)
+                      </label>
+                      <input
+                        type="number"
+                        value={customUnitPriceBuy}
+                        onChange={(e) => setCustomUnitPriceBuy(e.target.value)}
+                        placeholder="0.00"
+                        step={crypto === 'BTC' ? '0.00000001' : '0.01'}
+                        min="0"
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                      {/* Referência de mercado SEMPRE visível */}
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Mercado: {prices[crypto] ? formatBRL(prices[crypto]) : '—'}
+                      </p>
+                      {/* Dois desvios: base (digitado) e efetivo (com markup). Só com preço > 0 e mercado. */}
+                      {customUnitPriceBuy && parseFloat(customUnitPriceBuy) > 0 && prices[crypto] ? (() => {
+                        const market = prices[crypto];
+                        const custom = parseFloat(customUnitPriceBuy);
+                        const effective = custom * BUY_MARKUP_MULTIPLIER;
+                        const devBase = ((custom - market) / market) * 100;
+                        const devEff = ((effective - market) / market) * 100;
+                        const fmtDev = (d: number): string =>
+                          `${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(1).replace('.', ',')}% ${d >= 0 ? 'acima' : 'abaixo'} do mercado`;
+                        return (
+                          <>
+                            {/* Cor neutra (sem julgar): no BUY "acima do mercado" não é bom/ruim
+                                inequívoco. A direção fica no sinal +/− e no texto acima/abaixo. */}
+                            <p className="text-xs mt-1 font-medium text-gray-500 dark:text-gray-400">
+                              Seu preço: {fmtDev(devBase)}
+                            </p>
+                            <p className="text-xs mt-0.5 text-gray-500 dark:text-gray-400">
+                              Você paga (com taxa 2,5%): {formatBRL(effective)}/un, {fmtDev(devEff)}
+                            </p>
+                          </>
+                        );
+                      })() : null}
+                    </div>
+                  )}
 
                   {/* Quantidade - com swap BRL/CRYPTO */}
                   <div>
