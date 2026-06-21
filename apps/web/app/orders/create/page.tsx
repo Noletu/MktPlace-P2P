@@ -12,6 +12,13 @@ import { fetchWithAuth } from '@/utils/api';
 import { FrozenAccountBanner } from '@/components/FrozenAccountBanner';
 import { usePriceLock } from '@/hooks/usePriceLock';
 
+/** Formata segundos como M:SS (ex: 108 → "1:48"). */
+function formatCountdown(totalSeconds: number): string {
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 export default function CreateOrderPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -1479,6 +1486,85 @@ export default function CreateOrderPage() {
                   </button>
                 </div>
               </div>
+
+              {/* FEATURE — UI do MODO MERCADO (price-lock): preço travado + cronômetro */}
+              {priceModeSell === 'MARKET' && (
+                <div>
+                  {sellPriceLock.loading ? (
+                    <div className="p-3 bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300">
+                      Buscando cotação...
+                    </div>
+                  ) : sellPriceLock.error ? (
+                    <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg flex items-center justify-between gap-3">
+                      <span className="text-sm text-red-700 dark:text-red-300">{sellPriceLock.error}</span>
+                      <button
+                        type="button"
+                        onClick={sellPriceLock.refresh}
+                        className="text-sm font-medium text-red-700 dark:text-red-300 underline hover:no-underline"
+                      >
+                        Tentar novamente
+                      </button>
+                    </div>
+                  ) : sellPriceLock.isExpired ? (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg flex items-center justify-between gap-3">
+                      <span className="text-sm text-amber-800 dark:text-amber-300">Cotação expirada</span>
+                      <button
+                        type="button"
+                        onClick={sellPriceLock.refresh}
+                        className="text-sm font-medium text-amber-800 dark:text-amber-300 underline hover:no-underline"
+                      >
+                        Atualizar
+                      </button>
+                    </div>
+                  ) : sellPriceLock.quote ? (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">Preço travado:</span>
+                        <span className="font-semibold text-blue-600 dark:text-blue-400">
+                          1 {crypto} = {formatBRL(sellPriceLock.quote.unitPrice)}
+                        </span>
+                      </div>
+                      <div className={`text-xs mt-1 ${sellPriceLock.secondsLeft < 15 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400'}`}>
+                        Válido por {formatCountdown(sellPriceLock.secondsLeft)}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* FEATURE — UI do MODO CUSTOM: preço unitário + referência + desvio */}
+              {priceModeSell === 'CUSTOM' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Seu preço por {crypto} (R$)
+                  </label>
+                  <input
+                    type="number"
+                    value={customUnitPriceSell}
+                    onChange={(e) => setCustomUnitPriceSell(e.target.value)}
+                    placeholder="0.00"
+                    step={crypto === 'BTC' ? '0.00000001' : '0.01'}
+                    min="0"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                  {/* Referência de mercado SEMPRE visível */}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Mercado: {prices[crypto] ? formatBRL(prices[crypto]) : '—'}
+                  </p>
+                  {/* % de desvio: só com preço digitado > 0 e mercado disponível */}
+                  {customUnitPriceSell && parseFloat(customUnitPriceSell) > 0 && prices[crypto] ? (() => {
+                    const market = prices[crypto];
+                    const custom = parseFloat(customUnitPriceSell);
+                    const deviation = ((custom - market) / market) * 100;
+                    const above = deviation >= 0;
+                    return (
+                      <p className={`text-xs mt-1 font-medium ${above ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {above ? '+' : '−'}{Math.abs(deviation).toFixed(1).replace('.', ',')}% {above ? 'acima' : 'abaixo'} do mercado
+                      </p>
+                    );
+                  })() : null}
+                </div>
+              )}
 
               {/* Valor - com swap BRL/CRYPTO */}
               <div>
