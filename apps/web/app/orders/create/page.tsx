@@ -414,14 +414,21 @@ export default function CreateOrderPage() {
 
   // Calcular BRL quando input é em crypto (SELL mode)
   const calculatedBrl = useMemo(() => {
-    if (inputCurrency !== 'CRYPTO' || !sellCryptoInput || !prices[crypto]) return '0';
+    if (inputCurrency !== 'CRYPTO' || !sellCryptoInput) return '0';
+    // FEATURE (preço personalizado) — F.2c-fix-display: no custom o preço vem do usuário (não
+    // do mercado); só o mercado exige prices[crypto] carregado. Lógica de preço INLINE aqui
+    // (não via const externa) para o useMemo reagir corretamente via deps.
+    if (priceModeSell !== 'CUSTOM' && !prices[crypto]) return '0';
+    if (priceModeSell === 'CUSTOM' && (!customUnitPriceSell || parseFloat(customUnitPriceSell) <= 0)) return '0';
     const cryptoVal = parseFloat(sellCryptoInput);
-    const price = parseFloat(prices[crypto]);
+    const price = (priceModeSell === 'CUSTOM' && customUnitPriceSell && parseFloat(customUnitPriceSell) > 0)
+      ? parseFloat(customUnitPriceSell)
+      : parseFloat(prices[crypto]);
     if (isNaN(cryptoVal) || isNaN(price) || price === 0 || cryptoVal <= 0) return '0';
     // Valor líquido em BRL que o vendedor vai receber (crypto * price)
     // sellCryptoInput é o valor líquido de crypto, o BRL correspondente é direto
     return (cryptoVal * price).toFixed(2);
-  }, [sellCryptoInput, crypto, prices, inputCurrency]);
+  }, [sellCryptoInput, crypto, prices, inputCurrency, priceModeSell, customUnitPriceSell]);
 
   // brlAmount efetivo para SELL orders (usado no submit e resumo)
   const effectiveBrlAmount = useMemo(() => {
@@ -429,6 +436,15 @@ export default function CreateOrderPage() {
     if (inputCurrency === 'CRYPTO') return calculatedBrl;
     return brlAmount;
   }, [orderMode, inputCurrency, calculatedBrl, brlAmount]);
+
+  // FEATURE (preço personalizado) — F.2c-fix-display: preço unitário para os displays de VALOR
+  // do SELL (o que o usuário recebe/paga). No custom usa o preço do usuário; senão o mercado.
+  // NÃO confundir com a referência de mercado da F.2b (sempre prices[crypto], para o % de desvio).
+  // Const simples (recalcula a cada render) — usada só nos pontos inline do JSX (fee card).
+  const sellDisplayUnitPrice =
+    (priceModeSell === 'CUSTOM' && customUnitPriceSell && parseFloat(customUnitPriceSell) > 0)
+      ? parseFloat(customUnitPriceSell)
+      : (prices[crypto] ? parseFloat(prices[crypto]) : 0);
 
   // Calcular taxas (reativo com useMemo)
   const fees = useMemo(() => {
@@ -1672,22 +1688,22 @@ export default function CreateOrderPage() {
                 )}
 
                 {/* Fee breakdown SELL */}
-                {cryptoAmount !== '0' && prices[crypto] && (
+                {cryptoAmount !== '0' && (prices[crypto] || priceModeSell === 'CUSTOM') && (
                   <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 border-2 border-blue-300 dark:border-blue-700 rounded-lg p-4">
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-sm text-blue-800 dark:text-blue-200">Você vai receber:</span>
                       <span className="text-2xl font-bold text-blue-900 dark:text-blue-100">
-                        {formatBRL((parseFloat(fees.netAmount) * parseFloat(prices[crypto])).toFixed(2))}
+                        {formatBRL((parseFloat(fees.netAmount) * sellDisplayUnitPrice).toFixed(2))}
                       </span>
                     </div>
                     <div className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
                       <div className="flex justify-between">
                         <span>Valor bruto ({cryptoAmount} {crypto}):</span>
-                        <span>{formatBRL((parseFloat(cryptoAmount) * parseFloat(prices[crypto])).toFixed(2))}</span>
+                        <span>{formatBRL((parseFloat(cryptoAmount) * sellDisplayUnitPrice).toFixed(2))}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Taxa (2.5%):</span>
-                        <span>-{formatBRL((parseFloat(fees.totalFee) * parseFloat(prices[crypto])).toFixed(2))}</span>
+                        <span>-{formatBRL((parseFloat(fees.totalFee) * sellDisplayUnitPrice).toFixed(2))}</span>
                       </div>
                     </div>
                   </div>
