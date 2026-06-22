@@ -10,6 +10,17 @@ import ThemeToggle from '@/components/ThemeToggle';
 import AppHeader from '@/components/AppHeader';
 import { fetchWithAuth } from '@/utils/api';
 import { FrozenAccountBanner } from '@/components/FrozenAccountBanner';
+import { usePriceLock } from '@/hooks/usePriceLock';
+
+/** Formata segundos como M:SS (ex: 108 → "1:48"). */
+function formatCountdown(totalSeconds: number): string {
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+/** Markup de 2,5% aplicado ao BRL nas ordens BUY (1,5% plataforma + 1% provedor). */
+const BUY_MARKUP_MULTIPLIER = 1.025;
 
 export default function CreateOrderPage() {
   const router = useRouter();
@@ -36,9 +47,19 @@ export default function CreateOrderPage() {
   const [inputCurrency, setInputCurrency] = useState<'BRL' | 'CRYPTO'>('BRL');
   const [sellCryptoInput, setSellCryptoInput] = useState('');
 
+  // FEATURE (preço personalizado/price-lock) — SELL: modo de preço.
+  // MARKET (padrão) = cotação travada via usePriceLock; CUSTOM = preço unitário do criador.
+  const [priceModeSell, setPriceModeSell] = useState<'MARKET' | 'CUSTOM'>('MARKET');
+  const [customUnitPriceSell, setCustomUnitPriceSell] = useState('');
+
   // BUY order - swap input currency (CRYPTO default, or BRL)
   const [buyInputCurrency, setBuyInputCurrency] = useState<'BRL' | 'CRYPTO'>('CRYPTO');
   const [buyBrlInput, setBuyBrlInput] = useState('');
+
+  // FEATURE (preço personalizado/price-lock) — BUY: modo de preço.
+  // MARKET (padrão) = cotação travada via usePriceLock; CUSTOM = preço unitário do comprador.
+  const [priceModeBuy, setPriceModeBuy] = useState<'MARKET' | 'CUSTOM'>('MARKET');
+  const [customUnitPriceBuy, setCustomUnitPriceBuy] = useState('');
 
   // PIX fields
   const [pixKey, setPixKey] = useState('');
@@ -84,6 +105,20 @@ export default function CreateOrderPage() {
     USDC: ['BASE', 'SOLANA'],
     USDT: ['BASE', 'SOLANA'],
   };
+
+  // FEATURE (price-lock) — SELL: cotação travada. Inerte (enabled=false) no modo custom
+  // e quando o usuário está no fluxo BUY. O BUY terá seu próprio usePriceLock na F.2d.
+  const sellPriceLock = usePriceLock({
+    cryptoType: crypto,
+    enabled: orderMode === 'SELL' && priceModeSell === 'MARKET',
+  });
+
+  // FEATURE (price-lock) — BUY: cotação travada. Inerte (enabled=false) no modo custom e
+  // quando o usuário está no fluxo SELL. Espelha o sellPriceLock.
+  const buyPriceLock = usePriceLock({
+    cryptoType: crypto,
+    enabled: orderMode === 'BUY' && priceModeBuy === 'MARKET',
+  });
 
   useEffect(() => {
     setNetwork(NETWORK_OPTIONS[crypto][0]);
@@ -320,14 +355,22 @@ export default function CreateOrderPage() {
 
   // BUY: calcular crypto quando input é BRL
   const buyCalculatedCrypto = useMemo(() => {
-    if (buyInputCurrency !== 'BRL' || !buyBrlInput || !prices[crypto]) return '0';
+    if (buyInputCurrency !== 'BRL' || !buyBrlInput) return '0';
+    // FEATURE (preço personalizado) — F.2d-3b: no custom o preço vem do comprador (não do
+    // mercado); só o mercado exige prices[crypto]. Lógica de preço INLINE (não const externa)
+    // para o useMemo reagir via deps. ATENÇÃO: o markup /BUY_MARKUP_MULTIPLIER PERMANECE no
+    // custom (≠ SELL) — só a fonte do preço muda.
+    if (priceModeBuy !== 'CUSTOM' && !prices[crypto]) return '0';
+    if (priceModeBuy === 'CUSTOM' && (!customUnitPriceBuy || parseFloat(customUnitPriceBuy) <= 0)) return '0';
     const brl = parseFloat(buyBrlInput);
-    const price = parseFloat(prices[crypto]);
+    const price = (priceModeBuy === 'CUSTOM' && customUnitPriceBuy && parseFloat(customUnitPriceBuy) > 0)
+      ? parseFloat(customUnitPriceBuy)
+      : parseFloat(prices[crypto]);
     if (isNaN(brl) || isNaN(price) || price === 0 || brl <= 0) return '0';
     const decimals = (crypto === 'USDC' || crypto === 'USDT') ? 2 : 8;
-    // BRL inclui markup de 2.5%, então crypto = brl / price / 1.025
-    return (brl / price / 1.025).toFixed(decimals);
-  }, [buyBrlInput, crypto, prices, buyInputCurrency]);
+    // BRL inclui markup de 2,5%, então crypto = brl / price / markup
+    return (brl / price / BUY_MARKUP_MULTIPLIER).toFixed(decimals);
+  }, [buyBrlInput, crypto, prices, buyInputCurrency, priceModeBuy, customUnitPriceBuy]);
 
   // BUY: valor efetivo de crypto para submit e resumo
   const effectiveBuyCryptoAmount = useMemo(() => {
@@ -350,51 +393,71 @@ export default function CreateOrderPage() {
       return (cryptoVal / 0.975).toFixed(decimals);
     }
     // Modo BRL (padrão)
-    if (!brlAmount || !prices[crypto]) {
-      console.log(`⚠️ Cannot calculate: brlAmount=${brlAmount}, crypto=${crypto}, price=${prices[crypto]}`);
-      return '0';
-    }
+    // FEATURE (preço personalizado) — F.2c-fix: no custom o preço vem do usuário (não do
+    // mercado), então só o modo mercado exige prices[crypto] carregado; o custom exige o
+    // customUnitPriceSell válido.
+    if (!brlAmount) return '0';
+    if (priceModeSell !== 'CUSTOM' && !prices[crypto]) return '0';
+    if (priceModeSell === 'CUSTOM' && (!customUnitPriceSell || parseFloat(customUnitPriceSell) <= 0)) return '0';
     const brl = parseFloat(brlAmount);
-    const price = parseFloat(prices[crypto]);
+    // Custom: preço unitário do criador. Mercado: cotação atual.
+    const price = (priceModeSell === 'CUSTOM' && customUnitPriceSell && parseFloat(customUnitPriceSell) > 0)
+      ? parseFloat(customUnitPriceSell)
+      : parseFloat(prices[crypto]);
     if (isNaN(brl) || isNaN(price) || price === 0) {
       return '0';
     }
-    // Incluir 2.5% de taxa: divide por 0.975 para que o valor líquido seja o desejado
-    const result = (brl / price / 0.975).toFixed(decimals);
-    console.log(`💱 Converting R$${brl} with ${crypto} @ ${price}: ${result} ${crypto}`);
+    // Mercado: divide por 0.975 para embutir o fee de 2,5% na conversão BRL→cripto (atual).
+    // Custom: o preço é do usuário e o fee é cobrado em cripto — sem gross-up (divisor 1).
+    const divisor = priceModeSell === 'CUSTOM' ? 1 : 0.975;
+    const result = (brl / price / divisor).toFixed(decimals);
+    console.log(`💱 Converting R$${brl} with ${crypto} @ ${price} (modo ${priceModeSell}): ${result} ${crypto}`);
     return result;
-  }, [brlAmount, crypto, prices, orderMode, effectiveBuyCryptoAmount, inputCurrency, sellCryptoInput]);
+  }, [brlAmount, crypto, prices, orderMode, effectiveBuyCryptoAmount, inputCurrency, sellCryptoInput, priceModeSell, customUnitPriceSell]);
 
   // Calcular valor em BRL para ordens BUY (com markup de 2.5%)
   const buyBrlAmount = useMemo(() => {
-    if (orderMode !== 'BUY' || !effectiveBuyCryptoAmount || effectiveBuyCryptoAmount === '0' || !prices[crypto]) {
+    if (orderMode !== 'BUY' || !effectiveBuyCryptoAmount || effectiveBuyCryptoAmount === '0') {
       return '0';
     }
-    // Se input é BRL, usar o valor digitado diretamente
+    // FEATURE (preço personalizado) — F.2d-3b: só o mercado exige prices[crypto]; o custom
+    // exige customUnitPriceBuy válido. O markup ×BUY_MARKUP_MULTIPLIER PERMANECE no custom.
+    if (priceModeBuy !== 'CUSTOM' && !prices[crypto]) return '0';
+    if (priceModeBuy === 'CUSTOM' && (!customUnitPriceBuy || parseFloat(customUnitPriceBuy) <= 0)) return '0';
+    // Se input é BRL, usar o valor digitado diretamente (já coerente: backend recalcula e bate)
     if (buyInputCurrency === 'BRL') {
       return buyBrlInput || '0';
     }
     const cryptoAmt = parseFloat(effectiveBuyCryptoAmount);
-    const price = parseFloat(prices[crypto]);
+    const price = (priceModeBuy === 'CUSTOM' && customUnitPriceBuy && parseFloat(customUnitPriceBuy) > 0)
+      ? parseFloat(customUnitPriceBuy)
+      : parseFloat(prices[crypto]);
     if (isNaN(cryptoAmt) || isNaN(price) || price === 0 || cryptoAmt <= 0) {
       return '0';
     }
-    // Valor base + 2.5% markup
+    // Valor base + 2,5% markup (preço base do comprador no custom; mercado caso contrário)
     const brlBase = cryptoAmt * price;
-    const brlWithMarkup = brlBase * 1.025;
+    const brlWithMarkup = brlBase * BUY_MARKUP_MULTIPLIER;
     return brlWithMarkup.toFixed(2);
-  }, [effectiveBuyCryptoAmount, crypto, prices, orderMode, buyInputCurrency, buyBrlInput]);
+  }, [effectiveBuyCryptoAmount, crypto, prices, orderMode, buyInputCurrency, buyBrlInput, priceModeBuy, customUnitPriceBuy]);
 
   // Calcular BRL quando input é em crypto (SELL mode)
   const calculatedBrl = useMemo(() => {
-    if (inputCurrency !== 'CRYPTO' || !sellCryptoInput || !prices[crypto]) return '0';
+    if (inputCurrency !== 'CRYPTO' || !sellCryptoInput) return '0';
+    // FEATURE (preço personalizado) — F.2c-fix-display: no custom o preço vem do usuário (não
+    // do mercado); só o mercado exige prices[crypto] carregado. Lógica de preço INLINE aqui
+    // (não via const externa) para o useMemo reagir corretamente via deps.
+    if (priceModeSell !== 'CUSTOM' && !prices[crypto]) return '0';
+    if (priceModeSell === 'CUSTOM' && (!customUnitPriceSell || parseFloat(customUnitPriceSell) <= 0)) return '0';
     const cryptoVal = parseFloat(sellCryptoInput);
-    const price = parseFloat(prices[crypto]);
+    const price = (priceModeSell === 'CUSTOM' && customUnitPriceSell && parseFloat(customUnitPriceSell) > 0)
+      ? parseFloat(customUnitPriceSell)
+      : parseFloat(prices[crypto]);
     if (isNaN(cryptoVal) || isNaN(price) || price === 0 || cryptoVal <= 0) return '0';
     // Valor líquido em BRL que o vendedor vai receber (crypto * price)
     // sellCryptoInput é o valor líquido de crypto, o BRL correspondente é direto
     return (cryptoVal * price).toFixed(2);
-  }, [sellCryptoInput, crypto, prices, inputCurrency]);
+  }, [sellCryptoInput, crypto, prices, inputCurrency, priceModeSell, customUnitPriceSell]);
 
   // brlAmount efetivo para SELL orders (usado no submit e resumo)
   const effectiveBrlAmount = useMemo(() => {
@@ -402,6 +465,15 @@ export default function CreateOrderPage() {
     if (inputCurrency === 'CRYPTO') return calculatedBrl;
     return brlAmount;
   }, [orderMode, inputCurrency, calculatedBrl, brlAmount]);
+
+  // FEATURE (preço personalizado) — F.2c-fix-display: preço unitário para os displays de VALOR
+  // do SELL (o que o usuário recebe/paga). No custom usa o preço do usuário; senão o mercado.
+  // NÃO confundir com a referência de mercado da F.2b (sempre prices[crypto], para o % de desvio).
+  // Const simples (recalcula a cada render) — usada só nos pontos inline do JSX (fee card).
+  const sellDisplayUnitPrice =
+    (priceModeSell === 'CUSTOM' && customUnitPriceSell && parseFloat(customUnitPriceSell) > 0)
+      ? parseFloat(customUnitPriceSell)
+      : (prices[crypto] ? parseFloat(prices[crypto]) : 0);
 
   // Calcular taxas (reativo com useMemo)
   const fees = useMemo(() => {
@@ -478,8 +550,29 @@ export default function CreateOrderPage() {
           throw new Error('Quantidade de cripto deve ser maior que zero');
         }
 
-        if (!prices[crypto]) {
+        // FEATURE (price-lock) — F.2d-3b: no custom não exigimos cotação de mercado (o preço
+        // vem do comprador); só o modo mercado precisa de prices[crypto] carregado.
+        if (priceModeBuy !== 'CUSTOM' && !prices[crypto]) {
           throw new Error('Aguarde o carregamento das cotações');
+        }
+
+        // FEATURE (preço personalizado/price-lock) — F.2d-3a: campos de preço conforme o modo.
+        // CUSTOM: envia unitPrice (comprador define). MARKET: envia quoteId (cotação travada).
+        // O BUY NÃO envia brlAmount — o backend calcula com markup (Parte C/E.2d-2).
+        let buyPriceFields: { unitPrice: string } | { quoteId: string };
+        if (priceModeBuy === 'CUSTOM') {
+          if (!customUnitPriceBuy || parseFloat(customUnitPriceBuy) <= 0) {
+            setError('Informe um preço válido');
+            return;
+          }
+          buyPriceFields = { unitPrice: customUnitPriceBuy };
+        } else {
+          const lockedQuote = buyPriceLock.quote;
+          if (buyPriceLock.loading || buyPriceLock.isExpired || !lockedQuote) {
+            setError('Cotação indisponível. Atualize a cotação e tente novamente.');
+            return;
+          }
+          buyPriceFields = { quoteId: lockedQuote.quoteId };
         }
 
         console.log('✅ Criando ordem BUY:', {
@@ -501,6 +594,7 @@ export default function CreateOrderPage() {
             cryptoType: crypto,
             cryptoNetwork: network,
             cryptoAmount: effectiveBuyCryptoAmount,
+            ...buyPriceFields,
             ...expirationFields,
           }),
         });
@@ -508,6 +602,19 @@ export default function CreateOrderPage() {
         const data = await response.json();
 
         if (!response.ok) {
+          // FEATURE (price-lock) — F.2d-3a: erros de consumo da cotação travada. Não
+          // re-submeter sozinho — buscamos nova quote e o usuário reconfirma manualmente.
+          const code: string | undefined = data.code;
+          if (code === 'QUOTE_EXPIRED' || code === 'QUOTE_ALREADY_USED') {
+            setError('A cotação expirou. Travamos uma nova — confira o preço e confirme.');
+            buyPriceLock.refresh();
+            return;
+          }
+          if (code === 'QUOTE_NOT_FOUND' || code === 'QUOTE_FORBIDDEN') {
+            setError('Houve um problema com a cotação. Confira o preço e tente novamente.');
+            buyPriceLock.refresh();
+            return;
+          }
           if (data.details && data.details.length > 0) {
             const errorDetails = data.details
               .map((d: any) => `• ${d.field}: ${d.message}`)
@@ -755,6 +862,30 @@ export default function CreateOrderPage() {
 
   // Handler: Usar saldo interno para criar pedido
   const handleUseInternalBalance = async () => {
+    // FEATURE (preço personalizado/price-lock) — F.2c: monta os campos de preço conforme o modo.
+    // CUSTOM: envia unitPrice (criador define). MARKET: envia quoteId (cotação travada).
+    // brlAmount é estimado no front (unitPrice × cryptoAmount) só para passar o Zod — o backend
+    // é a fonte de verdade e recalcula do unitPrice custom ou da quote travada (Parte C/E.2d).
+    let priceFields: { unitPrice: string } | { quoteId: string };
+    let unitForBrl: string;
+    if (priceModeSell === 'CUSTOM') {
+      if (!customUnitPriceSell || parseFloat(customUnitPriceSell) <= 0) {
+        setError('Informe um preço válido');
+        return;
+      }
+      priceFields = { unitPrice: customUnitPriceSell };
+      unitForBrl = customUnitPriceSell;
+    } else {
+      const lockedQuote = sellPriceLock.quote;
+      if (sellPriceLock.loading || sellPriceLock.isExpired || !lockedQuote) {
+        setError('Cotação indisponível. Atualize a cotação e tente novamente.');
+        return;
+      }
+      priceFields = { quoteId: lockedQuote.quoteId };
+      unitForBrl = lockedQuote.unitPrice;
+    }
+    const estimatedBrl = (parseFloat(unitForBrl) * parseFloat(cryptoAmount)).toFixed(2);
+
     let navigating = false;
     try {
       setLoading(true);
@@ -773,7 +904,8 @@ export default function CreateOrderPage() {
           cryptoType: crypto,
           cryptoNetwork: network,
           cryptoAmount,
-          brlAmount: effectiveBrlAmount,
+          brlAmount: estimatedBrl,
+          ...priceFields,
           orderData: orderType === 'PIX' ? {
             pixKey,
             pixKeyType,
@@ -796,6 +928,19 @@ export default function CreateOrderPage() {
         navigating = true;
         router.push(`/orders/${createData.data.id}`);
       } else {
+        // FEATURE (price-lock) — F.2c: erros de consumo da cotação travada. Não re-submeter
+        // sozinho — buscamos nova quote e o usuário reconfirma manualmente.
+        const code: string | undefined = createData.code;
+        if (code === 'QUOTE_EXPIRED' || code === 'QUOTE_ALREADY_USED') {
+          setError('A cotação expirou. Travamos uma nova — confira o preço e confirme.');
+          sellPriceLock.refresh();
+          return;
+        }
+        if (code === 'QUOTE_NOT_FOUND' || code === 'QUOTE_FORBIDDEN') {
+          setError('Houve um problema com a cotação. Confira o preço e tente novamente.');
+          sellPriceLock.refresh();
+          return;
+        }
         if (createData.details && createData.details.length > 0) {
           const errorDetails = createData.details
             .map((d: any) => `• ${d.field}: ${d.message}`)
@@ -1210,6 +1355,132 @@ export default function CreateOrderPage() {
                     </select>
                   </div>
 
+                  {/* FEATURE (preço personalizado/price-lock) — Toggle de modo de preço (BUY) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Como definir o preço
+                    </label>
+                    <div className="flex p-1 bg-gray-100 dark:bg-gray-700 rounded-full">
+                      <button
+                        type="button"
+                        onClick={() => setPriceModeBuy('MARKET')}
+                        className={`flex-1 py-2 px-4 rounded-full text-sm font-medium transition-all ${
+                          priceModeBuy === 'MARKET'
+                            ? 'bg-blue-600 dark:bg-blue-700 text-white shadow'
+                            : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+                        }`}
+                      >
+                        Preço de mercado
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPriceModeBuy('CUSTOM')}
+                        className={`flex-1 py-2 px-4 rounded-full text-sm font-medium transition-all ${
+                          priceModeBuy === 'CUSTOM'
+                            ? 'bg-blue-600 dark:bg-blue-700 text-white shadow'
+                            : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+                        }`}
+                      >
+                        Meu preço
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* FEATURE — UI do MODO MERCADO (price-lock, BUY): base + efetivo (markup) + cronômetro */}
+                  {priceModeBuy === 'MARKET' && (
+                    <div>
+                      {buyPriceLock.loading ? (
+                        <div className="p-3 bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300">
+                          Buscando cotação...
+                        </div>
+                      ) : buyPriceLock.error ? (
+                        <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg flex items-center justify-between gap-3">
+                          <span className="text-sm text-red-700 dark:text-red-300">{buyPriceLock.error}</span>
+                          <button
+                            type="button"
+                            onClick={buyPriceLock.refresh}
+                            className="text-sm font-medium text-red-700 dark:text-red-300 underline hover:no-underline"
+                          >
+                            Tentar novamente
+                          </button>
+                        </div>
+                      ) : buyPriceLock.isExpired ? (
+                        <div className="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg flex items-center justify-between gap-3">
+                          <span className="text-sm text-amber-800 dark:text-amber-300">Cotação expirada</span>
+                          <button
+                            type="button"
+                            onClick={buyPriceLock.refresh}
+                            className="text-sm font-medium text-amber-800 dark:text-amber-300 underline hover:no-underline"
+                          >
+                            Atualizar
+                          </button>
+                        </div>
+                      ) : buyPriceLock.quote ? (
+                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg space-y-1">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">Preço base (mercado):</span>
+                            <span className="font-medium text-gray-700 dark:text-gray-200">
+                              1 {crypto} = {formatBRL(buyPriceLock.quote.unitPrice)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">+ taxa 2,5% (você paga):</span>
+                            <span className="font-semibold text-blue-600 dark:text-blue-400">
+                              {formatBRL(parseFloat(buyPriceLock.quote.unitPrice) * BUY_MARKUP_MULTIPLIER)}/un
+                            </span>
+                          </div>
+                          <div className={`text-xs ${buyPriceLock.secondsLeft < 15 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400'}`}>
+                            Válido por {formatCountdown(buyPriceLock.secondsLeft)}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {/* FEATURE — UI do MODO CUSTOM (BUY): preço unitário + referência + dois desvios */}
+                  {priceModeBuy === 'CUSTOM' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Seu preço por {crypto} (R$)
+                      </label>
+                      <input
+                        type="number"
+                        value={customUnitPriceBuy}
+                        onChange={(e) => setCustomUnitPriceBuy(e.target.value)}
+                        placeholder="0.00"
+                        step={crypto === 'BTC' ? '0.00000001' : '0.01'}
+                        min="0"
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                      {/* Referência de mercado SEMPRE visível */}
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Mercado: {prices[crypto] ? formatBRL(prices[crypto]) : '—'}
+                      </p>
+                      {/* Dois desvios: base (digitado) e efetivo (com markup). Só com preço > 0 e mercado. */}
+                      {customUnitPriceBuy && parseFloat(customUnitPriceBuy) > 0 && prices[crypto] ? (() => {
+                        const market = prices[crypto];
+                        const custom = parseFloat(customUnitPriceBuy);
+                        const effective = custom * BUY_MARKUP_MULTIPLIER;
+                        const devBase = ((custom - market) / market) * 100;
+                        const devEff = ((effective - market) / market) * 100;
+                        const fmtDev = (d: number): string =>
+                          `${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(1).replace('.', ',')}% ${d >= 0 ? 'acima' : 'abaixo'} do mercado`;
+                        return (
+                          <>
+                            {/* Cor neutra (sem julgar): no BUY "acima do mercado" não é bom/ruim
+                                inequívoco. A direção fica no sinal +/− e no texto acima/abaixo. */}
+                            <p className="text-xs mt-1 font-medium text-gray-500 dark:text-gray-400">
+                              Seu preço: {fmtDev(devBase)}
+                            </p>
+                            <p className="text-xs mt-0.5 text-gray-500 dark:text-gray-400">
+                              Você paga (com taxa 2,5%): {formatBRL(effective)}/un, {fmtDev(devEff)}
+                            </p>
+                          </>
+                        );
+                      })() : null}
+                    </div>
+                  )}
+
                   {/* Quantidade - com swap BRL/CRYPTO */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -1324,7 +1595,7 @@ export default function CreateOrderPage() {
 
                   <button
                     type="submit"
-                    disabled={loading || loadingAccountStatus || accountStatus?.frozen || !effectiveBuyCryptoAmount || parseFloat(effectiveBuyCryptoAmount) <= 0}
+                    disabled={loading || loadingAccountStatus || accountStatus?.frozen || !effectiveBuyCryptoAmount || parseFloat(effectiveBuyCryptoAmount) <= 0 || (priceModeBuy === 'MARKET' && (buyPriceLock.loading || buyPriceLock.isExpired || !buyPriceLock.quote))}
                     className={`w-full py-3 px-4 font-semibold rounded-lg disabled:opacity-50 ${
                       accountStatus?.frozen
                         ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed text-gray-200'
@@ -1436,6 +1707,116 @@ export default function CreateOrderPage() {
                 </div>
               )}
 
+              {/* FEATURE (preço personalizado/price-lock) — Toggle de modo de preço (SELL) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Como definir o preço
+                </label>
+                <div className="flex p-1 bg-gray-100 dark:bg-gray-700 rounded-full">
+                  <button
+                    type="button"
+                    onClick={() => setPriceModeSell('MARKET')}
+                    className={`flex-1 py-2 px-4 rounded-full text-sm font-medium transition-all ${
+                      priceModeSell === 'MARKET'
+                        ? 'bg-blue-600 dark:bg-blue-700 text-white shadow'
+                        : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Preço de mercado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPriceModeSell('CUSTOM')}
+                    className={`flex-1 py-2 px-4 rounded-full text-sm font-medium transition-all ${
+                      priceModeSell === 'CUSTOM'
+                        ? 'bg-blue-600 dark:bg-blue-700 text-white shadow'
+                        : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Meu preço
+                  </button>
+                </div>
+              </div>
+
+              {/* FEATURE — UI do MODO MERCADO (price-lock): preço travado + cronômetro */}
+              {priceModeSell === 'MARKET' && (
+                <div>
+                  {sellPriceLock.loading ? (
+                    <div className="p-3 bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300">
+                      Buscando cotação...
+                    </div>
+                  ) : sellPriceLock.error ? (
+                    <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg flex items-center justify-between gap-3">
+                      <span className="text-sm text-red-700 dark:text-red-300">{sellPriceLock.error}</span>
+                      <button
+                        type="button"
+                        onClick={sellPriceLock.refresh}
+                        className="text-sm font-medium text-red-700 dark:text-red-300 underline hover:no-underline"
+                      >
+                        Tentar novamente
+                      </button>
+                    </div>
+                  ) : sellPriceLock.isExpired ? (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg flex items-center justify-between gap-3">
+                      <span className="text-sm text-amber-800 dark:text-amber-300">Cotação expirada</span>
+                      <button
+                        type="button"
+                        onClick={sellPriceLock.refresh}
+                        className="text-sm font-medium text-amber-800 dark:text-amber-300 underline hover:no-underline"
+                      >
+                        Atualizar
+                      </button>
+                    </div>
+                  ) : sellPriceLock.quote ? (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">Preço travado:</span>
+                        <span className="font-semibold text-blue-600 dark:text-blue-400">
+                          1 {crypto} = {formatBRL(sellPriceLock.quote.unitPrice)}
+                        </span>
+                      </div>
+                      <div className={`text-xs mt-1 ${sellPriceLock.secondsLeft < 15 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400'}`}>
+                        Válido por {formatCountdown(sellPriceLock.secondsLeft)}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* FEATURE — UI do MODO CUSTOM: preço unitário + referência + desvio */}
+              {priceModeSell === 'CUSTOM' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Seu preço por {crypto} (R$)
+                  </label>
+                  <input
+                    type="number"
+                    value={customUnitPriceSell}
+                    onChange={(e) => setCustomUnitPriceSell(e.target.value)}
+                    placeholder="0.00"
+                    step={crypto === 'BTC' ? '0.00000001' : '0.01'}
+                    min="0"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                  {/* Referência de mercado SEMPRE visível */}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Mercado: {prices[crypto] ? formatBRL(prices[crypto]) : '—'}
+                  </p>
+                  {/* % de desvio: só com preço digitado > 0 e mercado disponível */}
+                  {customUnitPriceSell && parseFloat(customUnitPriceSell) > 0 && prices[crypto] ? (() => {
+                    const market = prices[crypto];
+                    const custom = parseFloat(customUnitPriceSell);
+                    const deviation = ((custom - market) / market) * 100;
+                    const above = deviation >= 0;
+                    return (
+                      <p className={`text-xs mt-1 font-medium ${above ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {above ? '+' : '−'}{Math.abs(deviation).toFixed(1).replace('.', ',')}% {above ? 'acima' : 'abaixo'} do mercado
+                      </p>
+                    );
+                  })() : null}
+                </div>
+              )}
+
               {/* Valor - com swap BRL/CRYPTO */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -1497,22 +1878,22 @@ export default function CreateOrderPage() {
                 )}
 
                 {/* Fee breakdown SELL */}
-                {cryptoAmount !== '0' && prices[crypto] && (
+                {cryptoAmount !== '0' && (prices[crypto] || priceModeSell === 'CUSTOM') && (
                   <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 border-2 border-blue-300 dark:border-blue-700 rounded-lg p-4">
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-sm text-blue-800 dark:text-blue-200">Você vai receber:</span>
                       <span className="text-2xl font-bold text-blue-900 dark:text-blue-100">
-                        {formatBRL((parseFloat(fees.netAmount) * parseFloat(prices[crypto])).toFixed(2))}
+                        {formatBRL((parseFloat(fees.netAmount) * sellDisplayUnitPrice).toFixed(2))}
                       </span>
                     </div>
                     <div className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
                       <div className="flex justify-between">
                         <span>Valor bruto ({cryptoAmount} {crypto}):</span>
-                        <span>{formatBRL((parseFloat(cryptoAmount) * parseFloat(prices[crypto])).toFixed(2))}</span>
+                        <span>{formatBRL((parseFloat(cryptoAmount) * sellDisplayUnitPrice).toFixed(2))}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Taxa (2.5%):</span>
-                        <span>-{formatBRL((parseFloat(fees.totalFee) * parseFloat(prices[crypto])).toFixed(2))}</span>
+                        <span>-{formatBRL((parseFloat(fees.totalFee) * sellDisplayUnitPrice).toFixed(2))}</span>
                       </div>
                     </div>
                   </div>
@@ -1704,7 +2085,7 @@ export default function CreateOrderPage() {
 
               <button
                 type="submit"
-                disabled={loading || loadingAccountStatus || accountStatus?.frozen}
+                disabled={loading || loadingAccountStatus || accountStatus?.frozen || (priceModeSell === 'MARKET' && (sellPriceLock.loading || sellPriceLock.isExpired || !sellPriceLock.quote))}
                 className={`w-full py-3 px-4 font-semibold rounded-lg disabled:opacity-50 ${
                   accountStatus?.frozen
                     ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed text-gray-200'

@@ -23,6 +23,7 @@ import { notificationService } from './notification.service';
 import { prisma } from '../utils/prisma';
 import { couponService } from './coupon.service';
 import { emailService } from './email.service';
+import { orderQuoteService } from './orderQuote.service';
 
 export class OrderService {
   /**
@@ -123,12 +124,32 @@ export class OrderService {
    * Calcula valor em BRL para ordem BUY com markup
    * Busca cotação atual e aplica markup de 2.5%
    */
-  async calculateBuyOrderBrlAmount(cryptoAmount: string, cryptoType: string): Promise<string> {
-    const amount = toBN(cryptoAmount);
-    const brlValue = await priceService.convertCryptoToBRL(amount.toNumber(), cryptoType as CryptoType);
-    const brlBase = toBN(brlValue);
-    const brlWithMarkup = brlBase.multipliedBy(toBN("1").plus(BUY_ORDER_CONFIG.BRL_MARKUP_PERCENTAGE));
-    return brlWithMarkup.toFixed(2);
+  async calculateBuyOrderBrlAmount(
+    cryptoAmount: string,
+    cryptoType: string,
+    unitPrice?: string
+  ): Promise<{ brlAmount: string; unitPrice: string }> {
+    // FEATURE (preço personalizado) — Parte C: define o preço unitário efetivo.
+    // Custom: usa o unitPrice informado pelo comprador.
+    // Mercado: busca cotação via getPrice e a usa como unitPrice (snapshot do instante).
+    let unitPriceEfetivo: string;
+    if (unitPrice) {
+      unitPriceEfetivo = unitPrice;
+    } else {
+      const quote = await priceService.getPrice(cryptoType as CryptoType);
+      unitPriceEfetivo = quote.brlPrice;
+    }
+
+    // brlAmount = preço unitário × quantidade × (1 + markup 2.5%).
+    // ARREDONDAMENTO ÚNICO (opção B): um único toFixed(2) no final, sem o duplo
+    // arredondamento do legado (que arredondava a conversão e de novo após o markup).
+    // Fee (1,5% cripto) e colateral permanecem INALTERADOS (são % de cryptoAmount).
+    const brlAmount = toBN(unitPriceEfetivo)
+      .multipliedBy(toBN(cryptoAmount))
+      .multipliedBy(toBN("1").plus(BUY_ORDER_CONFIG.BRL_MARKUP_PERCENTAGE))
+      .toFixed(2);
+
+    return { brlAmount, unitPrice: unitPriceEfetivo };
   }
 
   /**
@@ -292,6 +313,33 @@ export class OrderService {
     // Log de entrada para debug
     console.log(`📝 [ORDER] Creating order - userId: ${input.userId}, type: ${input.type}, crypto: ${input.cryptoType}/${input.cryptoNetwork}, amount: ${input.brlAmount} BRL, useInternalBalance: ${input.useInternalBalance}`);
 
+    // FEATURE (preço personalizado) — Parte C: o servidor é a FONTE DE VERDADE do brlAmount.
+    // Derivamos brlAmount e unitPrice ANTES de validateOrderCreation, para que o limite diário
+    // (linha ~167) e o mínimo R$10 (linha ~236) usem o valor do servidor — fecha o vetor de
+    // burlar o limite enviando um brlAmount baixo pelo front. O brlAmount vindo do frontend
+    // passa a ser IGNORADO no cálculo (mantido no tipo apenas por compatibilidade).
+    // Precedência: custom > mercado-travado (price-lock) > mercado-live.
+    if (input.unitPrice) {
+      // Preço personalizado: usa o unitPrice informado pelo criador. Não consome quote.
+      // Limpa quoteId para que custom NÃO toque a quote (precedência custom > lock): assim a
+      // guarda transacional `if (input.quoteId)` em createOrderWithWalletBalance não dispara e
+      // a quote não é consumida/marcada por um pedido cujo preço veio do custom. (fix Q-8)
+      input.quoteId = undefined;
+      input.brlAmount = toBN(input.unitPrice).multipliedBy(toBN(input.cryptoAmount)).toFixed(2);
+    } else if (input.quoteId) {
+      // FEATURE (price-lock) — E.2d: preço de mercado TRAVADO. Consome a cotação (valida
+      // dono/expiração/uso) e usa o preço congelado. A marcação como usada (single-use) ocorre
+      // DENTRO da transação de criação (createOrderWithWalletBalance), com revalidação atômica.
+      const lockedPrice = await orderQuoteService.consumeOrderQuote(input.quoteId, input.userId);
+      input.unitPrice = lockedPrice;
+      input.brlAmount = toBN(lockedPrice).multipliedBy(toBN(input.cryptoAmount)).toFixed(2);
+    } else {
+      // Preço de mercado live: busca cotação e a usa como unitPrice (snapshot do instante da criação)
+      const quote = await priceService.getPrice(input.cryptoType as CryptoType);
+      input.unitPrice = quote.brlPrice;
+      input.brlAmount = toBN(quote.brlPrice).multipliedBy(toBN(input.cryptoAmount)).toFixed(2);
+    }
+
     // Validar criação
     await this.validateOrderCreation(input);
 
@@ -434,6 +482,7 @@ export class OrderService {
           cryptoNetwork: input.cryptoNetwork,
           cryptoAmount: input.cryptoAmount,
           brlAmount: input.brlAmount,
+          unitPrice: input.unitPrice ?? null, // FEATURE (preço personalizado): persiste o snapshot se vier; null = preço de mercado
           platformFee: fees.platformFee,
           payerReward: fees.payerReward,
           totalFee: fees.totalFee,
@@ -454,6 +503,17 @@ export class OrderService {
           collateralLockedAmount: collateralAmount,
         },
       });
+
+      // 3b. FEATURE (price-lock) — E.2d, opção B: se o pedido nasceu de uma cotação travada,
+      // consumir a quote NA MESMA transação. Revalida expiração/uso DENTRO do tx (fecha o gap
+      // de ms entre o consumeOrderQuote do topo de createOrder e este ponto) e marca como usada
+      // atomicamente. Se a quote expirou ou foi usada por um submit concorrente nesse intervalo,
+      // lança QUOTE_EXPIRED/QUOTE_ALREADY_USED e a transação inteira faz ROLLBACK — pedido não
+      // criado, saldo não debitado, colateral não bloqueado.
+      if (input.quoteId) {
+        await orderQuoteService.consumeOrderQuote(input.quoteId, input.userId, tx);
+        await orderQuoteService.markQuoteUsed(input.quoteId, order.id, tx);
+      }
 
       // 4. Registrar WalletTransaction (audit trail)
       await tx.walletTransaction.create({
@@ -502,8 +562,30 @@ export class OrderService {
   async createBuyOrder(input: CreateBuyOrderInput): Promise<Order> {
     console.log(`📝 [BUY ORDER] Creating - userId: ${input.userId}, crypto: ${input.cryptoType}/${input.cryptoNetwork}, amount: ${input.cryptoAmount}`);
 
-    // Validar limite diario baseado em reputacao (usando o brlAmount calculado)
-    const brlAmount = await this.calculateBuyOrderBrlAmount(input.cryptoAmount, input.cryptoType);
+    // FEATURE (price-lock) — E.2d-2: resolve o preço unitário efetivo FORA da transação,
+    // com precedência custom > travado > live:
+    //  - custom: usa o unitPrice informado pelo comprador.
+    //  - travado: consome a cotação (valida dono/expiração/uso) e usa o preço congelado; a
+    //    marcação como usada (single-use) ocorre DENTRO da transação de criação, com revalidação
+    //    atômica (opção B).
+    //  - live: deixa undefined → calculateBuyOrderBrlAmount busca getPrice (comportamento atual).
+    // Em todos os casos o markup de 2.5% é aplicado por calculateBuyOrderBrlAmount sobre o preço.
+    let effectiveUnitPrice = input.unitPrice;
+    if (effectiveUnitPrice) {
+      // custom vence: limpa quoteId para a guarda transacional NÃO consumir/marcar a quote
+      // (precedência custom > lock; "custom não toca a quote"). (fix Q-8)
+      input.quoteId = undefined;
+    } else if (input.quoteId) {
+      effectiveUnitPrice = await orderQuoteService.consumeOrderQuote(input.quoteId, input.userId);
+    }
+
+    // Validar limite diario baseado em reputacao (usando o brlAmount calculado).
+    // FEATURE (preço personalizado) — Parte C: deriva brlAmount E unitPrice efetivo (custom ou mercado).
+    const { brlAmount, unitPrice: unitPriceEfetivo } = await this.calculateBuyOrderBrlAmount(
+      input.cryptoAmount,
+      input.cryptoType,
+      effectiveUnitPrice
+    );
     const limitCheck = await limitService.canUserTransact(input.userId, toBN(brlAmount).toNumber());
 
     if (!limitCheck.allowed) {
@@ -580,31 +662,49 @@ export class OrderService {
     // Criar ordem BUY
     // NOTA: Ordem criada SEM colateral (provedor deposita ao aceitar)
     // NOTA: Ordem criada SEM orderData (provedor fornece PIX ao aceitar)
-    const order = await prisma.order.create({
-      data: {
-        userId: input.userId,
-        orderType: OrderType.BUY, // BUY = usuario quer comprar crypto
-        type: 'PIX', // Payment method - BUY orders only support PIX
-        status: OrderStatus.PENDING,
-        cryptoType: input.cryptoType,
-        cryptoNetwork: input.cryptoNetwork,
-        cryptoAmount: input.cryptoAmount,
-        brlAmount: brlAmount,
-        platformFee: fees.platformFee,
-        payerReward: fees.payerReward, // 0 para BUY
-        totalFee: fees.totalFee,
-        orderData: {}, // Vazio - provedor preenche ao aceitar
-        timeoutAt,
-        customExpirationHours: input.customExpirationHours,
-        manualCancelOnly: input.manualCancelOnly || false,
-        paidByPlatform: false,
-        // Colateral NAO confirmado ainda - provedor deposita ao aceitar
-        collateralConfirmed: false,
-        collateralSource: null,
-        walletId: null,
-        collateralLocked: false,
-        collateralLockedAmount: null,
-      },
+    // FEATURE (price-lock) — E.2d-2: ao contrário do SELL, o BUY não tinha $transaction (o
+    // order.create era solto). Envolvemos o create + a marcação da quote numa transação para
+    // ter a MESMA atomicidade do SELL (opção B). O order.create é a ÚNICA escrita deste bloco
+    // (não há audit/notificação/contador aqui — isso fica fora, no controller), então só ele
+    // e a marcação entram no tx.
+    const order = await prisma.$transaction(async (tx) => {
+      const created = await tx.order.create({
+        data: {
+          userId: input.userId,
+          orderType: OrderType.BUY, // BUY = usuario quer comprar crypto
+          type: 'PIX', // Payment method - BUY orders only support PIX
+          status: OrderStatus.PENDING,
+          cryptoType: input.cryptoType,
+          cryptoNetwork: input.cryptoNetwork,
+          cryptoAmount: input.cryptoAmount,
+          brlAmount: brlAmount,
+          unitPrice: unitPriceEfetivo, // FEATURE (preço personalizado) — Parte C: snapshot custom OU mercado (nunca null no BUY daqui pra frente)
+          platformFee: fees.platformFee,
+          payerReward: fees.payerReward, // 0 para BUY
+          totalFee: fees.totalFee,
+          orderData: {}, // Vazio - provedor preenche ao aceitar
+          timeoutAt,
+          customExpirationHours: input.customExpirationHours,
+          manualCancelOnly: input.manualCancelOnly || false,
+          paidByPlatform: false,
+          // Colateral NAO confirmado ainda - provedor deposita ao aceitar
+          collateralConfirmed: false,
+          collateralSource: null,
+          walletId: null,
+          collateralLocked: false,
+          collateralLockedAmount: null,
+        },
+      });
+
+      // Opção B: se o pedido nasceu de uma cotação travada, revalidar expiração/uso DENTRO do tx
+      // (fecha o gap de ms desde o consumeOrderQuote do topo) e marcar como usada atomicamente.
+      // Qualquer falha (expirada/usada por submit concorrente) → ROLLBACK: pedido não é criado.
+      if (input.quoteId) {
+        await orderQuoteService.consumeOrderQuote(input.quoteId, input.userId, tx);
+        await orderQuoteService.markQuoteUsed(input.quoteId, created.id, tx);
+      }
+
+      return created;
     });
 
     console.log(`✅ [BUY ORDER] Created: ${order.id}`);

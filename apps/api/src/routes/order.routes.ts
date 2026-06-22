@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { orderController } from '../controllers/order.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
-import { orderCreationLimiter } from '../middleware/rateLimiter.middleware';
+import { orderCreationLimiter, quoteLimiter } from '../middleware/rateLimiter.middleware';
 
 const router = Router();
 
@@ -13,6 +13,9 @@ router.get('/marketplace', orderController.getMarketplace.bind(orderController))
 
 // SECURITY: Criar pedido com rate limiting
 router.post('/', orderCreationLimiter, orderController.createOrder.bind(orderController));
+
+// PRICE-LOCK: Criar cotação travada (rota estática — declarada ANTES de /:orderId)
+router.post('/quote', quoteLimiter, orderController.createQuote.bind(orderController));
 
 // Listar pedidos do usuário
 router.get('/my-orders', orderController.getUserOrders.bind(orderController));
