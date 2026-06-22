@@ -25,6 +25,7 @@ interface Order {
   cryptoNetwork: string;
   cryptoAmount: string;
   brlAmount: string;
+  unitPrice?: string; // FEATURE (preço personalizado): preço unitário; ausente em ordens antigas
   platformFee: string;
   payerReward: string;
   totalFee: string;
@@ -75,6 +76,16 @@ export default function OrderDetailsPage() {
   const [proofImage, setProofImage] = useState<string>('');
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelAsProvider, setCancelAsProvider] = useState(false); // Flag para cancelamento do provedor em BUY orders
+
+  // FEATURE (preço personalizado): preço unitário com fallback p/ ordens antigas
+  const getUnitPrice = (o: Order): number => {
+    if (o.unitPrice) return parseFloat(o.unitPrice);
+    const c = parseFloat(o.cryptoAmount); const b = parseFloat(o.brlAmount);
+    return c > 0 ? b / c : 0;
+  };
+  const fmtUnit = (price: number, t: string): string =>
+    (t === 'USDT' || t === 'USDC') ? `R$ ${price.toFixed(4)}`
+    : `R$ ${price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const [cancelling, setCancelling] = useState(false);
   const [confirmingReceived, setConfirmingReceived] = useState(false);
   const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
@@ -892,6 +903,9 @@ export default function OrderDetailsPage() {
                   </div>
                   <div className="text-right">
                     <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(order.brlAmount)}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      Preço unitário: {fmtUnit(getUnitPrice(order), order.cryptoType)} / {order.cryptoType}
+                    </p>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
                       {formatCrypto(order.cryptoAmount, order.cryptoType)} {order.cryptoType}
                     </p>
