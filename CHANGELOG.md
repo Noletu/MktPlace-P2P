@@ -7,6 +7,27 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [4.3.0] - 2026-06-22
+
+### Adicionado
+
+#### Preço Personalizado (Ordem Limite) — BTC, USDT, USDC
+- **Funcionalidade**: ao criar um pedido (compra ou venda), o usuário pode definir um preço unitário próprio em vez do preço de mercado.
+- **Backend** (implementado anteriormente): campo `unitPrice` no model `Order`; cálculo de `brlAmount`/`cryptoAmount` a partir do preço custom no SELL e no BUY; sistema de price-lock (`OrderQuote`, TTL 120s, rota `POST /orders/quote`).
+- **Form de criação** (usuário): toggle mercado/custom com input adaptativo (4 casas para stablecoins, 2 para BTC), price-lock e cálculos de preço efetivo. Arquivo: `apps/web/app/orders/create/page.tsx`.
+- **Marketplace** (Fase 4): cards exibem preço unitário (com fallback `brl/crypto` para ordens antigas) + badge de variação vs mercado; filtro por cripto (BTC/USDT/USDC) e ordenação por preço (menor/maior). Busca `/prices` com refresh de 60s. Arquivo: `apps/web/app/marketplace/page.tsx`.
+- **Preview e Detalhe do pedido** (Fase 5, parte 1): exibem "Preço unitário: R$ X / CRYPTO". Arquivos: `apps/web/app/orders/[orderId]/preview/page.tsx` e `.../[orderId]/page.tsx`.
+- **Validação**: `tsc` do `apps/web` mantido em 45 (baseline pré-existente, sem regressão). Conferência visual completa e teste end-to-end pendentes até regeneração da masterseed; criação de pedido com preço custom confirmada funcionando.
+
+### Em Desenvolvimento
+
+#### Preço Personalizado — Form Admin (Fase 5, parte 2, pendente)
+- **Objetivo**: adicionar o toggle de preço custom ao form de criação de pedidos do admin (`apps/web/app/admin/orders/create/page.tsx`).
+- **Status**: pendente, baixa prioridade. Não bloqueia o usuário comum (tela interna, level ≥ 40; usa o mesmo `POST /orders`; admin já cria pedidos a preço de mercado normalmente).
+- **Consideração técnica**: o form de usuário tem maquinaria complexa de custom (priceMode SELL/BUY, customUnitPrice, price-lock distribuídos em ~8 useMemo + 2 caminhos de submit); o form admin é estruturalmente mais simples (1 useMemo, 1 submit). Ao implementar, decidir entre versão mínima (toggle + input + `unitPrice` direto, sem price-lock) ou paridade completa com o form de usuário.
+
+---
+
 ## [4.2.0] - 2026-02-15
 
 ### Adicionado
