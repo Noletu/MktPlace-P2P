@@ -18,6 +18,7 @@ interface Order {
   cryptoNetwork: string;
   cryptoAmount: string;
   brlAmount: string;
+  unitPrice?: string; // FEATURE (preço personalizado): preço unitário BRL/cripto; ausente em ordens antigas
   platformFee: string;
   payerReward: string;
   totalFee: string;
@@ -42,7 +43,73 @@ export default function MarketplacePage() {
   const [error, setError] = useState('');
   const [paymentFilter, setPaymentFilter] = useState<'ALL' | 'PIX' | 'BOLETO'>('ALL');
   const [orderTypeFilter, setOrderTypeFilter] = useState<'ALL' | 'SELL' | 'BUY'>('ALL');
+  const [cryptoFilter, setCryptoFilter] = useState<'ALL' | 'BTC' | 'USDT' | 'USDC'>('ALL');
+  const [sortBy, setSortBy] = useState<'recent' | 'price_asc' | 'price_desc'>('recent');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [prices, setPrices] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const fetchPrices = async () => {
+      try {
+        const res = await fetchWithAuth('/prices');
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) {
+          const map: Record<string, string> = {};
+          data.data.forEach((p: any) => { map[p.crypto] = p.brlPrice; });
+          setPrices(map);
+        }
+      } catch { /* silencioso: preço de referência é opcional */ }
+    };
+    fetchPrices();
+    const interval = setInterval(fetchPrices, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // FEATURE (preço personalizado): preço unitário com fallback p/ ordens antigas (brl/crypto)
+  const getUnitPrice = (order: Order): number => {
+    if (order.unitPrice) return parseFloat(order.unitPrice);
+    const crypto = parseFloat(order.cryptoAmount);
+    const brl = parseFloat(order.brlAmount);
+    return crypto > 0 ? brl / crypto : 0;
+  };
+
+  // Formatação adaptativa: stablecoins com 4 casas, BTC com 2
+  const formatUnitPrice = (price: number, cryptoType: string): string => {
+    if (cryptoType === 'USDT' || cryptoType === 'USDC') {
+      return `R$ ${price.toFixed(4)}`;
+    }
+    return `R$ ${price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  // Variação vs preço de mercado (null se não há cotação carregada)
+  const getVariationPercent = (order: Order): number | null => {
+    const marketPrice = parseFloat(prices[order.cryptoType] || '0');
+    if (!marketPrice) return null;
+    return ((getUnitPrice(order) / marketPrice) - 1) * 100;
+  };
+
+  const getVariationColor = (order: Order): string => {
+    const pct = getVariationPercent(order);
+    if (pct === null) return '';
+    const abs = Math.abs(pct);
+    if (abs <= 1) return 'text-green-600 dark:text-green-400';
+    if (abs <= 5) return 'text-yellow-600 dark:text-yellow-400';
+    if (abs <= 15) return 'text-orange-600 dark:text-orange-400';
+    return 'text-red-600 dark:text-red-400';
+  };
+
+  const getVariationBadge = (order: Order): string => {
+    const pct = getVariationPercent(order);
+    if (pct === null) return '';
+    const sign = pct >= 0 ? '+' : '';
+    if (order.cryptoType === 'USDT' || order.cryptoType === 'USDC') {
+      const marketPrice = parseFloat(prices[order.cryptoType]);
+      const diff = getUnitPrice(order) - marketPrice;
+      const diffSign = diff >= 0 ? '+' : '';
+      return `${sign}${pct.toFixed(1)}% (${diffSign}R$${diff.toFixed(4)})`;
+    }
+    return `${sign}${pct.toFixed(1)}%`;
+  };
 
   useEffect(() => {
     fetchCurrentUser();
@@ -93,6 +160,8 @@ export default function MarketplacePage() {
 
   // Filtrar por método de pagamento (PIX/BOLETO) - só se aplica a SELL orders
   const filteredOrders = orders.filter((order) => {
+    // FEATURE (preço personalizado): filtro por cripto, aplicado a todos os tipos
+    if (cryptoFilter !== 'ALL' && order.cryptoType !== cryptoFilter) return false;
     // BUY orders não tem método de pagamento definido até serem aceitas
     if (order.orderType === 'BUY') {
       return paymentFilter === 'ALL'; // BUY orders só aparecem no "Todos"
@@ -100,6 +169,13 @@ export default function MarketplacePage() {
     if (paymentFilter === 'ALL') return true;
     // Para SELL orders, o type é PIX ou BOLETO
     return order.type === paymentFilter;
+  });
+
+  // FEATURE (preço personalizado): ordenação por preço unitário (sobre o array já filtrado)
+  const sortedOrders = [...filteredOrders].sort((a, b) => {
+    if (sortBy === 'price_asc') return getUnitPrice(a) - getUnitPrice(b);
+    if (sortBy === 'price_desc') return getUnitPrice(b) - getUnitPrice(a);
+    return 0; // 'recent': mantém a ordem original (já vem do backend)
   });
 
   const getTimeRemaining = (timeoutAt: string) => {
@@ -173,6 +249,40 @@ export default function MarketplacePage() {
               </button>
             </div>
           </div>
+          {/* FEATURE (preço personalizado): Filtro por Cripto */}
+          <div className="mb-4">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Cripto:</p>
+            <div className="flex gap-2">
+              {(['ALL', 'BTC', 'USDT', 'USDC'] as const).map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setCryptoFilter(c)}
+                  className={`px-4 py-2 rounded-lg font-semibold ${
+                    cryptoFilter === c ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                  }`}
+                >
+                  {c === 'ALL' ? 'Todas' : c}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* FEATURE (preço personalizado): Ordenação */}
+          <div className="mb-4">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Ordenar por:</p>
+            <div className="flex gap-2">
+              {([['recent', 'Mais recentes'], ['price_asc', 'Menor preço'], ['price_desc', 'Maior preço']] as const).map(([val, label]) => (
+                <button
+                  key={val}
+                  onClick={() => setSortBy(val)}
+                  className={`px-4 py-2 rounded-lg font-semibold ${
+                    sortBy === val ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Filtro por Método de Pagamento (só para SELL orders) */}
           {orderTypeFilter !== 'BUY' && (
@@ -215,7 +325,7 @@ export default function MarketplacePage() {
         )}
 
         {/* Lista de Pedidos */}
-        {filteredOrders.length === 0 ? (
+        {sortedOrders.length === 0 ? (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 text-center">
             <p className="text-gray-600 dark:text-gray-300 mb-4">Nenhum pedido disponível no momento.</p>
             <button
@@ -227,7 +337,7 @@ export default function MarketplacePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredOrders.map((order) => {
+            {sortedOrders.map((order) => {
               const isOwnOrder = currentUserId && order.user.id === currentUserId;
               const isInNegotiationWithOther = order.status === 'IN_NEGOTIATION' && order.negotiatingUserId !== currentUserId;
               const isBuyOrder = order.orderType === 'BUY';
@@ -297,6 +407,14 @@ export default function MarketplacePage() {
                     <div className="mb-4">
                       <p className="text-sm text-gray-600 dark:text-gray-400">Você receberá</p>
                       <p className="text-3xl font-bold text-green-600 dark:text-green-400">{formatBRL(order.brlAmount)}</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        {formatUnitPrice(getUnitPrice(order), order.cryptoType)} / {order.cryptoType}
+                        {getVariationBadge(order) && (
+                          <span className={`ml-2 text-xs font-medium ${getVariationColor(order)}`}>
+                            {getVariationBadge(order)}
+                          </span>
+                        )}
+                      </p>
                       <p className="text-xs text-green-700 dark:text-green-400 font-semibold">
                         Via PIX (inclui ~1% lucro para você)
                       </p>
@@ -332,6 +450,14 @@ export default function MarketplacePage() {
                     <div className="mb-4">
                       <p className="text-sm text-gray-600 dark:text-gray-400">Valor do Pagamento</p>
                       <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(order.brlAmount)}</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        {formatUnitPrice(getUnitPrice(order), order.cryptoType)} / {order.cryptoType}
+                        {getVariationBadge(order) && (
+                          <span className={`ml-2 text-xs font-medium ${getVariationColor(order)}`}>
+                            {getVariationBadge(order)}
+                          </span>
+                        )}
+                      </p>
                     </div>
 
                     <div className="mb-4">
