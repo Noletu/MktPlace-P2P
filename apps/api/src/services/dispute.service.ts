@@ -1524,6 +1524,42 @@ export class DisputeService {
       });
     }
   }
+
+  /**
+   * Holding de boleto: retorna se o comprador ainda está nas 48h e quanto falta.
+   * Não-boleto ou sem comprovante => { blocked: false }.
+   */
+  async getBoletoDisputeDeadline(orderId: string) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { transactions: true },
+    });
+
+    if (!order || order.type !== 'BOLETO') {
+      return { blocked: false };
+    }
+
+    // Comprovante mais recente (mesmo critério de createDispute)
+    const comprovanteTxs = order.transactions
+      .filter(t => t.comprovanteUrl || t.status === 'VALIDATING')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const paymentTx = comprovanteTxs[0];
+
+    if (!paymentTx?.createdAt) {
+      return { blocked: false };
+    }
+
+    const paymentSentAt = new Date(paymentTx.createdAt);
+    const deadlineAt = new Date(paymentSentAt.getTime() + DISPUTE_DEADLINES.OPEN_AFTER_PAYMENT_SENT_BOLETO);
+    const now = Date.now();
+
+    return {
+      blocked: now < deadlineAt.getTime(),
+      deadlineAt: deadlineAt.toISOString(),
+      remainingMs: Math.max(0, deadlineAt.getTime() - now),
+      paymentSentAt: paymentSentAt.toISOString(),
+    };
+  }
 }
 
 export const disputeService = new DisputeService();

@@ -43,6 +43,13 @@ router.get('/my-disputes', disputeController.getUserDisputes.bind(disputeControl
  */
 router.get('/', supportMiddleware, disputeController.getAllDisputes.bind(disputeController));
 
+/**
+ * @route   GET /api/v1/disputes/boleto-deadline/:orderId
+ * @desc    Consultar prazo de holding de 48h do boleto (rota literal, antes de /:disputeId)
+ * @access  Private
+ */
+router.get('/boleto-deadline/:orderId', disputeController.getBoletoDisputeDeadline.bind(disputeController));
+
 // ============================================
 // USER ROUTES (com parâmetros - devem vir por último)
 // ============================================

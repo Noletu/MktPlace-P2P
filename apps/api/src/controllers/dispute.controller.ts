@@ -427,6 +427,23 @@ export class DisputeController {
       });
     }
   }
+
+  /**
+   * GET /disputes/boleto-deadline/:orderId
+   * Consulta o holding de 48h do boleto (delega ao service).
+   */
+  async getBoletoDisputeDeadline(req: Request, res: Response) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, error: 'Não autorizado' });
+      }
+      const data = await disputeService.getBoletoDisputeDeadline(req.params.orderId);
+      return res.json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message || 'Erro ao consultar prazo do boleto' });
+    }
+  }
 }
 
 export const disputeController = new DisputeController();
