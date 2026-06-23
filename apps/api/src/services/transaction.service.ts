@@ -16,13 +16,21 @@ export class TransactionService {
    * Submeter comprovante de pagamento
    */
   async submitProof(input: SubmitProofInput): Promise<Transaction> {
-    const validationDeadline = new Date();
-    validationDeadline.setHours(validationDeadline.getHours() + 24);
-
     // CRIT-05: claim atômico — read+validate+write em transação única elimina TOCTOU.
     // updateMany com WHERE status=PENDING + payerId garante que apenas um caller
     // simultâneo transita para VALIDATING; os demais recebem count=0.
     const txRecord = await prisma.$transaction(async (tx) => {
+      // FEATURE (holding de boleto): deadline de validação maior para boleto (72h vs 24h PIX).
+      // Leitura read-only do tipo; não afeta o claim atômico (updateMany condicional abaixo).
+      const txOrder = await tx.transaction.findUnique({
+        where: { id: input.transactionId },
+        select: { order: { select: { type: true } } },
+      });
+      const validationDeadline = new Date();
+      validationDeadline.setHours(
+        validationDeadline.getHours() + (txOrder?.order?.type === 'BOLETO' ? 72 : 24)
+      );
+
       const claimResult = await tx.transaction.updateMany({
         where: {
           id: input.transactionId,
