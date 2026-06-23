@@ -102,7 +102,9 @@ export interface AddDisputeMessageInput {
 export const DISPUTE_DEADLINES = {
   RESPONSE_TIME: 48 * 60 * 60 * 1000, // 48h para responder
   RESOLUTION_TIME: 48 * 60 * 60 * 1000, // 48h para resolver
-  OPEN_AFTER_PAYMENT_SENT: 24 * 60 * 60 * 1000, // Pode abrir após 24h em PAYMENT_SENT
+  OPEN_AFTER_PAYMENT_SENT: 24 * 60 * 60 * 1000, // Pode abrir após 24h em PAYMENT_SENT (legado)
+  OPEN_AFTER_PAYMENT_SENT_PIX: 0, // PIX: pode abrir imediatamente
+  OPEN_AFTER_PAYMENT_SENT_BOLETO: 48 * 60 * 60 * 1000, // Boleto: 48h após o comprovante
 };
 
 // Reputation adjustments
