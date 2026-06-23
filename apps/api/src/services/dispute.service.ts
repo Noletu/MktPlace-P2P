@@ -88,6 +88,29 @@ export class DisputeService {
       throw new Error('Já existe uma disputa aberta para este pedido');
     }
 
+    // FEATURE (holding de boleto): comprador deve aguardar 48h após o comprovante para abrir disputa.
+    // Vendedor/dono/provedor NÃO é bloqueado — pode reportar boleto falso a qualquer momento.
+    if (order.type === 'BOLETO' && isPayer) {
+      // Comprovante mais recente (um pedido pode ter várias transações/reenvios)
+      const comprovanteTxs = order.transactions
+        .filter(t => t.comprovanteUrl || t.status === 'VALIDATING')
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const paymentTx = comprovanteTxs[0];
+      if (paymentTx?.createdAt) {
+        const elapsedMs = Date.now() - new Date(paymentTx.createdAt).getTime();
+        if (elapsedMs < DISPUTE_DEADLINES.OPEN_AFTER_PAYMENT_SENT_BOLETO) {
+          const remainingHours = Math.ceil(
+            (DISPUTE_DEADLINES.OPEN_AFTER_PAYMENT_SENT_BOLETO - elapsedMs) / (1000 * 60 * 60)
+          );
+          throw new Error(
+            `Pagamentos via boleto podem levar até 48 horas para compensar. ` +
+            `Você poderá abrir uma disputa em aproximadamente ${remainingHours}h. ` +
+            `Se o vendedor confirmar o recebimento antes, a transação será concluída automaticamente.`
+          );
+        }
+      }
+    }
+
     // Criar disputa
     const dispute = await prisma.dispute.create({
       data: {
