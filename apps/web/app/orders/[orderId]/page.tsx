@@ -86,6 +86,12 @@ export default function OrderDetailsPage() {
   const fmtUnit = (price: number, t: string): string =>
     (t === 'USDT' || t === 'USDC') ? `R$ ${price.toFixed(4)}`
     : `R$ ${price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const formatCountdown = (ms?: number) => {
+    if (!ms || ms <= 0) return 'Disponível agora';
+    const hours = Math.floor(ms / (1000 * 60 * 60));
+    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${minutes}min`;
+  };
   const [cancelling, setCancelling] = useState(false);
   const [confirmingReceived, setConfirmingReceived] = useState(false);
   const [showPaymentConfirmModal, setShowPaymentConfirmModal] = useState(false);
@@ -96,6 +102,7 @@ export default function OrderDetailsPage() {
   const [cancellingAsPayer, setCancellingAsPayer] = useState(false);
   const [showDisputeModal, setShowDisputeModal] = useState(false);
   const [disputeId, setDisputeId] = useState<string | null>(null);
+  const [boletoDeadline, setBoletoDeadline] = useState<{ blocked: boolean; deadlineAt?: string; remainingMs?: number } | null>(null);
 
   // Sistema de Abas - Detecta tab da URL
   const initialTab = searchParams.get('tab') || 'details';
@@ -193,6 +200,18 @@ export default function OrderDetailsPage() {
 
       const data = await response.json();
       setOrder(data.data);
+
+      // FEATURE (holding de boleto): buscar prazo de 48h se for boleto aguardando
+      const o = data.data;
+      if (o?.type === 'BOLETO' && (o.status === 'PAYMENT_SENT' || o.status === 'VALIDATING')) {
+        try {
+          const dRes = await fetchWithAuth(`/disputes/boleto-deadline/${orderId}`);
+          const dData = await dRes.json();
+          if (dData.success) setBoletoDeadline(dData.data);
+        } catch { /* silencioso: countdown é opcional */ }
+      } else {
+        setBoletoDeadline(null);
+      }
 
       // Se pedido está em disputa, buscar ID da disputa
       if (data.data.status === 'DISPUTED') {
@@ -351,9 +370,15 @@ export default function OrderDetailsPage() {
       return false;
     }
 
+    // FEATURE (holding de boleto): comprador bloqueado por 48h após o comprovante.
+    // Espelha a trava do backend (createDispute); vendedor/criador/provedor não são afetados.
+    if (order?.type === 'BOLETO' && isPayer && boletoDeadline?.blocked) {
+      return false;
+    }
+
     // Comprador/Pagador pode abrir disputa quando enviar pagamento (PAYMENT_SENT ou VALIDATING)
     if (isPayer && (order?.status === 'PAYMENT_SENT' || order?.status === 'VALIDATING')) {
-      return true; // Removida restrição de 24h para facilitar testes
+      return true;
     }
 
     // Vendedor/Criador pode abrir após receber comprovante (PAYMENT_SENT ou VALIDATING) - SELL orders
@@ -1374,6 +1399,15 @@ export default function OrderDetailsPage() {
                         </div>
                       )}
                     </>
+                  )}
+
+                  {/* Banner boleto holding 48h (apenas para o comprador) */}
+                  {order?.type === 'BOLETO' && isPayer && boletoDeadline?.blocked && (
+                    <div className="p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded-lg text-sm text-yellow-800 dark:text-yellow-200">
+                      <p className="font-semibold">⏳ Aguardando compensação do boleto</p>
+                      <p className="mt-1">Boletos podem levar até 48h para compensar. Tempo restante: <strong>{formatCountdown(boletoDeadline.remainingMs)}</strong></p>
+                      <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">Após esse prazo você poderá abrir uma disputa, caso necessário.</p>
+                    </div>
                   )}
 
                   {/* Abrir Disputa */}
