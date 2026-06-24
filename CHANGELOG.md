@@ -7,6 +7,24 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [4.4.0] - 2026-06-24
+
+### Adicionado
+
+#### Holding de Boleto (prazo de 48h para disputa)
+- **Regra de negócio**: boleto não compensa na hora, então o comprador deve aguardar 48h após o comprovante antes de abrir disputa. Vendedor/dono/provedor nunca são bloqueados (podem reportar boleto falso a qualquer momento). PIX permanece inalterado.
+- **Backend — regra (Fase 1)**: `createDispute` bloqueia o comprador (`isPayer`) de boleto até 48h após o comprovante mais recente. Constante `DISPUTE_DEADLINES` expandida (`OPEN_AFTER_PAYMENT_SENT_PIX: 0`, `_BOLETO: 48h`).
+- **Backend — deadline de validação (Fase 2)**: `validationDeadline` do comprovante passa a 72h para boleto (vs 24h PIX), dando margem ao vendedor sobre as 48h de holding. Lido dentro do `$transaction`, sem afetar o claim atômico do CRIT-05.
+- **Backend — endpoint (Fase 3)**: `GET /disputes/boleto-deadline/:orderId` retorna `{ blocked, deadlineAt, remainingMs, paymentSentAt }`. Lógica no `disputeService`, controller fino.
+- **Frontend (Fases 4-5)**: `orders/[orderId]` esconde o botão de disputa para o comprador dentro das 48h e mostra banner com countdown (apenas ao comprador).
+- **Notificação (Fase 6)**: worker notifica o comprador, uma única vez, quando o prazo de 48h expira. Anti-spam via campo `Order.boletoDisputeNotifiedAt`.
+- **Validação**: cada fase com smoke dedicado (regra 4/4, deadline 3/3, endpoint 6/6, notificação 5/5); `tsc` apps/api 22 e apps/web 45, ambos delta 0. Conferência visual do frontend pendente até regenerar a masterseed.
+
+### Manutenção
+- **Histórico de migrations realinhado**: as migrations `custom_price_unit_price` e `order_quote_price_lock` (aplicadas via `db push`) foram registradas com `migrate resolve --applied`. Histórico consistente (21/21).
+
+---
+
 ## [4.3.0] - 2026-06-22
 
 ### Adicionado
