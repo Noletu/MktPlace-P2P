@@ -437,6 +437,7 @@ model Order {
   // Crypto Transfer Tracking (Internal Transfer)
   cryptoTransferred   Boolean   @default(false) // Se a cripto foi transferida para o comprador
   cryptoTransferredAt DateTime? // Quando foi transferida
+  boletoDisputeNotifiedAt DateTime? // FEATURE (holding de boleto): quando o comprador foi avisado que o prazo de 48h expirou (anti-spam)
   cryptoTransferredTo String? // userId do comprador que recebeu a cripto
   cryptoRecipient     User?     @relation("OrderCryptoRecipient", fields: [cryptoTransferredTo], references: [id])
 

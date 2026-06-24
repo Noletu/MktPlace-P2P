@@ -21,11 +21,13 @@ class OrderExpirationWorker {
     this.interval = setInterval(async () => {
       await this.checkExpiredOrders();
       await this.checkExpiredValidations();
+      await this.checkBoletoDisputeWindows();
     }, 60 * 1000);
 
     // Primeira execução imediata
     await this.checkExpiredOrders();
     await this.checkExpiredValidations();
+    await this.checkBoletoDisputeWindows();
   }
 
   stop() {
@@ -278,6 +280,61 @@ class OrderExpirationWorker {
       }
     } catch (error) {
       console.error('❌ Error checking expired validations:', error);
+    }
+  }
+
+  /**
+   * FEATURE (holding de boleto): notifica o COMPRADOR quando o prazo de 48h
+   * do boleto expira (a partir do comprovante mais recente), uma unica vez.
+   * Anti-spam via campo Order.boletoDisputeNotifiedAt.
+   */
+  private async checkBoletoDisputeWindows() {
+    try {
+      const HOLDING_MS = 48 * 60 * 60 * 1000;
+      const cutoff = new Date(Date.now() - HOLDING_MS);
+
+      // Boletos aguardando, ainda nao notificados, com comprovante ja ha mais de 48h
+      const candidates = await prisma.order.findMany({
+        where: {
+          type: 'BOLETO',
+          status: { in: ['PAYMENT_SENT', 'VALIDATING'] },
+          boletoDisputeNotifiedAt: null,
+          transactions: {
+            some: {
+              comprovanteUrl: { not: null },
+              createdAt: { lte: cutoff },
+            },
+          },
+        },
+        include: { transactions: true },
+      });
+
+      for (const order of candidates) {
+        // Comprovante mais recente (mesmo criterio da regra de disputa)
+        const comprovanteTxs = order.transactions
+          .filter(t => t.comprovanteUrl || t.status === 'VALIDATING')
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        const paymentTx = comprovanteTxs[0];
+        if (!paymentTx?.createdAt) continue;
+
+        // Confirma que o comprovante MAIS RECENTE ja passou das 48h (e nao um antigo)
+        const elapsed = Date.now() - new Date(paymentTx.createdAt).getTime();
+        if (elapsed < HOLDING_MS) continue;
+
+        // Comprador = payerId da transacao de pagamento
+        const buyerId = paymentTx.payerId;
+
+        // Marca ANTES de notificar (idempotente; evita corrida entre ciclos)
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { boletoDisputeNotifiedAt: new Date() },
+        });
+
+        await notificationService.notifyBoletoDisputeAvailable(order.id, buyerId);
+        console.log(`📬 Boleto holding expirado, comprador notificado: ${order.id}`);
+      }
+    } catch (error) {
+      console.error('❌ Error in checkBoletoDisputeWindows:', error);
     }
   }
 
