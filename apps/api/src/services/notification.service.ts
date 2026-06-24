@@ -399,6 +399,26 @@ export class NotificationService {
   }
 
   /**
+   * FEATURE (holding de boleto): avisa o comprador que o prazo de 48h expirou
+   * e ele já pode abrir disputa, caso necessário.
+   */
+  async notifyBoletoDisputeAvailable(orderId: string, buyerId: string) {
+    await this.createNotification({
+      userId: buyerId,
+      type: 'BOLETO_DISPUTE_AVAILABLE',
+      category: 'DISPUTE',
+      prefCategory: 'DISPUTES',
+      title: '⏳ Prazo do boleto concluído',
+      message: 'O prazo de 48h para compensação do boleto terminou. Se o vendedor ainda não liberou e você não recebeu o combinado, agora você pode abrir uma disputa.',
+      actionUrl: `/orders/${orderId}`,
+      actionLabel: 'Ver Pedido',
+      relatedId: orderId,
+      relatedType: 'ORDER',
+      priority: 'HIGH',
+    });
+  }
+
+  /**
    * Pedido foi cancelado
    */
   async notifyOrderCancelled(orderId: string, userId: string, reason?: string) {
