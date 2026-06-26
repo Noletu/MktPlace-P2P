@@ -1055,6 +1055,42 @@ export class AdminController {
     return '\uFEFF' + csvContent; // BOM para Excel reconhecer UTF-8
   }
 
+  /**
+   * FRENTE 2 — POST /admin/staff: cria conta administrativa (SUPPORT/GERENTE/ADMIN).
+   * Protegido por masterMiddleware + require2FA na rota. MASTER/USER são rejeitados no service.
+   */
+  async createStaffAccount(req: Request, res: Response) {
+    try {
+      const createdById = req.user?.userId;
+      if (!createdById) {
+        return res.status(401).json({ success: false, error: 'Não autenticado' });
+      }
+
+      const schema = z.object({
+        email: z.string().email('Email inválido'),
+        name: z.string().min(2, 'Nome muito curto'),
+        tempPassword: z.string().min(8, 'Senha temporária deve ter ao menos 8 caracteres'),
+        roleSlug: z.enum(['support', 'gerente', 'admin']),
+      });
+      const data = schema.parse(req.body);
+
+      const staff = await adminService.createStaffAccount({
+        ...data,
+        createdById,
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: 'Conta de staff criada. O usuário deverá trocar a senha no primeiro login.',
+        data: staff,
+      });
+    } catch (error: any) {
+      if (error?.name === 'ZodError') {
+        return res.status(400).json({ success: false, error: 'Dados inválidos', details: error.errors });
+      }
+      return res.status(400).json({ success: false, error: error.message || 'Erro ao criar staff' });
+    }
+  }
 }
 
 export const adminController = new AdminController();
