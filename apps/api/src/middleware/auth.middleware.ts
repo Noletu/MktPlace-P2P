@@ -68,6 +68,67 @@ export function isPasswordResetActionAllowed(method: string, path: string): bool
   );
 }
 
+/**
+ * STAFF TRADING GATE — contas STAFF (qualquer role != USER) não podem operar como
+ * cliente: criar/aceitar pedidos, ter carteira pessoal, depositar/sacar, enviar
+ * comprovante, confirmar pagamento, avaliar, ativar cupom, marcar presença.
+ *
+ * Fail-secure por ÁREA: qualquer mutação (POST/PATCH/PUT/DELETE) cujo caminho caia
+ * numa área de operação de cliente é BLOQUEADA por padrão — rota nova nasce bloqueada.
+ * GETs são sempre permitidos (staff vê tudo). Exceções administrativas explícitas
+ * (ex.: validar comprovante) ficam numa allowlist. /admin/* NÃO é área de operação,
+ * então funções de staff (inclusive carteira da plataforma) permanecem intactas.
+ *
+ * Match sobre o caminho COMPLETO (req.originalUrl sem query) com padrões ANCORADOS.
+ */
+const STAFF_BLOCKED_OPERATION_AREAS: ReadonlyArray<RegExp> = [
+  /^\/api\/v1\/orders(\/|$)/,
+  /^\/api\/v1\/wallets(\/|$)/,
+  /^\/api\/v1\/collateral(\/|$)/,
+  /^\/api\/v1\/collateral-balance(\/|$)/,
+  /^\/api\/v1\/transactions(\/|$)/,
+  /^\/api\/v1\/reviews(\/|$)/,
+  /^\/api\/v1\/coupons(\/|$)/,
+  /^\/api\/v1\/presence(\/|$)/,
+];
+
+/**
+ * Exceções: mutações que STAFF PODE fazer mesmo dentro das áreas acima
+ * (funções administrativas/de sistema, não operação de cliente).
+ */
+const STAFF_OPERATION_EXCEPTIONS: ReadonlyArray<{ method: string; pattern: RegExp }> = [
+  // Validar comprovante é função admin/system (registra validatedBy)
+  { method: 'POST', pattern: /^\/api\/v1\/transactions\/[^/]+\/validate\/?$/ },
+  // Cupons: CRUD é função admin (a rota tem adminMiddleware). Só activate/deactivate
+  // (uso por cliente) permanecem bloqueados para staff.
+  { method: 'POST',   pattern: /^\/api\/v1\/coupons\/?$/ },        // criar cupom (admin)
+  { method: 'PUT',    pattern: /^\/api\/v1\/coupons\/[^/]+\/?$/ }, // editar cupom (admin)
+  { method: 'DELETE', pattern: /^\/api\/v1\/coupons\/[^/]+\/?$/ }, // deletar cupom (admin)
+  // Reviews: moderação é função admin (adminMiddleware). Criar/responder review
+  // (ação de cliente) permanecem bloqueados para staff.
+  { method: 'POST',   pattern: /^\/api\/v1\/reviews\/[^/]+\/suspicious\/?$/ }, // moderar (admin)
+  { method: 'POST',   pattern: /^\/api\/v1\/reviews\/[^/]+\/hide\/?$/ },       // ocultar (admin)
+];
+
+/**
+ * Retorna true se a requisição deve ser BLOQUEADA para uma conta staff.
+ * GET/HEAD/OPTIONS nunca bloqueiam. Só bloqueia mutação em área de operação
+ * que não esteja na allowlist de exceções.
+ */
+export function isStaffOperationBlocked(method: string, path: string): boolean {
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    return false;
+  }
+  const inOperationArea = STAFF_BLOCKED_OPERATION_AREAS.some((re) => re.test(path));
+  if (!inOperationArea) {
+    return false;
+  }
+  const isException = STAFF_OPERATION_EXCEPTIONS.some(
+    (rule) => rule.method === method && rule.pattern.test(path)
+  );
+  return !isException;
+}
+
 export const authMiddleware = async (
   req: Request,
   res: Response,
@@ -187,6 +248,30 @@ export const authMiddleware = async (
           error: 'Troca de senha obrigatória',
           message: 'Você precisa definir uma nova senha antes de continuar.',
           forcePasswordReset: true,
+        });
+        return;
+      }
+    }
+
+    // STAFF TRADING GATE: contas STAFF (qualquer role != USER) não operam como cliente.
+    // Bloqueia mutações em áreas de operação (criar/aceitar pedido, carteira pessoal,
+    // depósito/saque, comprovante, review, cupom-uso, presença), preservando funções
+    // administrativas e a gestão da carteira da plataforma (/admin/*, fora do gate).
+    const isStaff = req.user.role !== 'USER';
+    if (isStaff) {
+      const staffRequestPath = req.originalUrl.split('?')[0];
+      if (isStaffOperationBlocked(req.method, staffRequestPath)) {
+        console.log('🚫 Operação de cliente bloqueada para conta staff:', {
+          userId: user.id,
+          role: req.user.role,
+          method: req.method,
+          path: staffRequestPath,
+        });
+        res.status(403).json({
+          success: false,
+          error: 'Ação não permitida',
+          message: 'Contas administrativas não podem operar como cliente (criar pedidos, carteiras pessoais ou movimentar fundos próprios). Esta restrição existe para evitar conflito de interesse.',
+          staffOperationBlocked: true,
         });
         return;
       }
