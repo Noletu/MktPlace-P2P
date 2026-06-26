@@ -7,6 +7,7 @@ import { clearUserPermissionCache } from '../middleware/permission.middleware';
 import { WalletService } from './wallet.service';
 import { PendingApprovalService } from './pendingApproval.service';
 import { toBN, sumBN, gtBN } from '../utils/money';
+import { hashPassword } from '../utils/bcrypt';
 
 const prisma = new PrismaClient();
 
@@ -1827,6 +1828,76 @@ export class AdminService {
     });
 
     return actions;
+  }
+
+  /**
+   * FRENTE 2 — Criação de conta STAFF (apenas MASTER, via masterMiddleware na rota).
+   * Cria uma conta administrativa (SUPPORT, GERENTE ou ADMIN) que:
+   *  - nasce SEM carteira (carteira é sob demanda; o staff gate bloqueia /wallets);
+   *  - exige troca de senha no 1º login (forcePasswordReset, reusa SER-15).
+   * REJEITA explicitamente criar MASTER (Frente 3, dupla aprovação) e USER (cadastro público).
+   */
+  async createStaffAccount(input: {
+    email: string;
+    name: string;
+    tempPassword: string;
+    roleSlug: 'support' | 'gerente' | 'admin';
+    createdById: string;
+  }) {
+    const allowedSlugs = ['support', 'gerente', 'admin'] as const;
+
+    // SECURITY: rejeitar slugs fora da allowlist (master/user nunca por aqui)
+    if (!allowedSlugs.includes(input.roleSlug as any)) {
+      throw new Error(
+        `Role inválido para criação de staff: "${input.roleSlug}". ` +
+        `Permitidos: support, gerente, admin. ` +
+        `(MASTER exige dupla aprovação; USER é criado pelo cadastro público.)`
+      );
+    }
+
+    // SECURITY: email único (mensagem genérica para não vazar existência)
+    const existing = await prisma.user.findUnique({ where: { email: input.email } });
+    if (existing) {
+      throw new Error('Não foi possível criar a conta. Verifique os dados.');
+    }
+
+    // Resolver o Role pelo slug (fonte de verdade RBAC)
+    const role = await prisma.role.findUnique({ where: { slug: input.roleSlug } });
+    if (!role) {
+      throw new Error(`Role "${input.roleSlug}" não encontrado. Execute o seed RBAC.`);
+    }
+
+    // SECURITY (defesa em profundidade): garantir que o role resolvido não é master/elevado demais
+    if (role.level >= 100) {
+      throw new Error('Criação de MASTER não é permitida por este fluxo.');
+    }
+
+    const hashedPassword = await hashPassword(input.tempPassword);
+
+    // Criar a conta staff. SEM derivar carteira (sob demanda + bloqueada pelo gate).
+    // forcePasswordReset: troca obrigatória no 1º login (SER-15).
+    const staff = await prisma.user.create({
+      data: {
+        email: input.email,
+        password: hashedPassword,
+        name: input.name,
+        roleId: role.id,
+        legacyRole: input.roleSlug.toUpperCase(),
+        forcePasswordReset: true,
+      },
+      select: { id: true, email: true, name: true, legacyRole: true, forcePasswordReset: true, createdAt: true },
+    });
+
+    // Audit trail: quem criou qual staff
+    await auditLogService.log({
+      userId: input.createdById,
+      action: AUDIT_ACTIONS.ADMIN_ACTION,
+      resource: AUDIT_RESOURCES.USER,
+      resourceId: staff.id,
+      metadata: { event: 'STAFF_CREATED', roleSlug: input.roleSlug, level: role.level },
+    });
+
+    return staff;
   }
 }
 

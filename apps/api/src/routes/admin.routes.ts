@@ -3,7 +3,7 @@ import { adminController } from '../controllers/admin.controller';
 import { financeController } from '../controllers/finance.controller';
 import { disputeController } from '../controllers/dispute.controller';
 import { adminWithdrawalController } from '../controllers/admin-withdrawal.controller';
-import { authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
+import { authMiddleware, adminMiddleware, masterMiddleware } from '../middleware/auth.middleware';
 import { managerMiddleware } from '../middleware/manager.middleware';
 import { supportMiddleware } from '../middleware/support.middleware';
 import { adminActionLimiter, financialOperationsLimiter } from '../middleware/rateLimiter.middleware';
@@ -66,6 +66,9 @@ router.get('/users', supportMiddleware, adminController.getUsers.bind(adminContr
 router.get('/users/:id/details', supportMiddleware, adminController.getUserDetails.bind(adminController));
 // SECURITY: Atualização de usuário (mudança de role) apenas ADMIN/MASTER
 router.put('/users/:id', adminMiddleware, adminActionLimiter, require2FAMiddleware, adminController.updateUser.bind(adminController));
+
+// FRENTE 2: Criar conta de staff (SUPPORT/GERENTE/ADMIN). APENAS MASTER. Exige 2FA.
+router.post('/staff', masterMiddleware, adminActionLimiter, require2FAMiddleware, adminController.createStaffAccount.bind(adminController));
 
 // SECURITY: Reset de senha de usuário por admin exige 2FA (pode ser vetor de account takeover)
 router.post('/users/:id/reset-password', adminMiddleware, adminActionLimiter, require2FAMiddleware, adminController.adminResetUserPassword.bind(adminController));
