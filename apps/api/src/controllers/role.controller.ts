@@ -76,7 +76,18 @@ export class RoleController {
         icon,
         level,
         permissionIds,
+        createdBy: req.user?.userId,
       });
+
+      // FRENTE 4: se a criação foi enfileirada (role com permissão crítica), responde 202 sem audit de execução.
+      if ((newRole as any)?._pending) {
+        return res.status(202).json({
+          success: true,
+          pending: true,
+          message: 'Role com permissão crítica: criação enviada para aprovação de um segundo MASTER.',
+          data: (newRole as any).approval,
+        });
+      }
 
       // AUDIT LOG: Registrar criação de role
       await auditLogService.logFromRequest(
@@ -236,6 +247,16 @@ export class RoleController {
 
       const result = await roleService.assignPermissionToRole(id, permissionId, grantedBy);
 
+      // FRENTE 4: se a operação foi enfileirada para dupla aprovação, responde 202 e NÃO faz audit de execução.
+      if ((result as any)?._pending) {
+        return res.status(202).json({
+          success: true,
+          pending: true,
+          message: 'Permissão crítica: operação enviada para aprovação de um segundo MASTER.',
+          data: (result as any).approval,
+        });
+      }
+
       // Buscar dados para audit log
       const role = await roleService.getRoleById(id);
       const permissionsGrouped = await roleService.listPermissions();
@@ -330,6 +351,16 @@ export class RoleController {
       }
 
       const result = await roleService.updateRolePermissions(id, permissionIds, grantedBy);
+
+      // FRENTE 4: se enfileirado para dupla aprovação, responde 202 sem audit de execução.
+      if ((result as any)?._pending) {
+        return res.status(202).json({
+          success: true,
+          pending: true,
+          message: 'Conjunto inclui permissão crítica: operação enviada para aprovação de um segundo MASTER.',
+          data: (result as any).approval,
+        });
+      }
 
       // Buscar role para audit log
       const role = await roleService.getRoleById(id);
