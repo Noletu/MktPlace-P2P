@@ -42,6 +42,9 @@ const OPERATION_LABELS: Record<string, string> = {
   UNLOCK_BALANCE:    'Desbloqueio de Saldo',
   DEMOTE_MASTER:     'Rebaixamento de MASTER',
   PROMOTE_MASTER:    'Promoção para MASTER',
+  CREATE_ROLE_WITH_CRITICAL:  'Criar Role com Permissão Crítica',
+  ASSIGN_CRITICAL_PERMISSION: 'Atribuir Permissão Crítica a Role',
+  UPDATE_ROLE_PERMISSIONS:    'Redefinir Permissões de Role',
 };
 
 const OPERATION_COLORS: Record<string, string> = {
@@ -52,6 +55,9 @@ const OPERATION_COLORS: Record<string, string> = {
   UNLOCK_BALANCE:    'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
   DEMOTE_MASTER:     'bg-red-200 text-red-900 dark:bg-red-900/60 dark:text-red-200',
   PROMOTE_MASTER:    'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300',
+  CREATE_ROLE_WITH_CRITICAL:  'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
+  ASSIGN_CRITICAL_PERMISSION: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
+  UPDATE_ROLE_PERMISSIONS:    'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
 };
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -84,6 +90,12 @@ function summarizePayload(operationType: string, payloadStr: string): string {
         return `Usuário: ${p.targetUserName} (${p.targetUserEmail}) → ${p.newRole} | Motivo: ${p.reason}`;
       case 'PROMOTE_MASTER':
         return `Usuário: ${p.targetUserName} (${p.targetUserEmail}) ${p.previousRole} → MASTER | Motivo: ${p.reason}`;
+      case 'CREATE_ROLE_WITH_CRITICAL':
+        return `Criar role "${p.name}" (nível ${p.level}) | Permissões críticas: ${(p.criticalNames ?? []).join(', ')} | Total de permissões: ${(p.permissionIds ?? []).length}`;
+      case 'ASSIGN_CRITICAL_PERMISSION':
+        return `Atribuir permissão crítica "${p.permissionDisplayName ?? p.permissionName}" ao role "${p.roleName}"`;
+      case 'UPDATE_ROLE_PERMISSIONS':
+        return `Redefinir permissões do role "${p.roleName}" | Críticas incluídas: ${(p.criticalNames ?? []).join(', ')} | Total: ${(p.permissionIds ?? []).length}`;
       default:
         return JSON.stringify(p);
     }
