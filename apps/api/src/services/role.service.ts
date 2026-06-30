@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { PendingApprovalService } from './pendingApproval.service';
 
 const prisma = new PrismaClient();
 
@@ -12,6 +13,20 @@ const prisma = new PrismaClient();
  */
 
 export class RoleService {
+  /**
+   * FRENTE 4 — Detecta quais das permissões informadas são CRÍTICAS (isCritical).
+   * Usado para decidir se uma operação de role exige dupla aprovação MASTER.
+   * Retorna a lista de permissões críticas encontradas (vazia = nenhuma crítica).
+   */
+  private async findCriticalPermissions(permissionIds: string[]): Promise<{ id: string; name: string; displayName: string }[]> {
+    if (!permissionIds || permissionIds.length === 0) return [];
+    const critical = await prisma.permission.findMany({
+      where: { id: { in: permissionIds }, isCritical: true },
+      select: { id: true, name: true, displayName: true },
+    });
+    return critical;
+  }
+
   /**
    * Listar todos os roles
    */
@@ -122,6 +137,7 @@ export class RoleService {
     icon?: string;
     level?: number;
     permissionIds?: string[];
+    createdBy?: string;
   }) {
     // Validação básica
     if (!data.name || data.name.length < 3) {
@@ -148,6 +164,32 @@ export class RoleService {
     const level = data.level || 50; // Default: entre SUPPORT (40) e GERENTE (60)
     if (level >= 100) {
       throw new Error('Não é permitido criar role com nível 100 ou superior (reservado para MASTER)');
+    }
+
+    // FRENTE 4: se o role nasce com alguma permissão crítica, a CRIAÇÃO INTEIRA exige
+    // dupla aprovação MASTER. Nada é criado até o 2º MASTER aprovar (atômico).
+    if (data.permissionIds && data.permissionIds.length > 0) {
+      const criticalInSet = await this.findCriticalPermissions(data.permissionIds);
+      if (criticalInSet.length > 0) {
+        if (!data.createdBy) {
+          throw new Error('Criação de role com permissão crítica requer identificação do MASTER iniciador.');
+        }
+        const approval = await PendingApprovalService.create({
+          initiatorId: data.createdBy,
+          operationType: 'CREATE_ROLE_WITH_CRITICAL',
+          operationPayload: {
+            name: data.name,
+            slug,
+            description: data.description ?? null,
+            color: data.color ?? '#6B7280',
+            icon: data.icon ?? '👤',
+            level,
+            permissionIds: data.permissionIds,
+            criticalNames: criticalInSet.map((p) => p.displayName),
+          },
+        });
+        return { _pending: true, approval } as any;
+      }
     }
 
     // Criar role
@@ -335,7 +377,23 @@ export class RoleService {
       throw new Error('Esta permissão já está atribuída a este role');
     }
 
-    // Criar associação
+    // FRENTE 4: se a permissão é crítica, exige dupla aprovação MASTER (não executa agora).
+    if (permission.isCritical) {
+      if (!grantedBy) throw new Error('Operação crítica requer identificação do MASTER iniciador.');
+      const approval = await PendingApprovalService.create({
+        initiatorId: grantedBy,
+        operationType: 'ASSIGN_CRITICAL_PERMISSION',
+        operationPayload: {
+          roleId,
+          roleName: role.name,
+          permissionId,
+          permissionName: permission.name,
+          permissionDisplayName: permission.displayName,
+        },
+      });
+      return { _pending: true, approval } as any;
+    }
+
     await prisma.rolePermission.create({
       data: {
         roleId,
@@ -402,6 +460,24 @@ export class RoleService {
 
     if (permissions.length !== permissionIds.length) {
       throw new Error('Uma ou mais permissões não foram encontradas');
+    }
+
+    // FRENTE 4: se o novo conjunto inclui alguma permissão crítica, exige dupla aprovação MASTER.
+    // Checagem ANTES do deleteMany — nada é alterado até o 2º MASTER aprovar (atômico).
+    const criticalInSet = await this.findCriticalPermissions(permissionIds);
+    if (criticalInSet.length > 0) {
+      if (!grantedBy) throw new Error('Operação crítica requer identificação do MASTER iniciador.');
+      const approval = await PendingApprovalService.create({
+        initiatorId: grantedBy,
+        operationType: 'UPDATE_ROLE_PERMISSIONS',
+        operationPayload: {
+          roleId,
+          roleName: role.name,
+          permissionIds,
+          criticalNames: criticalInSet.map((p) => p.displayName),
+        },
+      });
+      return { _pending: true, approval } as any;
     }
 
     // Deletar todas as permissões atuais

@@ -26,6 +26,9 @@ const OPERATION_LABELS: Record<string, string> = {
   DEMOTE_MASTER:            'Rebaixamento de MASTER',
   PROMOTE_MASTER:           'Promoção para MASTER',
   PLATFORM_WALLET_TRANSFER: 'Transferência de Carteira da Plataforma',
+  CREATE_ROLE_WITH_CRITICAL:  'Criar Role com Permissão Crítica',
+  ASSIGN_CRITICAL_PERMISSION: 'Atribuir Permissão Crítica a Role',
+  UPDATE_ROLE_PERMISSIONS:    'Redefinir Permissões de Role',
 };
 
 export class PendingApprovalService {
@@ -684,6 +687,59 @@ export class PendingApprovalService {
         });
         return platformTransferService.processTransfer(transfer.id);
       }
+
+      case 'CREATE_ROLE_WITH_CRITICAL': {
+          // payload: { name, slug, description, color, icon, level, permissionIds }
+          const created = await prisma.role.create({
+            data: {
+              name: payload.name, slug: payload.slug, description: payload.description ?? null,
+              color: payload.color ?? '#6B7280', icon: payload.icon ?? '👤',
+              level: payload.level ?? 50, isSystem: false, isActive: true,
+            },
+          });
+          if (Array.isArray(payload.permissionIds) && payload.permissionIds.length > 0) {
+            await Promise.all(payload.permissionIds.map((pid: string) =>
+              prisma.rolePermission.create({ data: { roleId: created.id, permissionId: pid, grantedBy: adminUserId } })
+            ));
+          }
+          await auditLogService.log({
+            userId: adminUserId, action: 'ROLE_CREATE', resource: 'Role', resourceId: created.id,
+            metadata: { event: 'DUAL_APPROVED_CREATE_ROLE_WITH_CRITICAL', name: payload.name, permissionIds: payload.permissionIds },
+          });
+          return created;
+        }
+
+        case 'ASSIGN_CRITICAL_PERMISSION': {
+          // payload: { roleId, permissionId }
+          const existing = await prisma.rolePermission.findUnique({
+            where: { roleId_permissionId: { roleId: payload.roleId, permissionId: payload.permissionId } },
+          });
+          if (!existing) {
+            await prisma.rolePermission.create({ data: { roleId: payload.roleId, permissionId: payload.permissionId, grantedBy: adminUserId } });
+          }
+          clearUserPermissionCache(payload.roleId);
+          await auditLogService.log({
+            userId: adminUserId, action: 'USER_ROLE_CHANGE', resource: 'Role', resourceId: payload.roleId,
+            metadata: { event: 'DUAL_APPROVED_ASSIGN_CRITICAL_PERMISSION', permissionId: payload.permissionId },
+          });
+          return { roleId: payload.roleId, permissionId: payload.permissionId };
+        }
+
+        case 'UPDATE_ROLE_PERMISSIONS': {
+          // payload: { roleId, permissionIds }
+          await prisma.rolePermission.deleteMany({ where: { roleId: payload.roleId } });
+          if (Array.isArray(payload.permissionIds) && payload.permissionIds.length > 0) {
+            await Promise.all(payload.permissionIds.map((pid: string) =>
+              prisma.rolePermission.create({ data: { roleId: payload.roleId, permissionId: pid, grantedBy: adminUserId } })
+            ));
+          }
+          clearUserPermissionCache(payload.roleId);
+          await auditLogService.log({
+            userId: adminUserId, action: 'USER_ROLE_CHANGE', resource: 'Role', resourceId: payload.roleId,
+            metadata: { event: 'DUAL_APPROVED_UPDATE_ROLE_PERMISSIONS', permissionIds: payload.permissionIds },
+          });
+          return { roleId: payload.roleId, count: payload.permissionIds?.length ?? 0 };
+        }
 
       default:
         throw new Error(`Tipo de operação desconhecido: ${approval.operationType}`);
