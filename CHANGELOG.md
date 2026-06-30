@@ -7,6 +7,27 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [4.5.0] - 2026-06-29
+
+### Adicionado
+
+#### Separação Staff/Cliente (projeto de segurança — backend, 4 frentes)
+Contas administrativas e contas de cliente passam a ser populações estanques: staff administra, cliente opera, e os dois nunca se misturam. Resolve o conflito de interesse (quem fiscaliza não pode operar no mercado que fiscaliza).
+
+- **Frente 1 — Gate de operação**: contas STAFF (qualquer role ≠ USER) são bloqueadas (403) de operar como cliente — criar/aceitar pedido, carteira pessoal, depósito/saque, comprovante, review, uso de cupom, presença. Implementado no `authMiddleware`, fail-secure por área (rota de operação nova nasce bloqueada). Exceções administrativas preservadas (validar comprovante, CRUD de cupom, moderação de review). `/admin/*` fora do gate (gestão da carteira da plataforma intacta). As 2 contas master/admin existentes passam a cair no gate automaticamente.
+- **Frente 2 — Criação de staff (backend)**: `POST /admin/staff` (só MASTER, com 2FA) cria contas SUPPORT/GERENTE/ADMIN que nascem SEM carteira e com troca de senha obrigatória no 1º login. Dupla barreira impede criar MASTER por este fluxo (reservado à Frente 3) e rejeita USER.
+- **Frente 3 — Dupla aprovação para MASTER (verificada)**: promover/rebaixar MASTER já exige aprovação de um 2º MASTER (Maker-Checker; aprovador ≠ iniciador e nível MASTER). Comportamento verificado por smoke. Decisão de escopo: criação/rebaixamento de ADMIN permanece sob gestão de um MASTER (dupla aprovação reservada ao degrau MASTER, o poder máximo).
+- **Frente 4 — Anti-escalada por composição**: criar/editar role ou atribuir permissão passa a exigir dupla aprovação MASTER quando envolve permissão crítica (`isCritical`). Fecha o vetor de "role-fantasma" (um role customizado que acumula poderes de MASTER sem se chamar MASTER, contornando a Frente 3). Operação fica pendente e atômica — nada é criado/alterado até o 2º MASTER aprovar.
+
+### Segurança
+- Rotas de operação (`/orders`, `/wallets`, `/collateral`, `/transactions`, etc.) que antes só exigiam autenticação agora têm gate de papel para staff.
+- A flag `Permission.isCritical`, antes apenas decorativa, passa a ser barreira efetiva (dispara dupla aprovação).
+
+### Pendente
+- **Frontend** das frentes (aba de criação de staff no painel MASTER; conferência da UI de aprovações pendentes) — a ser construído e validado visualmente quando a master seed for regenerada.
+
+---
+
 ## [4.4.0] - 2026-06-24
 
 ### Adicionado
