@@ -38,6 +38,7 @@ export default function EditRolePermissionsModal({ role, onClose, onSuccess }: E
   const [allPermissions, setAllPermissions] = useState<PermissionsByCategory>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [pendingMsg, setPendingMsg] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
 
   // Carregar permissões disponíveis e inicializar selecionadas
@@ -122,6 +123,15 @@ export default function EditRolePermissionsModal({ role, onClose, onSuccess }: E
 
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Erro ao atualizar permissões');
+      }
+
+      // FRENTE 4: alteração com permissão crítica é enfileirada (202) — não foi aplicada ainda.
+      if (response.status === 202 || data.pending) {
+        setPendingMsg(
+          'Esta alteração inclui permissão crítica. Foi enviada para aprovação de um segundo MASTER e será aplicada após a aprovação. Acompanhe em Segurança → Aprovações.'
+        );
+        setIsSubmitting(false);
+        return;
       }
 
       onSuccess();
@@ -283,6 +293,13 @@ export default function EditRolePermissionsModal({ role, onClose, onSuccess }: E
           </div>
         )}
 
+        {/* Pending */}
+        {pendingMsg && (
+          <div className="bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300 border border-orange-300 dark:border-orange-800 rounded-lg p-3 text-sm mb-6">
+            ⏳ {pendingMsg}
+          </div>
+        )}
+
         {/* Error */}
         {error && (
           <div className="bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg p-4 mb-6">
@@ -297,14 +314,14 @@ export default function EditRolePermissionsModal({ role, onClose, onSuccess }: E
             disabled={isSubmitting}
             className="flex-1 px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition disabled:opacity-50"
           >
-            Cancelar
+            {pendingMsg ? 'Fechar' : 'Cancelar'}
           </button>
           <button
             onClick={handleSave}
-            disabled={isSubmitting || !hasChanges}
+            disabled={isSubmitting || !!pendingMsg || !hasChanges}
             className="flex-1 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition disabled:opacity-50"
           >
-            {isSubmitting ? 'Salvando...' : `✓ Salvar Alterações (${selectedPermissions.size} permissões)`}
+            {pendingMsg ? '⏳ Enviado para aprovação' : isSubmitting ? 'Salvando...' : `✓ Salvar Alterações (${selectedPermissions.size} permissões)`}
           </button>
         </div>
       </div>
