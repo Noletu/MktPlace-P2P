@@ -15,7 +15,6 @@ const ADMIN_NAV_TABS: (TabConfig & { minLevel?: number; pathMatch?: 'exact' | 'p
   { key: '/admin/orders',        label: 'Pedidos',     icon: '📦', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'exact' },
   { key: '/admin/audit',         label: 'Audit',       labelLine2: 'Log',       icon: '📋', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'exact' },
   { key: '/admin/marketplace',   label: 'Marketplace', icon: '🛒', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'exact' },
-  { key: '/admin/orders/create', label: 'Criar',       labelLine2: 'Pedido',    icon: '➕', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'prefix' },
   { key: '/admin/coupons',       label: 'Cupons',      icon: '🎟️', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'exact' },
   { key: '/admin/disputes',      label: 'Disputas',    icon: '⚖️', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'prefix' },
   { key: '/admin/support',       label: 'Suporte',     icon: '🎫', activeColor: 'border-blue-500 text-blue-600 dark:text-blue-400', pathMatch: 'prefix' },
@@ -26,7 +25,6 @@ const ADMIN_NAV_TABS: (TabConfig & { minLevel?: number; pathMatch?: 'exact' | 'p
 ];
 
 function getActiveNavKey(pathname: string): string {
-  // Check prefix matches first (longer paths first to avoid /admin/orders vs /admin/orders/create conflict)
   const prefixTabs = ADMIN_NAV_TABS
     .filter(t => t.pathMatch === 'prefix')
     .sort((a, b) => b.key.length - a.key.length);
