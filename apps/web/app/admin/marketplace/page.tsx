@@ -116,12 +116,6 @@ export default function MarketplacePage() {
             <h1 className="text-3xl font-bold mb-2 dark:text-white">Marketplace</h1>
             <p className="text-gray-600 dark:text-gray-300">Aceite pedidos e ganhe cripto pagando contas!</p>
           </div>
-          <button
-            onClick={() => router.push('/admin/orders/create')}
-            className="px-4 py-2 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white font-semibold rounded-lg"
-          >
-            + Criar Pedido
-          </button>
         </div>
 
         {/* Filtros */}
@@ -163,13 +157,7 @@ export default function MarketplacePage() {
         {/* Lista de Pedidos */}
         {filteredOrders.length === 0 ? (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 text-center">
-            <p className="text-gray-600 dark:text-gray-300 mb-4">Nenhum pedido disponível no momento.</p>
-            <button
-              onClick={() => router.push('/admin/orders/create')}
-              className="px-6 py-3 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 text-white font-semibold rounded-lg"
-            >
-              Criar Primeiro Pedido
-            </button>
+            <p className="text-gray-600 dark:text-gray-300">Nenhum pedido disponível no momento.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
