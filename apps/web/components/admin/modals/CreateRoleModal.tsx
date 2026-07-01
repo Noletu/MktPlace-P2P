@@ -51,6 +51,7 @@ export default function CreateRoleModal({ onClose, onSuccess }: CreateRoleModalP
   const [permissions, setPermissions] = useState<PermissionsByCategory>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [pendingMsg, setPendingMsg] = useState('');
   const [step, setStep] = useState<'basic' | 'permissions'>('basic');
 
   // Carregar permissões
@@ -129,6 +130,15 @@ export default function CreateRoleModal({ onClose, onSuccess }: CreateRoleModalP
 
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Erro ao criar role');
+      }
+
+      // FRENTE 4: operação com permissão crítica é enfileirada (202) — não foi criada ainda.
+      if (response.status === 202 || data.pending) {
+        setPendingMsg(
+          'Este role inclui permissão crítica. A criação foi enviada para aprovação de um segundo MASTER e será concluída após a aprovação. Acompanhe em Segurança → Aprovações.'
+        );
+        setIsSubmitting(false);
+        return;
       }
 
       onSuccess();
@@ -370,6 +380,12 @@ export default function CreateRoleModal({ onClose, onSuccess }: CreateRoleModalP
         )}
 
         {/* Error */}
+        {pendingMsg && (
+          <div className="bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300 border border-orange-300 dark:border-orange-800 rounded-lg p-3 text-sm mt-6">
+            ⏳ {pendingMsg}
+          </div>
+        )}
+
         {error && (
           <div className="bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg p-4 mt-6">
             <p className="text-red-800 dark:text-red-400 text-sm">{error}</p>
@@ -392,7 +408,7 @@ export default function CreateRoleModal({ onClose, onSuccess }: CreateRoleModalP
             disabled={isSubmitting}
             className="flex-1 px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition disabled:opacity-50"
           >
-            Cancelar
+            {pendingMsg ? 'Fechar' : 'Cancelar'}
           </button>
           {step === 'basic' ? (
             <button
@@ -405,10 +421,10 @@ export default function CreateRoleModal({ onClose, onSuccess }: CreateRoleModalP
           ) : (
             <button
               onClick={handleCreateRole}
-              disabled={isSubmitting || !name || name.length < 3}
+              disabled={isSubmitting || !!pendingMsg || !name || name.length < 3}
               className="flex-1 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition disabled:opacity-50"
             >
-              {isSubmitting ? 'Criando...' : `✓ Criar Role (${selectedPermissions.size} permissões)`}
+              {pendingMsg ? '⏳ Enviado para aprovação' : isSubmitting ? 'Criando...' : `✓ Criar Role (${selectedPermissions.size} permissões)`}
             </button>
           )}
         </div>
