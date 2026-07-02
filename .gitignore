@@ -72,3 +72,4 @@ SESSION_SUMMARY_*.md
 # SQLite temporary files
 *.db-shm
 *.db-wal
+.claude/
